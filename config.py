@@ -28,6 +28,16 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
 
+    # AI Assistant (Gemini). Read-only, role/branch-scoped — see routes/ai.py.
+    # If GEMINI_API_KEY is blank, the assistant just tells the user it isn't configured.
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+    # Per-user rate limit for the AI chat endpoint (Flask-Limiter syntax,
+    # semicolon-separated for multiple windows), so a single account
+    # can't accidentally spike Gemini API costs.
+    AI_CHAT_RATE_LIMIT = os.environ.get("AI_CHAT_RATE_LIMIT", "15 per minute;150 per day")
+
 
 class ProductionConfig(Config):
     """Settings for deployment behind HTTPS and a production WSGI server."""

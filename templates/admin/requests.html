@@ -13,42 +13,60 @@
 
 <div class="card">
   {% if stock_requests %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Requested</th><th>Branch</th><th>Item</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        {% for r in stock_requests %}
-        <tr>
-          <td class="mono text-soft">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-          <td>{{ r.branch_name }}</td>
-          <td><div class="item-name">{{ r.item_name }}</div><div class="item-sub">{{ m.variant_badge(r.variant) }}</div></td>
-          <td class="num mono">{{ r.requested_qty }}</td>
-          <td>{{ m.status_badge(r.status) }}</td>
-          <td>
-            {% if r.status == 'Pending' %}
-            <div class="inline-form">
-              <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=r.request_id) }}" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="number" name="dispatched_qty" value="{{ r.requested_qty }}" min="1" style="width:80px;" class="mono">
-                <button type="submit" class="btn btn-accent btn-sm">Dispatch</button>
-              </form>
-              <form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-danger btn-sm">Reject</button>
-              </form>
-            </div>
-            {% elif r.status == 'In Transit' %}
-            <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
-            {% elif r.status == 'Fulfilled' %}
-            <span class="text-faint" style="font-size:12.5px;">received {{ r.received_qty }}{% if r.damaged_qty %}, {{ r.damaged_qty }} damaged{% endif %}</span>
-            {% else %}
-            <span class="text-faint" style="font-size:12.5px;">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="12">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch or item…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead><tr><th>Requested</th><th>Branch</th><th>Item</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for r in stock_requests %}
+          <tr data-search="{{ (r.branch_name ~ ' ' ~ r.item_name)|lower }}">
+            <td class="mono text-soft">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+            <td>{{ r.branch_name }}</td>
+            <td><div class="item-name">{{ r.item_name }}</div><div class="item-sub">{{ m.variant_badge(r.variant) }}</div></td>
+            <td class="num mono">{{ r.requested_qty }}</td>
+            <td>{{ m.status_badge(r.status) }}</td>
+            <td>
+              {% if r.status == 'Pending' %}
+              <div class="inline-form">
+                <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=r.request_id) }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="number" name="dispatched_qty" value="{{ r.requested_qty }}" min="1" style="width:80px;"
+                         class="mono dispatch-qty-input" data-requested-qty="{{ r.requested_qty }}">
+                  <button type="submit" class="btn btn-accent btn-sm">Dispatch</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                </form>
+              </div>
+              {% elif r.status == 'In Transit' %}
+              <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
+              {% elif r.status == 'Fulfilled' %}
+              <span class="text-faint" style="font-size:12.5px;">received {{ r.received_qty }}{% if r.damaged_qty %}, {{ r.damaged_qty }} damaged{% endif %}</span>
+              {% else %}
+              <span class="text-faint" style="font-size:12.5px;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No requests match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No requests in this view.</p></div>

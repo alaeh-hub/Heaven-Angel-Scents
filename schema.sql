@@ -23,13 +23,17 @@ ON DUPLICATE KEY UPDATE branch_name = branch_name;
 -- 2. Users  (Admin = HQ office staff, Branch = retail branch staff)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-    user_id       INT AUTO_INCREMENT PRIMARY KEY,
-    username      VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    role          ENUM('Admin', 'Branch') NOT NULL,
-    branch_id     INT NULL,                -- NULL for Admin, set for Branch users
-    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user_id              INT AUTO_INCREMENT PRIMARY KEY,
+    username             VARCHAR(50) NOT NULL UNIQUE,
+    password_hash        VARCHAR(255) NOT NULL,
+    role                 ENUM('Admin', 'Branch') NOT NULL,
+    branch_id            INT NULL,                -- NULL for Admin, set for Branch users
+    is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Forces a password change on next login. Set TRUE for freshly
+    -- seeded/reset accounts so a known temp/starter password can't
+    -- linger indefinitely.
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE SET NULL
 );
 
@@ -54,6 +58,7 @@ CREATE TABLE IF NOT EXISTS branch_inventory (
     sku            VARCHAR(50) NOT NULL,
     stock_qty      INT NOT NULL DEFAULT 0,
     reorder_level  INT NOT NULL DEFAULT 10,   -- low-stock threshold, editable per branch/SKU
+    branch_price   DECIMAL(10, 2) NULL,       -- per-branch price override; NULL falls back to products.price
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
@@ -101,21 +106,31 @@ CREATE TABLE IF NOT EXISTS sales (
     unit_price  DECIMAL(10, 2) NOT NULL,
     sold_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
-    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    INDEX idx_sales_branch_sold_at (branch_id, sold_at)
 );
 
 -- ----------------------------------------------------------------------------
 -- 8. Universal Stock Movement Logs (Audit Trail / Ledger)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS stock_movement_logs (
-    log_id        INT AUTO_INCREMENT PRIMARY KEY,
-    branch_id     INT NOT NULL,
-    sku           VARCHAR(50) NOT NULL,
-    change_qty    INT NOT NULL,               -- positive for additions, negative for deductions
-    movement_type ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'ADJUSTMENT', 'DAMAGE') NOT NULL,
-    notes         VARCHAR(255),
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    log_id             INT AUTO_INCREMENT PRIMARY KEY,
+    branch_id          INT NOT NULL,
+    sku                VARCHAR(50) NOT NULL,
+    change_qty         INT NOT NULL,               -- positive for additions, negative for deductions
+    movement_type      ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'ADJUSTMENT', 'DAMAGE') NOT NULL,
+    notes              VARCHAR(255),
+    -- Who/what caused this entry, and the stock level immediately
+    -- before/after it, so disputes ("where did these units go?") can
+    -- be traced without cross-referencing other tables by timestamp.
+    created_by_user_id INT NULL,
+    reference_type     VARCHAR(30) NULL,           -- e.g. 'STOCK_REQUEST', 'PRODUCTION_LOG', 'SALE'
+    reference_id       INT NULL,
+    before_qty         INT NULL,
+    after_qty          INT NULL,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
-    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_sml_reference (reference_type, reference_id)
 );
-

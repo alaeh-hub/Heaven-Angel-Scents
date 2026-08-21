@@ -21,3 +21,14 @@
 {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
 <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
 {% endmacro %}
+
+{% macro discount_badge(base_price, effective_price) %}
+{% set diff_pct = ((base_price - effective_price) / base_price * 100) if base_price else 0 %}
+{% if diff_pct > 0.5 %}
+<span class="badge badge-fulfilled">-{{ '%.0f'|format(diff_pct) }}%</span>
+{% elif diff_pct < -0.5 %}
+<span class="badge badge-rejected">+{{ '%.0f'|format(-diff_pct) }}%</span>
+{% else %}
+<span class="badge badge-pending">HQ price</span>
+{% endif %}
+{% endmacro %}

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}AI Assistant{% endblock %}
+{% block eyebrow %}{{ 'HQ Overview' if session.role == 'Admin' else session.branch_name }}{% endblock %}
+{% block heading %}AI Assistant{% endblock %}
+
+{% block head %}
+<style>
+  .chat-shell { display: flex; flex-direction: column; height: calc(100vh - 220px); min-height: 480px; padding: 0; overflow: hidden; }
+
+  .chat-log { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+  .chat-row { display: flex; gap: 10px; align-items: flex-end; max-width: 84%; }
+  .chat-row.user { align-self: flex-end; flex-direction: row-reverse; }
+  .chat-row.assistant { align-self: flex-start; }
+
+  .chat-avatar {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; font-family: 'Fraunces', serif;
+  }
+  .chat-avatar.assistant-avatar { background: var(--accent-soft); color: var(--accent-ink); }
+  .chat-avatar.user-avatar { background: var(--plum-soft); color: var(--plum); }
+
+  .chat-msg { padding: 11px 15px; border-radius: 14px; font-size: 13.8px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .chat-row.user .chat-msg { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .chat-row.assistant .chat-msg { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .chat-row.error .chat-msg { background: var(--danger-soft); color: var(--danger); border: 1px solid #EFCFC6; }
+
+  .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
+  .typing-dots span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint);
+    animation: typing-bounce 1.2s infinite ease-in-out;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typing-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  .chat-empty-wrap { margin: auto; text-align: center; max-width: 480px; padding: 20px; }
+  .chat-empty-icon {
+    width: 52px; height: 52px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
+  }
+  .chat-empty-icon svg { width: 24px; height: 24px; }
+  .chat-empty-wrap h3 { font-size: 17px; margin-bottom: 6px; }
+  .chat-empty-wrap p { font-size: 13px; color: var(--ink-faint); line-height: 1.6; margin: 0 0 22px; }
+
+  .chat-suggestions { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .chat-suggestion {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface); font-size: 13px; font-weight: 500; color: var(--ink-soft);
+    cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+    font-family: inherit; text-align: left; width: 100%;
+  }
+  .chat-suggestion:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+  .chat-suggestion svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.7; }
+
+  .chat-form { display: flex; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); align-items: flex-end; }
+  .chat-form textarea {
+    flex: 1; resize: none; min-height: 44px; max-height: 140px; font-family: inherit;
+    padding: 11px 14px;
+  }
+  .chat-form .btn { flex-shrink: 0; }
+  .chat-hint-row { padding: 0 22px 14px; margin-top: -4px; }
+  .chat-hint-row .chip-suggestion {
+    display: inline-flex; align-items: center; padding: 5px 11px; margin: 0 6px 6px 0;
+    border: 1px solid var(--border); border-radius: 99px; font-size: 12px; color: var(--ink-soft);
+    background: var(--surface); cursor: pointer; font-family: inherit;
+    transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+  }
+  .chat-hint-row .chip-suggestion:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card chat-shell">
+  <div class="chat-log" id="chatLog">
+    <div class="chat-empty-wrap" id="chatEmpty">
+      <div class="chat-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z"/><path d="M10 21h4"/></svg>
+      </div>
+      <h3>Ask the H&amp;A Assistant</h3>
+      <p>
+        Ask about {{ 'branch' if session.role != 'Admin' else 'branch' }} stock levels, pending requests, or recent sales.
+        It only knows what you can already see in this app, and it can't make changes on its own.
+      </p>
+      <div class="chat-suggestions" id="chatSuggestions">
+        {% if session.role == 'Admin' %}
+        <button type="button" class="chat-suggestion" data-q="Which branches are lowest on stock right now?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          Which branches are lowest on stock right now?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="What stock requests are still pending my approval?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          What stock requests are still pending my approval?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="How is revenue split across branches so far?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          How is revenue split across branches so far?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="Summarize today's overall activity for HQ.">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Summarize today's overall activity for HQ.
+        </button>
+        {% else %}
+        <button type="button" class="chat-suggestion" data-q="What items are running low at my branch?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          What items are running low at my branch?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="Do I have any stock requests still pending?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          Do I have any stock requests still pending?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="How much have I sold today?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+          How much have I sold today?
+        </button>
+        <button type="button" class="chat-suggestion" data-q="What were my most recent sales?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          What were my most recent sales?
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <form class="chat-form" id="chatForm">
+    <textarea id="chatInput" placeholder="Ask something…" rows="1" required></textarea>
+    <button type="submit" class="btn btn-accent" id="chatSend">Send</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var log = document.getElementById('chatLog');
+  var empty = document.getElementById('chatEmpty');
+  var form = document.getElementById('chatForm');
+  var input = document.getElementById('chatInput');
+  var sendBtn = document.getElementById('chatSend');
+  var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+  var history = [];
+  var userInitial = "{{ (session.username[0]|upper) if session.username else '?' }}";
+
+  function avatarHtml(role) {
+    if (role === 'user') {
+      return '<div class="chat-avatar user-avatar">' + userInitial + '</div>';
+    }
+    return '<div class="chat-avatar assistant-avatar">H</div>';
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Renders a light subset of markdown (bold, italics, line breaks) that
+  // the model occasionally uses despite being told to write plain text.
+  // Text is HTML-escaped first, so this never introduces real HTML/script
+  // injection — it only turns already-escaped ** and * markers into tags.
+  function formatAssistantText(text) {
+    var escaped = escapeHtml(text);
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/(^|\s)\*([^*\s][^*]*?)\*(?=\s|$)/g, '$1<em>$2</em>');
+    escaped = escaped.replace(/\n/g, '<br>');
+    return escaped;
+  }
+
+  function addMessage(role, text) {
+    if (empty) { empty.remove(); empty = null; }
+    var row = document.createElement('div');
+    row.className = 'chat-row ' + role;
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-msg';
+    if (role === 'user') {
+      row.innerHTML = avatarHtml('user');
+      bubble.textContent = text;
+    } else {
+      row.innerHTML = avatarHtml('assistant');
+      bubble.innerHTML = formatAssistantText(text);
+    }
+    row.appendChild(bubble);
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+    return row;
+  }
+
+  function addTypingIndicator() {
+    if (empty) { empty.remove(); empty = null; }
+    var row = document.createElement('div');
+    row.className = 'chat-row assistant';
+    row.innerHTML = avatarHtml('assistant') +
+      '<div class="chat-msg"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+    return row;
+  }
+
+  function sendMessage(message) {
+    if (!message) return;
+
+    addMessage('user', message);
+    var sentHistory = history.slice();
+    history.push({ role: 'user', text: message });
+
+    input.value = '';
+    input.style.height = 'auto';
+    input.disabled = true;
+    sendBtn.disabled = true;
+
+    var thinking = addTypingIndicator();
+
+    fetch("{{ url_for('ai.chat') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+      body: JSON.stringify({ message: message, history: sentHistory })
+    })
+      .then(function (r) {
+        return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+      })
+      .then(function (res) {
+        thinking.remove();
+        if (res.ok && res.data.reply) {
+          addMessage('assistant', res.data.reply);
+          history.push({ role: 'model', text: res.data.reply });
+        } else {
+          var row = addMessage('error', res.data.error || 'Something went wrong.');
+        }
+      })
+      .catch(function () {
+        thinking.remove();
+        addMessage('error', 'Could not reach the assistant. Check your connection and try again.');
+      })
+      .finally(function () {
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      });
+  }
+
+  // Auto-grow the textarea as the user types.
+  input.addEventListener('input', function () {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  });
+
+  // Enter to send, Shift+Enter for a newline.
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var message = input.value.trim();
+    sendMessage(message);
+  });
+
+  document.getElementById('chatSuggestions').addEventListener('click', function (e) {
+    var btn = e.target.closest('.chat-suggestion');
+    if (!btn) return;
+    sendMessage(btn.dataset.q);
+  });
+})();
+</script>
+{% endblock %}

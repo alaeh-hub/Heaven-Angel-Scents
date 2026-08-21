@@ -18,22 +18,47 @@
 
 <div class="card">
   {% if sales %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr></thead>
-      <tbody>
-        {% for s in sales %}
-        <tr>
-          <td class="mono text-soft">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-          <td>{{ s.item_name }}</td>
-          <td>{{ m.variant_badge(s.variant) }}</td>
-          <td class="num mono">{{ s.qty_sold }}</td>
-          <td class="num mono">{{ s.unit_price|peso }}</td>
-          <td class="num mono">{{ (s.qty_sold * s.unit_price)|peso }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="12">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by item…" autocomplete="off">
+      </div>
+      <div class="table-filter">
+        <select class="smart-filter-select" data-filter-key="variant">
+          <option value="">All variants</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          {% for s in sales %}
+          <tr data-search="{{ (s.item_name ~ ' ' ~ s.variant)|lower }}" data-variant="{{ s.variant }}">
+            <td class="mono text-soft">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td>{{ s.item_name }}</td>
+            <td>{{ m.variant_badge(s.variant) }}</td>
+            <td class="num mono">{{ s.qty_sold }}</td>
+            <td class="num mono">{{ s.unit_price|peso }}</td>
+            <td class="num mono">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No sales match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet.</p></div>

@@ -5,19 +5,48 @@
 {% block heading %}HQ Production{% endblock %}
 
 {% block content %}
+{% set total_hq_units = hq_stock|sum(attribute='stock_qty') if hq_stock else 0 %}
+{% set total_produced = logs|sum(attribute='qty_produced') if logs else 0 %}
+{% set max_stock = (hq_stock|map(attribute='stock_qty')|list)|max if hq_stock else 1 %}
+
+<div class="grid grid-4 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">Warehouse SKUs</div>
+    <div class="stat-value">{{ hq_stock|length }}</div>
+    <div class="stat-foot">carried at HQ</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Units on hand</div>
+    <div class="stat-value accent">{{ total_hq_units }}</div>
+    <div class="stat-foot">across the warehouse</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Runs logged</div>
+    <div class="stat-value">{{ logs|length }}</div>
+    <div class="stat-foot">shown below (last 40)</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Units produced</div>
+    <div class="stat-value">{{ total_produced }}</div>
+    <div class="stat-foot">across logged runs</div>
+  </div>
+</div>
+
 <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;">
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Log a production run</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Adds finished units straight to the HQ warehouse.</p>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Adds finished units straight to the HQ warehouse.
+    </p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="sku">Product</label>
-        <select id="sku" name="sku" required>
+        <select id="sku" name="sku" required data-hq-stock='{{ hq_stock | tojson }}'>
           {% for p in products %}
           <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.sku }}</option>
           {% endfor %}
         </select>
+        <div class="help" id="stockPreview" style="display:none;"></div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -34,44 +63,165 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h2>HQ warehouse stock</h2></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Item</th><th>Variant</th><th class="num">On hand</th></tr></thead>
-        <tbody>
-          {% for row in hq_stock %}
-          <tr>
-            <td><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
-            <td>{{ m.variant_badge(row.variant) }}</td>
-            <td class="num mono">{{ row.stock_qty }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-header">
+      <h2>HQ warehouse stock</h2><span class="hint" id="hqStockCount">{{ hq_stock|length }} SKU{{ 's' if hq_stock|length
+        != 1 }}</span>
     </div>
+    {% if hq_stock %}
+    <div data-smart-table data-page-size="3" data-count-target="hqStockCount" data-count-label="SKU">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
+        </div>
+        <div class="table-filter">
+          <select class="smart-filter-select" data-filter-key="variant">
+            <option value="">All variants</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Unisex">Unisex</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Variant</th>
+              <th style="min-width:170px;">On hand</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in hq_stock %}
+            <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
+              <td>
+                <div class="item-name">{{ row.item_name }}</div>
+                <div class="item-sub mono">{{ row.sku }}</div>
+              </td>
+              <td>{{ m.variant_badge(row.variant) }}</td>
+              <td>{{ m.fill_bar(row.stock_qty, max_stock) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No SKUs match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Bars are scaled against your best-stocked SKU, so a short bar means
+        low relative to the rest of the warehouse — not necessarily out of stock.</p>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="glyph">—</div>
+      <p>No products in the catalog yet.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
 <div class="card mt-24">
-  <div class="card-header"><h2>Production history</h2><span class="hint">last 40 runs</span></div>
+  <div class="card-header">
+    <h2>Production history</h2><span class="hint">last 40 runs</span>
+  </div>
   {% if logs %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Date</th><th>Item</th><th>Batch</th><th class="num">Qty</th></tr></thead>
-      <tbody>
-        {% for l in logs %}
-        <tr>
-          <td class="mono text-soft">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-          <td>{{ l.item_name }}</td>
-          <td class="mono text-soft">{{ l.batch_code or '—' }}</td>
-          <td class="num mono">+{{ l.qty_produced }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="8">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by item or batch code…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Item</th>
+            <th>Batch</th>
+            <th class="num">Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+          <tr data-search="{{ (l.item_name ~ ' ' ~ (l.batch_code or ''))|lower }}">
+            <td class="mono text-soft">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name">{{ l.item_name }}</td>
+            <td>
+              {% if l.batch_code %}
+              <span class="badge badge-pending">{{ l.batch_code }}</span>
+              {% else %}
+              <span class="text-faint">—</span>
+              {% endif %}
+            </td>
+            <td class="num mono qty-up">+{{ l.qty_produced }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No production runs match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No production runs logged yet.</p></div>
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No production runs logged yet.</p>
+  </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var select = document.getElementById('sku');
+    var preview = document.getElementById('stockPreview');
+    if (!select || !preview) return;
+
+    var stockRows = [];
+    try {
+      stockRows = JSON.parse(select.dataset.hqStock || '[]');
+    } catch (e) {
+      stockRows = [];
+    }
+    var stockMap = {};
+    stockRows.forEach(function (r) { stockMap[r.sku] = r.stock_qty; });
+
+    function updatePreview() {
+      var sku = select.value;
+      if (Object.prototype.hasOwnProperty.call(stockMap, sku)) {
+        preview.textContent = stockMap[sku] + ' unit(s) currently on hand at HQ.';
+      } else {
+        preview.textContent = 'No HQ stock recorded yet for this SKU.';
+      }
+      preview.style.display = 'block';
+    }
+
+    select.addEventListener('change', updatePreview);
+    updatePreview();
+  })();
+</script>
 {% endblock %}

@@ -1,7 +1,8 @@
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
-from db import execute, query
+from db import execute, query, transaction
 from decorators import branch_required
+from utils import ValidationError, parse_non_negative_int, parse_positive_int
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
 
@@ -50,7 +51,9 @@ def dashboard():
 def inventory():
     bid = _branch_id()
     rows = query(
-        """SELECT p.sku, p.item_name, p.variant, p.price, bi.stock_qty, bi.reorder_level
+        """SELECT p.sku, p.item_name, p.variant, p.price AS base_price,
+                  COALESCE(bi.branch_price, p.price) AS price, bi.branch_price,
+                  bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
         (bid,),
@@ -65,9 +68,14 @@ def request_stock():
     bid = _branch_id()
     if request.method == "POST":
         sku = request.form.get("sku")
-        qty = int(request.form.get("requested_qty", 0))
-        if qty <= 0:
-            flash("Requested quantity must be greater than zero.", "error")
+        try:
+            qty = parse_positive_int(request.form.get("requested_qty"), "Requested quantity")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("branch.request_stock"))
+
+        if not sku:
+            flash("Select a product to request.", "error")
         else:
             execute(
                 "INSERT INTO stock_requests (branch_id, sku, requested_qty) VALUES (%s, %s, %s)",
@@ -92,46 +100,96 @@ def receive_stock():
     bid = _branch_id()
     if request.method == "POST":
         request_id = request.form.get("request_id")
-        received_qty = int(request.form.get("received_qty", 0))
-        damaged_qty = int(request.form.get("damaged_qty", 0))
-
-        req = query(
-            "SELECT * FROM stock_requests WHERE request_id = %s AND branch_id = %s AND status = 'In Transit'",
-            (request_id, bid), fetchone=True,
-        )
-        if not req:
-            flash("That shipment isn't awaiting receipt.", "error")
+        try:
+            received_qty = parse_non_negative_int(request.form.get("received_qty"), "Received quantity")
+            damaged_qty = parse_non_negative_int(request.form.get("damaged_qty"), "Damaged quantity")
+        except ValidationError as err:
+            flash(str(err), "error")
             return redirect(url_for("branch.receive_stock"))
 
-        dispatched = req["dispatched_qty"] or 0
-        if received_qty + damaged_qty > dispatched:
-            flash("Received + damaged can't exceed the dispatched quantity.", "error")
+        shortfall = 0
+        try:
+            with transaction() as conn:
+                cur = conn.cursor(dictionary=True)
+                # Lock this request row for the duration of the transaction
+                # so a shipment can't be confirmed twice in parallel.
+                cur.execute(
+                    """SELECT * FROM stock_requests
+                       WHERE request_id = %s AND branch_id = %s AND status = 'In Transit'
+                       FOR UPDATE""",
+                    (request_id, bid),
+                )
+                req = cur.fetchone()
+                if not req:
+                    cur.close()
+                    flash("That shipment isn't awaiting receipt.", "error")
+                    return redirect(url_for("branch.receive_stock"))
+
+                dispatched = req["dispatched_qty"] or 0
+                if received_qty + damaged_qty > dispatched:
+                    cur.close()
+                    flash("Received + damaged can't exceed the dispatched quantity.", "error")
+                    return redirect(url_for("branch.receive_stock"))
+
+                cur.execute(
+                    """UPDATE stock_requests SET status = 'Fulfilled', received_qty = %s, damaged_qty = %s
+                       WHERE request_id = %s""",
+                    (received_qty, damaged_qty, request_id),
+                )
+
+                if received_qty > 0:
+                    cur.execute(
+                        """INSERT INTO branch_inventory (branch_id, sku, stock_qty)
+                           VALUES (%s, %s, %s)
+                           ON DUPLICATE KEY UPDATE stock_qty = stock_qty + VALUES(stock_qty)""",
+                        (bid, req["sku"], received_qty),
+                    )
+                    cur.execute(
+                        "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s",
+                        (bid, req["sku"]),
+                    )
+                    after_qty = cur.fetchone()["stock_qty"]
+                    before_qty = after_qty - received_qty
+                    cur.execute(
+                        """INSERT INTO stock_movement_logs
+                           (branch_id, sku, change_qty, movement_type, notes,
+                            created_by_user_id, reference_type, reference_id, before_qty, after_qty)
+                           VALUES (%s, %s, %s, 'RECEIPT', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
+                        (bid, req["sku"], received_qty, f"Receipt for request #{request_id}",
+                         session.get("user_id"), request_id, before_qty, after_qty),
+                    )
+                if damaged_qty > 0:
+                    cur.execute(
+                        """INSERT INTO stock_movement_logs
+                           (branch_id, sku, change_qty, movement_type, notes,
+                            created_by_user_id, reference_type, reference_id)
+                           VALUES (%s, %s, 0, 'DAMAGE', %s, %s, 'STOCK_REQUEST', %s)""",
+                        (bid, req["sku"], f"{damaged_qty} unit(s) damaged in transit, request #{request_id}",
+                         session.get("user_id"), request_id),
+                    )
+
+                shortfall = dispatched - received_qty - damaged_qty
+                if shortfall > 0:
+                    # This is the actual audit trail entry the Receive
+                    # Shipment page promises HQ will see. Previously this
+                    # was only a flash message that vanished after a few
+                    # seconds — nothing was ever written to the ledger.
+                    cur.execute(
+                        """INSERT INTO stock_movement_logs
+                           (branch_id, sku, change_qty, movement_type, notes,
+                            created_by_user_id, reference_type, reference_id)
+                           VALUES (%s, %s, 0, 'ADJUSTMENT', %s, %s, 'STOCK_REQUEST', %s)""",
+                        (bid, req["sku"],
+                         f"{shortfall} unit(s) dispatched but not received or reported damaged "
+                         f"— request #{request_id}, flagged for HQ follow-up",
+                         session.get("user_id"), request_id),
+                    )
+                cur.close()
+        except Exception:
+            current_app.logger.exception("receive_stock failed for request_id=%s", request_id)
+            flash("Couldn't confirm this receipt — please try again.", "error")
             return redirect(url_for("branch.receive_stock"))
 
-        execute(
-            """UPDATE stock_requests SET status = 'Fulfilled', received_qty = %s, damaged_qty = %s
-               WHERE request_id = %s""",
-            (received_qty, damaged_qty, request_id),
-        )
-        if received_qty > 0:
-            execute(
-                """INSERT INTO branch_inventory (branch_id, sku, stock_qty)
-                   VALUES (%s, %s, %s)
-                   ON DUPLICATE KEY UPDATE stock_qty = stock_qty + VALUES(stock_qty)""",
-                (bid, req["sku"], received_qty),
-            )
-            execute(
-                """INSERT INTO stock_movement_logs (branch_id, sku, change_qty, movement_type, notes)
-                   VALUES (%s, %s, %s, 'RECEIPT', %s)""",
-                (bid, req["sku"], received_qty, f"Receipt for request #{request_id}"),
-            )
-        if damaged_qty > 0:
-            execute(
-                """INSERT INTO stock_movement_logs (branch_id, sku, change_qty, movement_type, notes)
-                   VALUES (%s, %s, 0, 'DAMAGE', %s)""",
-                (bid, req["sku"], f"{damaged_qty} unit(s) damaged in transit, request #{request_id}"),
-            )
-        shortfall = dispatched - received_qty - damaged_qty
         if shortfall > 0:
             flash(f"Received recorded. Note: {shortfall} unit(s) unaccounted for — flagged in the ledger.", "warning")
         else:
@@ -153,36 +211,69 @@ def record_sale():
     bid = _branch_id()
     if request.method == "POST":
         sku = request.form.get("sku")
-        qty = int(request.form.get("qty_sold", 0))
+        try:
+            qty = parse_positive_int(request.form.get("qty_sold"), "Quantity sold")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("branch.record_sale"))
 
-        stock_row = query(
-            "SELECT bi.stock_qty, p.price FROM branch_inventory bi JOIN products p ON bi.sku = p.sku "
-            "WHERE bi.branch_id = %s AND bi.sku = %s",
-            (bid, sku), fetchone=True,
-        )
-        if qty <= 0:
-            flash("Quantity sold must be greater than zero.", "error")
-        elif not stock_row or stock_row["stock_qty"] < qty:
-            flash("Not enough stock on hand for that sale.", "error")
-        else:
-            execute(
-                "INSERT INTO sales (branch_id, sku, qty_sold, unit_price) VALUES (%s, %s, %s, %s)",
-                (bid, sku, qty, stock_row["price"]),
-            )
-            execute(
-                "UPDATE branch_inventory SET stock_qty = stock_qty - %s WHERE branch_id = %s AND sku = %s",
-                (qty, bid, sku),
-            )
-            execute(
-                """INSERT INTO stock_movement_logs (branch_id, sku, change_qty, movement_type, notes)
-                   VALUES (%s, %s, %s, 'SALE', 'Point-of-sale')""",
-                (bid, sku, -qty),
-            )
+        if not sku:
+            flash("Select a product to sell.", "error")
+            return redirect(url_for("branch.record_sale"))
+
+        try:
+            with transaction() as conn:
+                cur = conn.cursor(dictionary=True)
+                # Row-lock this branch/SKU for the rest of the transaction.
+                # A second, concurrent sale of the same SKU has to wait
+                # here until this one commits or rolls back, so two
+                # cashiers can no longer both "see" the last unit as
+                # available and both sell it.
+                cur.execute(
+                    """SELECT bi.stock_qty, COALESCE(bi.branch_price, p.price) AS price
+                       FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
+                       WHERE bi.branch_id = %s AND bi.sku = %s
+                       FOR UPDATE""",
+                    (bid, sku),
+                )
+                stock_row = cur.fetchone()
+                if not stock_row:
+                    cur.close()
+                    flash("That product isn't stocked at this branch.", "error")
+                    return redirect(url_for("branch.record_sale"))
+                if stock_row["stock_qty"] < qty:
+                    cur.close()
+                    flash("Not enough stock on hand for that sale.", "error")
+                    return redirect(url_for("branch.record_sale"))
+
+                before_qty = stock_row["stock_qty"]
+                after_qty = before_qty - qty
+
+                cur.execute(
+                    "INSERT INTO sales (branch_id, sku, qty_sold, unit_price) VALUES (%s, %s, %s, %s)",
+                    (bid, sku, qty, stock_row["price"]),
+                )
+                cur.execute(
+                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                    (after_qty, bid, sku),
+                )
+                cur.execute(
+                    """INSERT INTO stock_movement_logs
+                       (branch_id, sku, change_qty, movement_type, notes,
+                        created_by_user_id, reference_type, before_qty, after_qty)
+                       VALUES (%s, %s, %s, 'SALE', 'Point-of-sale', %s, 'SALE', %s, %s)""",
+                    (bid, sku, -qty, session.get("user_id"), before_qty, after_qty),
+                )
+                cur.close()
             flash("Sale recorded.", "success")
+        except Exception:
+            current_app.logger.exception("record_sale failed for branch_id=%s sku=%s", bid, sku)
+            flash("Couldn't record that sale — please try again.", "error")
         return redirect(url_for("branch.record_sale"))
 
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant, p.price, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant,
+                  COALESCE(bi.branch_price, p.price) AS price, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND p.is_active = TRUE AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (bid,),

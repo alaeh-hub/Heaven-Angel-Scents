@@ -1,3 +1,5 @@
+import contextlib
+
 import mysql.connector
 from flask import current_app, g
 
@@ -33,7 +35,12 @@ def query(sql, params=None, fetchone=False, dictionary=True):
 
 
 def execute(sql, params=None, commit=True):
-    """Run an INSERT/UPDATE/DELETE. Returns (lastrowid, rowcount)."""
+    """Run an INSERT/UPDATE/DELETE. Returns (lastrowid, rowcount).
+
+    Pass commit=False when this call is one step inside a `with
+    transaction():` block — the block's own commit/rollback is what
+    should decide whether the write sticks, not this call.
+    """
     conn = get_db()
     cur = conn.cursor()
     cur.execute(sql, params or ())
@@ -42,6 +49,37 @@ def execute(sql, params=None, commit=True):
         conn.commit()
     cur.close()
     return lastrowid, rowcount
+
+
+@contextlib.contextmanager
+def transaction():
+    """Group several writes into one atomic unit on the request's connection.
+
+    Usage:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute("SELECT ... FOR UPDATE", (...))
+            row = cur.fetchone()
+            cur.execute("UPDATE ...", (...))
+            cur.execute("INSERT INTO stock_movement_logs ...", (...))
+            cur.close()
+
+    Or, for simpler cases, call the existing execute()/query() helpers
+    inside the block with commit=False — they share the same
+    request-scoped connection, so nothing is actually persisted until
+    this context manager commits at the end.
+
+    If any exception escapes the block, everything done inside it is
+    rolled back and the exception re-raises to the caller (the route
+    is expected to catch it, flash a message, and redirect).
+    """
+    conn = get_db()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def init_app(app):

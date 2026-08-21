@@ -6,33 +6,64 @@
 {% block content %}
 <div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
   <div class="card">
-    <div class="card-header"><h2>Login accounts</h2><span class="hint">{{ accounts|length }} total</span></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          {% for a in accounts %}
-          <tr>
-            <td class="item-name">{{ a.username }}</td>
-            <td><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
-            <td class="text-soft">{{ a.branch_name or '— HQ —' }}</td>
-            <td><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
-            <td>
-              <form method="POST" action="{{ url_for('admin.toggle_user', user_id=a.user_id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-ghost btn-sm" type="submit">{{ 'Deactivate' if a.is_active else 'Reactivate' }}</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-header"><h2>Login accounts</h2><span class="hint" id="accountsCount">{{ accounts|length }} total</span></div>
+    <div data-smart-table data-page-size="10" data-count-target="accountsCount" data-count-label="account">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="smart-search-input" placeholder="Search by username, role, or branch…" autocomplete="off">
+        </div>
+        <div class="table-filter">
+          <select class="smart-filter-select" data-filter-key="role">
+            <option value="">All roles</option>
+            <option value="Admin">Admin</option>
+            <option value="Branch">Branch</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table">
+          <thead><tr><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {% for a in accounts %}
+            <tr data-search="{{ (a.username ~ ' ' ~ a.role ~ ' ' ~ (a.branch_name or ''))|lower }}" data-role="{{ a.role }}">
+              <td class="item-name">{{ a.username }}</td>
+              <td><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
+              <td class="text-soft">{{ a.branch_name or '— HQ —' }}</td>
+              <td><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
+              <td>
+                <div class="inline-form">
+                  <form method="POST" action="{{ url_for('admin.reset_user_password', user_id=a.user_id) }}"
+                        onsubmit="return confirm('Reset this account\'s password? A new temporary password will be generated and shown once.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-ghost btn-sm" type="submit">Reset password</button>
+                  </form>
+                  <form method="POST" action="{{ url_for('admin.toggle_user', user_id=a.user_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-ghost btn-sm" type="submit">{{ 'Deactivate' if a.is_active else 'Reactivate' }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No accounts match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
     </div>
   </div>
 
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts can only see and act on their own branch's data.</p>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts can only see and act on their own branch's data. New accounts must set their own password at first login.</p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
@@ -42,7 +73,7 @@
       <div class="field">
         <label for="password">Temporary password</label>
         <input type="password" id="password" name="password" minlength="8" required>
-        <div class="help">At least 8 characters. Share it with the staff member securely.</div>
+        <div class="help">At least 8 characters. Share it with the staff member securely — they'll be asked to set their own at first login.</div>
       </div>
       <div class="field">
         <label for="role">Role</label>

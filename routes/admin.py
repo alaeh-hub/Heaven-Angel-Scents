@@ -1,8 +1,9 @@
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
-from db import execute, query
+from db import execute, query, transaction
 from decorators import admin_required
+from utils import ValidationError, generate_temp_password, parse_non_negative_decimal, parse_positive_int
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -67,23 +68,37 @@ def products():
         sku = request.form.get("sku", "").strip().upper()
         item_name = request.form.get("item_name", "").strip()
         variant = request.form.get("variant")
-        price = request.form.get("price", "0")
+
+        try:
+            price = parse_non_negative_decimal(request.form.get("price"), "Price")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.products"))
 
         if not sku or not item_name or variant not in ("Male", "Female", "Unisex"):
             flash("Please fill in every field with a valid value.", "error")
         else:
             try:
-                execute(
-                    "INSERT INTO products (sku, item_name, variant, price) VALUES (%s, %s, %s, %s)",
-                    (sku, item_name, variant, price),
-                )
-                # Give every existing branch (and HQ) a zero-stock row so it shows up everywhere
-                branches = query("SELECT branch_id FROM branches")
-                for b in branches:
-                    execute(
-                        "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
-                        (b["branch_id"], sku),
+                with transaction() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO products (sku, item_name, variant, price) VALUES (%s, %s, %s, %s)",
+                        (sku, item_name, variant, price),
                     )
+                    # Give every existing branch (and HQ) a zero-stock row so
+                    # it shows up everywhere. branch_price is left NULL,
+                    # meaning the branch uses this HQ price until an admin
+                    # sets an override on the Branch Stock page. Both writes
+                    # happen in one transaction so a crash partway through
+                    # can't leave the product created with no inventory rows.
+                    cur.execute("SELECT branch_id FROM branches")
+                    branch_ids = [row[0] for row in cur.fetchall()]
+                    for branch_id in branch_ids:
+                        cur.execute(
+                            "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
+                            (branch_id, sku),
+                        )
+                    cur.close()
                 flash(f"{item_name} ({sku}) added to the catalog.", "success")
             except Exception:
                 flash(f"SKU '{sku}' already exists.", "error")
@@ -112,28 +127,46 @@ def toggle_product(sku):
 def production():
     if request.method == "POST":
         sku = request.form.get("sku")
-        qty = int(request.form.get("qty_produced", 0))
         batch_code = request.form.get("batch_code", "").strip() or None
+        try:
+            qty = parse_positive_int(request.form.get("qty_produced"), "Units produced")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.production"))
 
-        if qty <= 0:
-            flash("Quantity produced must be greater than zero.", "error")
-        else:
-            execute(
-                "INSERT INTO production_logs (sku, batch_code, qty_produced) VALUES (%s, %s, %s)",
-                (sku, batch_code, qty),
-            )
-            execute(
-                """INSERT INTO branch_inventory (branch_id, sku, stock_qty)
-                   VALUES (%s, %s, %s)
-                   ON DUPLICATE KEY UPDATE stock_qty = stock_qty + VALUES(stock_qty)""",
-                (HQ_BRANCH_ID, sku, qty),
-            )
-            execute(
-                """INSERT INTO stock_movement_logs (branch_id, sku, change_qty, movement_type, notes)
-                   VALUES (%s, %s, %s, 'PRODUCTION', %s)""",
-                (HQ_BRANCH_ID, sku, qty, f"Batch {batch_code}" if batch_code else "Production run"),
-            )
+        try:
+            with transaction() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO production_logs (sku, batch_code, qty_produced) VALUES (%s, %s, %s)",
+                    (sku, batch_code, qty),
+                )
+                cur.execute(
+                    """INSERT INTO branch_inventory (branch_id, sku, stock_qty)
+                       VALUES (%s, %s, %s)
+                       ON DUPLICATE KEY UPDATE stock_qty = stock_qty + VALUES(stock_qty)""",
+                    (HQ_BRANCH_ID, sku, qty),
+                )
+                cur.execute(
+                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s",
+                    (HQ_BRANCH_ID, sku),
+                )
+                row = cur.fetchone()
+                after_qty = row[0] if row else None
+                before_qty = (after_qty - qty) if after_qty is not None else None
+                cur.execute(
+                    """INSERT INTO stock_movement_logs
+                       (branch_id, sku, change_qty, movement_type, notes,
+                        created_by_user_id, reference_type, before_qty, after_qty)
+                       VALUES (%s, %s, %s, 'PRODUCTION', %s, %s, 'PRODUCTION_LOG', %s, %s)""",
+                    (HQ_BRANCH_ID, sku, qty, f"Batch {batch_code}" if batch_code else "Production run",
+                     session.get("user_id"), before_qty, after_qty),
+                )
+                cur.close()
             flash(f"Logged {qty} units produced and added to HQ warehouse stock.", "success")
+        except Exception:
+            current_app.logger.exception("production logging failed for sku=%s", sku)
+            flash("Couldn't log this production run — please try again.", "error")
         return redirect(url_for("admin.production"))
 
     products_list = query("SELECT sku, item_name FROM products WHERE is_active = TRUE ORDER BY item_name")
@@ -162,15 +195,20 @@ def branches():
             flash("Branch name is required.", "error")
         else:
             try:
-                bid, _ = execute(
-                    "INSERT INTO branches (branch_name, location) VALUES (%s, %s)", (name, location)
-                )
-                products_list = query("SELECT sku FROM products")
-                for p in products_list:
-                    execute(
-                        "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
-                        (bid, p["sku"]),
+                with transaction() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO branches (branch_name, location) VALUES (%s, %s)", (name, location)
                     )
+                    new_branch_id = cur.lastrowid
+                    cur.execute("SELECT sku FROM products")
+                    skus = [row[0] for row in cur.fetchall()]
+                    for sku in skus:
+                        cur.execute(
+                            "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
+                            (new_branch_id, sku),
+                        )
+                    cur.close()
                 flash(f"{name} added.", "success")
             except Exception:
                 flash("A branch with that name already exists.", "error")
@@ -184,6 +222,72 @@ def branches():
     return render_template("admin/branches.html", branch_list=branch_list)
 
 
+# ---------------------------------------------------------------- branch stock & pricing
+@bp.route("/branch-stock")
+@admin_required
+def branch_stock():
+    branch_filter = request.args.get("branch_id", "all")
+    branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+
+    rows = []
+    if branch_filter != "all":
+        rows = query(
+            """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant,
+                      p.price AS base_price, bi.branch_price,
+                      COALESCE(bi.branch_price, p.price) AS effective_price,
+                      bi.stock_qty, bi.reorder_level
+               FROM branch_inventory bi
+               JOIN branches b ON bi.branch_id = b.branch_id
+               JOIN products p ON bi.sku = p.sku
+               WHERE b.is_hq = FALSE AND p.is_active = TRUE AND b.branch_id = %s
+               ORDER BY p.item_name""",
+            (branch_filter,),
+        )
+
+    totals = query(
+        """SELECT b.branch_id, b.branch_name, COALESCE(SUM(bi.stock_qty), 0) AS total_stock
+           FROM branches b
+           LEFT JOIN branch_inventory bi ON b.branch_id = bi.branch_id
+           LEFT JOIN products p ON bi.sku = p.sku AND p.is_active = TRUE
+           WHERE b.is_hq = FALSE
+           GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    )
+
+    return render_template(
+        "admin/branch_stock.html",
+        rows=rows, branch_list=branch_list, branch_filter=branch_filter, totals=totals,
+    )
+
+
+@bp.route("/branch-stock/price", methods=["POST"])
+@admin_required
+def update_branch_price():
+    branch_id = request.form.get("branch_id")
+    sku = request.form.get("sku")
+    raw_price = request.form.get("branch_price", "").strip()
+
+    if raw_price == "":
+        execute(
+            "UPDATE branch_inventory SET branch_price = NULL WHERE branch_id = %s AND sku = %s",
+            (branch_id, sku),
+        )
+        flash("Branch price cleared — this branch now uses the HQ price.", "success")
+    else:
+        try:
+            new_price = parse_non_negative_decimal(raw_price, "Branch price")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.branch_stock", branch_id=branch_id))
+
+        execute(
+            "UPDATE branch_inventory SET branch_price = %s WHERE branch_id = %s AND sku = %s",
+            (new_price, branch_id, sku),
+        )
+        flash("Branch price updated.", "success")
+
+    return redirect(url_for("admin.branch_stock", branch_id=branch_id))
+
+
 # ---------------------------------------------------------------- user accounts
 @bp.route("/users", methods=["GET", "POST"])
 @admin_required
@@ -194,18 +298,20 @@ def users():
         role = request.form.get("role")
         branch_id = request.form.get("branch_id") or None
 
-        if role == "Branch" and not branch_id:
+        if role not in ("Admin", "Branch"):
+            flash("Select a valid role.", "error")
+        elif role == "Branch" and not branch_id:
             flash("Select a branch for this Branch account.", "error")
         elif not username or len(password) < 8:
             flash("Username is required and password must be at least 8 characters.", "error")
         else:
             try:
                 execute(
-                    """INSERT INTO users (username, password_hash, role, branch_id)
-                       VALUES (%s, %s, %s, %s)""",
+                    """INSERT INTO users (username, password_hash, role, branch_id, must_change_password)
+                       VALUES (%s, %s, %s, %s, TRUE)""",
                     (username, generate_password_hash(password), role, branch_id if role == "Branch" else None),
                 )
-                flash(f"Account '{username}' created.", "success")
+                flash(f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
             except Exception:
                 flash(f"Username '{username}' is already taken.", "error")
         return redirect(url_for("admin.users"))
@@ -230,6 +336,28 @@ def toggle_user(user_id):
     return redirect(url_for("admin.users"))
 
 
+@bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+@admin_required
+def reset_user_password(user_id):
+    target = query("SELECT username FROM users WHERE user_id = %s", (user_id,), fetchone=True)
+    if not target:
+        flash("Account not found.", "error")
+        return redirect(url_for("admin.users"))
+
+    temp_password = generate_temp_password()
+    execute(
+        "UPDATE users SET password_hash = %s, must_change_password = TRUE WHERE user_id = %s",
+        (generate_password_hash(temp_password), user_id),
+    )
+    flash(
+        f"Password for '{target['username']}' reset to: {temp_password} — "
+        "share it with them securely, it won't be shown again. "
+        "They'll be asked to set a new password the next time they sign in.",
+        "success",
+    )
+    return redirect(url_for("admin.users"))
+
+
 # ---------------------------------------------------------------- stock requests
 @bp.route("/requests")
 @admin_required
@@ -251,34 +379,64 @@ def requests_list():
 @bp.route("/requests/<int:request_id>/dispatch", methods=["POST"])
 @admin_required
 def dispatch_request(request_id):
-    req = query("SELECT * FROM stock_requests WHERE request_id = %s", (request_id,), fetchone=True)
-    if not req or req["status"] != "Pending":
-        flash("This request can no longer be dispatched.", "error")
+    raw_qty = request.form.get("dispatched_qty")
+    try:
+        dispatched_qty = parse_positive_int(raw_qty, "Dispatched quantity") if raw_qty not in (None, "") else None
+    except ValidationError as err:
+        flash(str(err), "error")
         return redirect(url_for("admin.requests_list"))
 
-    dispatched_qty = int(request.form.get("dispatched_qty", req["requested_qty"]))
-    hq_row = query(
-        "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s",
-        (HQ_BRANCH_ID, req["sku"]), fetchone=True,
-    )
-    if not hq_row or hq_row["stock_qty"] < dispatched_qty:
-        flash("Not enough HQ warehouse stock to dispatch that quantity.", "error")
-        return redirect(url_for("admin.requests_list"))
+    qty_to_dispatch = None
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            # Lock both the request and the HQ inventory row for the rest
+            # of this transaction, so two admins dispatching at the same
+            # moment can't both pass the "enough HQ stock?" check and
+            # jointly over-dispatch below zero.
+            cur.execute("SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
+            req = cur.fetchone()
+            if not req or req["status"] != "Pending":
+                cur.close()
+                flash("This request can no longer be dispatched.", "error")
+                return redirect(url_for("admin.requests_list"))
 
-    execute(
-        "UPDATE branch_inventory SET stock_qty = stock_qty - %s WHERE branch_id = %s AND sku = %s",
-        (dispatched_qty, HQ_BRANCH_ID, req["sku"]),
-    )
-    execute(
-        "UPDATE stock_requests SET status = 'In Transit', dispatched_qty = %s WHERE request_id = %s",
-        (dispatched_qty, request_id),
-    )
-    execute(
-        """INSERT INTO stock_movement_logs (branch_id, sku, change_qty, movement_type, notes)
-           VALUES (%s, %s, %s, 'DISPATCH', %s)""",
-        (HQ_BRANCH_ID, req["sku"], -dispatched_qty, f"Dispatched to request #{request_id}"),
-    )
-    flash(f"Dispatched {dispatched_qty} units — now in transit to the branch.", "success")
+            qty_to_dispatch = dispatched_qty if dispatched_qty is not None else req["requested_qty"]
+
+            cur.execute(
+                "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
+                (HQ_BRANCH_ID, req["sku"]),
+            )
+            hq_row = cur.fetchone()
+            if not hq_row or hq_row["stock_qty"] < qty_to_dispatch:
+                cur.close()
+                flash("Not enough HQ warehouse stock to dispatch that quantity.", "error")
+                return redirect(url_for("admin.requests_list"))
+
+            before_qty = hq_row["stock_qty"]
+            after_qty = before_qty - qty_to_dispatch
+
+            cur.execute(
+                "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                (after_qty, HQ_BRANCH_ID, req["sku"]),
+            )
+            cur.execute(
+                "UPDATE stock_requests SET status = 'In Transit', dispatched_qty = %s WHERE request_id = %s",
+                (qty_to_dispatch, request_id),
+            )
+            cur.execute(
+                """INSERT INTO stock_movement_logs
+                   (branch_id, sku, change_qty, movement_type, notes,
+                    created_by_user_id, reference_type, reference_id, before_qty, after_qty)
+                   VALUES (%s, %s, %s, 'DISPATCH', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
+                (HQ_BRANCH_ID, req["sku"], -qty_to_dispatch, f"Dispatched to request #{request_id}",
+                 session.get("user_id"), request_id, before_qty, after_qty),
+            )
+            cur.close()
+        flash(f"Dispatched {qty_to_dispatch} units — now in transit to the branch.", "success")
+    except Exception:
+        current_app.logger.exception("dispatch_request failed for request_id=%s", request_id)
+        flash("Couldn't dispatch this request — please try again.", "error")
     return redirect(url_for("admin.requests_list"))
 
 
@@ -327,11 +485,33 @@ def reports_data():
            FROM products p LEFT JOIN sales s ON p.sku = s.sku
            GROUP BY p.variant"""
     )
+
+    # Revenue is a straight SUM of qty_sold * unit_price per sale row. Because
+    # unit_price was captured at the moment each sale happened (the branch's
+    # effective price at that time), this stays accurate even though branches
+    # charge different prices from HQ and from each other.
     by_branch = query(
-        """SELECT b.branch_name, COALESCE(SUM(s.qty_sold), 0) AS units_sold
+        """SELECT b.branch_name,
+                  COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM branches b LEFT JOIN sales s ON b.branch_id = s.branch_id
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
+
+    # Average discount/markup each branch is currently running vs. the HQ price,
+    # based on active SKUs that have a branch_price override set.
+    branch_pricing = query(
+        """SELECT b.branch_name,
+                  AVG(CASE WHEN bi.branch_price IS NOT NULL AND p.price > 0
+                           THEN (p.price - bi.branch_price) / p.price * 100
+                           ELSE 0 END) AS avg_discount_pct
+           FROM branches b
+           JOIN branch_inventory bi ON b.branch_id = bi.branch_id
+           JOIN products p ON bi.sku = p.sku
+           WHERE b.is_hq = FALSE AND p.is_active = TRUE
+           GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    )
+
     movement_trend = query(
         """SELECT DATE(created_at) AS day, movement_type, SUM(ABS(change_qty)) AS total
            FROM stock_movement_logs
@@ -344,10 +524,17 @@ def reports_data():
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
+    # Combined totals across every branch, regardless of each branch's price.
+    totals = query(
+        """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales""",
+        fetchone=True,
+    )
+
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
 
     return jsonify(
-        by_variant=by_variant, by_branch=by_branch,
-        movement_trend=movement_trend, stock_by_branch=stock_by_branch,
+        by_variant=by_variant, by_branch=by_branch, branch_pricing=branch_pricing,
+        movement_trend=movement_trend, stock_by_branch=stock_by_branch, totals=totals,
     )

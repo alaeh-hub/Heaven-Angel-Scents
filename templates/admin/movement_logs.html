@@ -18,22 +18,39 @@
 {% block content %}
 <div class="card">
   {% if logs %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th><th>Notes</th></tr></thead>
-      <tbody>
-        {% for l in logs %}
-        <tr>
-          <td class="mono text-soft">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-          <td>{{ l.branch_name }}</td>
-          <td>{{ l.item_name }}</td>
-          <td>{{ m.movement_badge(l.movement_type) }}</td>
-          <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}">{{ '%+d'|format(l.change_qty) }}</td>
-          <td class="text-soft" style="font-size: 12.5px;">{{ l.notes or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch, item, or notes…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for l in logs %}
+          <tr data-search="{{ (l.branch_name ~ ' ' ~ l.item_name ~ ' ' ~ l.movement_type ~ ' ' ~ (l.notes or ''))|lower }}">
+            <td class="mono text-soft">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td>{{ l.branch_name }}</td>
+            <td>{{ l.item_name }}</td>
+            <td>{{ m.movement_badge(l.movement_type) }}</td>
+            <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}">{{ '%+d'|format(l.change_qty) }}</td>
+            <td class="text-soft" style="font-size: 12.5px;">{{ l.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No ledger entries match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No ledger entries yet.</p></div>
