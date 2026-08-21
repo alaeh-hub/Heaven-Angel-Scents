@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Reports{% endblock %}
+
+{% block content %}
+<div class="grid grid-2 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;"><h2>Units sold by variant</h2></div>
+    <canvas id="variantChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;"><h2>Units sold by branch</h2></div>
+    <canvas id="branchSalesChart"></canvas>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;"><h2>Current stock by branch</h2></div>
+    <canvas id="stockChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;"><h2>Ledger movement — last 14 days</h2></div>
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script>
+const PALETTE = ['#A17A3A', '#6C5A72', '#4F7A5C', '#AE4B3B', '#A87A2A'];
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.color = '#6E6A62';
+Chart.defaults.borderColor = '#E7E3D9';
+
+fetch("{{ url_for('admin.reports_data') }}")
+  .then(r => r.json())
+  .then(data => {
+    new Chart(document.getElementById('variantChart'), {
+      type: 'doughnut',
+      data: {
+        labels: data.by_variant.map(d => d.variant),
+        datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: PALETTE, borderWidth: 0 }]
+      },
+      options: { plugins: { legend: { position: 'bottom' } } }
+    });
+
+    new Chart(document.getElementById('branchSalesChart'), {
+      type: 'bar',
+      data: {
+        labels: data.by_branch.map(d => d.branch_name),
+        datasets: [{ label: 'Units sold', data: data.by_branch.map(d => d.units_sold), backgroundColor: '#A17A3A', borderRadius: 4 }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#EFEBE1' } }, x: { grid: { display: false } } } }
+    });
+
+    new Chart(document.getElementById('stockChart'), {
+      type: 'bar',
+      data: {
+        labels: data.stock_by_branch.map(d => d.branch_name),
+        datasets: [{ label: 'Units on hand', data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: '#6C5A72', borderRadius: 4 }]
+      },
+      options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#EFEBE1' } }, y: { grid: { display: false } } } }
+    });
+
+    const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
+    const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
+    const datasets = types.map((t, i) => ({
+      label: t,
+      data: days.map(day => {
+        const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
+        return row ? row.total : 0;
+      }),
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length],
+      tension: 0.35,
+      fill: false,
+    }));
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: { labels: days, datasets },
+      options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: '#EFEBE1' } }, x: { grid: { display: false } } } }
+    });
+  });
+</script>
+{% endblock %}

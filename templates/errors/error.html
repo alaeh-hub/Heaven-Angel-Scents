@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ code }} · Heaven &amp; Angel Scents</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="error-shell">
+    <div class="code">{{ code }}</div>
+    <h2>{{ message }}</h2>
+    <a class="btn btn-primary mt-24" href="{{ url_for('auth.index') }}">Back to safety</a>
+  </div>
+</body>
+</html>

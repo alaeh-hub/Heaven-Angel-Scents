@@ -1,0 +1,23 @@
+{% macro fill_bar(qty, reference) %}
+{% set pct = (qty / reference * 100) if reference else 0 %}
+{% set pct = 100 if pct > 100 else pct %}
+{% set low = qty <= (reference / 4) %}
+<div class="fill-row">
+  <div class="fill-track"><div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}"></div></div>
+  <span class="fill-qty num">{{ qty }} u</span>
+</div>
+{% endmacro %}
+
+{% macro status_badge(status) %}
+{% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
+<span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro variant_badge(variant) %}
+<span class="badge badge-{{ variant|lower }}">{{ variant }}</span>
+{% endmacro %}
+
+{% macro movement_badge(mtype) %}
+{% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
+<span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
+{% endmacro %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Product Catalog{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Product Catalog{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Master catalog</h2>
+      <span class="hint">{{ catalog|length }} SKU{{ 's' if catalog|length != 1 }}</span>
+    </div>
+    {% if catalog %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Variant</th><th class="num">Price</th><th class="num">Total stock</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for p in catalog %}
+          <tr>
+            <td><div class="item-name">{{ p.item_name }}</div><div class="item-sub mono">{{ p.sku }}</div></td>
+            <td>{{ m.variant_badge(p.variant) }}</td>
+            <td class="num mono">{{ p.price|peso }}</td>
+            <td class="num mono">{{ p.total_stock }}</td>
+            <td><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{ 'Active' if p.is_active else 'Discontinued' }}</span></td>
+            <td>
+              <form method="POST" action="{{ url_for('admin.toggle_product', sku=p.sku) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm" type="submit">{{ 'Discontinue' if p.is_active else 'Reactivate' }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">✦</div><p>No products yet — add the first fragrance to the catalog.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Discontinuing hides a SKU from new requests without touching its history.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="sku">SKU</label>
+        <input type="text" id="sku" name="sku" placeholder="HAS-005" required>
+      </div>
+      <div class="field">
+        <label for="item_name">Fragrance name</label>
+        <input type="text" id="item_name" name="item_name" placeholder="Golden Hour" required>
+      </div>
+      <div class="field">
+        <label for="variant">Variant</label>
+        <select id="variant" name="variant" required>
+          <option value="">Select…</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="price">Price (₱)</label>
+        <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add to catalog</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

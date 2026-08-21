@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Sales History{% endblock %}
+{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block heading %}Sales History{% endblock %}
+
+{% block content %}
+<div class="grid grid-2 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">Total units sold</div>
+    <div class="stat-value">{{ totals.units }}</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Total revenue</div>
+    <div class="stat-value accent">{{ totals.revenue|peso }}</div>
+  </div>
+</div>
+
+<div class="card">
+  {% if sales %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr></thead>
+      <tbody>
+        {% for s in sales %}
+        <tr>
+          <td class="mono text-soft">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td>{{ s.item_name }}</td>
+          <td>{{ m.variant_badge(s.variant) }}</td>
+          <td class="num mono">{{ s.qty_sold }}</td>
+          <td class="num mono">{{ s.unit_price|peso }}</td>
+          <td class="num mono">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

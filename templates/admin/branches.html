@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Branches{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Branches{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header"><h2>Retail branches</h2><span class="hint">{{ branch_list|length }} total</span></div>
+    {% if branch_list %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Branch</th><th>Location</th><th class="num">Accounts</th><th>Added</th></tr></thead>
+        <tbody>
+          {% for b in branch_list %}
+          <tr>
+            <td class="item-name">{{ b.branch_name }}</td>
+            <td class="text-soft">{{ b.location or '—' }}</td>
+            <td class="num mono">{{ b.user_count }}</td>
+            <td class="mono text-soft">{{ b.created_at.strftime('%b %d, %Y') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">✦</div><p>No branches yet — add your first retail location.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a branch</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">New branches start with zero stock for every SKU in the catalog.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="branch_name">Branch name</label>
+        <input type="text" id="branch_name" name="branch_name" placeholder="Davao Branch" required>
+      </div>
+      <div class="field">
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" placeholder="Abreeza Mall">
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add branch</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Movement Ledger{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Movement Ledger{% endblock %}
+
+{% block topbar_actions %}
+<form method="GET" class="inline-form">
+  <select name="branch_id" onchange="this.form.submit()">
+    <option value="all" {{ 'selected' if branch_filter == 'all' }}>All branches</option>
+    {% for b in branch_list %}
+    <option value="{{ b.branch_id }}" {{ 'selected' if branch_filter == b.branch_id|string }}>{{ b.branch_name }}</option>
+    {% endfor %}
+  </select>
+</form>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td class="mono text-soft">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td>{{ l.branch_name }}</td>
+          <td>{{ l.item_name }}</td>
+          <td>{{ m.movement_badge(l.movement_type) }}</td>
+          <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}">{{ '%+d'|format(l.change_qty) }}</td>
+          <td class="text-soft" style="font-size: 12.5px;">{{ l.notes or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No ledger entries yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

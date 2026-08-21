@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Dashboard{% endblock %}
+{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block heading %}Good to see you, {{ session.username }}{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">SKUs carried</div>
+    <div class="stat-value">{{ inventory|length }}</div>
+    <div class="stat-foot">in your branch</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Low stock</div>
+    <div class="stat-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
+    <div class="stat-foot"><a href="{{ url_for('branch.request_stock') }}" class="text-soft">request more →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Today's sales</div>
+    <div class="stat-value accent">{{ today_sales.units }}</div>
+    <div class="stat-foot">{{ today_sales.revenue|peso }} in revenue</div>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card">
+    <div class="card-header"><h2>Low stock</h2><span class="hint">reorder level reached</span></div>
+    {% if low_stock %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">On hand</th></tr></thead>
+        <tbody>
+          {% for row in low_stock %}
+          <tr>
+            <td class="item-name">{{ row.item_name }}</td>
+            <td class="num" style="min-width:150px;">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">✓</div><p>Everything is above its reorder threshold.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Open requests</h2><a href="{{ url_for('branch.request_stock') }}" class="hint">new request →</a></div>
+    {% if pending_requests %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">Qty</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for r in pending_requests %}
+          <tr>
+            <td>{{ r.item_name }}</td>
+            <td class="num mono">{{ r.requested_qty }}</td>
+            <td>{{ m.status_badge(r.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No open requests right now.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

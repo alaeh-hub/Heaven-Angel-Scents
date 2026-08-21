@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}HQ Production{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}HQ Production{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;">
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Log a production run</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Adds finished units straight to the HQ warehouse.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="sku">Product</label>
+        <select id="sku" name="sku" required>
+          {% for p in products %}
+          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.sku }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="qty_produced">Units produced</label>
+          <input type="number" id="qty_produced" name="qty_produced" min="1" required>
+        </div>
+        <div class="field">
+          <label for="batch_code">Batch code <span class="text-faint">(optional)</span></label>
+          <input type="text" id="batch_code" name="batch_code" placeholder="B-2026-08-A">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Log production</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>HQ warehouse stock</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Variant</th><th class="num">On hand</th></tr></thead>
+        <tbody>
+          {% for row in hq_stock %}
+          <tr>
+            <td><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
+            <td>{{ m.variant_badge(row.variant) }}</td>
+            <td class="num mono">{{ row.stock_qty }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header"><h2>Production history</h2><span class="hint">last 40 runs</span></div>
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Item</th><th>Batch</th><th class="num">Qty</th></tr></thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td class="mono text-soft">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td>{{ l.item_name }}</td>
+          <td class="mono text-soft">{{ l.batch_code or '—' }}</td>
+          <td class="num mono">+{{ l.qty_produced }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No production runs logged yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

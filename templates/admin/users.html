@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Accounts{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header"><h2>Login accounts</h2><span class="hint">{{ accounts|length }} total</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for a in accounts %}
+          <tr>
+            <td class="item-name">{{ a.username }}</td>
+            <td><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
+            <td class="text-soft">{{ a.branch_name or '— HQ —' }}</td>
+            <td><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
+            <td>
+              <form method="POST" action="{{ url_for('admin.toggle_user', user_id=a.user_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm" type="submit">{{ 'Deactivate' if a.is_active else 'Reactivate' }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts can only see and act on their own branch's data.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Temporary password</label>
+        <input type="password" id="password" name="password" minlength="8" required>
+        <div class="help">At least 8 characters. Share it with the staff member securely.</div>
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <select id="role" name="role" required onchange="document.getElementById('branch_id_field').style.display = this.value === 'Branch' ? 'block' : 'none';">
+          <option value="Branch">Branch</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+      <div class="field" id="branch_id_field">
+        <label for="branch_id">Branch</label>
+        <select id="branch_id" name="branch_id">
+          <option value="">Select…</option>
+          {% for b in branch_list %}
+          <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Create account</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

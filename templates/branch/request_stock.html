@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Request Stock{% endblock %}
+{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block heading %}Request Stock{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">New requisition</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Sends a request to HQ for dispatch approval.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="sku">Product</label>
+        <select id="sku" name="sku" required>
+          {% for p in products %}
+          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.sku }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="requested_qty">Quantity</label>
+        <input type="number" id="requested_qty" name="requested_qty" min="1" required>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Send request</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Request history</h2></div>
+    {% if history %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Requested</th><th>Item</th><th class="num">Qty</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for r in history %}
+          <tr>
+            <td class="mono text-soft">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+            <td>{{ r.item_name }}</td>
+            <td class="num mono">{{ r.requested_qty }}</td>
+            <td>{{ m.status_badge(r.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No requests submitted yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Heaven &amp; Angel Scents</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .role-switch {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 3px;
+      margin: 0 auto 22px;
+      max-width: 300px;
+    }
+
+    .role-option {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: none;
+      background: transparent;
+      border-radius: 99px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-faint);
+      cursor: pointer;
+      transition: color 0.18s ease;
+    }
+
+    .role-option svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.75;
+      flex-shrink: 0;
+    }
+
+    .role-option.active {
+      color: var(--accent-ink);
+    }
+
+    .role-option.active svg {
+      opacity: 1;
+    }
+
+    .role-switch-thumb {
+      position: absolute;
+      top: 3px;
+      bottom: 3px;
+      left: 3px;
+      width: calc(50% - 3px);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 99px;
+      box-shadow: 0 1px 3px rgba(28, 27, 25, 0.08);
+      transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .role-switch-thumb.admin {
+      transform: translateX(100%);
+    }
+
+    .field.has-error input {
+      border-color: var(--danger);
+    }
+
+    .field.has-error input:focus {
+      box-shadow: 0 0 0 3px var(--danger-soft);
+    }
+
+    .field-error {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: var(--danger);
+      margin-top: 5px;
+      font-weight: 500;
+    }
+
+    .field.has-error .field-error {
+      display: flex;
+    }
+
+    .field-error svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+
+    @keyframes auth-shake {
+
+      10%,
+      90% {
+        transform: translateX(-1px);
+      }
+
+      20%,
+      80% {
+        transform: translateX(2px);
+      }
+
+      30%,
+      50%,
+      70% {
+        transform: translateX(-4px);
+      }
+
+      40%,
+      60% {
+        transform: translateX(4px);
+      }
+    }
+
+    .auth-card.shake {
+      animation: auth-shake 0.4s;
+    }
+
+    .btn-primary[disabled] {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .page-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .page-loading.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .page-loading-inner {
+      text-align: center;
+    }
+
+    .page-loading .mark {
+      font-family: 'Fraunces', serif;
+      font-size: 22px;
+      font-weight: 500;
+      margin-bottom: 26px;
+      color: var(--ink);
+    }
+
+    .page-loading .mark span {
+      color: var(--accent);
+    }
+
+    .spinner {
+      width: 30px;
+      height: 30px;
+      margin: 0 auto 16px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spinner-rotate 0.7s linear infinite;
+    }
+
+    @keyframes spinner-rotate {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .page-loading-text {
+      font-size: 12.5px;
+      color: var(--ink-faint);
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="mark">Heaven <span>&amp;</span> Angel</div>
+        <div class="sub">Scents · Inventory System</div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flashes">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      {% set login_type = login_type|default('Branch') %}
+      <div class="role-switch" role="tablist" aria-label="Sign in as">
+        <button type="button" class="role-option {{ 'active' if login_type != 'Admin' }}" data-role="Branch" role="tab"
+          aria-selected="{{ 'true' if login_type != 'Admin' else 'false' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
+          </svg>
+          Branch
+        </button>
+        <button type="button" class="role-option {{ 'active' if login_type == 'Admin' }}" data-role="Admin" role="tab"
+          aria-selected="{{ 'true' if login_type == 'Admin' else 'false' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="8" r="3.2" />
+            <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
+          </svg>
+          HQ Admin
+        </button>
+        <div class="role-switch-thumb {{ 'admin' if login_type == 'Admin' }}" id="role-switch-thumb"></div>
+      </div>
+
+      <form method="POST" id="login-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="login_type" name="login_type" value="{{ login_type }}">
+        <div class="field" id="username-field">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+          <div class="field-error" id="username-error">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v5M12 16h.01" />
+            </svg>
+            <span>Enter your username.</span>
+          </div>
+        </div>
+        <div class="field" id="password-field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" minlength="8" required>
+          <div class="field-error" id="password-error">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v5M12 16h.01" />
+            </svg>
+            <span>Enter your password.</span>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="submit-btn">Sign in as <span
+            id="submit-role-label">Branch</span></button>
+      </form>
+
+      <div class="auth-hint" id="auth-hint">
+        Branch staff use the account created for their branch.
+      </div>
+    </div>
+  </div>
+
+  <div class="page-loading" id="page-loading" aria-hidden="true">
+    <div class="page-loading-inner">
+      <div class="mark">Heaven <span>&amp;</span> Angel</div>
+      <div class="spinner"></div>
+      <div class="page-loading-text">Signing you in…</div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script>
+    (function () {
+      var hint = document.getElementById('auth-hint');
+      var roleInput = document.getElementById('login_type');
+      var roleLabel = document.getElementById('submit-role-label');
+      var thumb = document.getElementById('role-switch-thumb');
+      var hints = {
+        Branch: 'Branch staff use the account created for their branch.',
+        Admin: 'HQ staff sign in with their Admin account.'
+      };
+
+      document.querySelectorAll('.role-option').forEach(function (opt) {
+        opt.addEventListener('click', function () {
+          var role = opt.dataset.role;
+
+          document.querySelectorAll('.role-option').forEach(function (o) {
+            var active = o === opt;
+            o.classList.toggle('active', active);
+            o.setAttribute('aria-selected', active ? 'true' : 'false');
+          });
+
+          thumb.classList.toggle('admin', role === 'Admin');
+          roleInput.value = role;
+          roleLabel.textContent = role === 'Admin' ? 'HQ Admin' : 'Branch';
+          hint.textContent = hints[role];
+        });
+      });
+
+      // ---- Validation ----
+      var form = document.getElementById('login-form');
+      var card = document.querySelector('.auth-card');
+      var submitBtn = document.getElementById('submit-btn');
+      var usernameInput = document.getElementById('username');
+      var passwordInput = document.getElementById('password');
+
+      var fields = [
+        {
+          input: usernameInput,
+          wrap: document.getElementById('username-field'),
+          errorEl: document.getElementById('username-error').querySelector('span'),
+          validate: function (val) {
+            if (!val.trim()) return 'Enter your username.';
+            return null;
+          }
+        },
+        {
+          input: passwordInput,
+          wrap: document.getElementById('password-field'),
+          errorEl: document.getElementById('password-error').querySelector('span'),
+          validate: function (val) {
+            if (!val) return 'Enter your password.';
+            if (val.length < 8) return 'Password must be at least 8 characters.';
+            return null;
+          }
+        }
+      ];
+
+      function setError(field, message) {
+        if (message) {
+          field.wrap.classList.add('has-error');
+          field.errorEl.textContent = message;
+        } else {
+          field.wrap.classList.remove('has-error');
+        }
+      }
+
+      function validateField(field) {
+        var message = field.validate(field.input.value);
+        setError(field, message);
+        return !message;
+      }
+
+      var attemptedSubmit = false;
+
+      fields.forEach(function (field) {
+        field.input.addEventListener('input', function () {
+          if (attemptedSubmit) validateField(field);
+        });
+      });
+
+      form.addEventListener('submit', function (e) {
+        attemptedSubmit = true;
+
+        usernameInput.value = usernameInput.value.trim();
+
+        var allValid = fields.reduce(function (ok, field) {
+          return validateField(field) && ok;
+        }, true);
+
+        if (!allValid) {
+          e.preventDefault();
+          card.classList.remove('shake');
+          void card.offsetWidth;
+          card.classList.add('shake');
+          fields.find(function (f) { return f.wrap.classList.contains('has-error'); }).input.focus();
+          return;
+        }
+
+        if (form.dataset.pendingSubmit === 'true') return;
+        e.preventDefault();
+
+        // Prevent double submission while the request is in flight.
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in…';
+
+        document.getElementById('page-loading').classList.add('visible');
+
+        form.dataset.pendingSubmit = 'true';
+        setTimeout(function () {
+          form.submit();
+        }, 5000);
+      });
+    })();
+  </script>
+</body>
+
+</html>

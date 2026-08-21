@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">Heaven <span>&amp;</span> Angel</div>
+        <div class="brand-sub">Scents · Inventory System</div>
+      </div>
+
+      {% if session.role == 'Admin' %}
+      <nav class="nav-group">
+        <div class="nav-label">Overview</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.dashboard' }}" href="{{ url_for('admin.dashboard') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Dashboard
+        </a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Catalog &amp; Supply</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.products' }}" href="{{ url_for('admin.products') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+          Product Catalog
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.production' }}" href="{{ url_for('admin.production') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5"/><path d="M9 21h6"/></svg>
+          HQ Production
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.requests_list' }}" href="{{ url_for('admin.requests_list') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          Stock Requests
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.movement_logs' }}" href="{{ url_for('admin.movement_logs') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          Movement Ledger
+        </a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Organization</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.branches' }}" href="{{ url_for('admin.branches') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+          Branches
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.users' }}" href="{{ url_for('admin.users') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/></svg>
+          Accounts
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.reports' }}" href="{{ url_for('admin.reports') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          Reports
+        </a>
+      </nav>
+      {% else %}
+      <nav class="nav-group">
+        <div class="nav-label">Overview</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.dashboard' }}" href="{{ url_for('branch.dashboard') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Dashboard
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.inventory' }}" href="{{ url_for('branch.inventory') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+          My Inventory
+        </a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Supply Chain</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.request_stock' }}" href="{{ url_for('branch.request_stock') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          Request Stock
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.receive_stock' }}" href="{{ url_for('branch.receive_stock') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+          Receive Shipment
+        </a>
+      </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Point of Sale</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.record_sale' }}" href="{{ url_for('branch.record_sale') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+          Record Sale
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.sales_history' }}" href="{{ url_for('branch.sales_history') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          Sales History
+        </a>
+      </nav>
+      {% endif %}
+
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="avatar">{{ session.username[0]|upper if session.username else '?' }}</div>
+          <div>
+            <div class="user-name">{{ session.username }}</div>
+            <div class="user-role">{{ session.branch_name if session.role == 'Branch' else 'HQ Administrator' }}</div>
+          </div>
+        </div>
+        <a class="logout-link" href="{{ url_for('auth.logout') }}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Sign out
+        </a>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
+          <h1>{% block heading %}{% endblock %}</h1>
+        </div>
+        {% block topbar_actions %}{% endblock %}
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flashes">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="content">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
