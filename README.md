@@ -92,6 +92,7 @@ The reports page loads data from `/admin/api/reports-data` and renders charts wi
 - Charts: Bundled Chart.js
 - Production server: Waitress
 - AI integration: Gemini API over HTTPS through `requests`
+- CI: GitHub Actions with Python checks and a MySQL schema smoke test
 
 ## Setup
 
@@ -200,6 +201,12 @@ waitress-serve --listen=*:8000 wsgi:app
 
 Production mode disables debug mode, enables secure session cookies, and refuses to start without `SECRET_KEY`.
 
+## Continuous Integration
+
+The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+The CI pipeline runs on pushes to `main` or `master` and on pull requests. It installs Python dependencies, compiles the Python files, validates the Flask app factory, starts a MySQL service, loads `schema.sql`, and smoke-tests a database query.
+
 ## Database Notes
 
 `schema.sql` is the complete database setup script for the current system. It includes the core tables, starter branches, branch price overrides, password-change enforcement, audit metadata columns, and reporting indexes.
@@ -219,6 +226,9 @@ Existing branch inventory rows with `branch_price = NULL` automatically fall bac
 
 ```text
 .
+|-- .github/
+|   `-- workflows/
+|       `-- ci.yml
 |-- app.py
 |-- wsgi.py
 |-- config.py
@@ -242,6 +252,7 @@ Existing branch inventory rows with `branch_price = NULL` automatically fall bac
 `-- templates/
     |-- base.html
     |-- login.html
+    |-- change_password.html
     |-- _macros.html
     |-- errors/
     |-- admin/
