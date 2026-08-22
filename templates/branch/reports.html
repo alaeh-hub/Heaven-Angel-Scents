@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block heading %}Reports{% endblock %}
+
+{% block head %}
+<style>
+  .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 16px; }
+  .rb-mode { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
+  .rb-mode-opt {
+    padding: 6px 13px; border: none; background: transparent; border-radius: 99px;
+    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); cursor: pointer;
+  }
+  .rb-mode-opt.active { background: var(--surface); border: 1px solid var(--border-strong); color: var(--accent-ink); }
+  .rb-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .rb-note { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card card-pad" id="reportBuilder">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Generate a report</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Pick what to report on, narrow it down, then download as PDF or Excel — scoped to {{ session.branch_name }}.
+    Reports are capped at 1,000 rows.
+  </p>
+
+  <form method="GET" action="{{ url_for('branch.generate_report') }}" id="reportForm">
+    <div class="field">
+      <label for="rb_type">Report</label>
+      <select id="rb_type" name="type">
+        {% for rt in report_types %}
+        <option value="{{ rt.key }}" data-windowed="{{ 'true' if rt.windowed else 'false' }}">{{ rt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="rb-grid">
+      <div class="field" data-filter="status" style="display:none;">
+        <label for="rb_status">Status</label>
+        <select id="rb_status" name="status">
+          <option value="all">All statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="In Transit">In Transit</option>
+          <option value="Fulfilled">Fulfilled</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="field" data-filter="movement_type" style="display:none;">
+        <label for="rb_movement_type">Movement type</label>
+        <select id="rb_movement_type" name="movement_type">
+          <option value="all">All types</option>
+          <option value="RECEIPT">Receipt</option>
+          <option value="SALE">Sale</option>
+          <option value="ADJUSTMENT">Adjustment</option>
+          <option value="DAMAGE">Damage</option>
+        </select>
+      </div>
+      <div class="field" data-filter="variant" style="display:none;">
+        <label for="rb_variant">Variant</label>
+        <select id="rb_variant" name="variant">
+          <option value="all">All variants</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+      <div class="field" data-filter="low_stock_only" style="display:none;">
+        <label for="rb_low_stock_only">Stock level</label>
+        <select id="rb_low_stock_only" name="low_stock_only">
+          <option value="">All stock levels</option>
+          <option value="1">Low stock only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="search" style="display:none;">
+        <label for="rb_search" id="rb_search_label">Search item / SKU</label>
+        <input type="text" id="rb_search" name="search" placeholder="e.g. Golden Hour or HAS-001">
+      </div>
+    </div>
+
+    <div class="field" data-filter="window" style="display:none;">
+      <label>Time window</label>
+      <div class="rb-mode" id="rb_mode_switch">
+        <button type="button" class="rb-mode-opt active" data-mode="recent">Recent</button>
+        <button type="button" class="rb-mode-opt" data-mode="range">Date range</button>
+        <button type="button" class="rb-mode-opt" data-mode="all">All time</button>
+      </div>
+      <input type="hidden" name="mode" id="rb_mode" value="recent">
+
+      <div class="rb-grid" style="margin-top: 12px;">
+        <div class="field" data-mode-field="recent">
+          <label for="rb_recent_n">Show last</label>
+          <select id="rb_recent_n" name="recent_n">
+            <option value="20">20 entries</option>
+            <option value="50">50 entries</option>
+            <option value="100">100 entries</option>
+            <option value="200">200 entries</option>
+          </select>
+        </div>
+        <div class="field" data-mode-field="range" style="display:none;">
+          <label for="rb_date_from">From</label>
+          <input type="date" id="rb_date_from" name="date_from">
+        </div>
+        <div class="field" data-mode-field="range" style="display:none;">
+          <label for="rb_date_to">To</label>
+          <input type="date" id="rb_date_to" name="date_to">
+        </div>
+      </div>
+      <div class="rb-note" data-mode-field="all" style="display:none;">
+        Pulls everything, capped at the most recent 1,000 rows.
+      </div>
+    </div>
+
+    <div class="rb-actions">
+      <button type="submit" name="format" value="pdf" class="btn btn-accent" formtarget="_blank">
+        Download PDF
+      </button>
+      <button type="submit" name="format" value="xlsx" class="btn btn-ghost" formtarget="_blank">
+        Download Excel
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const REPORT_FIELDS = {
+      branch_stock: ['variant', 'low_stock_only', 'search'],
+      stock_requests: ['status', 'search', 'window'],
+      movement_logs: ['movement_type', 'search', 'window'],
+      sales_history: ['variant', 'search', 'window'],
+    };
+
+    // "search" filters a different column depending on the report — the
+    // field/name stays the same (name="search"), only the label/hint
+    // changes to match what reports.py actually searches.
+    const SEARCH_LABELS = {
+      movement_logs: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+    };
+    const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
+
+    const searchLabelEl = document.getElementById('rb_search_label');
+    const searchInputEl = document.getElementById('rb_search');
+
+    const typeSelect = document.getElementById('rb_type');
+    const modeSwitch = document.getElementById('rb_mode_switch');
+    const modeInput = document.getElementById('rb_mode');
+
+    function applyReportType() {
+      const fields = REPORT_FIELDS[typeSelect.value] || [];
+      document.querySelectorAll('#reportForm [data-filter]').forEach((el) => {
+        el.style.display = fields.includes(el.dataset.filter) ? '' : 'none';
+      });
+      const searchCopy = SEARCH_LABELS[typeSelect.value] || DEFAULT_SEARCH_LABEL;
+      searchLabelEl.textContent = searchCopy.label;
+      searchInputEl.placeholder = searchCopy.placeholder;
+    }
+
+    function applyMode() {
+      const mode = modeInput.value;
+      document.querySelectorAll('#reportForm [data-mode-field]').forEach((el) => {
+        el.style.display = el.dataset.modeField === mode ? '' : 'none';
+      });
+      modeSwitch.querySelectorAll('.rb-mode-opt').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+    }
+
+    typeSelect.addEventListener('change', applyReportType);
+    modeSwitch.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rb-mode-opt');
+      if (!btn) return;
+      modeInput.value = btn.dataset.mode;
+      applyMode();
+    });
+
+    applyReportType();
+    applyMode();
+  })();
+</script>
+{% endblock %}
