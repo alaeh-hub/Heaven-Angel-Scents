@@ -68,7 +68,7 @@
         != 1 }}</span>
     </div>
     {% if hq_stock %}
-    <div data-smart-table data-page-size="3" data-count-target="hqStockCount" data-count-label="SKU">
+    <div class="table-compact" data-smart-table data-page-size="6" data-count-target="hqStockCount" data-count-label="SKU">
       <div class="table-toolbar">
         <div class="table-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -98,12 +98,12 @@
           <tbody>
             {% for row in hq_stock %}
             <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
-              <td>
+              <td data-label="Item">
                 <div class="item-name">{{ row.item_name }}</div>
                 <div class="item-sub mono">{{ row.sku }}</div>
               </td>
-              <td>{{ m.variant_badge(row.variant) }}</td>
-              <td>{{ m.fill_bar(row.stock_qty, max_stock) }}</td>
+              <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+              <td data-label="On hand">{{ m.fill_bar(row.stock_qty, max_stock) }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -137,7 +137,7 @@
     <h2>Production history</h2><span class="hint">last 40 runs</span>
   </div>
   {% if logs %}
-  <div data-smart-table data-page-size="8">
+  <div class="table-compact" data-smart-table data-page-size="12">
     <div class="table-toolbar">
       <div class="table-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -160,16 +160,16 @@
         <tbody>
           {% for l in logs %}
           <tr data-search="{{ (l.item_name ~ ' ' ~ (l.batch_code or ''))|lower }}">
-            <td class="mono text-soft">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            <td class="item-name">{{ l.item_name }}</td>
-            <td>
+            <td class="mono text-soft" data-label="Date">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name" data-label="Item">{{ l.item_name }}</td>
+            <td data-label="Batch">
               {% if l.batch_code %}
               <span class="badge badge-pending">{{ l.batch_code }}</span>
               {% else %}
               <span class="text-faint">—</span>
               {% endif %}
             </td>
-            <td class="num mono qty-up">+{{ l.qty_produced }}</td>
+            <td class="num mono qty-up" data-label="Qty">+{{ l.qty_produced }}</td>
           </tr>
           {% endfor %}
         </tbody>

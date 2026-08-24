@@ -1,10 +1,39 @@
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+import datetime
+
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from db import execute, query, transaction
 from decorators import branch_required
+from receipts import build_receipt_pdf
+from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from sockets import notify_admin_and_branch
 from utils import ValidationError, parse_non_negative_int, parse_positive_int
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
+
+# Bucket-size options for the "Ledger movement" trend chart on the Reports
+# page (see reports_data() below). Kept in sync with admin.py's
+# _TREND_GRANULARITIES — same fixed, non-user-supplied SQL fragments, just
+# duplicated here rather than imported since admin.py and branch.py don't
+# otherwise share code.
+_TREND_GRANULARITIES = {
+    "daily": {
+        "trunc": "DATE(created_at)",
+        "window": "INTERVAL 14 DAY",
+    },
+    "weekly": {
+        "trunc": "DATE(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY))",
+        "window": "INTERVAL 12 WEEK",
+    },
+    "monthly": {
+        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-%m-01'))",
+        "window": "INTERVAL 12 MONTH",
+    },
+    "yearly": {
+        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-01-01'))",
+        "window": "INTERVAL 5 YEAR",
+    },
+}
 
 
 def _branch_id():
@@ -77,11 +106,24 @@ def request_stock():
         if not sku:
             flash("Select a product to request.", "error")
         else:
-            execute(
-                "INSERT INTO stock_requests (branch_id, sku, requested_qty) VALUES (%s, %s, %s)",
-                (bid, sku, qty),
+            product = query(
+                "SELECT sku FROM products WHERE sku = %s AND is_active = TRUE", (sku,), fetchone=True
             )
-            flash("Stock request sent to HQ.", "success")
+            if not product:
+                flash("That product isn't available to request.", "error")
+            else:
+                try:
+                    execute(
+                        "INSERT INTO stock_requests (branch_id, sku, requested_qty) VALUES (%s, %s, %s)",
+                        (bid, sku, qty),
+                    )
+                    notify_admin_and_branch(bid, "requests")
+                    flash("Stock request sent to HQ.", "success")
+                except Exception:
+                    current_app.logger.exception(
+                        "request_stock failed for branch_id=%s sku=%s", bid, sku
+                    )
+                    flash("Couldn't send this request — please try again.", "error")
         return redirect(url_for("branch.request_stock"))
 
     products_list = query("SELECT sku, item_name, variant FROM products WHERE is_active = TRUE ORDER BY item_name")
@@ -191,8 +233,10 @@ def receive_stock():
             return redirect(url_for("branch.receive_stock"))
 
         if shortfall > 0:
+            notify_admin_and_branch(bid, ["requests", "inventory", "movement_logs"])
             flash(f"Received recorded. Note: {shortfall} unit(s) unaccounted for — flagged in the ledger.", "warning")
         else:
+            notify_admin_and_branch(bid, ["requests", "inventory", "movement_logs"])
             flash("Shipment receipt confirmed and inventory updated.", "success")
         return redirect(url_for("branch.receive_stock"))
 
@@ -202,6 +246,25 @@ def receive_stock():
         (bid,),
     )
     return render_template("branch/receive_stock.html", in_transit=in_transit)
+
+
+# ---------------------------------------------------------------- goods-received receipt
+@bp.route("/receive-stock/<int:request_id>/receipt")
+@branch_required
+def receipt(request_id):
+    """Downloadable PDF for a request this branch has confirmed as received.
+
+    Sourced straight from the stock_requests row and the movement-ledger
+    entries receive_stock() wrote — see receipts.py. Scoped to this
+    branch's own request_id via branch_id, same as every other page here.
+    """
+    pdf_buffer, req = build_receipt_pdf(request_id, branch_id=_branch_id())
+    if pdf_buffer is None:
+        abort(404)
+    return send_file(
+        pdf_buffer, mimetype="application/pdf",
+        as_attachment=True, download_name=f"GR-{request_id:06d}.pdf",
+    )
 
 
 # ---------------------------------------------------------------- record sale
@@ -265,6 +328,7 @@ def record_sale():
                     (bid, sku, -qty, session.get("user_id"), before_qty, after_qty),
                 )
                 cur.close()
+            notify_admin_and_branch(bid, ["inventory", "sales", "movement_logs"])
             flash("Sale recorded.", "success")
         except Exception:
             current_app.logger.exception("record_sale failed for branch_id=%s sku=%s", bid, sku)
@@ -302,3 +366,121 @@ def sales_history():
         (bid,), fetchone=True,
     )
     return render_template("branch/sales_history.html", sales=sales, totals=totals)
+
+
+# ---------------------------------------------------------------- reports
+@bp.route("/reports")
+@branch_required
+def reports():
+    report_types = [
+        {"key": key, "label": meta.get("branch_label", meta["label"]), "windowed": meta["windowed"]}
+        for key, meta in REPORT_TYPES.items() if meta["branch"]
+    ]
+    return render_template("branch/reports.html", report_types=report_types)
+
+
+@bp.route("/reports/generate")
+@branch_required
+def generate_report():
+    """Download a filtered report as PDF or Excel, scoped to this branch.
+
+    branch_scope is always this signed-in branch's own branch_id — any
+    branch_id present in the querystring is ignored by reports.py, so
+    editing the URL can't pull another branch's data.
+    """
+    report_type = request.args.get("type", "")
+    fmt = request.args.get("format", "pdf")
+    meta = REPORT_TYPES.get(report_type)
+    if meta is None or not meta["branch"] or fmt not in ("pdf", "xlsx"):
+        abort(404)
+
+    bid = _branch_id()
+    filters = parse_report_filters(request.args)
+    report = get_report(
+        report_type, filters, branch_scope=bid,
+        actor_label=f"{session.get('branch_name')} — {session.get('username')}",
+    )
+
+    stamp = datetime.date.today().isoformat()
+    if fmt == "xlsx":
+        buf = render_report_excel(report)
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        buf = render_report_pdf(report)
+        mimetype = "application/pdf"
+    return send_file(
+        buf, mimetype=mimetype, as_attachment=True,
+        download_name=f"{report_type}-{stamp}.{fmt}",
+    )
+
+
+@bp.route("/api/reports-data")
+@branch_required
+def reports_data():
+    """Chart data for the branch Reports page — everything here is scoped
+    to this signed-in branch's own branch_id, same as every query above.
+    There's no branch_id in the querystring to trust or ignore.
+    """
+    bid = _branch_id()
+
+    by_variant = query(
+        """SELECT p.variant, COALESCE(SUM(s.qty_sold), 0) AS units_sold
+           FROM products p
+           LEFT JOIN sales s ON p.sku = s.sku AND s.branch_id = %s
+           GROUP BY p.variant""",
+        (bid,),
+    )
+
+    # Daily units sold for the last 14 days — the branch-scoped stand-in
+    # for the admin page's "units sold by branch" chart, which doesn't
+    # make sense when there's only one branch to look at.
+    sales_trend = query(
+        """SELECT DATE(sold_at) AS day, COALESCE(SUM(qty_sold), 0) AS units_sold
+           FROM sales
+           WHERE branch_id = %s AND sold_at >= NOW() - INTERVAL 14 DAY
+           GROUP BY DATE(sold_at) ORDER BY day""",
+        (bid,),
+    )
+
+    top_products = query(
+        """SELECT p.item_name, COALESCE(SUM(s.qty_sold), 0) AS units_sold
+           FROM sales s JOIN products p ON s.sku = p.sku
+           WHERE s.branch_id = %s
+           GROUP BY p.sku, p.item_name
+           ORDER BY units_sold DESC LIMIT 8""",
+        (bid,),
+    )
+
+    stock_by_variant = query(
+        """SELECT p.variant, COALESCE(SUM(bi.stock_qty), 0) AS total_stock
+           FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
+           WHERE bi.branch_id = %s AND p.is_active = TRUE
+           GROUP BY p.variant""",
+        (bid,),
+    )
+
+    granularity = request.args.get("granularity", "daily")
+    trend_bucket = _TREND_GRANULARITIES.get(granularity, _TREND_GRANULARITIES["daily"])
+    movement_trend = query(
+        f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
+            FROM stock_movement_logs
+            WHERE branch_id = %s AND created_at >= NOW() - {trend_bucket['window']}
+            GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day""",
+        (bid,),
+    )
+
+    totals = query(
+        """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales WHERE branch_id = %s""",
+        (bid,), fetchone=True,
+    )
+
+    for row in sales_trend:
+        row["day"] = row["day"].isoformat()
+    for row in movement_trend:
+        row["day"] = row["day"].isoformat()
+
+    return jsonify(
+        by_variant=by_variant, sales_trend=sales_trend, top_products=top_products,
+        stock_by_variant=stock_by_variant, movement_trend=movement_trend, totals=totals,
+    )

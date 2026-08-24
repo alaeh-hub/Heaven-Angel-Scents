@@ -2,6 +2,7 @@ from functools import wraps
 
 from flask import abort, flash, redirect, request, session, url_for
 
+
 from db import query
 
 # Endpoints a signed-in user must always be able to reach even while

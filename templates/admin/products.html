@@ -33,12 +33,12 @@
           <tbody>
             {% for p in catalog %}
             <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}">
-              <td><div class="item-name">{{ p.item_name }}</div><div class="item-sub mono">{{ p.sku }}</div></td>
-              <td>{{ m.variant_badge(p.variant) }}</td>
-              <td class="num mono">{{ p.price|peso }}</td>
-              <td class="num mono">{{ p.total_stock }}</td>
-              <td><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{ 'Active' if p.is_active else 'Discontinued' }}</span></td>
-              <td>
+              <td data-label="Item"><div class="item-name">{{ p.item_name }}</div><div class="item-sub mono">{{ p.sku }}</div></td>
+              <td data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
+              <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
+              <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
+              <td data-label="Status"><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{ 'Active' if p.is_active else 'Discontinued' }}</span></td>
+              <td data-label="">
                 <form method="POST" action="{{ url_for('admin.toggle_product', sku=p.sku) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-ghost btn-sm" type="submit">{{ 'Discontinue' if p.is_active else 'Reactivate' }}</button>

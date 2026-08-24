@@ -35,10 +35,10 @@
         <tbody>
           {% for s in recent_sales %}
           <tr>
-            <td class="mono text-soft">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
-            <td>{{ s.item_name }}</td>
-            <td class="num mono">{{ s.qty_sold }}</td>
-            <td class="num mono">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
+            <td data-label="Item">{{ s.item_name }}</td>
+            <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
           </tr>
           {% endfor %}
         </tbody>

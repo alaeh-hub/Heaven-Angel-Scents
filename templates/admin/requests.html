@@ -26,17 +26,17 @@
         <tbody>
           {% for r in stock_requests %}
           <tr data-search="{{ (r.branch_name ~ ' ' ~ r.item_name)|lower }}">
-            <td class="mono text-soft">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-            <td>{{ r.branch_name }}</td>
-            <td><div class="item-name">{{ r.item_name }}</div><div class="item-sub">{{ m.variant_badge(r.variant) }}</div></td>
-            <td class="num mono">{{ r.requested_qty }}</td>
-            <td>{{ m.status_badge(r.status) }}</td>
-            <td>
+            <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Branch">{{ r.branch_name }}</td>
+            <td data-label="Item"><div class="item-name">{{ r.item_name }}</div><div class="item-sub">{{ m.variant_badge(r.variant) }}</div></td>
+            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
+            <td data-label="">
               {% if r.status == 'Pending' %}
               <div class="inline-form">
                 <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=r.request_id) }}" class="inline-form">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="number" name="dispatched_qty" value="{{ r.requested_qty }}" min="1" style="width:80px;"
+                  <input type="number" name="dispatched_qty" value="{{ r.requested_qty }}" min="1" max="{{ r.requested_qty }}" style="width:80px;"
                          class="mono dispatch-qty-input" data-requested-qty="{{ r.requested_qty }}">
                   <button type="submit" class="btn btn-accent btn-sm">Dispatch</button>
                 </form>
@@ -48,7 +48,10 @@
               {% elif r.status == 'In Transit' %}
               <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
               {% elif r.status == 'Fulfilled' %}
-              <span class="text-faint" style="font-size:12.5px;">received {{ r.received_qty }}{% if r.damaged_qty %}, {{ r.damaged_qty }} damaged{% endif %}</span>
+              <div class="inline-form">
+                <span class="text-faint" style="font-size:12.5px;">received {{ r.received_qty }}{% if r.damaged_qty %}, {{ r.damaged_qty }} damaged{% endif %}</span>
+                <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+              </div>
               {% else %}
               <span class="text-faint" style="font-size:12.5px;">—</span>
               {% endif %}

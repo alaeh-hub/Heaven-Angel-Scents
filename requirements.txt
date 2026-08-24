@@ -6,3 +6,18 @@ python-dotenv==1.0.1
 Werkzeug==3.0.3
 waitress==3.0.0
 requests==2.32.3
+flask-socketio
+reportlab
+openpyxl
+flask-talisman
+
+# Needed for the production launch command documented in wsgi.py:
+#   gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app
+gunicorn==23.0.0
+gevent==24.2.1
+gevent-websocket==0.10.1
+
+# Not required in production (gunicorn+gevent above cover it), but
+# gives local `python app.py` runs real WebSocket upgrades instead of
+# long-polling — see wsgi.py's comments.
+simple-websocket==1.0.0

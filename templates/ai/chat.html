@@ -16,7 +16,7 @@
   .chat-avatar {
     width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; font-family: 'Fraunces', serif;
+    font-size: 12px; font-weight: 700; font-family: 'Inter', sans-serif;
   }
   .chat-avatar.assistant-avatar { background: var(--accent-soft); color: var(--accent-ink); }
   .chat-avatar.user-avatar { background: var(--plum-soft); color: var(--plum); }
@@ -24,7 +24,7 @@
   .chat-msg { padding: 11px 15px; border-radius: 14px; font-size: 13.8px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   .chat-row.user .chat-msg { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
   .chat-row.assistant .chat-msg { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-  .chat-row.error .chat-msg { background: var(--danger-soft); color: var(--danger); border: 1px solid #EFCFC6; }
+  .chat-row.error .chat-msg { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-border); }
 
   .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
   .typing-dots span {
@@ -84,7 +84,7 @@
       </div>
       <h3>Ask the H&amp;A Assistant</h3>
       <p>
-        Ask about {{ 'branch' if session.role != 'Admin' else 'branch' }} stock levels, pending requests, or recent sales.
+        Ask about {{ 'company-wide' if session.role == 'Admin' else 'branch' }} stock levels, pending requests, or recent sales.
         It only knows what you can already see in this app, and it can't make changes on its own.
       </p>
       <div class="chat-suggestions" id="chatSuggestions">

@@ -134,3 +134,28 @@ CREATE TABLE IF NOT EXISTS stock_movement_logs (
     FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_sml_reference (reference_type, reference_id)
 );
+
+-- ----------------------------------------------------------------------------
+-- 9. Admin Actions (Audit Trail) — non-inventory admin activity: creating
+--    or deactivating a login account, resetting a password, adding or
+--    discontinuing a product, adding a branch. Inventory/stock events have
+--    their own, more detailed ledger in stock_movement_logs above; this
+--    table covers everything else that used to leave no record beyond a
+--    flash message that vanished after a few seconds.
+--
+--    See audit.py — its ensure_table() is only a defensive fallback for a
+--    database that hasn't picked up this table yet; on a database that
+--    already has it (the normal case, once this file has been applied),
+--    it's a single cheap existence check and does nothing further.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_actions (
+    action_id      BIGINT AUTO_INCREMENT PRIMARY KEY,
+    actor_user_id  INT NULL,
+    actor_username VARCHAR(80) NULL,   -- kept alongside actor_user_id so the log still reads clearly if the account is later deleted
+    action         VARCHAR(50) NOT NULL,
+    target         VARCHAR(120) NULL,
+    details        VARCHAR(255) NULL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_admin_actions_created_at (created_at)
+);

@@ -5,14 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
+  <script>
+    // Set the theme attribute before the stylesheet even loads, so
+    // there's no flash of the light theme on a person who's chosen
+    // dark. Kept intentionally tiny and inline (not in main.js, which
+    // loads at the end of body) — this has to run before first paint.
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% block head %}{% endblock %}
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brand-mark">Heaven <span>&amp;</span> Angel</div>
+        <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Close menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
         <div class="brand-sub">Scents · Inventory System</div>
       </div>
 
@@ -102,6 +119,13 @@
           Sales History
         </a>
       </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Organization</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'branch.reports' }}" href="{{ url_for('branch.reports') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          Reports
+        </a>
+      </nav>
       {% endif %}
 
       <nav class="nav-group">
@@ -135,11 +159,22 @@
 
     <div class="main">
       <div class="topbar">
-        <div>
-          <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
-          <h1>{% block heading %}{% endblock %}</h1>
+        <div class="topbar-left">
+          <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div>
+            <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
+            <h1>{% block heading %}{% endblock %}</h1>
+          </div>
         </div>
-        {% block topbar_actions %}{% endblock %}
+        <div class="topbar-right">
+          {% block topbar_actions %}{% endblock %}
+          <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
+          </button>
+        </div>
       </div>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -157,6 +192,8 @@
       </div>
     </div>
   </div>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

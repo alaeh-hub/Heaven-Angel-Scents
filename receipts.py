@@ -21,6 +21,7 @@ request; admin callers omit it since HQ can see every branch.
 """
 import io
 
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
@@ -74,35 +75,35 @@ def _styles():
     base = getSampleStyleSheet()
     return {
         "brand": ParagraphStyle("brand", parent=base["Normal"], fontName="Helvetica-Bold",
-                                 fontSize=17, textColor=INK, leading=20),
+                                fontSize=17, textColor=INK, leading=20),
         "brand_sub": ParagraphStyle("brand_sub", parent=base["Normal"], fontName="Helvetica",
-                                     fontSize=8.5, textColor=INK_FAINT, leading=12),
+                                    fontSize=8.5, textColor=INK_FAINT, leading=12),
         "doc_title": ParagraphStyle("doc_title", parent=base["Normal"], fontName="Helvetica-Bold",
-                                     fontSize=12.5, textColor=ACCENT, alignment=TA_RIGHT, leading=15),
+                                    fontSize=12.5, textColor=ACCENT, alignment=TA_RIGHT, leading=15),
         "doc_meta": ParagraphStyle("doc_meta", parent=base["Normal"], fontName="Helvetica",
-                                    fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
+                                   fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
         "label": ParagraphStyle("label", parent=base["Normal"], fontName="Helvetica-Bold",
-                                 fontSize=7.3, textColor=INK_FAINT, leading=10, spaceAfter=1),
+                                fontSize=7.3, textColor=INK_FAINT, leading=10, spaceAfter=1),
         "value": ParagraphStyle("value", parent=base["Normal"], fontName="Helvetica-Bold",
-                                 fontSize=10.8, textColor=INK, leading=13),
+                                fontSize=10.8, textColor=INK, leading=13),
         "value_soft": ParagraphStyle("value_soft", parent=base["Normal"], fontName="Helvetica",
-                                      fontSize=9.5, textColor=INK, leading=12),
+                                     fontSize=9.5, textColor=INK, leading=12),
         "section": ParagraphStyle("section", parent=base["Normal"], fontName="Helvetica-Bold",
-                                   fontSize=9.5, textColor=INK, leading=12, spaceBefore=14, spaceAfter=6),
+                                  fontSize=9.5, textColor=INK, leading=12, spaceBefore=14, spaceAfter=6),
         "qty_label": ParagraphStyle("qty_label", parent=base["Normal"], fontName="Helvetica",
-                                     fontSize=7.5, textColor=INK_FAINT, alignment=TA_CENTER, leading=10),
+                                    fontSize=7.5, textColor=INK_FAINT, alignment=TA_CENTER, leading=10),
         "qty_value": ParagraphStyle("qty_value", parent=base["Normal"], fontName="Helvetica-Bold",
-                                     fontSize=15, textColor=INK, alignment=TA_CENTER, leading=18),
+                                    fontSize=15, textColor=INK, alignment=TA_CENTER, leading=18),
         "timeline_label": ParagraphStyle("timeline_label", parent=base["Normal"], fontName="Helvetica-Bold",
-                                          fontSize=9, textColor=INK, leading=12),
+                                         fontSize=9, textColor=INK, leading=12),
         "timeline_meta": ParagraphStyle("timeline_meta", parent=base["Normal"], fontName="Helvetica",
-                                         fontSize=8.5, textColor=INK_FAINT, leading=11),
+                                        fontSize=8.5, textColor=INK_FAINT, leading=11),
         "note": ParagraphStyle("note", parent=base["Normal"], fontName="Helvetica",
-                                fontSize=8.8, textColor=DANGER, leading=12),
+                               fontSize=8.8, textColor=DANGER, leading=12),
         "footer": ParagraphStyle("footer", parent=base["Normal"], fontName="Helvetica",
-                                  fontSize=7.5, textColor=INK_FAINT, leading=10),
+                                 fontSize=7.5, textColor=INK_FAINT, leading=10),
         "sig_label": ParagraphStyle("sig_label", parent=base["Normal"], fontName="Helvetica",
-                                     fontSize=8, textColor=INK_FAINT, leading=10, spaceBefore=4),
+                                    fontSize=8, textColor=INK_FAINT, leading=10, spaceBefore=4),
     }
 
 
@@ -117,10 +118,14 @@ def build_receipt_pdf(request_id, branch_id=None):
         return None, None
 
     movements = _fetch_movements(request_id)
-    dispatch_mv = next((m for m in movements if m["movement_type"] == "DISPATCH"), None)
-    receipt_mv = next((m for m in movements if m["movement_type"] == "RECEIPT"), None)
-    damage_mv = next((m for m in movements if m["movement_type"] == "DAMAGE"), None)
-    adjustment_mv = next((m for m in movements if m["movement_type"] == "ADJUSTMENT"), None)
+    dispatch_mv = next(
+        (m for m in movements if m["movement_type"] == "DISPATCH"), None)
+    receipt_mv = next(
+        (m for m in movements if m["movement_type"] == "RECEIPT"), None)
+    damage_mv = next(
+        (m for m in movements if m["movement_type"] == "DAMAGE"), None)
+    adjustment_mv = next(
+        (m for m in movements if m["movement_type"] == "ADJUSTMENT"), None)
 
     dispatched_qty = req["dispatched_qty"] or 0
     received_qty = req["received_qty"] or 0
@@ -146,7 +151,8 @@ def build_receipt_pdf(request_id, branch_id=None):
             ),
             Table(
                 [[Paragraph("GOODS RECEIVED RECEIPT", s["doc_title"])],
-                 [Paragraph(f"Receipt No. GR-{request_id:06d}", s["doc_meta"])],
+                 [Paragraph(
+                     f"Receipt No. GR-{request_id:06d}", s["doc_meta"])],
                  [Paragraph(f"Request #{request_id}", s["doc_meta"])]],
                 colWidths=[75 * mm],
             ),
@@ -155,7 +161,8 @@ def build_receipt_pdf(request_id, branch_id=None):
     )
     story.append(header)
     story.append(Spacer(1, 8))
-    story.append(HRFlowable(width="100%", thickness=1.4, color=ACCENT, spaceAfter=14))
+    story.append(HRFlowable(width="100%", thickness=1.4,
+                 color=ACCENT, spaceAfter=14))
 
     # ---- Branch / item info grid ----
     def info_cell(label, value):
@@ -186,7 +193,8 @@ def build_receipt_pdf(request_id, branch_id=None):
     story.append(Paragraph("Quantities", s["section"]))
 
     def qty_cell(label, value, color=INK):
-        style = ParagraphStyle("qv_%s" % label, parent=s["qty_value"], textColor=color)
+        style = ParagraphStyle(
+            "qv_%s" % label, parent=s["qty_value"], textColor=color)
         return [Paragraph(str(value), style), Paragraph(label.upper(), s["qty_label"])]
 
     qty_row = [
@@ -194,7 +202,8 @@ def build_receipt_pdf(request_id, branch_id=None):
         qty_cell("Dispatched", dispatched_qty),
         qty_cell("Received", received_qty, color=GOOD),
         qty_cell("Damaged", damaged_qty, color=DANGER if damaged_qty else INK),
-        qty_cell("Unaccounted", shortfall, color=DANGER if shortfall > 0 else GOOD),
+        qty_cell("Unaccounted", shortfall,
+                 color=DANGER if shortfall > 0 else GOOD),
     ]
     qty_table = Table([qty_row], colWidths=[34 * mm] * 5)
     qty_table.setStyle(TableStyle([
@@ -238,7 +247,8 @@ def build_receipt_pdf(request_id, branch_id=None):
     tl_data = []
     for label, dt, who in timeline_rows:
         meta = _fmt_dt(dt) + (f" &middot; confirmed by {who}" if who else "")
-        tl_data.append([Paragraph(label, s["timeline_label"]), Paragraph(meta, s["timeline_meta"])])
+        tl_data.append([Paragraph(label, s["timeline_label"]),
+                       Paragraph(meta, s["timeline_meta"])])
     tl_table = Table(tl_data, colWidths=[45 * mm, 125 * mm])
     tl_table.setStyle(TableStyle([
         ("LINEBELOW", (0, 0), (-1, -2), 0.5, BORDER),
@@ -249,10 +259,12 @@ def build_receipt_pdf(request_id, branch_id=None):
 
     if damage_mv and damage_mv.get("notes"):
         story.append(Spacer(1, 4))
-        story.append(Paragraph(f"Damage note: {damage_mv['notes']}", s["footer"]))
+        story.append(
+            Paragraph(f"Damage note: {damage_mv['notes']}", s["footer"]))
     if adjustment_mv and adjustment_mv.get("notes"):
         story.append(Spacer(1, 2))
-        story.append(Paragraph(f"Ledger note: {adjustment_mv['notes']}", s["footer"]))
+        story.append(
+            Paragraph(f"Ledger note: {adjustment_mv['notes']}", s["footer"]))
 
     # ---- Signatures ----
     story.append(Spacer(1, 26))
@@ -269,7 +281,8 @@ def build_receipt_pdf(request_id, branch_id=None):
 
     # ---- Footer ----
     story.append(Spacer(1, 22))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=6))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                 color=BORDER, spaceAfter=6))
     story.append(Paragraph(
         "Generated from the Heaven &amp; Angel Scents inventory system. Figures reflect the stock "
         "movement ledger recorded at the time this shipment was confirmed received and are not "

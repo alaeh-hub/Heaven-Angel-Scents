@@ -5,15 +5,51 @@
 
 {% block head %}
 <style>
-  .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 16px; }
-  .rb-mode { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
-  .rb-mode-opt {
-    padding: 6px 13px; border: none; background: transparent; border-radius: 99px;
-    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); cursor: pointer;
+  .rb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px 16px;
   }
-  .rb-mode-opt.active { background: var(--surface); border: 1px solid var(--border-strong); color: var(--accent-ink); }
-  .rb-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-  .rb-note { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+
+  .rb-mode {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 3px;
+  }
+
+  .rb-mode-opt {
+    padding: 6px 13px;
+    border: none;
+    background: transparent;
+    border-radius: 99px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+
+  .rb-mode-opt.active {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--accent-ink);
+  }
+
+  .rb-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .rb-note {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 10px;
+  }
 </style>
 {% endblock %}
 
@@ -121,9 +157,224 @@
     </div>
   </form>
 </div>
+
+<div class="grid grid-2 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">Total units sold</div>
+    <div class="stat-value" id="totalUnits">—</div>
+    <div class="stat-foot">at {{ session.branch_name }}</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Total revenue</div>
+    <div class="stat-value accent" id="totalRevenue">—</div>
+    <div class="stat-foot">at this branch's actual selling price</div>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Units sold by variant</h2>
+    </div>
+    <canvas id="variantChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Sales trend</h2>
+      <span class="hint">last 14 days</span>
+    </div>
+    <canvas id="salesTrendChart"></canvas>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Top selling products</h2>
+    </div>
+    <canvas id="topProductsChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Current stock by variant</h2>
+    </div>
+    <canvas id="stockChart"></canvas>
+  </div>
+</div>
+
+<div class="grid grid-1 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h2>Ledger movement</h2>
+        <span class="hint" id="trendWindowLabel">last 14 days</span>
+      </div>
+      <div class="rb-mode" id="trendGranularitySwitch">
+        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
+        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
+      </div>
+    </div>
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+<script>
+  const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
+  const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
+
+  const TREND_WINDOW_LABELS = {
+    daily: 'last 14 days',
+    weekly: 'last 12 weeks',
+    monthly: 'last 12 months',
+    yearly: 'last 5 years',
+  };
+  let trendGranularity = 'daily';
+
+  function formatPeso(value) {
+    return '₱' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function showChartError(message) {
+    document.querySelectorAll('.chart-card canvas').forEach((canvas) => {
+      const wrap = canvas.parentElement;
+      canvas.remove();
+      const note = document.createElement('p');
+      note.className = 'text-faint';
+      note.style.fontSize = '13px';
+      note.textContent = message;
+      wrap.appendChild(note);
+    });
+  }
+
+  const charts = {};
+
+  function destroyCharts() {
+    Object.keys(charts).forEach((key) => {
+      charts[key].destroy();
+      delete charts[key];
+    });
+  }
+
+  function loadReportsData() {
+    if (typeof Chart === 'undefined') {
+      showChartError('Charts failed to load (chart.umd.min.js did not load).');
+      return;
+    }
+
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = '#5B6272';
+    Chart.defaults.borderColor = '#E5E8EF';
+
+    fetch("{{ url_for('branch.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
+      .then(r => {
+        if (!r.ok) throw new Error('Request failed: ' + r.status);
+        return r.json();
+      })
+      .then(data => {
+        destroyCharts();
+
+        document.getElementById('totalUnits').textContent = data.totals.units;
+        document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
+
+        charts.variant = new Chart(document.getElementById('variantChart'), {
+          type: 'doughnut',
+          data: {
+            labels: data.by_variant.map(d => d.variant),
+            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || '#2E5AF0'), borderWidth: 0 }]
+          },
+          options: { plugins: { legend: { position: 'bottom' } } }
+        });
+
+        charts.salesTrend = new Chart(document.getElementById('salesTrendChart'), {
+          type: 'line',
+          data: {
+            labels: data.sales_trend.map(d => d.day),
+            datasets: [{
+              label: 'Units sold',
+              data: data.sales_trend.map(d => d.units_sold),
+              borderColor: '#2E5AF0',
+              backgroundColor: '#2E5AF0',
+              pointBackgroundColor: '#2E5AF0',
+              pointRadius: 4,
+              tension: 0.35,
+              fill: false,
+            }]
+          },
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+        });
+
+        charts.topProducts = new Chart(document.getElementById('topProductsChart'), {
+          type: 'bar',
+          data: {
+            labels: data.top_products.map(d => d.item_name),
+            datasets: [{ label: 'Units sold', data: data.top_products.map(d => d.units_sold), backgroundColor: '#17975E', borderRadius: 4 }]
+          },
+          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#E5E8EF' } }, y: { grid: { display: false } } } }
+        });
+
+        charts.stock = new Chart(document.getElementById('stockChart'), {
+          type: 'bar',
+          data: {
+            labels: data.stock_by_variant.map(d => d.variant),
+            datasets: [{ label: 'Units on hand', data: data.stock_by_variant.map(d => d.total_stock), backgroundColor: data.stock_by_variant.map(d => VARIANT_COLORS[d.variant] || '#7C5CFA'), borderRadius: 4 }]
+          },
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+        });
+
+        const trendLabelEl = document.getElementById('trendWindowLabel');
+        if (trendLabelEl) trendLabelEl.textContent = TREND_WINDOW_LABELS[trendGranularity] || '';
+
+        const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
+        const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
+        const datasets = types.map((t, i) => ({
+          label: t,
+          data: days.map(day => {
+            const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
+            return row ? row.total : 0;
+          }),
+          backgroundColor: PALETTE[i % PALETTE.length],
+          borderRadius: 4,
+        }));
+        charts.trend = new Chart(document.getElementById('trendChart'), {
+          type: 'bar',
+          data: { labels: days, datasets },
+          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+        });
+      })
+      .catch(err => {
+        console.error('Reports data failed to load:', err);
+        showChartError('Could not load report data. Please try again.');
+      });
+  }
+
+  loadReportsData();
+
+  const trendSwitch = document.getElementById('trendGranularitySwitch');
+  if (trendSwitch) {
+    trendSwitch.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rb-mode-opt');
+      if (!btn || btn.classList.contains('active')) return;
+      trendGranularity = btn.dataset.granularity;
+      trendSwitch.querySelectorAll('.rb-mode-opt').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+      });
+      loadReportsData();
+    });
+  }
+
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) loadReportsData();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadReportsData();
+  });
+</script>
 <script>
   (function () {
     const REPORT_FIELDS = {

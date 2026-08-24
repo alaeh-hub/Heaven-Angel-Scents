@@ -4,19 +4,40 @@ covered by stock_movement_logs (which handles inventory/stock events).
 Covers: creating/deactivating/resetting a login account, adding or
 discontinuing a product, adding a branch — anything where the only
 previous record was a flash message that vanished after a few seconds.
+
+The admin_actions table now lives in schema.sql, alongside every other
+table — a fresh deployment gets it the normal way (by applying
+schema.sql), not as a special case created at app startup. ensure_table()
+below is kept only as a defensive fallback for a database that was set
+up before this table existed in schema.sql: it does a single cheap
+existence check, and only creates the table (with a loud warning) if
+that check comes back empty. On an up-to-date database it's a no-op.
 """
 from flask import current_app, session
 
-from db import execute
+from db import execute, query
 
 
 def ensure_table():
-    """Create the admin_actions table if it doesn't exist yet.
-
-    Called once at app startup (see app.py) so a fresh deployment picks
-    this up automatically without needing a separate migration step or
-    touching schema.sql.
+    """No-op once admin_actions exists (the normal case). Creates it,
+    with a warning, only as a fallback for a database that hasn't
+    picked up the schema.sql change yet — so audit logging degrades
+    gracefully instead of raising on every admin action.
     """
+    exists = query(
+        """SELECT 1 FROM information_schema.tables
+           WHERE table_schema = DATABASE() AND table_name = 'admin_actions'""",
+        fetchone=True,
+    )
+    if exists:
+        return
+
+    current_app.logger.warning(
+        "admin_actions table not found — creating it now as a fallback. "
+        "This database predates admin_actions being added to schema.sql; "
+        "re-run schema.sql against it (or apply just the new table) to pick "
+        "it up the normal way and avoid relying on this fallback."
+    )
     execute(
         """CREATE TABLE IF NOT EXISTS admin_actions (
                action_id BIGINT AUTO_INCREMENT PRIMARY KEY,

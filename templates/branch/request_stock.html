@@ -32,14 +32,19 @@
     {% if history %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Requested</th><th>Item</th><th class="num">Qty</th><th>Status</th></tr></thead>
+        <thead><tr><th>Requested</th><th>Item</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {% for r in history %}
           <tr>
-            <td class="mono text-soft">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-            <td>{{ r.item_name }}</td>
-            <td class="num mono">{{ r.requested_qty }}</td>
-            <td>{{ m.status_badge(r.status) }}</td>
+            <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Item">{{ r.item_name }}</td>
+            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
+            <td data-label="">
+              {% if r.status == 'Fulfilled' %}
+              <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

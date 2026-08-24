@@ -5,6 +5,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Heaven &amp; Angel Scents</title>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
     .role-switch {
@@ -157,15 +166,20 @@
     }
 
     .page-loading .mark {
-      font-family: 'Fraunces', serif;
-      font-size: 22px;
-      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
       margin-bottom: 26px;
       color: var(--ink);
     }
 
-    .page-loading .mark span {
-      color: var(--accent);
+    .page-loading .mark .bm-blue { color: var(--blue); }
+    .page-loading .mark .bm-red { color: var(--red); }
+    .page-loading .mark span:not(.bm-blue):not(.bm-red) {
+      color: var(--ink-faint);
+      font-style: italic;
+      font-weight: 500;
     }
 
     .spinner {
@@ -193,10 +207,38 @@
 </head>
 
 <body>
+  <button type="button" class="theme-toggle theme-toggle-fixed" id="themeToggle" aria-label="Switch between light and dark theme">
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
+  </button>
   <div class="auth-shell">
+    <div class="auth-visual" aria-hidden="true">
+      <div class="auth-blob auth-blob-blue"></div>
+      <div class="auth-blob auth-blob-red"></div>
+      <div class="auth-visual-inner">
+        <div class="brand-mark">Heaven <span>&amp;</span> Angel</div>
+        <div class="brand-sub">Scents · Inventory System</div>
+        <div class="auth-visual-tagline">One system for every branch, from the warehouse floor to the sales counter.</div>
+        <ul class="auth-visual-points">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Track stock at HQ and every branch in real time</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Route requisitions from branch request to HQ dispatch</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>See sales and movement history the moment it happens</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="auth-form-col">
     <div class="auth-card">
       <div class="auth-brand">
-        <div class="mark">Heaven <span>&amp;</span> Angel</div>
+        <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
         <div class="sub">Scents · Inventory System</div>
       </div>
 
@@ -255,7 +297,7 @@
             <span>Enter your password.</span>
           </div>
         </div>
-        <button type="submit" class="btn btn-primary" id="submit-btn">Sign in as <span
+        <button type="submit" class="btn btn-accent" id="submit-btn">Sign in as <span
             id="submit-role-label">Branch</span></button>
       </form>
 
@@ -263,17 +305,36 @@
         Branch staff use the account created for their branch.
       </div>
     </div>
+    </div>
   </div>
 
   <div class="page-loading" id="page-loading" aria-hidden="true">
     <div class="page-loading-inner">
-      <div class="mark">Heaven <span>&amp;</span> Angel</div>
+      <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
       <div class="spinner"></div>
       <div class="page-loading-text">Signing you in…</div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script>
+    (function () {
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (window.Motion && !reduceMotion) {
+        var card = document.querySelector('.auth-card');
+        var toggle = document.querySelector('.theme-toggle-fixed');
+        window.Motion.animate(
+          card,
+          { opacity: [0, 1], transform: ['translateY(14px) scale(0.98)', 'translateY(0px) scale(1)'] },
+          { duration: 0.5, easing: [0.16, 1, 0.3, 1] }
+        );
+        if (toggle) {
+          window.Motion.animate(toggle, { opacity: [0, 1] }, { duration: 0.4, delay: 0.15 });
+        }
+      }
+    })();
+  </script>
   <script>
     (function () {
       var hint = document.getElementById('auth-hint');
@@ -382,9 +443,7 @@
         document.getElementById('page-loading').classList.add('visible');
 
         form.dataset.pendingSubmit = 'true';
-        setTimeout(function () {
-          form.submit();
-        }, 5000);
+        form.submit();
       });
     })();
   </script>

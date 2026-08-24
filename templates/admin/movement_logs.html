@@ -4,17 +4,6 @@
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Movement Ledger{% endblock %}
 
-{% block topbar_actions %}
-<form method="GET" class="inline-form">
-  <select name="branch_id" onchange="this.form.submit()">
-    <option value="all" {{ 'selected' if branch_filter == 'all' }}>All branches</option>
-    {% for b in branch_list %}
-    <option value="{{ b.branch_id }}" {{ 'selected' if branch_filter == b.branch_id|string }}>{{ b.branch_name }}</option>
-    {% endfor %}
-  </select>
-</form>
-{% endblock %}
-
 {% block content %}
 <div class="card">
   {% if logs %}
@@ -31,12 +20,12 @@
         <tbody>
           {% for l in logs %}
           <tr data-search="{{ (l.branch_name ~ ' ' ~ l.item_name ~ ' ' ~ l.movement_type ~ ' ' ~ (l.notes or ''))|lower }}">
-            <td class="mono text-soft">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            <td>{{ l.branch_name }}</td>
-            <td>{{ l.item_name }}</td>
-            <td>{{ m.movement_badge(l.movement_type) }}</td>
-            <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}">{{ '%+d'|format(l.change_qty) }}</td>
-            <td class="text-soft" style="font-size: 12.5px;">{{ l.notes or '—' }}</td>
+            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td data-label="Branch">{{ l.branch_name }}</td>
+            <td data-label="Item">{{ l.item_name }}</td>
+            <td data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
+            <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
+            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>

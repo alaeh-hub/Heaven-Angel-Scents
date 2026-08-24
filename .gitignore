@@ -1,11 +1,20 @@
 # Local configuration and secrets
 .env
+.env.*
+!.env.example
 
 # Python environments and caches
 .venv/
 venv/
 __pycache__/
 *.py[cod]
+
+# Local runtime data
+*.log
+*.db
+*.sqlite
+*.sqlite3
+instance/
 
 # Local tooling and test output
 .pytest_cache/

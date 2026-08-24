@@ -1,265 +1,217 @@
 # Heaven & Angel Scents Inventory System
 
-Heaven & Angel Scents is a Flask and MySQL web application for managing a perfume business with an HQ warehouse and multiple retail branches. The system covers product catalog management, HQ production, branch stock requests, shipment receiving, branch inventory, point-of-sale sales recording, sales reporting, and a read-only AI assistant.
+Heaven & Angel Scents is a Flask web application for managing perfume production, HQ warehouse stock, retail branches, stock transfers, sales, reporting, and operational audit trails. It provides separate Admin/HQ and Branch workspaces backed by MySQL or MariaDB.
 
-The current application is operational up to the full sales lifecycle: HQ produces stock, dispatches approved requests, branches receive shipments, branches record sales, inventory is deducted automatically, and revenue reports are calculated from the actual selling price captured at the time of each sale.
+## System Lifecycle
 
-## Current System State
+1. HQ records production, increasing warehouse stock.
+2. A branch requests stock from HQ.
+3. HQ dispatches all or part of the request, reducing HQ stock and marking it `In Transit`.
+4. The branch confirms the shipment, recording received and damaged quantities and increasing branch stock by the received quantity.
+5. Branch staff record customer sales, which atomically reduce branch stock and create sales records.
+6. Admin and branch reports read the resulting inventory, sales, request, production, and movement data.
 
-### Admin / HQ
+## Roles And Access
 
-- Dashboard with active SKU count, branch count, pending request count, low-stock count, low-stock alerts, recent stock requests, and recent ledger activity.
-- Product catalog with SKU, item name, variant, base HQ price, active status, and soft-discontinue support.
-- HQ production logging that adds stock to the HQ warehouse and writes a `PRODUCTION` entry to the stock movement ledger.
-- Branch management for adding retail branches.
-- User account management for creating Admin and Branch users and activating or deactivating accounts.
-- Branch Stock page for viewing total branch inventory and setting per-branch price overrides.
-- Stock request queue where HQ can dispatch or reject branch requests.
-- Movement ledger showing production, dispatch, receipt, sale, adjustment, and damage movements.
-- Reports page powered by the bundled Chart.js file in `static/js/chart.umd.min.js`.
-- API endpoint at `/admin/api/reports-data` for report data.
+### Admin
+
+Admin accounts represent HQ or office staff. They can view cross-branch operations; manage products, branches, users, and branch pricing; record HQ production; dispatch or reject requests; review the movement ledger; download fulfilled-request receipts; and generate all Admin reports.
 
 ### Branch
 
-- Branch dashboard scoped to the signed-in branch only.
-- Inventory page showing stock quantity, reorder level, HQ price, branch override price, and effective selling price.
-- Stock request form for asking HQ to dispatch inventory.
-- Shipment receiving flow that confirms received quantity, records damaged quantity, updates branch stock, and writes receipt or damage ledger entries.
-- Point-of-sale sale recording that validates available stock, records the sale, deducts inventory, and writes a sale movement.
-- Sales history with branch-level units sold and revenue totals.
+Branch accounts are assigned to one retail branch. They can view their branch dashboard and inventory, submit stock requests, receive shipments, download their own fulfilled-request receipts, record sales, view sales history, and generate branch-scoped reports.
 
-### AI Assistant
+### Authentication
 
-The app includes a read-only AI assistant under `/ai`.
+- Login requires selecting `Admin` or `Branch` account type.
+- Passwords are stored as Werkzeug hashes.
+- New and reset accounts must change their password on first use.
+- Password changes require the current password and a new password of at least eight characters.
+- Account status and forced-password state are rechecked from the database on protected requests.
+- Deactivated accounts are signed out on their next protected request.
+- Logout is available at `/logout`.
 
-- Uses the Gemini API through `requests`.
-- Requires `GEMINI_API_KEY` in the environment.
-- Uses `GEMINI_MODEL`, defaulting to `gemini-2.5-flash`.
-- If no API key is configured, the assistant remains visible but tells the user it is not configured.
-- Rebuilds a fresh, role-scoped data snapshot on each chat request.
-- Admin users receive summary visibility across branches.
-- Branch users receive only their own branch inventory, requests, today sales, and recent sales.
-- The AI does not execute SQL, does not receive database credentials, has no tool-calling access, and cannot make changes such as recording sales, dispatching stock, changing prices, or creating accounts.
+## Admin Workflows
 
-## Sales and Revenue Calculation
+| Area | Route | Function |
+| --- | --- | --- |
+| Dashboard | `/admin/` | Active SKU, branch, pending-request, and low-stock metrics; alerts; recent activity; top sellers. |
+| Products | `/admin/products` | Create products and view the catalog with total stock. |
+| Product status | `/admin/products/<sku>/toggle` | Toggle active/discontinued status without deleting the product. |
+| Production | `/admin/production` | Record production, optional batch code, and HQ stock changes. |
+| Branches | `/admin/branches` | Create retail branches and initialize product inventory rows. |
+| Branch stock | `/admin/branch-stock` | View branch totals, stock, reorder levels, and prices. |
+| Branch pricing | `/admin/branch-stock/price` | Set a branch price override or clear it to use the HQ price. |
+| Users | `/admin/users` | Create accounts, toggle status, and reset passwords. |
+| Requests | `/admin/requests` | Filter requests, dispatch stock, reject pending requests, and download fulfilled receipts. |
+| Movement ledger | `/admin/movement-logs` | Review up to 200 recent movements and filter by branch. |
+| Reports | `/admin/reports` | Select and download Admin reports. |
+| Report data | `/admin/api/reports-data` | Return JSON metrics for Admin charts. |
 
-Sales are stored in the `sales` table with:
+Products use the variants `Male`, `Female`, or `Unisex`. Discontinuing a product is a soft status change; historical records remain available.
 
-- `branch_id`
-- `sku`
-- `qty_sold`
-- `unit_price`
-- `sold_at`
+## Branch Workflows
 
-When a branch records a sale:
+| Area | Route | Function |
+| --- | --- | --- |
+| Dashboard | `/branch/` | Branch inventory, low-stock items, open requests, and today's sales totals. |
+| Inventory | `/branch/inventory` | Active products, stock, reorder level, HQ price, override price, and effective selling price. |
+| Request stock | `/branch/request-stock` | Submit requests for active products and view request history. |
+| Receive stock | `/branch/receive-stock` | Confirm `In Transit` shipments and record received and damaged quantities. |
+| Goods-received receipt | `/branch/receive-stock/<request_id>/receipt` | Download a PDF for the branch's own fulfilled request. |
+| Record sale | `/branch/record-sale` | Record a sale when enough stock is available. |
+| Sales history | `/branch/sales-history` | View up to 200 sales and all-time branch totals. |
+| Reports | `/branch/reports` | Select and download branch-scoped reports. |
 
-1. The app reads the branch inventory row and product row.
-2. The effective selling price is calculated as `COALESCE(branch_inventory.branch_price, products.price)`.
-3. The sale is inserted with that effective price as `sales.unit_price`.
-4. Branch inventory is deducted by the sold quantity.
-5. A `SALE` entry is written to `stock_movement_logs`.
+A shipment must satisfy `received_qty + damaged_qty <= dispatched_qty`. Any remaining shortfall is recorded as an `ADJUSTMENT` ledger entry for HQ follow-up.
 
-Revenue is calculated as:
+## Pricing And Revenue
+
+Each product has an HQ base price. A branch may optionally override that price. The effective selling price is `branch_price` when present, otherwise `products.price`.
+
+When a sale is recorded, the effective price is copied into `sales.unit_price` in the same transaction that inserts the sale, deducts inventory, and writes the `SALE` movement. Revenue is calculated as:
 
 ```sql
 SUM(qty_sold * unit_price)
 ```
 
-Because `unit_price` is captured on the sale row at the moment of sale, historical revenue remains accurate even if HQ prices or branch override prices change later.
+Historical revenue remains accurate when prices change because each sale stores its price at the time of sale.
 
-## Reporting
+## Reports
 
-The Admin Reports page currently shows:
+`reports.py` provides these report types:
 
-- Total units sold across all branches.
-- Total revenue across all branches.
-- Units sold by product variant.
-- Units sold by branch.
-- Revenue by branch.
-- Current stock by branch.
-- Average branch pricing difference versus HQ price.
-- Stock movement trend for the last 14 days.
-
-The reports page loads data from `/admin/api/reports-data` and renders charts with the local bundled Chart.js build.
-
-## Tech Stack
-
-- Backend: Flask 3, Flask blueprints, Flask-WTF CSRF protection
-- Database: MySQL or MariaDB
-- Database driver: `mysql-connector-python`
-- Authentication: Flask sessions with Werkzeug password hashing
-- Frontend: Server-rendered Jinja templates, vanilla CSS, vanilla JavaScript
-- Charts: Bundled Chart.js
-- Production server: Waitress
-- AI integration: Gemini API over HTTPS through `requests`
-- CI: GitHub Actions with Python checks and a MySQL schema smoke test
-
-## Setup
-
-### 1. Start MySQL
-
-Start MySQL from XAMPP or another local MySQL/MariaDB installation.
-
-The default configuration expects:
-
-```text
-Host: localhost
-Port: 3306
-User: root
-Password: empty
-Database: heaven_and_angel_scents
-```
-
-### 2. Create the Database
-
-Import `schema.sql` through phpMyAdmin, or run:
-
-```bash
-mysql -u root -p < schema.sql
-```
-
-The schema creates the core tables and starter branches:
-
-- HQ Main Warehouse
-- Manila Branch
-- Cebu Branch
-
-### 3. Configure Environment Variables
-
-Copy `env.example` to `.env` and update values as needed:
-
-```bash
-copy env.example .env
-```
-
-Important variables:
-
-```text
-SECRET_KEY=change-this-to-a-random-string
-APP_ENV=development
-FLASK_DEBUG=0
-
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=
-MYSQL_DB=heaven_and_angel_scents
-
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
-```
-
-Leave `GEMINI_API_KEY` blank if the AI assistant should remain disabled.
-
-### 4. Install Python Dependencies
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 5. Create Starter Accounts
-
-Run:
-
-```bash
-python seed.py
-```
-
-Starter accounts:
-
-| Username | Password | Role | Branch |
+| Report | Admin | Branch | Time window |
 | --- | --- | --- | --- |
-| admin | admin123 | Admin | HQ |
-| manila | branch123 | Branch | Manila Branch |
-| cebu | branch123 | Branch | Cebu Branch |
+| Product Catalog | Yes | No | No |
+| HQ Production | Yes | No | Yes |
+| Branch Stock / My Inventory | Yes | Yes | No |
+| Stock Requests | Yes | Yes | Yes |
+| Movement Ledger | Yes | Yes | Yes |
+| Sales History | Yes | Yes | Yes |
+| User Accounts | Yes | No | No |
 
-Change these credentials before using the system outside local development.
+Reports download as PDF or Excel (`.xlsx`). Filters can include recent 20, 50, 100, or 200 rows; date range or all-time selection; branch; request status; movement type; product variant; text search; active/discontinued status; low-stock-only inventory; and account role/status.
 
-### 6. Run Locally
+Results are capped at 1,000 rows and reports identify when they are capped. Branch reports always use the signed-in user's branch ID on the server, so a query-string branch override cannot expose another branch. PDF output uses bundled DejaVu fonts for Philippine peso values; Excel output preserves numeric/date values and includes filtering and frozen headers.
 
-```bash
-python app.py
-```
+## Goods-Received Receipts
 
-Open:
+`receipts.py` generates fulfilled-request goods-received PDFs in memory. Receipts include request, dispatch, and receipt details; requested, dispatched, received, damaged, and unaccounted quantities; and available request and movement-ledger information.
+
+Admin users can access any fulfilled request. Branch users can access only fulfilled requests belonging to their branch.
+
+## AI Assistant
+
+The read-only assistant is available at `/ai/` and `/ai/chat` and uses Gemini through `requests`.
+
+- Admin snapshots contain summary data across retail branches.
+- Branch snapshots contain only that branch's inventory, open requests, today's sales, and recent sales.
+- A fresh role-scoped snapshot is built for every request.
+- The model receives no SQL access, database credentials, or tool-calling capability.
+- It cannot record sales, dispatch stock, change prices, create accounts, or edit application data.
+- Messages are limited to 1,000 characters; only the latest ten supplied history turns are used.
+- Requests are rate-limited per signed-in user.
+- Without `GEMINI_API_KEY`, the endpoint returns a configuration message instead of calling Gemini.
+
+Generated answers are model output and should be checked against the relevant application page when an operational decision depends on them.
+
+## Realtime Updates
+
+Flask-SocketIO sends authenticated browser notifications. Admin tabs join the `admin` room; Branch tabs join `branch:<branch_id>`.
+
+Write operations publish small `data_changed` messages containing scope names such as `requests`, `inventory`, `production`, `sales`, `movement_logs`, `products`, `branches`, or `users`. The payload contains no business data. The frontend uses the scope to refresh affected page content or task-count badges. Unauthenticated connections are rejected, and branch notifications are limited to the session's branch room.
+
+## Data Model
+
+The core schema is defined in `schema.sql`.
+
+| Table | Purpose |
+| --- | --- |
+| `branches` | HQ and retail branch identity, location, and HQ flag. |
+| `users` | Username, password hash, role, branch assignment, active status, and forced-password flag. |
+| `products` | SKU, item name, variant, HQ price, and active status. |
+| `branch_inventory` | One row per branch/SKU with stock, reorder threshold, and optional price override. |
+| `production_logs` | HQ production quantity, optional batch code, and timestamp. |
+| `stock_requests` | Requested, dispatched, received, and damaged quantities plus request status. |
+| `sales` | Branch, SKU, quantity sold, sale-time unit price, and timestamp. |
+| `stock_movement_logs` | Production, dispatch, receipt, sale, adjustment, and damage entries with actor, references, and stock levels. |
+| `admin_actions` | Administrative audit entries created at application startup by `audit.py`. |
+
+Stock request statuses are `Pending`, `In Transit`, `Fulfilled`, and `Rejected`. Stock movement types are `PRODUCTION`, `DISPATCH`, `RECEIPT`, `SALE`, `ADJUSTMENT`, and `DAMAGE`.
+
+Production `batch_code` is stored for traceability in `production_logs`. The current sales flow does not associate sales with batches and does not implement FIFO batch allocation.
+
+## Configuration Reference
+
+Configuration is loaded from environment variables by `config.py`. Development defaults and production behavior are intentionally different: production requires an explicit `SECRET_KEY`, uses secure session cookies, and enables HTTPS/HSTS behavior.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_ENV` | `development` | Selects development or production configuration. |
+| `FLASK_DEBUG` | `0` | Enables Flask debug mode only when set to `1`. |
+| `SECRET_KEY` | Development fallback | Flask session signing key; required in production. |
+| `MYSQL_HOST` | `localhost` | MySQL/MariaDB host. |
+| `MYSQL_PORT` | `3306` | Database port. |
+| `MYSQL_USER` | `root` | Database user. |
+| `MYSQL_PASSWORD` | Empty | Database password. |
+| `MYSQL_DB` | `heaven_and_angel_scents` | Database name. |
+| `GEMINI_API_KEY` | Empty | Enables Gemini requests for the AI assistant. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name. |
+| `AI_CHAT_RATE_LIMIT` | `15 per minute;150 per day` | Per-user AI chat limit. |
+| `RATELIMIT_STORAGE_URI` | Flask-Limiter default | Optional limiter storage backend setting. |
+| `SOCKETIO_CORS_ALLOWED_ORIGINS` | Extension default | Optional Socket.IO CORS setting. |
+
+## Security And Integrity
+
+- Admin and Branch decorators enforce authentication and role checks.
+- Branch queries are scoped from `session["branch_id"]` in the backend.
+- SQL uses parameterized database helpers.
+- State-changing form operations use Flask-WTF CSRF protection. Logout is a GET endpoint that clears the session.
+- Passwords are hashed and are not stored in plaintext.
+- Inventory-changing workflows use transactions and row locks to prevent concurrent over-dispatch or overselling.
+- Movement records retain the actor, reference, and before/after stock levels where applicable.
+- Talisman provides security headers, clickjacking protection, MIME-sniffing protection, and production HTTPS/HSTS behavior.
+- Session cookies are HTTP-only and use `SameSite=Lax`; production cookies are marked secure.
+- The AI assistant receives a prepared, role-scoped snapshot rather than database access.
+
+## Architecture
 
 ```text
-http://localhost:5000
+app.py                 Application factory, extensions, security headers, errors
+config.py              Environment-backed configuration
+db.py                  MySQL connection, query, execute, and transaction helpers
+decorators.py          Authentication and role enforcement
+audit.py               Administrative audit table and action logging
+receipts.py            Goods-received PDF generation
+reports.py             Report filters, queries, PDF, and Excel rendering
+sockets.py             Authenticated Socket.IO rooms and update notifications
+utils.py               Input validation and temporary password generation
+routes/auth.py         Login, logout, and password changes
+routes/admin.py        HQ/Admin workflows and endpoints
+routes/branch.py       Branch workflows and endpoints
+routes/ai.py           Role-scoped read-only Gemini assistant
+templates/             Jinja pages and shared layout
+static/                CSS, frontend behavior, and bundled Chart.js
+schema.sql             Core MySQL/MariaDB schema and starter branches
+seed.py                Starter account/data seeding utility
+wsgi.py                WSGI entry point for server integration
+requirements.txt       Python runtime dependencies
 ```
 
-## Production Run
+The application starts through `create_app()` in `app.py`. Database connections are opened per request and closed through the Flask application context. `admin_actions` is ensured dynamically by `audit.py`; it is not defined in the current `schema.sql` file.
 
-Use a strong `SECRET_KEY`, set `APP_ENV=production`, and run behind HTTPS:
+## Current Scope And Limitations
 
-```powershell
-$env:APP_ENV = "production"
-$env:SECRET_KEY = "replace-with-a-long-random-secret"
-waitress-serve --listen=*:8000 wsgi:app
-```
+The system covers the production-to-sale inventory lifecycle, branch transfers, sales history, operational reporting, receipts, realtime refresh notifications, and read-only assistance. It does not currently provide:
 
-Production mode disables debug mode, enables secure session cookies, and refuses to start without `SECRET_KEY`.
+- Supplier purchase orders or procurement workflows.
+- Barcode scanning.
+- Refunds, returns, or sale reversals.
+- Customer profiles or customer relationship management.
+- Payment processing.
+- Multi-currency accounting.
+- Batch-linked sales or FIFO deduction.
+- Automated deployment orchestration.
 
-## Continuous Integration
-
-The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
-
-The CI pipeline runs on pushes to `main` or `master` and on pull requests. It installs Python dependencies, compiles the Python files, validates the Flask app factory, starts a MySQL service, loads `schema.sql`, and smoke-tests a database query.
-
-## Database Notes
-
-`schema.sql` is the complete database setup script for the current system. It includes the core tables, starter branches, branch price overrides, password-change enforcement, audit metadata columns, and reporting indexes.
-
-Existing branch inventory rows with `branch_price = NULL` automatically fall back to the HQ product price.
-
-## Security Model
-
-- Passwords are hashed with Werkzeug and are not stored in plain text.
-- State-changing routes use POST and are protected by Flask-WTF CSRF.
-- Admin and Branch areas are protected by role-based decorators.
-- Branch routes use `session["branch_id"]` to scope data access.
-- SQL is parameterized through shared query and execute helpers.
-- The AI assistant receives only a prepared JSON snapshot and cannot write to the database.
-
-## Project Structure
-
-```text
-.
-|-- .github/
-|   `-- workflows/
-|       `-- ci.yml
-|-- app.py
-|-- wsgi.py
-|-- config.py
-|-- db.py
-|-- decorators.py
-|-- schema.sql
-|-- seed.py
-|-- requirements.txt
-|-- env.example
-|-- routes/
-|   |-- auth.py
-|   |-- admin.py
-|   |-- branch.py
-|   `-- ai.py
-|-- static/
-|   |-- css/
-|   |   `-- style.css
-|   `-- js/
-|       |-- main.js
-|       `-- chart.umd.min.js
-`-- templates/
-    |-- base.html
-    |-- login.html
-    |-- change_password.html
-    |-- _macros.html
-    |-- errors/
-    |-- admin/
-    |-- branch/
-    `-- ai/
-```
-
-## Known Operational Scope
-
-The system currently supports the main inventory and sales workflow from production through reporting. It does not yet include purchase orders to suppliers, barcode scanning, refunds, customer records, payment processing, multi-currency accounting, or automated deployment scripts.
+The repository does not include automated end-to-end tests for the complete production-to-sale workflow.

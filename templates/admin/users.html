@@ -27,11 +27,11 @@
           <tbody>
             {% for a in accounts %}
             <tr data-search="{{ (a.username ~ ' ' ~ a.role ~ ' ' ~ (a.branch_name or ''))|lower }}" data-role="{{ a.role }}">
-              <td class="item-name">{{ a.username }}</td>
-              <td><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
-              <td class="text-soft">{{ a.branch_name or '— HQ —' }}</td>
-              <td><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
-              <td>
+              <td class="item-name" data-label="Username">{{ a.username }}</td>
+              <td data-label="Role"><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
+              <td class="text-soft" data-label="Branch">{{ a.branch_name or '— HQ —' }}</td>
+              <td data-label="Status"><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
+              <td data-label="">
                 <div class="inline-form">
                   <form method="POST" action="{{ url_for('admin.reset_user_password', user_id=a.user_id) }}"
                         onsubmit="return confirm('Reset this account\'s password? A new temporary password will be generated and shown once.');">
@@ -95,4 +95,54 @@
     </form>
   </div>
 </div>
+
+{% if temp_password_reveal %}
+<div id="tempPasswordOverlay" style="position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); display:flex; align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Password reset</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      New temporary password for <strong>{{ temp_password_reveal.username }}</strong>. Copy it now — it won't be shown again.
+    </p>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px;">
+      <code id="tempPasswordValue" style="flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); font-size:14px; word-break:break-all;">{{ temp_password_reveal.password }}</code>
+      <button type="button" class="btn btn-ghost btn-sm" id="tempPasswordCopyBtn">Copy</button>
+    </div>
+    <button type="button" class="btn btn-accent" style="width:100%;" id="tempPasswordCloseBtn">Done</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if temp_password_reveal %}
+<script>
+  (function () {
+    var overlay = document.getElementById('tempPasswordOverlay');
+    var copyBtn = document.getElementById('tempPasswordCopyBtn');
+    var closeBtn = document.getElementById('tempPasswordCloseBtn');
+    var valueEl = document.getElementById('tempPasswordValue');
+
+    copyBtn.addEventListener('click', function () {
+      var text = valueEl.textContent;
+      var done = function () {
+        copyBtn.textContent = 'Copied';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {});
+      } else {
+        var range = document.createRange();
+        range.selectNode(valueEl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+        done();
+      }
+    });
+
+    closeBtn.addEventListener('click', function () { overlay.remove(); });
+  })();
+</script>
+{% endif %}
 {% endblock %}

@@ -5,23 +5,35 @@
 {% block heading %}Good to see you, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="grid grid-4 stack">
+<div class="bento-grid stack">
   <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+    </div>
     <div class="stat-label">Active SKUs</div>
     <div class="stat-value">{{ stats.sku_count }}</div>
     <div class="stat-foot">across the catalog</div>
   </div>
   <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+    </div>
     <div class="stat-label">Branches</div>
     <div class="stat-value">{{ stats.branch_count }}</div>
     <div class="stat-foot">receiving from HQ</div>
   </div>
   <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if stats.pending_requests else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+    </div>
     <div class="stat-label">Pending Requests</div>
     <div class="stat-value accent">{{ stats.pending_requests }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.requests_list') }}" class="text-soft">review queue →</a></div>
   </div>
   <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if stats.low_stock_count else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
     <div class="stat-label">Low Stock Alerts</div>
     <div class="stat-value {{ 'danger' if stats.low_stock_count else '' }}">{{ stats.low_stock_count }}</div>
     <div class="stat-foot">branch SKUs below threshold</div>
@@ -41,9 +53,9 @@
         <tbody>
           {% for row in low_stock %}
           <tr>
-            <td>{{ row.branch_name }}</td>
-            <td><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
-            <td class="num" style="min-width:150px;">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+            <td data-label="Branch">{{ row.branch_name }}</td>
+            <td data-label="Item"><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
+            <td class="num" style="min-width:150px;" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -66,10 +78,10 @@
         <tbody>
           {% for r in recent_requests %}
           <tr>
-            <td>{{ r.branch_name }}</td>
-            <td>{{ r.item_name }}</td>
-            <td class="num mono">{{ r.requested_qty }}</td>
-            <td>{{ m.status_badge(r.status) }}</td>
+            <td data-label="Branch">{{ r.branch_name }}</td>
+            <td data-label="Item">{{ r.item_name }}</td>
+            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -79,6 +91,32 @@
     <div class="empty-state"><div class="glyph">—</div><p>No requests have been submitted yet.</p></div>
     {% endif %}
   </div>
+</div>
+
+<div class="card stack">
+  <div class="card-header">
+    <h2>Top sellers</h2>
+    <span class="hint">all-time · by units sold</span>
+  </div>
+  {% if top_sellers %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:36px;"></th><th>Item</th><th class="num">Units sold</th><th class="num">Revenue</th></tr></thead>
+      <tbody>
+        {% for p in top_sellers %}
+        <tr>
+          <td class="mono text-faint" data-label="Rank">#{{ loop.index }}</td>
+          <td data-label="Item"><div class="item-name-row"><span class="item-name">{{ p.item_name }}</span>{{ m.variant_tag(p.variant) }}</div></td>
+          <td class="num mono" data-label="Units sold">{{ p.total_units }}</td>
+          <td class="num mono" data-label="Revenue">{{ p.total_revenue|peso }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet.</p></div>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -93,11 +131,11 @@
       <tbody>
         {% for a in recent_activity %}
         <tr>
-          <td class="mono text-soft">{{ a.created_at.strftime('%b %d, %I:%M %p') }}</td>
-          <td>{{ a.branch_name }}</td>
-          <td>{{ a.item_name }}</td>
-          <td>{{ m.movement_badge(a.movement_type) }}</td>
-          <td class="num mono {{ 'qty-up' if a.change_qty > 0 else ('qty-down' if a.change_qty < 0 else 'qty-flat') }}">{{ '%+d'|format(a.change_qty) }}</td>
+          <td class="mono text-soft" data-label="When">{{ a.created_at.strftime('%b %d, %I:%M %p') }}</td>
+          <td data-label="Branch">{{ a.branch_name }}</td>
+          <td data-label="Item">{{ a.item_name }}</td>
+          <td data-label="Type">{{ m.movement_badge(a.movement_type) }}</td>
+          <td class="num mono {{ 'qty-up' if a.change_qty > 0 else ('qty-down' if a.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(a.change_qty) }}</td>
         </tr>
         {% endfor %}
       </tbody>

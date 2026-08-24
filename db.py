@@ -55,6 +55,7 @@ def execute(sql, params=None, commit=True):
 def transaction():
     """Group several writes into one atomic unit on the request's connection.
 
+
     Usage:
         with transaction() as conn:
             cur = conn.cursor(dictionary=True)

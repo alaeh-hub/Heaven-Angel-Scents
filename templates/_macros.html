@@ -17,6 +17,10 @@
 <span class="badge badge-{{ variant|lower }}">{{ variant }}</span>
 {% endmacro %}
 
+{% macro variant_tag(variant) %}
+<span class="tag-dot tag-{{ variant|lower }}">{{ variant }}</span>
+{% endmacro %}
+
 {% macro movement_badge(mtype) %}
 {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
 <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>

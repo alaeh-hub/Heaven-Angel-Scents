@@ -1,13 +1,49 @@
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+import datetime
+
+from flask import (
+    Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
+    request, send_file, session, url_for,
+)
 from werkzeug.security import generate_password_hash
 
 from db import execute, query, transaction
 from decorators import admin_required
+from receipts import build_receipt_pdf
+from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from sockets import notify_admin, notify_admin_and_branch, notify_all
 from utils import ValidationError, generate_temp_password, parse_non_negative_decimal, parse_positive_int
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 HQ_BRANCH_ID = 1
+
+# Bucket-size options for the "Ledger movement" trend chart on the
+# Reports page (see reports_data() below). Every `trunc` expression is
+# wrapped so it evaluates to an actual DATE, not a formatted string —
+# DATE_FORMAT() on its own returns text, and wrapping it back in DATE()
+# keeps all four options returning the same Python type (datetime.date)
+# so reports_data() can call .isoformat() on the result the same way
+# regardless of which option was picked, with no extra branching.
+_TREND_GRANULARITIES = {
+    "daily": {
+        "trunc": "DATE(created_at)",
+        "window": "INTERVAL 14 DAY",
+    },
+    "weekly": {
+        # WEEKDAY() is 0 for Monday, so this rounds each timestamp back
+        # to the Monday that starts its week.
+        "trunc": "DATE(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY))",
+        "window": "INTERVAL 12 WEEK",
+    },
+    "monthly": {
+        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-%m-01'))",
+        "window": "INTERVAL 12 MONTH",
+    },
+    "yearly": {
+        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-01-01'))",
+        "window": "INTERVAL 5 YEAR",
+    },
+}
 
 
 # ---------------------------------------------------------------- dashboard
@@ -53,10 +89,23 @@ def dashboard():
            ORDER BY sml.created_at DESC LIMIT 8"""
     )
 
+    # All-time, across every branch — qty_sold/unit_price on `sales`
+    # already carries everything this needs, no extra table required.
+    top_sellers = query(
+        """SELECT p.sku, p.item_name, p.variant,
+                  SUM(s.qty_sold) AS total_units,
+                  SUM(s.qty_sold * s.unit_price) AS total_revenue
+           FROM sales s
+           JOIN products p ON p.sku = s.sku
+           GROUP BY p.sku, p.item_name, p.variant
+           ORDER BY total_units DESC LIMIT 3"""
+    )
+
     return render_template(
         "admin/dashboard.html",
         stats=stats, low_stock=low_stock,
         recent_requests=recent_requests, recent_activity=recent_activity,
+        top_sellers=top_sellers,
     )
 
 
@@ -99,6 +148,7 @@ def products():
                             (branch_id, sku),
                         )
                     cur.close()
+                notify_all(["products", "inventory"])
                 flash(f"{item_name} ({sku}) added to the catalog.", "success")
             except Exception:
                 flash(f"SKU '{sku}' already exists.", "error")
@@ -117,6 +167,7 @@ def products():
 @admin_required
 def toggle_product(sku):
     execute("UPDATE products SET is_active = NOT is_active WHERE sku = %s", (sku,))
+    notify_all("products")
     flash("Product status updated.", "success")
     return redirect(url_for("admin.products"))
 
@@ -163,6 +214,7 @@ def production():
                      session.get("user_id"), before_qty, after_qty),
                 )
                 cur.close()
+            notify_admin(["production", "inventory", "movement_logs"])
             flash(f"Logged {qty} units produced and added to HQ warehouse stock.", "success")
         except Exception:
             current_app.logger.exception("production logging failed for sku=%s", sku)
@@ -209,6 +261,7 @@ def branches():
                             (new_branch_id, sku),
                         )
                     cur.close()
+                notify_admin("branches")
                 flash(f"{name} added.", "success")
             except Exception:
                 flash("A branch with that name already exists.", "error")
@@ -271,6 +324,7 @@ def update_branch_price():
             "UPDATE branch_inventory SET branch_price = NULL WHERE branch_id = %s AND sku = %s",
             (branch_id, sku),
         )
+        notify_admin_and_branch(branch_id, "inventory")
         flash("Branch price cleared — this branch now uses the HQ price.", "success")
     else:
         try:
@@ -283,6 +337,7 @@ def update_branch_price():
             "UPDATE branch_inventory SET branch_price = %s WHERE branch_id = %s AND sku = %s",
             (new_price, branch_id, sku),
         )
+        notify_admin_and_branch(branch_id, "inventory")
         flash("Branch price updated.", "success")
 
     return redirect(url_for("admin.branch_stock", branch_id=branch_id))
@@ -298,10 +353,26 @@ def users():
         role = request.form.get("role")
         branch_id = request.form.get("branch_id") or None
 
+        # For a Branch account, branch_id must be both present AND
+        # actually point at a real, non-HQ branch. Without the second
+        # check, a hand-crafted POST (bypassing the dropdown, which only
+        # ever lists non-HQ branches) could set branch_id=1 — HQ's own
+        # branch row — and create a "Branch" account that sees and can
+        # sell against the HQ warehouse through the ordinary branch UI,
+        # which every branch-side query trusts blindly via session.
+        valid_branch = None
+        if role == "Branch" and branch_id:
+            valid_branch = query(
+                "SELECT branch_id FROM branches WHERE branch_id = %s AND is_hq = FALSE",
+                (branch_id,), fetchone=True,
+            )
+
         if role not in ("Admin", "Branch"):
             flash("Select a valid role.", "error")
         elif role == "Branch" and not branch_id:
             flash("Select a branch for this Branch account.", "error")
+        elif role == "Branch" and not valid_branch:
+            flash("Select a valid branch.", "error")
         elif not username or len(password) < 8:
             flash("Username is required and password must be at least 8 characters.", "error")
         else:
@@ -311,6 +382,7 @@ def users():
                        VALUES (%s, %s, %s, %s, TRUE)""",
                     (username, generate_password_hash(password), role, branch_id if role == "Branch" else None),
                 )
+                notify_admin("users")
                 flash(f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
             except Exception:
                 flash(f"Username '{username}' is already taken.", "error")
@@ -322,7 +394,15 @@ def users():
            ORDER BY u.role, b.branch_name"""
     )
     branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
-    return render_template("admin/users.html", accounts=accounts, branch_list=branch_list)
+    # pop(), not get() — this must only ever be readable once. If it's
+    # left in the session, refreshing this page (or hitting back/forward)
+    # would keep re-showing a temporary password that may already have
+    # been handed to the staff member and could be stale or reused.
+    temp_password_reveal = session.pop("temp_password_reveal", None)
+    return render_template(
+        "admin/users.html", accounts=accounts, branch_list=branch_list,
+        temp_password_reveal=temp_password_reveal,
+    )
 
 
 @bp.route("/users/<int:user_id>/toggle", methods=["POST"])
@@ -332,6 +412,7 @@ def toggle_user(user_id):
         flash("You can't deactivate your own account.", "error")
     else:
         execute("UPDATE users SET is_active = NOT is_active WHERE user_id = %s", (user_id,))
+        notify_admin("users")
         flash("Account status updated.", "success")
     return redirect(url_for("admin.users"))
 
@@ -349,9 +430,17 @@ def reset_user_password(user_id):
         "UPDATE users SET password_hash = %s, must_change_password = TRUE WHERE user_id = %s",
         (generate_password_hash(temp_password), user_id),
     )
+    # Hand the plaintext password to the one-shot reveal modal in
+    # users.html rather than putting it in a flash message. Flash
+    # messages render as plain banner text mixed in with every other
+    # message on the page — this way it only ever appears once, inside
+    # the dedicated modal that already exists for it (copy button,
+    # "won't be shown again" framing), and users() pops it from the
+    # session immediately after reading it so a page refresh or back
+    # button can't bring it back.
+    session["temp_password_reveal"] = {"username": target["username"], "password": temp_password}
     flash(
-        f"Password for '{target['username']}' reset to: {temp_password} — "
-        "share it with them securely, it won't be shown again. "
+        f"Password for '{target['username']}' has been reset. "
         "They'll be asked to set a new password the next time they sign in.",
         "success",
     )
@@ -433,6 +522,7 @@ def dispatch_request(request_id):
                  session.get("user_id"), request_id, before_qty, after_qty),
             )
             cur.close()
+        notify_admin_and_branch(req["branch_id"], ["requests", "inventory", "movement_logs"])
         flash(f"Dispatched {qty_to_dispatch} units — now in transit to the branch.", "success")
     except Exception:
         current_app.logger.exception("dispatch_request failed for request_id=%s", request_id)
@@ -440,13 +530,32 @@ def dispatch_request(request_id):
     return redirect(url_for("admin.requests_list"))
 
 
+@bp.route("/requests/<int:request_id>/receipt")
+@admin_required
+def request_receipt(request_id):
+    """Downloadable PDF for any branch's Fulfilled request — see receipts.py.
+
+    No branch_id scoping here since HQ Admin can see every branch.
+    """
+    pdf_buffer, req = build_receipt_pdf(request_id)
+    if pdf_buffer is None:
+        abort(404)
+    return send_file(
+        pdf_buffer, mimetype="application/pdf",
+        as_attachment=True, download_name=f"GR-{request_id:06d}.pdf",
+    )
+
+
 @bp.route("/requests/<int:request_id>/reject", methods=["POST"])
 @admin_required
 def reject_request(request_id):
+    req = query("SELECT branch_id FROM stock_requests WHERE request_id = %s", (request_id,), fetchone=True)
     execute(
         "UPDATE stock_requests SET status = 'Rejected' WHERE request_id = %s AND status = 'Pending'",
         (request_id,),
     )
+    if req:
+        notify_admin_and_branch(req["branch_id"], "requests")
     flash("Request rejected.", "success")
     return redirect(url_for("admin.requests_list"))
 
@@ -474,7 +583,42 @@ def movement_logs():
 @bp.route("/reports")
 @admin_required
 def reports():
-    return render_template("admin/reports.html")
+    branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+    report_types = [
+        {"key": key, "label": meta["label"], "windowed": meta["windowed"]}
+        for key, meta in REPORT_TYPES.items() if meta["admin"]
+    ]
+    return render_template("admin/reports.html", branch_list=branch_list, report_types=report_types)
+
+
+@bp.route("/reports/generate")
+@admin_required
+def generate_report():
+    """Download a filtered report as PDF or Excel — see reports.py.
+
+    Any admin can pull any branch's data here (or "all branches"), same
+    as every other admin page; there's no branch scoping to apply.
+    """
+    report_type = request.args.get("type", "")
+    fmt = request.args.get("format", "pdf")
+    meta = REPORT_TYPES.get(report_type)
+    if meta is None or not meta["admin"] or fmt not in ("pdf", "xlsx"):
+        abort(404)
+
+    filters = parse_report_filters(request.args)
+    report = get_report(report_type, filters, branch_scope=None, actor_label=f"HQ Admin — {session.get('username')}")
+
+    stamp = datetime.date.today().isoformat()
+    if fmt == "xlsx":
+        buf = render_report_excel(report)
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        buf = render_report_pdf(report)
+        mimetype = "application/pdf"
+    return send_file(
+        buf, mimetype=mimetype, as_attachment=True,
+        download_name=f"{report_type}-{stamp}.{fmt}",
+    )
 
 
 @bp.route("/api/reports-data")
@@ -512,11 +656,22 @@ def reports_data():
            GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
+    # Bucket size for the "Ledger movement" trend chart. Same allow-list
+    # pattern reports.py uses elsewhere: the value picked here is never
+    # user text going into SQL, it's a key into a fixed dict, and only
+    # the fixed SQL fragment that key maps to gets interpolated — so
+    # this stays just as injection-safe as a plain %s placeholder would,
+    # while letting the WHERE/GROUP BY expressions differ per option
+    # (parameterizing a GROUP BY expression itself isn't possible with
+    # a plain %s placeholder).
+    granularity = request.args.get("granularity", "daily")
+    trend_bucket = _TREND_GRANULARITIES.get(granularity, _TREND_GRANULARITIES["daily"])
+
     movement_trend = query(
-        """SELECT DATE(created_at) AS day, movement_type, SUM(ABS(change_qty)) AS total
-           FROM stock_movement_logs
-           WHERE created_at >= NOW() - INTERVAL 14 DAY
-           GROUP BY DATE(created_at), movement_type ORDER BY day"""
+        f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
+            FROM stock_movement_logs
+            WHERE created_at >= NOW() - {trend_bucket['window']}
+            GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day"""
     )
     stock_by_branch = query(
         """SELECT b.branch_name, SUM(bi.stock_qty) AS total_stock

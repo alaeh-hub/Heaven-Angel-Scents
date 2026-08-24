@@ -3,7 +3,159 @@
 {% block eyebrow %}Organization{% endblock %}
 {% block heading %}Reports{% endblock %}
 
+{% block head %}
+<style>
+  .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 16px; }
+  .rb-mode { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
+  .rb-mode-opt {
+    padding: 6px 13px; border: none; background: transparent; border-radius: 99px;
+    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); cursor: pointer;
+  }
+  .rb-mode-opt.active { background: var(--surface); border: 1px solid var(--border-strong); color: var(--accent-ink); }
+  .rb-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .rb-note { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="card card-pad mt-24" id="reportBuilder">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Generate a report</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Pick what to report on, narrow it down, then download as PDF or Excel. Reports are capped at 1,000 rows.
+  </p>
+
+  <form method="GET" action="{{ url_for('admin.generate_report') }}" id="reportForm">
+    <div class="field">
+      <label for="rb_type">Report</label>
+      <select id="rb_type" name="type">
+        {% for rt in report_types %}
+        <option value="{{ rt.key }}" data-windowed="{{ 'true' if rt.windowed else 'false' }}">{{ rt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="rb-grid">
+      <div class="field" data-filter="branch_id" style="display:none;">
+        <label for="rb_branch_id">Branch</label>
+        <select id="rb_branch_id" name="branch_id">
+          <option value="all">All branches</option>
+          {% for b in branch_list %}
+          <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" data-filter="status" style="display:none;">
+        <label for="rb_status">Status</label>
+        <select id="rb_status" name="status">
+          <option value="all">All statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="In Transit">In Transit</option>
+          <option value="Fulfilled">Fulfilled</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="field" data-filter="movement_type" style="display:none;">
+        <label for="rb_movement_type">Movement type</label>
+        <select id="rb_movement_type" name="movement_type">
+          <option value="all">All types</option>
+          <option value="PRODUCTION">Production</option>
+          <option value="DISPATCH">Dispatch</option>
+          <option value="RECEIPT">Receipt</option>
+          <option value="SALE">Sale</option>
+          <option value="ADJUSTMENT">Adjustment</option>
+          <option value="DAMAGE">Damage</option>
+        </select>
+      </div>
+      <div class="field" data-filter="variant" style="display:none;">
+        <label for="rb_variant">Variant</label>
+        <select id="rb_variant" name="variant">
+          <option value="all">All variants</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+      <div class="field" data-filter="active_status" style="display:none;">
+        <label for="rb_active_status">Catalog status</label>
+        <select id="rb_active_status" name="active_status">
+          <option value="all">Active &amp; discontinued</option>
+          <option value="active">Active only</option>
+          <option value="discontinued">Discontinued only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="role" style="display:none;">
+        <label for="rb_role">Role</label>
+        <select id="rb_role" name="role">
+          <option value="all">All roles</option>
+          <option value="Admin">Admin</option>
+          <option value="Branch">Branch</option>
+        </select>
+      </div>
+      <div class="field" data-filter="account_status" style="display:none;">
+        <label for="rb_account_status">Account status</label>
+        <select id="rb_account_status" name="account_status">
+          <option value="all">Active &amp; deactivated</option>
+          <option value="active">Active only</option>
+          <option value="inactive">Deactivated only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="low_stock_only" style="display:none;">
+        <label for="rb_low_stock_only">Stock level</label>
+        <select id="rb_low_stock_only" name="low_stock_only">
+          <option value="">All stock levels</option>
+          <option value="1">Low stock only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="search" style="display:none;">
+        <label for="rb_search" id="rb_search_label">Search item / SKU</label>
+        <input type="text" id="rb_search" name="search" placeholder="e.g. Golden Hour or HAS-001">
+      </div>
+    </div>
+
+    <div class="field" data-filter="window" style="display:none;">
+      <label>Time window</label>
+      <div class="rb-mode" id="rb_mode_switch">
+        <button type="button" class="rb-mode-opt active" data-mode="recent">Recent</button>
+        <button type="button" class="rb-mode-opt" data-mode="range">Date range</button>
+        <button type="button" class="rb-mode-opt" data-mode="all">All time</button>
+      </div>
+      <input type="hidden" name="mode" id="rb_mode" value="recent">
+
+      <div class="rb-grid" style="margin-top: 12px;">
+        <div class="field" data-mode-field="recent">
+          <label for="rb_recent_n">Show last</label>
+          <select id="rb_recent_n" name="recent_n">
+            <option value="20">20 entries</option>
+            <option value="50">50 entries</option>
+            <option value="100">100 entries</option>
+            <option value="200">200 entries</option>
+          </select>
+        </div>
+        <div class="field" data-mode-field="range" style="display:none;">
+          <label for="rb_date_from">From</label>
+          <input type="date" id="rb_date_from" name="date_from">
+        </div>
+        <div class="field" data-mode-field="range" style="display:none;">
+          <label for="rb_date_to">To</label>
+          <input type="date" id="rb_date_to" name="date_to">
+        </div>
+      </div>
+      <div class="rb-note" data-mode-field="all" style="display:none;">
+        Pulls everything, capped at the most recent 1,000 rows.
+      </div>
+    </div>
+
+    <div class="rb-actions">
+      <button type="submit" name="format" value="pdf" class="btn btn-accent" formtarget="_blank">
+        Download PDF
+      </button>
+      <button type="submit" name="format" value="xlsx" class="btn btn-ghost" formtarget="_blank">
+        Download Excel
+      </button>
+    </div>
+  </form>
+</div>
+
 <div class="grid grid-2 stack">
   <div class="card stat-tile">
     <div class="stat-label">Total units sold</div>
@@ -58,8 +210,17 @@
     <canvas id="stockChart"></canvas>
   </div>
   <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Ledger movement — last 14 days</h2>
+    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h2>Ledger movement</h2>
+        <span class="hint" id="trendWindowLabel">last 14 days</span>
+      </div>
+      <div class="rb-mode" id="trendGranularitySwitch">
+        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
+        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
+      </div>
     </div>
     <canvas id="trendChart"></canvas>
   </div>
@@ -69,7 +230,19 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
 <script>
-  const PALETTE = ['#A17A3A', '#6C5A72', '#4F7A5C', '#AE4B3B', '#A87A2A'];
+  const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
+  const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
+
+  // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
+  // for the "last N ___" label under the chart title, the actual
+  // bucketing/window logic lives server-side.
+  const TREND_WINDOW_LABELS = {
+    daily: 'last 14 days',
+    weekly: 'last 12 weeks',
+    monthly: 'last 12 months',
+    yearly: 'last 5 years',
+  };
+  let trendGranularity = 'daily';
 
   function formatPeso(value) {
     return '₱' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -94,70 +267,120 @@
     });
   }
 
-  if (typeof Chart === 'undefined') {
-    showChartError('Charts failed to load (chart.umd.min.js did not load).');
-  } else {
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = '#6E6A62';
-    Chart.defaults.borderColor = '#E7E3D9';
+  // Every chart instance built by loadReportsData() is kept here so the
+  // next call can destroy() them first — Chart.js throws if you attach a
+  // second chart to a canvas that's still holding one.
+  const charts = {};
 
-    fetch("{{ url_for('admin.reports_data') }}")
+  function destroyCharts() {
+    Object.keys(charts).forEach((key) => {
+      charts[key].destroy();
+      delete charts[key];
+    });
+  }
+
+  // Re-fetches reports_data and rebuilds every chart + the pricing table
+  // from scratch. Called on first load, and again any time the person
+  // could plausibly be looking at stale numbers: returning to this tab
+  // via the browser's back/forward cache (which restores the old DOM
+  // without re-running scripts), or switching back to this browser tab
+  // after being away.
+  function loadReportsData() {
+    if (typeof Chart === 'undefined') {
+      showChartError('Charts failed to load (chart.umd.min.js did not load).');
+      return;
+    }
+
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = '#5B6272';
+    Chart.defaults.borderColor = '#E5E8EF';
+
+    fetch("{{ url_for('admin.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
       .then(r => {
         if (!r.ok) throw new Error('Request failed: ' + r.status);
         return r.json();
       })
       .then(data => {
+        destroyCharts();
+
         document.getElementById('totalUnits').textContent = data.totals.units;
         document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
 
-        new Chart(document.getElementById('variantChart'), {
+        charts.variant = new Chart(document.getElementById('variantChart'), {
           type: 'doughnut',
           data: {
             labels: data.by_variant.map(d => d.variant),
-            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: PALETTE, borderWidth: 0 }]
+            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || '#2E5AF0'), borderWidth: 0 }]
           },
           options: { plugins: { legend: { position: 'bottom' } } }
         });
 
-        new Chart(document.getElementById('branchSalesChart'), {
-          type: 'bar',
+        charts.branchSales = new Chart(document.getElementById('branchSalesChart'), {
+          type: 'line',
           data: {
             labels: data.by_branch.map(d => d.branch_name),
-            datasets: [{ label: 'Units sold', data: data.by_branch.map(d => d.units_sold), backgroundColor: '#A17A3A', borderRadius: 4 }]
+            datasets: [{
+              label: 'Units sold',
+              data: data.by_branch.map(d => d.units_sold),
+              borderColor: '#2E5AF0',
+              backgroundColor: '#2E5AF0',
+              pointBackgroundColor: '#2E5AF0',
+              pointRadius: 4,
+              tension: 0.35,
+              fill: false,
+            }]
           },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#EFEBE1' } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
         });
 
-        new Chart(document.getElementById('branchRevenueChart'), {
+        charts.branchRevenue = new Chart(document.getElementById('branchRevenueChart'), {
           type: 'bar',
           data: {
             labels: data.by_branch.map(d => d.branch_name),
-            datasets: [{ label: 'Revenue', data: data.by_branch.map(d => d.revenue), backgroundColor: '#4F7A5C', borderRadius: 4 }]
+            datasets: [{ label: 'Revenue', data: data.by_branch.map(d => d.revenue), backgroundColor: '#17975E', borderRadius: 4 }]
           },
           options: {
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
             },
-            scales: { y: { beginAtZero: true, grid: { color: '#EFEBE1' } }, x: { grid: { display: false } } }
+            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
           }
         });
 
         const pricingBody = document.getElementById('branchPricingBody');
+        pricingBody.innerHTML = '';
         data.branch_pricing.forEach(row => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${row.branch_name}</td><td>${discountBadgeHtml(row.avg_discount_pct)}</td>`;
+
+          // branch_name is admin-entered, free-text data from the
+          // database — never trust it as HTML. textContent guarantees
+          // it's always rendered as plain text, no matter what
+          // characters it contains.
+          const nameTd = document.createElement('td');
+          nameTd.textContent = row.branch_name;
+
+          // discountBadgeHtml() only ever builds markup out of a
+          // formatted number (see its definition above), so it's safe
+          // to use innerHTML here — nothing user-entered flows into it.
+          const badgeTd = document.createElement('td');
+          badgeTd.innerHTML = discountBadgeHtml(row.avg_discount_pct);
+
+          tr.append(nameTd, badgeTd);
           pricingBody.appendChild(tr);
         });
 
-        new Chart(document.getElementById('stockChart'), {
+        charts.stock = new Chart(document.getElementById('stockChart'), {
           type: 'bar',
           data: {
             labels: data.stock_by_branch.map(d => d.branch_name),
-            datasets: [{ label: 'Units on hand', data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: '#6C5A72', borderRadius: 4 }]
+            datasets: [{ label: 'Units on hand', data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: '#7C5CFA', borderRadius: 4 }]
           },
-          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#EFEBE1' } }, y: { grid: { display: false } } } }
+          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#E5E8EF' } }, y: { grid: { display: false } } } }
         });
+
+        const trendLabelEl = document.getElementById('trendWindowLabel');
+        if (trendLabelEl) trendLabelEl.textContent = TREND_WINDOW_LABELS[trendGranularity] || '';
 
         const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
         const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
@@ -167,15 +390,13 @@
             const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
             return row ? row.total : 0;
           }),
-          borderColor: PALETTE[i % PALETTE.length],
           backgroundColor: PALETTE[i % PALETTE.length],
-          tension: 0.35,
-          fill: false,
+          borderRadius: 4,
         }));
-        new Chart(document.getElementById('trendChart'), {
-          type: 'line',
+        charts.trend = new Chart(document.getElementById('trendChart'), {
+          type: 'bar',
           data: { labels: days, datasets },
-          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: '#EFEBE1' } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
         });
       })
       .catch(err => {
@@ -183,5 +404,108 @@
         showChartError('Could not load report data. Please try again.');
       });
   }
+
+  loadReportsData();
+
+  // Granularity toggle for the Ledger movement chart. Re-fetches the
+  // whole reports_data() payload rather than just the trend series —
+  // that endpoint is already cheap and re-fetched wholesale on tab
+  // refocus and bfcache restore below, so reusing the same code path
+  // here keeps this in sync with the rest of the page instead of
+  // adding a second, narrower endpoint just for this one chart.
+  const trendSwitch = document.getElementById('trendGranularitySwitch');
+  if (trendSwitch) {
+    trendSwitch.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rb-mode-opt');
+      if (!btn || btn.classList.contains('active')) return;
+      trendGranularity = btn.dataset.granularity;
+      trendSwitch.querySelectorAll('.rb-mode-opt').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+      });
+      loadReportsData();
+    });
+  }
+
+  // Back/forward-cache restore: the browser can bring this exact page
+  // back from memory on Back/Forward navigation without re-running any
+  // of the script above, which would leave stale numbers on screen.
+  // event.persisted tells us that's what just happened.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) loadReportsData();
+  });
+
+  // Tab re-focus: if this tab was in the background (person checked
+  // something else) and comes back into view, refresh so whatever
+  // they're about to read reflects the latest data rather than
+  // whatever was current when they last looked away.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadReportsData();
+  });
+</script>
+<script>
+  // ---- Report builder: shows only the filters that apply to the
+  // selected report type, and only the time-window sub-fields that
+  // apply to the selected mode. Every field always exists in the DOM
+  // (with data-filter="..."); this only toggles display, so the
+  // browser's own GET form submission just skips hidden fields —
+  // nothing extra needed server-side to "ignore" them.
+  (function () {
+    const REPORT_FIELDS = {
+      product_catalog: ['active_status', 'variant', 'search'],
+      hq_production: ['search', 'window'],
+      branch_stock: ['branch_id', 'variant', 'low_stock_only', 'search'],
+      stock_requests: ['branch_id', 'status', 'search', 'window'],
+      movement_logs: ['branch_id', 'movement_type', 'search', 'window'],
+      sales_history: ['branch_id', 'variant', 'search', 'window'],
+      accounts: ['role', 'account_status', 'search'],
+    };
+
+    // "search" filters a different column depending on the report — the
+    // field/name stays the same (name="search"), only what it's labeled
+    // and hinted as changes, to match what reports.py actually searches.
+    const SEARCH_LABELS = {
+      accounts: { label: 'Search username', placeholder: 'e.g. manila' },
+      movement_logs: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+    };
+    const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
+
+    const searchLabelEl = document.getElementById('rb_search_label');
+    const searchInputEl = document.getElementById('rb_search');
+
+    const typeSelect = document.getElementById('rb_type');
+    const modeSwitch = document.getElementById('rb_mode_switch');
+    const modeInput = document.getElementById('rb_mode');
+
+    function applyReportType() {
+      const fields = REPORT_FIELDS[typeSelect.value] || [];
+      document.querySelectorAll('#reportForm [data-filter]').forEach((el) => {
+        el.style.display = fields.includes(el.dataset.filter) ? '' : 'none';
+      });
+      const searchCopy = SEARCH_LABELS[typeSelect.value] || DEFAULT_SEARCH_LABEL;
+      searchLabelEl.textContent = searchCopy.label;
+      searchInputEl.placeholder = searchCopy.placeholder;
+    }
+
+    function applyMode() {
+      const mode = modeInput.value;
+      document.querySelectorAll('#reportForm [data-mode-field]').forEach((el) => {
+        el.style.display = el.dataset.modeField === mode ? '' : 'none';
+      });
+      modeSwitch.querySelectorAll('.rb-mode-opt').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+    }
+
+    typeSelect.addEventListener('change', applyReportType);
+    modeSwitch.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rb-mode-opt');
+      if (!btn) return;
+      modeInput.value = btn.dataset.mode;
+      applyMode();
+    });
+
+    applyReportType();
+    applyMode();
+  })();
 </script>
 {% endblock %}

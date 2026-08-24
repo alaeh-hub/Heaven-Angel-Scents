@@ -39,12 +39,12 @@
         <tbody>
           {% for s in sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.variant)|lower }}" data-variant="{{ s.variant }}">
-            <td class="mono text-soft">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            <td>{{ s.item_name }}</td>
-            <td>{{ m.variant_badge(s.variant) }}</td>
-            <td class="num mono">{{ s.qty_sold }}</td>
-            <td class="num mono">{{ s.unit_price|peso }}</td>
-            <td class="num mono">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td class="mono text-soft" data-label="Date">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td data-label="Item">{{ s.item_name }}</td>
+            <td data-label="Variant">{{ m.variant_badge(s.variant) }}</td>
+            <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono" data-label="Unit price">{{ s.unit_price|peso }}</td>
+            <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
           </tr>
           {% endfor %}
         </tbody>

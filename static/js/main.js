@@ -1,4 +1,163 @@
+/**
+ * Keeps the sidebar's scroll position stable across full-page
+ * navigations. Every sidebar link is a normal <a href> (a real page
+ * load, not an SPA route), so the browser would otherwise repaint the
+ * sidebar at scrollTop 0 on every click — invisible on the short
+ * Branch sidebar, but a jarring reset on the longer Admin one.
+ *
+ * Runs immediately (not inside DOMContentLoaded) because this <script>
+ * tag sits at the end of <body>, after the sidebar markup — the
+ * element already exists, and restoring the scroll position before
+ * first paint avoids a visible flash of "scrolled to top, then jumps
+ * down". sessionStorage (not localStorage) so it's per-tab and clears
+ * itself when the tab closes, and scoped per-origin like everything
+ * else here.
+ */
+(function initSidebarScrollMemory() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+
+  const STORAGE_KEY = 'sidebarScrollTop';
+
+  const saved = sessionStorage.getItem(STORAGE_KEY);
+  if (saved !== null) {
+    sidebar.scrollTop = parseInt(saved, 10) || 0;
+  }
+
+  // Debounced save on scroll covers dragging the scrollbar, not just
+  // clicking a link.
+  let saveTimer = null;
+  sidebar.addEventListener('scroll', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      sessionStorage.setItem(STORAGE_KEY, String(sidebar.scrollTop));
+    }, 80);
+  });
+
+  // Belt-and-suspenders: capture the scroll position the instant a
+  // sidebar link is clicked, in case navigation fires before the
+  // debounce above has a chance to run.
+  sidebar.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('a')) {
+      sessionStorage.setItem(STORAGE_KEY, String(sidebar.scrollTop));
+    }
+  });
+})();
+
+/**
+ * Mobile hamburger drawer for the sidebar. Only relevant below the
+ * 760px breakpoint (see style.css) — the toggle button and backdrop
+ * are hidden entirely above that, so this just no-ops on desktop.
+ */
+function initMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const openBtn = document.getElementById('menuToggle');
+  const closeBtn = document.getElementById('sidebarClose');
+  if (!sidebar || !backdrop || !openBtn) return;
+
+  function openMenu() {
+    sidebar.classList.add('open');
+    backdrop.classList.add('open');
+    openBtn.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMenu() {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('open');
+    openBtn.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  openBtn.addEventListener('click', openMenu);
+  if (closeBtn) closeBtn.addEventListener('click', closeMenu);
+  backdrop.addEventListener('click', closeMenu);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+
+  // Tapping a nav link is about to navigate to a new page anyway, but
+  // closing immediately avoids a flash of the open drawer over the
+  // outgoing page while that navigation is in flight.
+  sidebar.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', closeMenu);
+  });
+
+  // If the window is resized past the mobile breakpoint while the
+  // drawer happens to be open, drop the "open" state so it doesn't
+  // reappear stuck-open if the viewport later narrows again without a
+  // fresh click.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 760) closeMenu();
+  });
+}
+
+/**
+ * Light/dark theme toggle. The initial theme is already set as early as
+ * possible by a small inline script in <head> (see base.html / login.html)
+ * so there's no flash of the wrong theme on load — this only handles the
+ * click itself: flip the attribute, persist it, and briefly enable the
+ * `.theme-transitioning` CSS rule (style.css) so every color on the page
+ * crossfades instead of snapping.
+ */
+function initThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+
+  const root = document.documentElement;
+
+  btn.addEventListener('click', () => {
+    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+
+    root.classList.add('theme-transitioning');
+    root.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch (e) {
+      // Private browsing / storage disabled — theme still applies for
+      // this page view, it just won't persist to the next one.
+    }
+
+    window.setTimeout(() => root.classList.remove('theme-transitioning'), 400);
+
+    if (window.Motion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.Motion.animate(
+        btn,
+        { transform: ['scale(1)', 'scale(1.15)', 'scale(1)'] },
+        { duration: 0.4, easing: [0.34, 1.56, 0.64, 1] }
+      );
+    }
+  });
+}
+
+/**
+ * A quiet entrance for whatever's in .content — cards, stat tiles, the
+ * report builder — so a page load (and a realtime softRefresh(), which
+ * calls this again after swapping .content's markup) feels considered
+ * rather than an instant hard cut. Skipped entirely if Motion failed to
+ * load or the person has asked for reduced motion; either way the
+ * content is already visible in normal CSS, so nothing is ever gated
+ * behind this running successfully.
+ */
+function revealContent() {
+  if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const items = document.querySelectorAll('.content > *');
+  if (!items.length) return;
+
+  window.Motion.animate(
+    items,
+    { opacity: [0, 1], transform: ['translateY(8px)', 'translateY(0px)'] },
+    { duration: 0.4, delay: window.Motion.stagger(0.05), easing: [0.16, 1, 0.3, 1] }
+  );
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initMobileSidebar();
+  initThemeToggle();
+  revealContent();
   // Set stock "fill" bar widths from their data-pct attribute. Done here
   // (rather than an inline style="width: {{ pct }}%") so template output
   // never contains raw Jinja inside a style="" attribute.
@@ -16,6 +175,27 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Confirm before status-changing actions that affect other users' access.
+  initToggleConfirmations();
+
+  initSmartTables();
+  initDispatchQtyWarnings();
+  initRealtime();
+});
+
+/**
+ * Wires the "are you sure?" confirm dialog onto every toggle-style form
+ * currently in the DOM (deactivate account, discontinue product, etc).
+ * Pulled out into its own function — rather than left inline in the
+ * DOMContentLoaded handler — because these forms live inside
+ * <div class="content">, and initRealtime()'s softRefresh() replaces
+ * that whole div with fresh markup whenever a relevant "data_changed"
+ * event arrives. Without re-running this after every soft refresh, a
+ * background update would silently strip the confirmation off buttons
+ * that deactivate a coworker's login or discontinue a live SKU — the
+ * next click would submit immediately, with no dialog and no visible
+ * sign anything changed.
+ */
+function initToggleConfirmations() {
   document.querySelectorAll('form[action*="/toggle"]').forEach((form) => {
     form.addEventListener('submit', (e) => {
       const btn = form.querySelector('button[type="submit"]');
@@ -23,23 +203,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!confirm(`${label}?`)) e.preventDefault();
     });
   });
-
-  initSmartTables();
-  initDispatchQtyWarnings();
-});
+}
 
 /**
- * Soft warning for the Dispatch quantity field on the Stock Requests
- * page. Doesn't block anything — HQ can still send more or less than
- * a branch asked for (rounding to a case size, bundling a future
- * request, partial fulfillment, etc.) — it just makes sure that's a
- * deliberate choice rather than a typo: the input gets a warning
- * outline while the value differs from what was requested, and
- * submitting with a mismatch asks for one confirmation naming both
- * numbers before the form actually posts.
+ * Enforces the Dispatch quantity field on the Stock Requests page:
+ * HQ can dispatch less than a branch requested (partial fulfillment,
+ * short on stock, etc.) but never more — the request amount is a
+ * ceiling, not a suggestion. Going over is blocked outright (native
+ * max= validation plus a submit-time guard); going under still just
+ * asks for one confirmation naming both numbers, since that's a
+ * deliberate, allowed choice rather than a typo.
  *
  * Wire markup like:
- *   <input class="dispatch-qty-input" data-requested-qty="10" ...>
+ *   <input class="dispatch-qty-input" data-requested-qty="10" max="10" ...>
  * inside the <form> that submits the dispatch.
  */
 function initDispatchQtyWarnings() {
@@ -50,8 +226,11 @@ function initDispatchQtyWarnings() {
 
     function sync() {
       const val = parseInt(input.value, 10);
-      const differs = !Number.isNaN(val) && val !== requested;
+      const overLimit = !Number.isNaN(val) && val > requested;
+      const differs = !Number.isNaN(val) && val !== requested && !overLimit;
+      input.classList.toggle('dispatch-qty-invalid', overLimit);
       input.classList.toggle('dispatch-qty-diff', differs);
+      input.setCustomValidity(overLimit ? `Can't dispatch more than the ${requested} requested.` : '');
     }
 
     input.addEventListener('input', sync);
@@ -60,15 +239,23 @@ function initDispatchQtyWarnings() {
     if (form) {
       form.addEventListener('submit', (e) => {
         const val = parseInt(input.value, 10);
+
+        if (!Number.isNaN(val) && val > requested) {
+          e.preventDefault();
+          input.reportValidity();
+          return;
+        }
+
         if (Number.isNaN(val) || val === requested) return;
-        const comparison = val > requested ? 'more' : 'less';
+
         const ok = confirm(
-          `This branch requested ${requested}. You're about to dispatch ${val} — ${comparison} than what was asked for. Continue?`
+          `This branch requested ${requested}. You're about to dispatch ${val} instead — less than what was asked for. Continue?`
         );
         if (!ok) e.preventDefault();
       });
     }
   });
+}
 
 /**
  * Client-side search + pagination for tables that already render every
@@ -183,5 +370,162 @@ function initSmartTables() {
     }
 
     render();
+  });
+}
+
+/**
+ * Realtime updates: connects to the same Socket.IO server the backend
+ * initializes in app.py (see sockets.py for the room-join logic and
+ * the notify_*() calls each write route makes). No page ever reloads
+ * — instead, on a relevant "data_changed" event this quietly re-fetches
+ * its own current URL in the background, then swaps in just the
+ * <div class="content"> and the sidebar's "needs action" badges,
+ * leaving everything else (scroll position, sidebar state, the
+ * Socket.IO connection itself) untouched.
+ *
+ * "Relevant" is decided entirely on the client: ROUTE_SCOPES maps a
+ * URL path to the scope name(s) that page's content depends on (see
+ * the scope list documented at the top of sockets.py). If the event's
+ * scopes don't overlap with the current page's scopes, it's ignored.
+ *
+ * Two small safety nets so a background refresh never fights the
+ * person actively using the page:
+ *   - If focus is currently inside a text/number/select field within
+ *     .content (mid-edit), the refresh is deferred until that field
+ *     loses focus rather than silently discarding what they typed.
+ *   - Right after this tab submits its own form, incoming events are
+ *     ignored for a couple seconds — that form's own POST-redirect-GET
+ *     is already about to bring a fresh page, so a background refetch
+ *     racing it could (rarely) consume that request's own flash
+ *     message before the real navigation shows it.
+ */
+function initRealtime() {
+  if (typeof io === 'undefined') return;
+
+  const ROUTE_SCOPES = [
+    { match: /^\/admin\/production\/?$/, scopes: ['production', 'inventory', 'movement_logs'] },
+    { match: /^\/admin\/requests\/?$/, scopes: ['requests'] },
+    { match: /^\/admin\/branch-stock\/?$/, scopes: ['inventory'] },
+    { match: /^\/admin\/movement-logs\/?$/, scopes: ['movement_logs'] },
+    { match: /^\/admin\/products\/?$/, scopes: ['products'] },
+    { match: /^\/admin\/branches\/?$/, scopes: ['branches'] },
+    { match: /^\/admin\/users\/?$/, scopes: ['users'] },
+    { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production'] },
+    { match: /^\/branch\/inventory\/?$/, scopes: ['inventory'] },
+    { match: /^\/branch\/request-stock\/?$/, scopes: ['requests'] },
+    { match: /^\/branch\/receive-stock\/?$/, scopes: ['requests', 'inventory'] },
+    { match: /^\/branch\/record-sale\/?$/, scopes: ['inventory', 'sales'] },
+    { match: /^\/branch\/sales-history\/?$/, scopes: ['sales'] },
+    { match: /^\/branch\/?$/, scopes: ['requests', 'inventory', 'sales'] },
+  ];
+
+  function currentScopes() {
+    const path = window.location.pathname;
+    const hit = ROUTE_SCOPES.find((r) => r.match.test(path));
+    return hit ? hit.scopes : [];
+  }
+
+  function activeFieldInsideContent() {
+    const el = document.activeElement;
+    if (!el) return false;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.tagName !== 'SELECT') return false;
+    return !!el.closest('.content');
+  }
+
+  let pendingRefresh = false;
+  let suppressUntil = 0;
+
+  document.addEventListener('submit', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.content')) {
+      suppressUntil = Date.now() + 2500;
+    }
+  }, true);
+
+  function patchSidebarBadges(freshDoc) {
+    document.querySelectorAll('.nav-link[href]').forEach((link) => {
+      const href = link.getAttribute('href');
+      const freshLink = freshDoc.querySelector(`.nav-link[href="${href}"]`);
+      if (!freshLink) return;
+      const liveBadge = link.querySelector('.nav-badge');
+      const freshBadge = freshLink.querySelector('.nav-badge');
+      if (liveBadge && !freshBadge) {
+        liveBadge.remove();
+      } else if (freshBadge && !liveBadge) {
+        link.appendChild(freshBadge.cloneNode(true));
+      } else if (freshBadge && liveBadge) {
+        liveBadge.textContent = freshBadge.textContent;
+      }
+    });
+  }
+
+  function softRefresh() {
+    if (Date.now() < suppressUntil) return;
+    if (activeFieldInsideContent()) {
+      pendingRefresh = true;
+      return;
+    }
+
+    fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then((html) => {
+        const fresh = new DOMParser().parseFromString(html, 'text/html');
+
+        const freshContent = fresh.querySelector('.content');
+        const liveContent = document.querySelector('.content');
+        if (freshContent && liveContent) liveContent.replaceWith(freshContent);
+
+        patchSidebarBadges(fresh);
+
+        // Re-run the same setup the new markup would have gotten on a
+        // normal page load.
+        document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
+          const pct = parseFloat(el.dataset.pct) || 0;
+          el.style.width = pct + '%';
+        });
+        initSmartTables();
+        initDispatchQtyWarnings();
+        initToggleConfirmations();
+        revealContent();
+      })
+      .catch(() => {
+        // A failed background refresh just stays stale until the next
+        // event arrives — surfacing an error for a silent background
+        // sync would be more disruptive than the staleness itself.
+      });
+  }
+
+  function refreshBadgesOnly() {
+    // The sidebar's "needs action" badges (Pending Requests for Admin,
+    // In Transit for Branch) are always driven by the "requests" scope,
+    // regardless of which page is currently open — unlike .content,
+    // they shouldn't wait for the current page to also care. This skips
+    // the content swap and widget re-init entirely; it only patches the
+    // badge counts, so it's safe to fire even while a form field has
+    // focus.
+    fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then((html) => {
+        const fresh = new DOMParser().parseFromString(html, 'text/html');
+        patchSidebarBadges(fresh);
+      })
+      .catch(() => {});
+  }
+
+  document.addEventListener('focusout', () => {
+    if (pendingRefresh && !activeFieldInsideContent()) {
+      pendingRefresh = false;
+      softRefresh();
+    }
+  }, true);
+
+  const socket = io();
+  socket.on('data_changed', (payload) => {
+    const scopes = (payload && payload.scopes) || [];
+    const mine = currentScopes();
+    if (scopes.some((s) => mine.includes(s))) {
+      softRefresh();
+    } else if (scopes.includes('requests')) {
+      refreshBadgesOnly();
+    }
   });
 }

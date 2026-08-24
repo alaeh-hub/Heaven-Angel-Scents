@@ -22,8 +22,8 @@
       <tbody>
         {% for t in totals %}
         <tr>
-          <td class="item-name">{{ t.branch_name }}</td>
-          <td class="num mono">{{ t.total_stock }}</td>
+          <td class="item-name" data-label="Branch">{{ t.branch_name }}</td>
+          <td class="num mono" data-label="Total units on hand">{{ t.total_stock }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -73,10 +73,10 @@
         <tbody>
           {% for row in rows %}
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
-            <td><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
-            <td>{{ m.variant_badge(row.variant) }}</td>
-            <td class="num mono">{{ row.base_price|peso }}</td>
-            <td>
+            <td data-label="Item"><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
+            <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+            <td class="num mono" data-label="HQ price">{{ row.base_price|peso }}</td>
+            <td data-label="Branch price">
               <form method="POST" action="{{ url_for('admin.update_branch_price') }}" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="branch_id" value="{{ row.branch_id }}">
@@ -88,8 +88,8 @@
                 <button type="submit" class="btn btn-ghost btn-sm">Save</button>
               </form>
             </td>
-            <td>{{ m.discount_badge(row.base_price, row.effective_price) }}</td>
-            <td>{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+            <td data-label="Vs. HQ">{{ m.discount_badge(row.base_price, row.effective_price) }}</td>
+            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>
           {% endfor %}
         </tbody>

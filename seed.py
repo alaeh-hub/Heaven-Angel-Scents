@@ -3,28 +3,52 @@ Run once after importing schema.sql to create starter login accounts:
 
     python seed.py
 
-Creates:
-  - admin / admin123      (Admin, HQ)
-  - manila / branch123    (Branch, Manila Branch)
-  - cebu / branch123      (Branch, Cebu Branch)
+Creates three accounts (Admin / HQ, plus two starter branch accounts
+for Manila and Cebu), each with must_change_password=TRUE so whoever
+signs in first is forced to set their own password immediately.
 
-Each starter account is created with must_change_password=TRUE, so
-whoever signs in with these credentials first is required to set a
-new password immediately — the known starter password can't quietly
-stay in place in a real deployment.
+Two safety rules, on top of that:
+
+1. This script refuses to run at all when APP_ENV=production. It
+   exists to get a local/dev database into a usable state quickly —
+   it should never be the thing that plants known accounts on a real
+   deployment. If you genuinely need starter accounts in production,
+   create them through the app's own Accounts page instead, where an
+   admin sets the password by hand.
+
+2. Passwords are no longer hardcoded. Each one is read from its own
+   environment variable if you've set one (SEED_ADMIN_PASSWORD,
+   SEED_MANILA_PASSWORD, SEED_CEBU_PASSWORD); otherwise a random
+   password is generated and printed once. Either way, the password is
+   only ever shown in this script's own output — never checked into
+   source control, never reused across setups.
 """
+import os
+import sys
+
 from werkzeug.security import generate_password_hash
 
 from app import create_app
 from db import execute, query
+from utils import generate_temp_password
 
 app = create_app()
 
 with app.app_context():
+    environment = os.environ.get("APP_ENV", "development").lower()
+    if environment == "production":
+        print("Refusing to run: APP_ENV=production.")
+        print(
+            "seed.py creates known starter accounts for local/dev setup only. "
+            "Create accounts on a production database through the app's own "
+            "Accounts page instead, so each password is set deliberately by an admin."
+        )
+        sys.exit(1)
+
     accounts = [
-        ("admin", "admin123", "Admin", None),
-        ("manila", "branch123", "Branch", "Manila Branch"),
-        ("cebu", "branch123", "Branch", "Cebu Branch"),
+        ("admin", os.environ.get("SEED_ADMIN_PASSWORD") or generate_temp_password(), "Admin", None),
+        ("manila", os.environ.get("SEED_MANILA_PASSWORD") or generate_temp_password(), "Branch", "Manila Branch"),
+        ("cebu", os.environ.get("SEED_CEBU_PASSWORD") or generate_temp_password(), "Branch", "Cebu Branch"),
     ]
 
     for username, password, role, branch_name in accounts:
@@ -45,4 +69,4 @@ with app.app_context():
         )
         print(f"  added {username} / {password}  ({role}) — must change password on first login")
 
-print("\nSeed complete.")
+print("\nSeed complete. Copy any generated passwords above now — they are not stored anywhere.")

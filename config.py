@@ -7,6 +7,12 @@ load_dotenv()
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+# Only ever meant to work for local development (see app.py's startup
+# check, which refuses to boot with this key outside of DEBUG mode —
+# not just when APP_ENV=production, since a deployment can easily run
+# with APP_ENV unset too).
+INSECURE_DEFAULT_SECRET_KEY = "dev-secret-key-change-me"
+
 
 class Config:
     """
@@ -15,7 +21,7 @@ class Config:
     or real environment variables in production.
     """
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+    SECRET_KEY = os.environ.get("SECRET_KEY", INSECURE_DEFAULT_SECRET_KEY)
 
     MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
     MYSQL_PORT = int(os.environ.get("MYSQL_PORT", 3306))
@@ -36,7 +42,8 @@ class Config:
     # Per-user rate limit for the AI chat endpoint (Flask-Limiter syntax,
     # semicolon-separated for multiple windows), so a single account
     # can't accidentally spike Gemini API costs.
-    AI_CHAT_RATE_LIMIT = os.environ.get("AI_CHAT_RATE_LIMIT", "15 per minute;150 per day")
+    AI_CHAT_RATE_LIMIT = os.environ.get(
+        "AI_CHAT_RATE_LIMIT", "15 per minute;150 per day")
 
 
 class ProductionConfig(Config):

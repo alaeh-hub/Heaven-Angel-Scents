@@ -5,21 +5,34 @@
 {% block heading %}Good to see you, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack">
+<div class="bento-grid stack">
   <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+    </div>
     <div class="stat-label">SKUs carried</div>
     <div class="stat-value">{{ inventory|length }}</div>
     <div class="stat-foot">in your branch</div>
   </div>
   <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if low_stock else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
     <div class="stat-label">Low stock</div>
     <div class="stat-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
     <div class="stat-foot"><a href="{{ url_for('branch.request_stock') }}" class="text-soft">request more →</a></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Today's sales</div>
-    <div class="stat-value accent">{{ today_sales.units }}</div>
-    <div class="stat-foot">{{ today_sales.revenue|peso }} in revenue</div>
+  <div class="card stat-tile bento-hero">
+    <div>
+      <div class="stat-icon stat-icon-violet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+      </div>
+      <div class="stat-label">Today's sales</div>
+    </div>
+    <div>
+      <div class="stat-value accent">{{ today_sales.units }}</div>
+      <div class="stat-foot">{{ today_sales.revenue|peso }} in revenue</div>
+    </div>
   </div>
 </div>
 
@@ -33,8 +46,8 @@
         <tbody>
           {% for row in low_stock %}
           <tr>
-            <td class="item-name">{{ row.item_name }}</td>
-            <td class="num" style="min-width:150px;">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+            <td class="item-name" data-label="Item">{{ row.item_name }}</td>
+            <td class="num" style="min-width:150px;" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -54,9 +67,9 @@
         <tbody>
           {% for r in pending_requests %}
           <tr>
-            <td>{{ r.item_name }}</td>
-            <td class="num mono">{{ r.requested_qty }}</td>
-            <td>{{ m.status_badge(r.status) }}</td>
+            <td data-label="Item">{{ r.item_name }}</td>
+            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
           </tr>
           {% endfor %}
         </tbody>
