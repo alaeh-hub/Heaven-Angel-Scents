@@ -34,15 +34,6 @@ def create_app():
         raise RuntimeError(f"Unsupported APP_ENV: {environment}")
     app.config.from_object(config_class)
 
-    # Refuse to boot with the known placeholder key (or no key at all)
-    # for any run that isn't explicitly DEBUG. This intentionally does
-    # NOT key off `environment == "production"` — that only protects a
-    # deployment that remembered to set APP_ENV=production. A deployment
-    # that just forgot to set APP_ENV falls back to the development
-    # config, which used to let this pass silently. Checking DEBUG
-    # instead means any non-debug run (any real server, any WSGI/ASGI
-    # launcher) gets this check, regardless of which env var was or
-    # wasn't set.
     if not app.config["DEBUG"] and app.config["SECRET_KEY"] in (None, "", INSECURE_DEFAULT_SECRET_KEY):
         raise RuntimeError(
             "SECRET_KEY must be set to a real, private value for any non-debug run. "
@@ -63,11 +54,6 @@ def create_app():
         session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],
     )
 
-    # Best-effort hardening reminders for anything that's easy to leave
-    # on its permissive local-dev default and forget about. None of
-    # these block startup (unlike the SECRET_KEY check above) since
-    # they're not exploitable secrets, just things that quietly behave
-    # worse than intended in a real deployment.
     if not app.config["DEBUG"]:
         if ratelimit_storage_is_memory:
             app.logger.warning(
@@ -95,14 +81,15 @@ def create_app():
     app.register_blueprint(branch_bp)
     app.register_blueprint(ai_bp)
 
-    import sockets  # noqa: F401 -- registers Socket.IO event handlers, see sockets.py
+    import sockets
 
     import audit
     with app.app_context():
         try:
             audit.ensure_table()
         except Exception:
-            app.logger.exception("Failed to ensure admin_actions audit table exists")
+            app.logger.exception(
+                "Failed to ensure admin_actions audit table exists")
 
     @app.errorhandler(403)
     def forbidden(e):
@@ -125,9 +112,6 @@ def create_app():
 
     @app.template_filter("peso")
     def peso(value):
-        # value is usually a Decimal straight from MySQL — format it
-        # directly rather than round-tripping through float(), which can
-        # introduce tiny binary-rounding artifacts on currency amounts.
         try:
             return f"₱{decimal.Decimal(value):,.2f}"
         except (decimal.InvalidOperation, TypeError, ValueError):
@@ -135,18 +119,7 @@ def create_app():
 
     @app.context_processor
     def inject_sidebar_task_counts():
-        """"Needs action" badge counts for the sidebar nav.
 
-        base.html renders on every signed-in page, so this runs once per
-        request — kept to a single indexed COUNT(*) for whichever one
-        queue this role can actually act on:
-          - Admin  -> Pending stock requests (awaiting dispatch/reject)
-          - Branch -> That branch's In Transit shipments (awaiting receipt)
-
-        Returns {} outside a signed-in session (e.g. the login page) or
-        if the count query fails for any reason — a missing badge should
-        never be the reason a page fails to render.
-        """
         if "user_id" not in session:
             return {}
         try:

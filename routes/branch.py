@@ -80,11 +80,12 @@ def dashboard():
 def inventory():
     bid = _branch_id()
     rows = query(
-        """SELECT p.sku, p.item_name, p.variant, p.price AS base_price,
+        """SELECT p.sku, p.item_name, p.variant, p.price AS base_price, p.is_active,
                   COALESCE(bi.branch_price, p.price) AS price, bi.branch_price,
                   bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
+           WHERE bi.branch_id = %s AND (p.is_active = TRUE OR bi.stock_qty > 0)
+           ORDER BY p.item_name""",
         (bid,),
     )
     return render_template("branch/inventory.html", rows=rows)

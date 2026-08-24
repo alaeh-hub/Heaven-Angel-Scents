@@ -19,6 +19,115 @@
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .notif-wrap { position: relative; }
+
+    .notif-toggle {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 999px;
+      cursor: pointer;
+      color: var(--ink-faint);
+    }
+    .notif-toggle svg { width: 18px; height: 18px; }
+    .notif-toggle:hover { color: var(--ink); }
+
+    .notif-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      background: var(--danger);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      align-items: center;
+      justify-content: center;
+      display: none;
+    }
+
+    .notif-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 320px;
+      max-height: 380px;
+      overflow-y: auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm, 10px);
+      box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
+      z-index: 60;
+      display: none;
+    }
+    .notif-panel.open { display: block; }
+
+    .notif-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .notif-clear {
+      background: none;
+      border: none;
+      color: var(--ink-faint);
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .notif-clear:hover { color: var(--ink); }
+
+    .notif-list { padding: 6px; }
+    .notif-empty {
+      padding: 22px 12px;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--ink-faint);
+    }
+
+    .notif-item {
+      display: flex;
+      gap: 8px;
+      padding: 9px 8px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: var(--ink);
+    }
+    .notif-item.unread { background: var(--accent-soft, rgba(161, 122, 58, 0.08)); }
+
+    .notif-dot {
+      flex-shrink: 0;
+      width: 7px;
+      height: 7px;
+      margin-top: 5px;
+      border-radius: 999px;
+      background: var(--ink-faint);
+    }
+    .notif-dot.warning { background: var(--danger); }
+    .notif-dot.success { background: var(--good, #4F7A5C); }
+
+    .notif-body { flex: 1; }
+    .notif-time {
+      display: block;
+      font-size: 10.5px;
+      color: var(--ink-faint);
+      margin-top: 2px;
+    }
+  </style>
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -80,6 +189,10 @@
         <a class="nav-link {{ 'active' if request.endpoint == 'admin.reports' }}" href="{{ url_for('admin.reports') }}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
           Reports
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.audit_log' }}" href="{{ url_for('admin.audit_log') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4h6M9 4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 10h6M9 14h4"/></svg>
+          Audit Log
         </a>
       </nav>
       {% else %}
@@ -170,6 +283,21 @@
         </div>
         <div class="topbar-right">
           {% block topbar_actions %}{% endblock %}
+          <div class="notif-wrap" id="notifWrap" data-user="{{ session.username or '' }}">
+            <button type="button" class="notif-toggle" id="notifToggle" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6c0 2.5-1 4-1.8 5.1a1 1 0 0 0 .8 1.9h14a1 1 0 0 0 .8-1.9C18 13 17 11.5 17 9a6 6 0 0 0-6-6z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0"/></svg>
+              <span class="notif-badge" id="notifBadge">0</span>
+            </button>
+            <div class="notif-panel" id="notifPanel" aria-hidden="true">
+              <div class="notif-panel-header">
+                <span>Notifications</span>
+                <button type="button" class="notif-clear" id="notifClear">Clear all</button>
+              </div>
+              <div class="notif-list" id="notifList">
+                <div class="notif-empty">No notifications yet.</div>
+              </div>
+            </div>
+          </div>
           <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme">
             <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
             <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>

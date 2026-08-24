@@ -179,7 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSmartTables();
   initDispatchQtyWarnings();
-  initRealtime();
+  const notifBell = initNotificationBell();
+  initRealtime(notifBell);
 });
 
 /**
@@ -374,6 +375,150 @@ function initSmartTables() {
 }
 
 /**
+ * Notification bell beside the theme toggle in the topbar. Lives in
+ * the persistent page shell (base.html), not inside .content, so it
+ * survives every soft refresh initRealtime() performs elsewhere —
+ * nothing here needs to be re-initialized after a background update.
+ *
+ * Backed by localStorage, namespaced per signed-in username, so it
+ * survives closed tabs, new tabs, and browser restarts — the bell
+ * stays populated until the person hits "Clear all" (or the browser's
+ * storage is wiped), not just for the current tab session. Namespacing
+ * by username keeps two different accounts signed in on the same
+ * shared browser from seeing each other's notifications.
+ *
+ * This is purely a client-side inbox for the one-line alerts the
+ * backend pushes over the "bell_notification" socket event (see
+ * sockets.py's notify_bell()) — unlike "data_changed", that event is
+ * allowed to carry an actual human-readable message, since this is
+ * the one place meant to be read directly rather than triggering a
+ * background refetch.
+ *
+ * Returns { add(payload) } so initRealtime() can hand it incoming
+ * events, or null if the bell markup isn't present on this page.
+ */
+function initNotificationBell() {
+  const wrap = document.getElementById('notifWrap');
+  const toggle = document.getElementById('notifToggle');
+  const panel = document.getElementById('notifPanel');
+  const list = document.getElementById('notifList');
+  const badge = document.getElementById('notifBadge');
+  const clearBtn = document.getElementById('notifClear');
+  if (!wrap || !toggle || !panel || !list || !badge) return null;
+
+  const STORAGE_KEY = 'notifications:' + (wrap.dataset.user || 'anon');
+  const MAX_ITEMS = 30;
+
+  function load() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function save(items) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch (e) {
+      // Private browsing / storage disabled — notifications still show
+      // for this page view, they just won't persist across a reload.
+    }
+  }
+
+  function timeAgo(ts) {
+    const diffMins = Math.floor(Math.max(0, Date.now() - ts) / 60000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return diffMins + 'm ago';
+    const diffHrs = Math.floor(diffMins / 60);
+    if (diffHrs < 24) return diffHrs + 'h ago';
+    return Math.floor(diffHrs / 24) + 'd ago';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function render() {
+    const items = load();
+    const unread = items.filter((n) => !n.read).length;
+
+    if (unread > 0) {
+      badge.textContent = unread > 9 ? '9+' : String(unread);
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (!items.length) {
+      list.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+      return;
+    }
+
+    list.innerHTML = items.map((n) => (
+      '<div class="notif-item ' + (n.read ? '' : 'unread') + '">' +
+        '<span class="notif-dot ' + (n.level || 'info') + '"></span>' +
+        '<span class="notif-body">' + escapeHtml(n.message) +
+          '<span class="notif-time">' + timeAgo(n.ts) + '</span>' +
+        '</span>' +
+      '</div>'
+    )).join('');
+  }
+
+  function add(payload) {
+    if (!payload || !payload.message) return;
+    const items = load();
+    items.unshift({ message: payload.message, level: payload.level || 'info', ts: Date.now(), read: false });
+    save(items.slice(0, MAX_ITEMS));
+    render();
+  }
+
+  function markAllRead() {
+    save(load().map((n) => ({ ...n, read: true })));
+    render();
+  }
+
+  function openPanel() {
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    toggle.setAttribute('aria-expanded', 'true');
+    markAllRead();
+  }
+
+  function closePanel() {
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains('open')) closePanel(); else openPanel();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) closePanel();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePanel();
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      save([]);
+      render();
+    });
+  }
+
+  render();
+  return { add };
+}
+
+/**
  * Realtime updates: connects to the same Socket.IO server the backend
  * initializes in app.py (see sockets.py for the room-join logic and
  * the notify_*() calls each write route makes). No page ever reloads
@@ -399,7 +544,7 @@ function initSmartTables() {
  *     racing it could (rarely) consume that request's own flash
  *     message before the real navigation shows it.
  */
-function initRealtime() {
+function initRealtime(notifBell) {
   if (typeof io === 'undefined') return;
 
   const ROUTE_SCOPES = [
@@ -527,5 +672,8 @@ function initRealtime() {
     } else if (scopes.includes('requests')) {
       refreshBadgesOnly();
     }
+  });
+  socket.on('bell_notification', (payload) => {
+    if (notifBell) notifBell.add(payload);
   });
 }

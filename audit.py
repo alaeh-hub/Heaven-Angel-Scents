@@ -1,18 +1,3 @@
-"""Lightweight audit trail for admin-side actions that aren't already
-covered by stock_movement_logs (which handles inventory/stock events).
-
-Covers: creating/deactivating/resetting a login account, adding or
-discontinuing a product, adding a branch — anything where the only
-previous record was a flash message that vanished after a few seconds.
-
-The admin_actions table now lives in schema.sql, alongside every other
-table — a fresh deployment gets it the normal way (by applying
-schema.sql), not as a special case created at app startup. ensure_table()
-below is kept only as a defensive fallback for a database that was set
-up before this table existed in schema.sql: it does a single cheap
-existence check, and only creates the table (with a loud warning) if
-that check comes back empty. On an up-to-date database it's a no-op.
-"""
 from flask import current_app, session
 
 from db import execute, query
@@ -60,7 +45,8 @@ def log_action(action, target=None, details=None):
         execute(
             """INSERT INTO admin_actions (actor_user_id, actor_username, action, target, details)
                VALUES (%s, %s, %s, %s, %s)""",
-            (session.get("user_id"), session.get("username"), action, target, details),
+            (session.get("user_id"), session.get(
+                "username"), action, target, details),
         )
     except Exception:
         current_app.logger.exception(

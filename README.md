@@ -2,6 +2,56 @@
 
 Heaven & Angel Scents is a Flask web application for managing perfume production, HQ warehouse stock, retail branches, stock transfers, sales, reporting, and operational audit trails. It provides separate Admin/HQ and Branch workspaces backed by MySQL or MariaDB.
 
+## Local Setup
+
+### Requirements
+
+- Python 3.10 or newer
+- MySQL or MariaDB with permission to create the application database
+- The MySQL command-line client, MySQL Workbench, or another way to run `schema.sql`
+
+### Install And Initialize
+
+From the repository root, create a virtual environment and install the pinned dependencies:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env`, then set the database values and replace the development `SECRET_KEY` with a private random value. Import `schema.sql` into the database configured by `MYSQL_DB`; for example, with the MySQL client:
+
+```powershell
+mysql -u root -p < schema.sql
+```
+
+The schema creates the database, HQ and starter branches, all application tables, and the `admin_actions` audit table. After the schema has been imported, run the development seed utility once:
+
+```powershell
+py seed.py
+```
+
+`seed.py` creates `admin`, `manila`, and `cebu` accounts with randomly generated temporary passwords unless `SEED_ADMIN_PASSWORD`, `SEED_MANILA_PASSWORD`, and `SEED_CEBU_PASSWORD` are set. It prints generated passwords once, requires a password change at first login, skips accounts that already exist, and refuses to run when `APP_ENV=production`.
+
+### Run Locally
+
+```powershell
+py app.py
+```
+
+Open <http://127.0.0.1:5000>. Local development uses Flask-SocketIO's built-in server; `simple-websocket` is included so WebSocket upgrades can be used instead of long-polling when available. Set `FLASK_DEBUG=1` only for local debugging.
+
+### Production Launch
+
+For a deployment, set `APP_ENV=production`, provide a real `SECRET_KEY`, configure `SOCKETIO_CORS_ALLOWED_ORIGINS`, and use a shared `RATELIMIT_STORAGE_URI` such as Redis when running more than one worker. The bundled async Gunicorn worker supports Socket.IO:
+
+```powershell
+gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app
+```
+
+Production configuration forces `DEBUG=False`, secure session cookies, HTTPS, and HSTS. The application refuses to start without a real secret key in any non-debug run.
+
 ## System Lifecycle
 
 1. HQ records production, increasing warehouse stock.
@@ -45,6 +95,7 @@ Branch accounts are assigned to one retail branch. They can view their branch da
 | Users | `/admin/users` | Create accounts, toggle status, and reset passwords. |
 | Requests | `/admin/requests` | Filter requests, dispatch stock, reject pending requests, and download fulfilled receipts. |
 | Movement ledger | `/admin/movement-logs` | Review up to 200 recent movements and filter by branch. |
+| Admin audit log | `/admin/audit-log` | Review up to 300 recent non-inventory administrative actions. |
 | Reports | `/admin/reports` | Select and download Admin reports. |
 | Report data | `/admin/api/reports-data` | Return JSON metrics for Admin charts. |
 
@@ -157,7 +208,7 @@ Configuration is loaded from environment variables by `config.py`. Development d
 | `MYSQL_PASSWORD` | Empty | Database password. |
 | `MYSQL_DB` | `heaven_and_angel_scents` | Database name. |
 | `GEMINI_API_KEY` | Empty | Enables Gemini requests for the AI assistant. |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` in code; `gemini-3.5-flash` in `.env.example` | Gemini model name. |
 | `AI_CHAT_RATE_LIMIT` | `15 per minute;150 per day` | Per-user AI chat limit. |
 | `RATELIMIT_STORAGE_URI` | Flask-Limiter default | Optional limiter storage backend setting. |
 | `SOCKETIO_CORS_ALLOWED_ORIGINS` | Extension default | Optional Socket.IO CORS setting. |
@@ -199,7 +250,7 @@ wsgi.py                WSGI entry point for server integration
 requirements.txt       Python runtime dependencies
 ```
 
-The application starts through `create_app()` in `app.py`. Database connections are opened per request and closed through the Flask application context. `admin_actions` is ensured dynamically by `audit.py`; it is not defined in the current `schema.sql` file.
+The application starts through `create_app()` in `app.py`. Database connections are opened per request and closed through the Flask application context. `audit.py` still performs a best-effort `admin_actions` existence check at startup as a defensive fallback, but the table is defined in and should be imported from `schema.sql`.
 
 ## Current Scope And Limitations
 

@@ -81,3 +81,20 @@ def notify_all(scopes):
     branch owner that every signed-in tab might still care about (a new
     product added to the catalog, a new branch)."""
     _emit(scopes)
+
+
+def notify_bell(message, room=None, level="info"):
+    """Push a one-line, human-readable alert to the notification bell.
+
+    Unlike everything above (which never carries data, only scope
+    names, and exists purely to trigger a silent background refetch),
+    this is the one event allowed to carry an actual message — it's
+    meant to be read directly, in the bell dropdown in the topbar (see
+    initNotificationBell() in main.js), not acted on programmatically.
+
+    room follows the same convention as _emit(): "admin", a specific
+    "branch:<id>", or None to reach every signed-in tab. level is a
+    free-form hint the frontend uses to color the item's dot —
+    "info" | "success" | "warning".
+    """
+    socketio.emit("bell_notification", {"message": message, "level": level}, room=room)

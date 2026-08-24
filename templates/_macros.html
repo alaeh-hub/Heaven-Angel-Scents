@@ -36,3 +36,28 @@
 <span class="badge badge-pending">HQ price</span>
 {% endif %}
 {% endmacro %}
+
+{% macro discontinued_badge() %}
+<span class="badge badge-inactive" title="No longer available to request or sell">Discontinued</span>
+{% endmacro %}
+
+{% macro action_label(action) %}
+{% set map = {
+  'create_account': 'Account created',
+  'toggle_user': 'Account status changed',
+  'reset_password': 'Password reset',
+  'add_product': 'Product added',
+  'toggle_product': 'Product status changed',
+  'add_branch': 'Branch added'
+} %}
+{{ map.get(action, action|replace('_', ' ')|capitalize) }}
+{% endmacro %}
+
+{% macro action_badge(action) %}
+{% set map = {
+  'create_account': 'fulfilled', 'add_product': 'fulfilled', 'add_branch': 'fulfilled',
+  'toggle_user': 'pending', 'toggle_product': 'pending',
+  'reset_password': 'transit'
+} %}
+<span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
+{% endmacro %}

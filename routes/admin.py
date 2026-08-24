@@ -8,9 +8,10 @@ from werkzeug.security import generate_password_hash
 
 from db import execute, query, transaction
 from decorators import admin_required
+from audit import log_action
 from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
-from sockets import notify_admin, notify_admin_and_branch, notify_all
+from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import ValidationError, generate_temp_password, parse_non_negative_decimal, parse_positive_int
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -149,6 +150,7 @@ def products():
                         )
                     cur.close()
                 notify_all(["products", "inventory"])
+                log_action("add_product", target=sku, details=f"{item_name} ({variant}) — ₱{price:,.2f}")
                 flash(f"{item_name} ({sku}) added to the catalog.", "success")
             except Exception:
                 flash(f"SKU '{sku}' already exists.", "error")
@@ -166,8 +168,16 @@ def products():
 @bp.route("/products/<sku>/toggle", methods=["POST"])
 @admin_required
 def toggle_product(sku):
+    product = query("SELECT item_name, is_active FROM products WHERE sku = %s", (sku,), fetchone=True)
     execute("UPDATE products SET is_active = NOT is_active WHERE sku = %s", (sku,))
-    notify_all("products")
+    notify_all(["products", "inventory"])
+    if product:
+        new_status = "Discontinued" if product["is_active"] else "Reactivated"
+        log_action("toggle_product", target=sku, details=f"{product['item_name']} — {new_status}")
+        if new_status == "Discontinued":
+            notify_bell(f"{product['item_name']} ({sku}) was discontinued.", level="warning")
+        else:
+            notify_bell(f"{product['item_name']} ({sku}) is available again.", level="success")
     flash("Product status updated.", "success")
     return redirect(url_for("admin.products"))
 
@@ -262,6 +272,7 @@ def branches():
                         )
                     cur.close()
                 notify_admin("branches")
+                log_action("add_branch", target=name, details=location or None)
                 flash(f"{name} added.", "success")
             except Exception:
                 flash("A branch with that name already exists.", "error")
@@ -383,6 +394,8 @@ def users():
                     (username, generate_password_hash(password), role, branch_id if role == "Branch" else None),
                 )
                 notify_admin("users")
+                branch_detail = f", branch_id={branch_id}" if role == "Branch" else ""
+                log_action("create_account", target=username, details=f"role={role}{branch_detail}")
                 flash(f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
             except Exception:
                 flash(f"Username '{username}' is already taken.", "error")
@@ -411,8 +424,12 @@ def toggle_user(user_id):
     if user_id == session.get("user_id"):
         flash("You can't deactivate your own account.", "error")
     else:
+        target = query("SELECT username, is_active FROM users WHERE user_id = %s", (user_id,), fetchone=True)
         execute("UPDATE users SET is_active = NOT is_active WHERE user_id = %s", (user_id,))
         notify_admin("users")
+        if target:
+            new_status = "Deactivated" if target["is_active"] else "Reactivated"
+            log_action("toggle_user", target=target["username"], details=new_status)
         flash("Account status updated.", "success")
     return redirect(url_for("admin.users"))
 
@@ -439,6 +456,7 @@ def reset_user_password(user_id):
     # session immediately after reading it so a page refresh or back
     # button can't bring it back.
     session["temp_password_reveal"] = {"username": target["username"], "password": temp_password}
+    log_action("reset_password", target=target["username"])
     flash(
         f"Password for '{target['username']}' has been reset. "
         "They'll be asked to set a new password the next time they sign in.",
@@ -577,6 +595,25 @@ def movement_logs():
     logs = query(sql, params)
     branch_list = query("SELECT branch_id, branch_name FROM branches ORDER BY branch_name")
     return render_template("admin/movement_logs.html", logs=logs, branch_list=branch_list, branch_filter=branch_filter)
+
+
+# ---------------------------------------------------------------- audit log
+@bp.route("/audit-log")
+@admin_required
+def audit_log():
+    """Non-inventory admin activity — account/product/branch changes.
+
+    Separate from the Movement Ledger above on purpose: that ledger is
+    strictly stock quantity events (production/dispatch/receipt/sale/
+    damage), while this covers everything else an admin can do that
+    isn't a stock movement. See audit.py for how entries get written.
+    """
+    logs = query(
+        """SELECT action_id, actor_username, action, target, details, created_at
+           FROM admin_actions
+           ORDER BY created_at DESC LIMIT 300"""
+    )
+    return render_template("admin/audit_log.html", logs=logs)
 
 
 # ---------------------------------------------------------------- reports
