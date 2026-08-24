@@ -106,7 +106,7 @@ Products use the variants `Male`, `Female`, or `Unisex`. Discontinuing a product
 | Area | Route | Function |
 | --- | --- | --- |
 | Dashboard | `/branch/` | Branch inventory, low-stock items, open requests, and today's sales totals. |
-| Inventory | `/branch/inventory` | Active products, stock, reorder level, HQ price, override price, and effective selling price. |
+| Inventory | `/branch/inventory` | Active products, stock, reorder level, HQ price, override price, and effective selling price. Discontinued products remain visible while the branch has stock, but cannot be requested or sold. |
 | Request stock | `/branch/request-stock` | Submit requests for active products and view request history. |
 | Receive stock | `/branch/receive-stock` | Confirm `In Transit` shipments and record received and damaged quantities. |
 | Goods-received receipt | `/branch/receive-stock/<request_id>/receipt` | Download a PDF for the branch's own fulfilled request. |
@@ -172,6 +172,8 @@ Generated answers are model output and should be checked against the relevant ap
 Flask-SocketIO sends authenticated browser notifications. Admin tabs join the `admin` room; Branch tabs join `branch:<branch_id>`.
 
 Write operations publish small `data_changed` messages containing scope names such as `requests`, `inventory`, `production`, `sales`, `movement_logs`, `products`, `branches`, or `users`. The payload contains no business data. The frontend uses the scope to refresh affected page content or task-count badges. Unauthenticated connections are rejected, and branch notifications are limited to the session's branch room.
+
+The shared top bar also provides a notification bell for human-readable alerts, such as product status changes. Notifications are scoped to the signed-in username, persist in browser local storage across tabs and restarts, show unread counts, and can be cleared from the bell panel. These alerts are separate from `data_changed` events: refresh events carry only scope names, while bell events carry the message displayed to the user.
 
 ## Data Model
 
