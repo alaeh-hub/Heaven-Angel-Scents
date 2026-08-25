@@ -40,11 +40,15 @@
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
-        <label for="sku">Product</label>
-        <select id="sku" name="sku" required data-hq-stock='{{ hq_stock | tojson }}'>
-          {% for p in products %}
-          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.sku }}</option>
-          {% endfor %}
+        <label for="productName">Product</label>
+        <select id="productName" required data-products='{{ products | tojson }}'>
+          <option value="">Select…</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="sku">Unit</label>
+        <select id="sku" name="sku" required disabled data-hq-stock='{{ hq_stock | tojson }}'>
+          <option value="">Select a product first…</option>
         </select>
         <div class="help" id="stockPreview" style="display:none;"></div>
       </div>
@@ -78,14 +82,6 @@
           </svg>
           <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
         </div>
-        <div class="table-filter">
-          <select class="smart-filter-select" data-filter-key="variant">
-            <option value="">All variants</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Unisex">Unisex</option>
-          </select>
-        </div>
       </div>
       <div class="table-wrap">
         <table class="smart-table">
@@ -93,6 +89,7 @@
             <tr>
               <th>Item</th>
               <th>Variant</th>
+              <th>Unit</th>
               <th style="min-width:170px;">On hand</th>
             </tr>
           </thead>
@@ -104,6 +101,7 @@
                 <div class="item-sub mono">{{ row.sku }}</div>
               </td>
               <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+              <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
               <td data-label="On hand">{{ m.fill_bar(row.stock_qty, max_stock) }}</td>
             </tr>
             {% endfor %}
@@ -154,6 +152,7 @@
           <tr>
             <th>Date</th>
             <th>Item</th>
+            <th>Unit</th>
             <th>Batch</th>
             <th class="num">Qty</th>
           </tr>
@@ -163,6 +162,7 @@
           <tr data-search="{{ (l.item_name ~ ' ' ~ (l.batch_code or ''))|lower }}">
             <td class="mono text-soft" data-label="Date">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</td>
             <td class="item-name" data-label="Item">{{ l.item_name }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ l.unit }}</td>
             <td data-label="Batch">
               {% if l.batch_code %}
               <span class="badge badge-pending">{{ l.batch_code }}</span>
@@ -198,21 +198,53 @@
 {% block scripts %}
 <script>
   (function () {
-    var select = document.getElementById('sku');
+    var productSelect = document.getElementById('productName');
+    var skuSelect = document.getElementById('sku');
     var preview = document.getElementById('stockPreview');
-    if (!select || !preview) return;
+    if (!productSelect || !skuSelect || !preview) return;
+
+    var products = [];
+    try {
+      products = JSON.parse(productSelect.dataset.products || '[]');
+    } catch (e) {
+      products = [];
+    }
 
     var stockRows = [];
     try {
-      stockRows = JSON.parse(select.dataset.hqStock || '[]');
+      stockRows = JSON.parse(skuSelect.dataset.hqStock || '[]');
     } catch (e) {
       stockRows = [];
     }
     var stockMap = {};
     stockRows.forEach(function (r) { stockMap[r.sku] = r.stock_qty; });
 
+    // Group products (each row is one SKU/unit) by item_name so the
+    // admin picks a product first, then only sees the sizes that
+    // product actually has in the catalog.
+    var byProduct = {};
+    var productNames = [];
+    products.forEach(function (row) {
+      if (!byProduct[row.item_name]) {
+        byProduct[row.item_name] = [];
+        productNames.push(row.item_name);
+      }
+      byProduct[row.item_name].push(row);
+    });
+
+    productNames.forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      productSelect.appendChild(opt);
+    });
+
     function updatePreview() {
-      var sku = select.value;
+      var sku = skuSelect.value;
+      if (!sku) {
+        preview.style.display = 'none';
+        return;
+      }
       if (Object.prototype.hasOwnProperty.call(stockMap, sku)) {
         preview.textContent = stockMap[sku] + ' unit(s) currently on hand at HQ.';
       } else {
@@ -221,8 +253,35 @@
       preview.style.display = 'block';
     }
 
-    select.addEventListener('change', updatePreview);
-    updatePreview();
+    function populateUnits(productName) {
+      skuSelect.innerHTML = '';
+      var rows = byProduct[productName] || [];
+      if (!rows.length) {
+        skuSelect.disabled = true;
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select a product first…';
+        skuSelect.appendChild(placeholder);
+        updatePreview();
+        return;
+      }
+      skuSelect.disabled = false;
+      rows.forEach(function (row) {
+        var opt = document.createElement('option');
+        opt.value = row.sku;
+        opt.textContent = row.unit + ' — ' + row.sku;
+        skuSelect.appendChild(opt);
+      });
+      updatePreview();
+    }
+
+    productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
+    skuSelect.addEventListener('change', updatePreview);
+
+    if (productNames.length) {
+      productSelect.value = productNames[0];
+      populateUnits(productNames[0]);
+    }
   })();
 </script>
 {% endblock %}

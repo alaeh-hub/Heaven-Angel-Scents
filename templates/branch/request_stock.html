@@ -12,11 +12,15 @@
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
-        <label for="sku">Product</label>
-        <select id="sku" name="sku" required>
-          {% for p in products %}
-          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.sku }}</option>
-          {% endfor %}
+        <label for="productName">Product</label>
+        <select id="productName" required data-products='{{ products | tojson }}'>
+          <option value="">Select…</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="sku">Unit</label>
+        <select id="sku" name="sku" required disabled>
+          <option value="">Select a product first…</option>
         </select>
       </div>
       <div class="field">
@@ -32,12 +36,13 @@
     {% if history %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Requested</th><th>Item</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Requested</th><th>Item</th><th>Unit</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {% for r in history %}
           <tr>
             <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Item">{{ r.item_name }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ r.unit }}</td>
             <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="">
@@ -55,4 +60,65 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var productSelect = document.getElementById('productName');
+    var skuSelect = document.getElementById('sku');
+    if (!productSelect || !skuSelect) return;
+
+    var products = [];
+    try {
+      products = JSON.parse(productSelect.dataset.products || '[]');
+    } catch (e) {
+      products = [];
+    }
+
+    var byProduct = {};
+    var productNames = [];
+    products.forEach(function (row) {
+      if (!byProduct[row.item_name]) {
+        byProduct[row.item_name] = [];
+        productNames.push(row.item_name);
+      }
+      byProduct[row.item_name].push(row);
+    });
+
+    productNames.forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      productSelect.appendChild(opt);
+    });
+
+    function populateUnits(productName) {
+      skuSelect.innerHTML = '';
+      var rows = byProduct[productName] || [];
+      if (!rows.length) {
+        skuSelect.disabled = true;
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select a product first…';
+        skuSelect.appendChild(placeholder);
+        return;
+      }
+      skuSelect.disabled = false;
+      rows.forEach(function (row) {
+        var opt = document.createElement('option');
+        opt.value = row.sku;
+        opt.textContent = row.unit;
+        skuSelect.appendChild(opt);
+      });
+    }
+
+    productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
+
+    if (productNames.length) {
+      productSelect.value = productNames[0];
+      populateUnits(productNames[0]);
+    }
+  })();
+</script>
 {% endblock %}

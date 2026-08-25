@@ -61,6 +61,20 @@ Production configuration forces `DEBUG=False`, secure session cookies, HTTPS, an
 5. Branch staff record customer sales, which atomically reduce branch stock and create sales records.
 6. Admin and branch reports read the resulting inventory, sales, request, production, and movement data.
 
+## Recent Project Update
+
+This release completes the operational inventory lifecycle from HQ production through branch receiving, sales recording, and reporting. It also strengthens the operational audit trail and the user experience for both HQ and branch workflows.
+
+Key updates in the current codebase:
+
+- Modernized production and warehouse inventory tracking, including HQ stock updates and richer movement logging.
+- Completed branch-side request and receipt flows, including received, damaged, and unaccounted quantities during shipment confirmation.
+- Finalized the sales lifecycle by recording quantity, price, sale type, payment method, and employee deduction metadata at the time of sale.
+- Added admin audit entries and human-readable bell notifications for operational status changes.
+- Improved dashboard and report views for branch-level and HQ-level analysis, including movement trends and stock reports.
+- Added a read-only AI assistant with role-scoped summaries for admin and branch users.
+- Hardened the application with production-ready settings, database safeguards, and security checks.
+
 ## Roles And Access
 
 ### Admin

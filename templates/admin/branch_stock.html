@@ -33,13 +33,13 @@
   <div class="empty-state"><div class="glyph">—</div><p>No branches yet.</p></div>
   {% endif %}
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Select a branch above to view and edit its per-product stock levels and pricing.</p>
+    <p class="text-faint" style="font-size:12px;">Select a branch above to view its per-product stock levels.</p>
   </div>
 </div>
 {% else %}
 <div class="card">
   <div class="card-header">
-    <h2>Stock &amp; pricing</h2>
+    <h2>Stock levels</h2>
     <span class="hint" id="stockCount">{{ rows|length }} SKU{{ 's' if rows|length != 1 }}</span>
   </div>
   {% if rows %}
@@ -49,14 +49,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
       </div>
-      <div class="table-filter">
-        <select class="smart-filter-select" data-filter-key="variant">
-          <option value="">All variants</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-          <option value="Unisex">Unisex</option>
-        </select>
-      </div>
     </div>
     <div class="table-wrap">
       <table class="smart-table">
@@ -64,9 +56,8 @@
           <tr>
             <th>Item</th>
             <th>Variant</th>
+            <th>Unit</th>
             <th class="num">HQ price</th>
-            <th style="min-width:170px;">Branch price</th>
-            <th>Vs. HQ</th>
             <th style="min-width:180px;">Stock level</th>
           </tr>
         </thead>
@@ -75,20 +66,8 @@
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
             <td data-label="Item"><div class="item-name">{{ row.item_name }}</div><div class="item-sub mono">{{ row.sku }}</div></td>
             <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
-            <td class="num mono" data-label="HQ price">{{ row.base_price|peso }}</td>
-            <td data-label="Branch price">
-              <form method="POST" action="{{ url_for('admin.update_branch_price') }}" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="branch_id" value="{{ row.branch_id }}">
-                <input type="hidden" name="sku" value="{{ row.sku }}">
-                <input type="number" name="branch_price" step="0.01" min="0"
-                       placeholder="{{ '%.2f'|format(row.base_price) }}"
-                       value="{{ row.branch_price if row.branch_price is not none else '' }}"
-                       class="mono" style="width:110px;">
-                <button type="submit" class="btn btn-ghost btn-sm">Save</button>
-              </form>
-            </td>
-            <td data-label="Vs. HQ">{{ m.discount_badge(row.base_price, row.effective_price) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
+            <td class="num mono" data-label="HQ price">{{ row.hq_price|peso }}</td>
             <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>
           {% endfor %}
@@ -106,7 +85,7 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Leave a branch price blank to fall back to the HQ price. Changes only apply going forward — past sales keep the price that was actually charged.</p>
+    <p class="text-faint" style="font-size:12px;">Every branch sells at the HQ price by default — the amount actually charged is recorded per sale on the Record Sale page, not set here.</p>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No products assigned to this branch yet.</p></div>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Record Sale{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block eyebrow %}HQ Warehouse{% endblock %}
 {% block heading %}Record Sale{% endblock %}
 
 {% block head %}
@@ -45,7 +45,9 @@
 <div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Deducts from your branch inventory immediately.</p>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Sells straight from the HQ warehouse and deducts from its stock immediately. To add stock, use HQ Production instead.
+    </p>
     <form method="POST" id="saleForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -65,7 +67,7 @@
 
       <div class="form-row">
         <div class="field">
-          <label for="qty_sold">Quantity sold</label>
+          <label for="qty_sold">Quantity</label>
           <input type="number" id="qty_sold" name="qty_sold" min="1" required>
         </div>
         <div class="field">
@@ -114,7 +116,7 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h2>Recent sales</h2><a href="{{ url_for('branch.sales_history') }}" class="hint">full history →</a></div>
+    <div class="card-header"><h2>Recent sales</h2><span class="hint">at HQ</span></div>
     {% if recent_sales %}
     <div class="table-wrap">
       <table>
@@ -135,7 +137,7 @@
       </table>
     </div>
     {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet today.</p></div>
+    <div class="empty-state"><div class="glyph">—</div><p>No sales recorded at HQ yet.</p></div>
     {% endif %}
   </div>
 </div>
@@ -144,7 +146,6 @@
 {% block scripts %}
 <script>
   (function () {
-    // ---- Sale/Refill and Cash/Salary Deduction segmented toggles ----
     function wireSwitch(switchId, hiddenInputId, onChange) {
       var el = document.getElementById(switchId);
       var hidden = document.getElementById(hiddenInputId);
@@ -169,10 +170,6 @@
       if (!isSalary) buyerSelect.value = '';
     });
 
-    // ---- Product -> Unit cascade: pick a product name first, then only
-    // the units that product actually has show up in the second dropdown.
-    // Each unit option IS a distinct SKU/price under the hood — picking
-    // it both submits the right sku and prefills the suggested price. ----
     var skuSelect = document.getElementById('sku');
     var productSelect = document.getElementById('productName');
     var priceInput = document.getElementById('unit_price');
@@ -185,6 +182,10 @@
       catalog = [];
     }
 
+    // Group rows (each its own SKU/unit/price) by item_name so the
+    // cashier picks a product first, then only sees the units that
+    // product actually has — the price fills in from whichever unit
+    // (SKU) ends up selected.
     var byProduct = {};
     var productNames = [];
     catalog.forEach(function (row) {

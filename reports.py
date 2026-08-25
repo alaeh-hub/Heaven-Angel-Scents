@@ -36,6 +36,7 @@ from reportlab.platypus import (
 )
 
 from db import query
+from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
 
 # Built-in PDF fonts (Helvetica etc.) only cover Latin-1 and have no glyph
 # for the ₱ (Philippine peso) sign — it silently renders as a black "tofu"
@@ -51,9 +52,12 @@ pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(_FONTS_DIR, "Deja
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
 STATUS_CHOICES = ("Pending", "In Transit", "Fulfilled", "Rejected")
-MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH", "RECEIPT", "SALE", "ADJUSTMENT", "DAMAGE")
+MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH", "RECEIPT", "SALE", "REFILL", "ADJUSTMENT", "DAMAGE")
 VARIANT_CHOICES = ("Male", "Female", "Unisex")
 ROLE_CHOICES = ("Admin", "Branch")
+UNIT_CHOICES = PRODUCT_UNITS
+SALE_TYPE_CHOICES = SALE_TYPES
+PAYMENT_METHOD_CHOICES = PAYMENT_METHODS
 
 INK = colors.HexColor("#1C1B19")
 INK_FAINT = colors.HexColor("#6E6A62")
@@ -79,6 +83,8 @@ REPORT_TYPES = {
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
     "movement_logs":   {"label": "Movement Ledger",  "admin": True, "branch": True,  "windowed": True},
     "sales_history":   {"label": "Sales History",    "admin": True, "branch": True,  "windowed": True},
+    "employee_purchases": {"label": "Employee Purchases (Salary Deduction)", "admin": True, "branch": True,
+                            "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
     "accounts":        {"label": "User Accounts",    "admin": True, "branch": False, "windowed": False},
 }
 
@@ -124,6 +130,9 @@ def parse_report_filters(args):
         "status": _choice("status", STATUS_CHOICES, "all"),
         "movement_type": _choice("movement_type", MOVEMENT_TYPE_CHOICES, "all"),
         "variant": _choice("variant", VARIANT_CHOICES, "all"),
+        "unit": _choice("unit", UNIT_CHOICES, "all"),
+        "sale_type": _choice("sale_type", SALE_TYPE_CHOICES, "all"),
+        "payment_method": _choice("payment_method", PAYMENT_METHOD_CHOICES, "all"),
         "active_status": _choice("active_status", ("active", "discontinued"), "all"),
         "role": _choice("role", ROLE_CHOICES, "all"),
         "account_status": _choice("account_status", ("active", "inactive"), "all"),
@@ -188,13 +197,16 @@ def _report_product_catalog(filters, branch_scope):
     if filters["variant"] != "all":
         where += " AND p.variant = %s"
         params.append(filters["variant"])
+    if filters["unit"] != "all":
+        where += " AND p.unit = %s"
+        params.append(filters["unit"])
     if filters["search"]:
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like]
 
     rows = query(
-        f"""SELECT p.sku, p.item_name, p.variant, p.price, p.is_active,
+        f"""SELECT p.sku, p.item_name, p.variant, p.unit, p.price, p.is_active,
                    COALESCE(SUM(bi.stock_qty), 0) AS total_stock
             FROM products p LEFT JOIN branch_inventory bi ON p.sku = bi.sku
             WHERE 1=1 {where}
@@ -207,14 +219,17 @@ def _report_product_catalog(filters, branch_scope):
 
     columns = [
         ("sku", "SKU", "str"), ("item_name", "Item", "str"), ("variant", "Variant", "str"),
-        ("price", "HQ Price", "money"), ("total_stock", "Total Stock (all branches)", "int"),
-        ("is_active", "Status", "str"),
+        ("unit", "Unit", "str"), ("price", "HQ Price", "money"),
+        ("total_stock", "Total Stock (all branches)", "int"), ("is_active", "Status", "str"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
 
 
 def _report_hq_production(filters, branch_scope):
     where, params = "", []
+    if filters["unit"] != "all":
+        where += " AND p.unit = %s"
+        params.append(filters["unit"])
     if filters["search"]:
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR pl.batch_code LIKE %s)"
         like = f"%{filters['search']}%"
@@ -223,7 +238,7 @@ def _report_hq_production(filters, branch_scope):
     where += time_where
 
     rows = query(
-        f"""SELECT pl.produced_at, p.sku, p.item_name, pl.batch_code, pl.qty_produced
+        f"""SELECT pl.produced_at, p.sku, p.item_name, p.unit, pl.batch_code, pl.qty_produced
             FROM production_logs pl JOIN products p ON pl.sku = p.sku
             WHERE 1=1 {where} {order} LIMIT {limit_n}""",
         tuple(params),
@@ -233,7 +248,7 @@ def _report_hq_production(filters, branch_scope):
 
     columns = [
         ("produced_at", "Produced", "datetime"), ("sku", "SKU", "str"), ("item_name", "Item", "str"),
-        ("batch_code", "Batch", "str"), ("qty_produced", "Qty Produced", "int"),
+        ("unit", "Unit", "str"), ("batch_code", "Batch", "str"), ("qty_produced", "Qty Produced", "int"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -250,6 +265,9 @@ def _report_branch_stock(filters, branch_scope):
     if filters["variant"] != "all":
         where += " AND p.variant = %s"
         params.append(filters["variant"])
+    if filters["unit"] != "all":
+        where += " AND p.unit = %s"
+        params.append(filters["unit"])
     if filters["search"]:
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
         like = f"%{filters['search']}%"
@@ -257,9 +275,10 @@ def _report_branch_stock(filters, branch_scope):
     if filters["low_stock_only"]:
         where += " AND bi.stock_qty <= bi.reorder_level"
 
+    # No more per-branch price override — every branch sells at
+    # products.price, so this is just stock levels per branch now.
     rows = query(
-        f"""SELECT b.branch_name, p.sku, p.item_name, p.variant, p.price AS hq_price,
-                   bi.branch_price, COALESCE(bi.branch_price, p.price) AS effective_price,
+        f"""SELECT b.branch_name, p.sku, p.item_name, p.variant, p.unit, p.price AS hq_price,
                    bi.stock_qty, bi.reorder_level
             FROM branch_inventory bi
             JOIN branches b ON bi.branch_id = b.branch_id
@@ -270,13 +289,11 @@ def _report_branch_stock(filters, branch_scope):
     )
     for r in rows:
         r["hq_price"] = float(r["hq_price"])
-        r["effective_price"] = float(r["effective_price"])
-        r["branch_price"] = float(r["branch_price"]) if r["branch_price"] is not None else None
 
     columns = [("branch_name", "Branch", "str")] if branch_scope is None else []
     columns += [
         ("sku", "SKU", "str"), ("item_name", "Item", "str"), ("variant", "Variant", "str"),
-        ("hq_price", "HQ Price", "money"), ("effective_price", "Selling Price", "money"),
+        ("unit", "Unit", "str"), ("hq_price", "HQ Price", "money"),
         ("stock_qty", "Stock Qty", "int"), ("reorder_level", "Reorder Level", "int"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
@@ -373,6 +390,15 @@ def _report_sales_history(filters, branch_scope):
     if filters["variant"] != "all":
         where += " AND p.variant = %s"
         params.append(filters["variant"])
+    if filters["unit"] != "all":
+        where += " AND p.unit = %s"
+        params.append(filters["unit"])
+    if filters["sale_type"] != "all":
+        where += " AND s.sale_type = %s"
+        params.append(filters["sale_type"])
+    if filters["payment_method"] != "all":
+        where += " AND s.payment_method = %s"
+        params.append(filters["payment_method"])
     if filters["search"]:
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
         like = f"%{filters['search']}%"
@@ -381,12 +407,65 @@ def _report_sales_history(filters, branch_scope):
     where += time_where
 
     rows = query(
-        f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, p.variant,
-                   s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total
+        f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, p.variant, p.unit,
+                   s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total,
+                   s.sale_type, s.payment_method, bu.username AS buyer_username
             FROM sales s
             JOIN branches b ON s.branch_id = b.branch_id
             JOIN products p ON s.sku = p.sku
+            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
             WHERE 1=1 {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["unit_price"] = float(r["unit_price"])
+        r["line_total"] = float(r["line_total"])
+        r["buyer_username"] = r["buyer_username"] or "—"
+
+    columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
+    columns = [("sold_at", "Sold", "datetime")] + columns + [
+        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("variant", "Variant", "str"),
+        ("unit", "Unit", "str"), ("sale_type", "Type", "str"), ("qty_sold", "Qty", "int"),
+        ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
+        ("payment_method", "Payment", "str"), ("buyer_username", "Employee (if salary deduction)", "str"),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
+
+
+def _report_employee_purchases(filters, branch_scope):
+    """Sales paid for via payroll deduction rather than cash — i.e. an
+    employee took product for themselves and the cost comes out of their
+    salary. Same shape as sales_history but always scoped to
+    payment_method = 'Salary Deduction', so HQ/payroll can pull exactly
+    what needs to be deducted from each employee for a given period.
+    """
+    where, params = "", ["Salary Deduction"]
+    if branch_scope is not None:
+        where += " AND s.branch_id = %s"
+        params.append(branch_scope)
+    elif filters["branch_id"] != "all":
+        where += " AND s.branch_id = %s"
+        params.append(filters["branch_id"])
+    if filters["sale_type"] != "all":
+        where += " AND s.sale_type = %s"
+        params.append(filters["sale_type"])
+    if filters["search"]:
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR bu.username LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like]
+    time_where, order, limit_n, truncated = _time_window("s.sold_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, s.sale_type,
+                   s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total,
+                   COALESCE(bu.username, '(account deleted)') AS buyer_username
+            FROM sales s
+            JOIN branches b ON s.branch_id = b.branch_id
+            JOIN products p ON s.sku = p.sku
+            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
+            WHERE s.payment_method = %s {where} {order} LIMIT {limit_n}""",
         tuple(params),
     )
     for r in rows:
@@ -394,9 +473,10 @@ def _report_sales_history(filters, branch_scope):
         r["line_total"] = float(r["line_total"])
 
     columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
-    columns = [("sold_at", "Sold", "datetime")] + columns + [
-        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("variant", "Variant", "str"),
-        ("qty_sold", "Qty", "int"), ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
+    columns = [("sold_at", "Date", "datetime"), ("buyer_username", "Employee", "str")] + columns + [
+        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("sale_type", "Type", "str"),
+        ("qty_sold", "Qty", "int"), ("unit_price", "Unit Price", "money"),
+        ("line_total", "Amount to Deduct", "money"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -438,6 +518,7 @@ _BUILDERS = {
     "stock_requests": _report_stock_requests,
     "movement_logs": _report_movement_logs,
     "sales_history": _report_sales_history,
+    "employee_purchases": _report_employee_purchases,
     "accounts": _report_accounts,
 }
 

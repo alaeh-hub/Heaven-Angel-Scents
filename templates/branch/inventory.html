@@ -13,18 +13,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
       </div>
-      <div class="table-filter">
-        <select class="smart-filter-select" data-filter-key="variant">
-          <option value="">All variants</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-          <option value="Unisex">Unisex</option>
-        </select>
-      </div>
     </div>
     <div class="table-wrap">
       <table class="smart-table">
-        <thead><tr><th>Item</th><th>Variant</th><th class="num">Your price</th><th>Vs. HQ</th><th style="min-width:200px;">Stock level</th></tr></thead>
+        <thead><tr><th>Item</th><th>Variant</th><th>Unit</th><th class="num">HQ price</th><th style="min-width:200px;">Stock level</th></tr></thead>
         <tbody>
           {% for row in rows %}
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
@@ -33,8 +25,8 @@
               <div class="item-sub mono">{{ row.sku }}</div>
             </td>
             <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
-            <td class="num mono" data-label="Your price">{{ row.price|peso }}</td>
-            <td data-label="Vs. HQ">{{ m.discount_badge(row.base_price, row.price) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
+            <td class="num mono" data-label="HQ price">{{ row.price|peso }}</td>
             <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>
           {% endfor %}
@@ -50,6 +42,9 @@
       <span class="smart-page-info"></span>
       <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
     </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">This is the HQ reference price — the amount actually charged is recorded per sale on the Record Sale page.</p>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No products assigned to your branch yet.</p></div>

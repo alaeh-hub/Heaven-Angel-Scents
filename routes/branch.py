@@ -7,7 +7,7 @@ from decorators import branch_required
 from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin_and_branch
-from utils import ValidationError, parse_non_negative_int, parse_positive_int
+from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, parse_non_negative_decimal, parse_non_negative_int, parse_positive_int
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
 
@@ -80,8 +80,7 @@ def dashboard():
 def inventory():
     bid = _branch_id()
     rows = query(
-        """SELECT p.sku, p.item_name, p.variant, p.price AS base_price, p.is_active,
-                  COALESCE(bi.branch_price, p.price) AS price, bi.branch_price,
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, p.is_active,
                   bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND (p.is_active = TRUE OR bi.stock_qty > 0)
@@ -127,9 +126,9 @@ def request_stock():
                     flash("Couldn't send this request — please try again.", "error")
         return redirect(url_for("branch.request_stock"))
 
-    products_list = query("SELECT sku, item_name, variant FROM products WHERE is_active = TRUE ORDER BY item_name")
+    products_list = query("SELECT sku, item_name, variant, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
     history = query(
-        """SELECT sr.*, p.item_name FROM stock_requests sr JOIN products p ON sr.sku = p.sku
+        """SELECT sr.*, p.item_name, p.unit FROM stock_requests sr JOIN products p ON sr.sku = p.sku
            WHERE sr.branch_id = %s ORDER BY sr.requested_at DESC LIMIT 25""",
         (bid,),
     )
@@ -272,18 +271,65 @@ def receipt(request_id):
 @bp.route("/record-sale", methods=["GET", "POST"])
 @branch_required
 def record_sale():
+    """Record a Sale or a Refill.
+
+    A Sale is the normal case (customer takes a bottle). A Refill is a
+    customer bringing their own bottle back and only paying for
+    product — both consume stock the same way, but are usually charged
+    a different amount, so the price is always typed in here rather
+    than pulled from the catalog automatically.
+
+    payment_method covers employees who take product for themselves
+    where the cost is deducted from their salary instead of paid in
+    cash — see buyer_user_id on the sales table.
+    """
     bid = _branch_id()
     if request.method == "POST":
         sku = request.form.get("sku")
+        sale_type = request.form.get("sale_type")
+        payment_method = request.form.get("payment_method")
+        raw_buyer = request.form.get("buyer_user_id", "").strip()
+
         try:
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity sold")
+            unit_price = parse_non_negative_decimal(request.form.get("unit_price"), "Price charged")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.record_sale"))
 
+        if sale_type not in SALE_TYPES:
+            flash("Select whether this is a sale or a refill.", "error")
+            return redirect(url_for("branch.record_sale"))
+        if payment_method not in PAYMENT_METHODS:
+            flash("Select a payment method.", "error")
+            return redirect(url_for("branch.record_sale"))
         if not sku:
             flash("Select a product to sell.", "error")
             return redirect(url_for("branch.record_sale"))
+
+        buyer = None
+        buyer_user_id = None
+        if payment_method == "Salary Deduction":
+            if not raw_buyer:
+                flash("Enter which employee this salary deduction applies to.", "error")
+                return redirect(url_for("branch.record_sale"))
+            # See admin.py's record_sale() for why this resolves a typed
+            # username rather than trusting a select-supplied user_id: the
+            # Employee field is now a free-text combobox with a datalist of
+            # real usernames, so the typed text has to be checked against a
+            # real, active account here.
+            buyer = query(
+                "SELECT user_id, username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE",
+                (raw_buyer,), fetchone=True,
+            )
+            if not buyer:
+                flash(
+                    f"'{raw_buyer}' isn't a valid, active employee account. "
+                    "Pick a name from the suggestions as you type.",
+                    "error",
+                )
+                return redirect(url_for("branch.record_sale"))
+            buyer_user_id = buyer["user_id"]
 
         try:
             with transaction() as conn:
@@ -294,10 +340,7 @@ def record_sale():
                 # cashiers can no longer both "see" the last unit as
                 # available and both sell it.
                 cur.execute(
-                    """SELECT bi.stock_qty, COALESCE(bi.branch_price, p.price) AS price
-                       FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-                       WHERE bi.branch_id = %s AND bi.sku = %s
-                       FOR UPDATE""",
+                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
                     (bid, sku),
                 )
                 stock_row = cur.fetchone()
@@ -314,41 +357,50 @@ def record_sale():
                 after_qty = before_qty - qty
 
                 cur.execute(
-                    "INSERT INTO sales (branch_id, sku, qty_sold, unit_price) VALUES (%s, %s, %s, %s)",
-                    (bid, sku, qty, stock_row["price"]),
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_user_id)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (bid, sku, qty, unit_price, sale_type, payment_method, buyer_user_id),
                 )
                 cur.execute(
                     "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
                     (after_qty, bid, sku),
                 )
+                movement_type = "SALE" if sale_type == "Sale" else "REFILL"
+                notes = "Point-of-sale" if payment_method == "Cash" else f"Salary deduction — {buyer['username']}"
                 cur.execute(
                     """INSERT INTO stock_movement_logs
                        (branch_id, sku, change_qty, movement_type, notes,
                         created_by_user_id, reference_type, before_qty, after_qty)
-                       VALUES (%s, %s, %s, 'SALE', 'Point-of-sale', %s, 'SALE', %s, %s)""",
-                    (bid, sku, -qty, session.get("user_id"), before_qty, after_qty),
+                       VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
+                    (bid, sku, -qty, movement_type, notes, session.get("user_id"), before_qty, after_qty),
                 )
                 cur.close()
             notify_admin_and_branch(bid, ["inventory", "sales", "movement_logs"])
-            flash("Sale recorded.", "success")
+            flash(f"{sale_type} recorded.", "success")
         except Exception:
             current_app.logger.exception("record_sale failed for branch_id=%s sku=%s", bid, sku)
             flash("Couldn't record that sale — please try again.", "error")
         return redirect(url_for("branch.record_sale"))
 
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant,
-                  COALESCE(bi.branch_price, p.price) AS price, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND p.is_active = TRUE AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (bid,),
     )
     recent_sales = query(
-        """SELECT s.*, p.item_name FROM sales s JOIN products p ON s.sku = p.sku
+        """SELECT s.*, p.item_name, bu.username AS buyer_username
+           FROM sales s JOIN products p ON s.sku = p.sku
+           LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
         (bid,),
     )
-    return render_template("branch/record_sale.html", inventory=inventory, recent_sales=recent_sales)
+    employees = query(
+        "SELECT user_id, username, role FROM users WHERE is_active = TRUE ORDER BY username"
+    )
+    return render_template(
+        "branch/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
+    )
 
 
 # ---------------------------------------------------------------- sales history
@@ -377,7 +429,7 @@ def reports():
         {"key": key, "label": meta.get("branch_label", meta["label"]), "windowed": meta["windowed"]}
         for key, meta in REPORT_TYPES.items() if meta["branch"]
     ]
-    return render_template("branch/reports.html", report_types=report_types)
+    return render_template("branch/reports.html", report_types=report_types, unit_choices=PRODUCT_UNITS)
 
 
 @bp.route("/reports/generate")
@@ -401,6 +453,10 @@ def generate_report():
         report_type, filters, branch_scope=bid,
         actor_label=f"{session.get('branch_name')} — {session.get('username')}",
     )
+
+    if report["row_count"] == 0:
+        flash(f"No data matches the selected filters for {report['title']}.", "warning")
+        return redirect(url_for("branch.reports"))
 
     stamp = datetime.date.today().isoformat()
     if fmt == "xlsx":
@@ -470,6 +526,21 @@ def reports_data():
         (bid,),
     )
 
+    # Cash sales vs. employee purchases deducted from salary, and plain
+    # sales vs. refills — both scoped to this branch only.
+    payment_breakdown = query(
+        """SELECT payment_method, COALESCE(SUM(qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales WHERE branch_id = %s GROUP BY payment_method""",
+        (bid,),
+    )
+    sale_type_breakdown = query(
+        """SELECT sale_type, COALESCE(SUM(qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales WHERE branch_id = %s GROUP BY sale_type""",
+        (bid,),
+    )
+
     totals = query(
         """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
            FROM sales WHERE branch_id = %s""",
@@ -483,5 +554,6 @@ def reports_data():
 
     return jsonify(
         by_variant=by_variant, sales_trend=sales_trend, top_products=top_products,
-        stock_by_variant=stock_by_variant, movement_trend=movement_trend, totals=totals,
+        stock_by_variant=stock_by_variant, movement_trend=movement_trend,
+        payment_breakdown=payment_breakdown, sale_type_breakdown=sale_type_breakdown, totals=totals,
     )

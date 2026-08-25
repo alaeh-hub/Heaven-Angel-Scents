@@ -304,6 +304,11 @@ function initDispatchQtyWarnings() {
 function initSmartTables() {
   document.querySelectorAll('[data-smart-table]').forEach((container) => {
     const input = container.querySelector('.smart-search-input');
+    // Legacy support: a handful of older pages may still carry a
+    // data-filter-key dropdown. New markup shouldn't add one — the
+    // search box below now matches every visible column on its own, so
+    // a separate filter select is redundant and this is only here so
+    // an old page that hasn't been touched yet doesn't break.
     const filterSelect = container.querySelector('.smart-filter-select');
     const filterKey = filterSelect ? (filterSelect.dataset.filterKey || 'filter') : null;
     const table = container.querySelector('.smart-table');
@@ -320,6 +325,18 @@ function initSmartTables() {
     const countLabel = container.dataset.countLabel || 'row';
     const pageSize = parseInt(container.dataset.pageSize, 10) || 10;
 
+    // Precompute each row's full visible text once up front (every <td>,
+    // not just whatever a template author remembered to put in
+    // data-search) rather than re-reading the DOM on every keystroke.
+    // Falls back to data-search too, in case a row has extra searchable
+    // context (e.g. a SKU) that isn't otherwise visible as its own cell.
+    const rowText = new Map();
+    rows.forEach((r) => {
+      const visible = r.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+      const extra = (r.dataset.search || '').toLowerCase();
+      rowText.set(r, extra && extra !== visible ? visible + ' ' + extra : visible);
+    });
+
     let filtered = rows.slice();
     let page = 1;
 
@@ -327,7 +344,7 @@ function initSmartTables() {
       const q = input ? input.value.trim().toLowerCase() : '';
       const fval = filterSelect ? filterSelect.value : '';
       filtered = rows.filter((r) => {
-        const matchesSearch = !q || (r.dataset.search || '').indexOf(q) !== -1;
+        const matchesSearch = !q || rowText.get(r).indexOf(q) !== -1;
         const matchesFilter = !fval || (r.dataset[filterKey] || '') === fval;
         return matchesSearch && matchesFilter;
       });

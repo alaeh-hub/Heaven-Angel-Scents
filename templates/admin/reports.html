@@ -191,24 +191,32 @@
     </div>
     <canvas id="branchRevenueChart"></canvas>
   </div>
-  <div class="card">
-    <div class="card-header"><h2>Branch pricing</h2><span class="hint">avg. vs. HQ price</span></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Branch</th><th>Vs. HQ</th></tr></thead>
-        <tbody id="branchPricingBody"></tbody>
-      </table>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Sale vs. Refill</h2>
+      <span class="hint">by revenue, all branches</span>
     </div>
+    <canvas id="saleTypeChart"></canvas>
   </div>
 </div>
 
 <div class="grid grid-2 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Cash vs. Salary Deduction</h2>
+      <span class="hint">by revenue, all branches</span>
+    </div>
+    <canvas id="paymentChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Current stock by branch</h2>
     </div>
     <canvas id="stockChart"></canvas>
   </div>
+</div>
+
+<div class="grid grid-1 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
       <div>
@@ -232,6 +240,8 @@
 <script>
   const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
   const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
+  const SALE_TYPE_COLORS = { Sale: '#17975E', Refill: '#2E5AF0' };
+  const PAYMENT_COLORS = { Cash: '#17975E', 'Salary Deduction': '#C9820B' };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
   // for the "last N ___" label under the chart title, the actual
@@ -246,13 +256,6 @@
 
   function formatPeso(value) {
     return '₱' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  function discountBadgeHtml(pct) {
-    const rounded = Math.round(pct);
-    if (rounded > 0) return `<span class="badge badge-fulfilled">-${rounded}%</span>`;
-    if (rounded < 0) return `<span class="badge badge-rejected">+${Math.abs(rounded)}%</span>`;
-    return `<span class="badge badge-pending">HQ price</span>`;
   }
 
   function showChartError(message) {
@@ -348,26 +351,54 @@
           }
         });
 
-        const pricingBody = document.getElementById('branchPricingBody');
-        pricingBody.innerHTML = '';
-        data.branch_pricing.forEach(row => {
-          const tr = document.createElement('tr');
+        charts.saleType = new Chart(document.getElementById('saleTypeChart'), {
+          type: 'doughnut',
+          data: {
+            labels: data.sale_type_breakdown.map(d => d.sale_type),
+            datasets: [{
+              data: data.sale_type_breakdown.map(d => d.revenue),
+              backgroundColor: data.sale_type_breakdown.map(d => SALE_TYPE_COLORS[d.sale_type] || '#7C5CFA'),
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'bottom' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const row = data.sale_type_breakdown[ctx.dataIndex];
+                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                  }
+                }
+              }
+            }
+          }
+        });
 
-          // branch_name is admin-entered, free-text data from the
-          // database — never trust it as HTML. textContent guarantees
-          // it's always rendered as plain text, no matter what
-          // characters it contains.
-          const nameTd = document.createElement('td');
-          nameTd.textContent = row.branch_name;
-
-          // discountBadgeHtml() only ever builds markup out of a
-          // formatted number (see its definition above), so it's safe
-          // to use innerHTML here — nothing user-entered flows into it.
-          const badgeTd = document.createElement('td');
-          badgeTd.innerHTML = discountBadgeHtml(row.avg_discount_pct);
-
-          tr.append(nameTd, badgeTd);
-          pricingBody.appendChild(tr);
+        charts.payment = new Chart(document.getElementById('paymentChart'), {
+          type: 'doughnut',
+          data: {
+            labels: data.payment_breakdown.map(d => d.payment_method),
+            datasets: [{
+              data: data.payment_breakdown.map(d => d.revenue),
+              backgroundColor: data.payment_breakdown.map(d => PAYMENT_COLORS[d.payment_method] || '#7C5CFA'),
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'bottom' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const row = data.payment_breakdown[ctx.dataIndex];
+                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                  }
+                }
+              }
+            }
+          }
         });
 
         charts.stock = new Chart(document.getElementById('stockChart'), {

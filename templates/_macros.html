@@ -22,18 +22,28 @@
 {% endmacro %}
 
 {% macro movement_badge(mtype) %}
-{% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
+{% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL': 'female', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
 <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
 {% endmacro %}
 
-{% macro discount_badge(base_price, effective_price) %}
-{% set diff_pct = ((base_price - effective_price) / base_price * 100) if base_price else 0 %}
-{% if diff_pct > 0.5 %}
-<span class="badge badge-fulfilled">-{{ '%.0f'|format(diff_pct) }}%</span>
-{% elif diff_pct < -0.5 %}
-<span class="badge badge-rejected">+{{ '%.0f'|format(-diff_pct) }}%</span>
+{# A Sale is the normal case (customer takes a bottle). A Refill is a
+   customer bringing their own bottle back and only paying for product.
+   Both consume stock the same way — this badge is purely a visual cue
+   for which one a given row was. #}
+{% macro sale_type_badge(sale_type) %}
+{% set map = {'Sale': 'fulfilled', 'Refill': 'transit'} %}
+<span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
+{% endmacro %}
+
+{# Cash is a normal register transaction. Salary Deduction is an employee
+   taking product for themselves where the cost comes out of their pay
+   instead of the register — flagged distinctly so it's easy to spot
+   rows that need to be reconciled with payroll rather than the till. #}
+{% macro payment_method_badge(payment_method, buyer_username=None) %}
+{% if payment_method == 'Salary Deduction' %}
+<span class="badge badge-pending badge-payroll" title="Deducted from {{ buyer_username or 'an employee' }}'s salary, not paid in cash">Salary{% if buyer_username %}<span class="badge-payroll-name"> · {{ buyer_username }}</span>{% endif %}</span>
 {% else %}
-<span class="badge badge-pending">HQ price</span>
+<span class="badge badge-active">Cash</span>
 {% endif %}
 {% endmacro %}
 

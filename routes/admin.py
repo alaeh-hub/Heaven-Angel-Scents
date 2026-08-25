@@ -12,7 +12,10 @@ from audit import log_action
 from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
-from utils import ValidationError, generate_temp_password, parse_non_negative_decimal, parse_positive_int
+from utils import (
+    PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, build_sku,
+    generate_temp_password, parse_base_code, parse_non_negative_decimal, parse_positive_int,
+)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -115,45 +118,48 @@ def dashboard():
 @admin_required
 def products():
     if request.method == "POST":
-        sku = request.form.get("sku", "").strip().upper()
         item_name = request.form.get("item_name", "").strip()
         variant = request.form.get("variant")
+        unit = request.form.get("unit")
 
         try:
+            base_code = parse_base_code(request.form.get("base_code"))
             price = parse_non_negative_decimal(request.form.get("price"), "Price")
+            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
+                raise ValidationError("Please fill in every field with a valid value.")
+            # The base code is reusable across sizes (e.g. base 'A1' + unit
+            # '85ML' and base 'A1' + unit '15ML' both come from the same
+            # admin-entered code) — build_sku() is what actually makes each
+            # one a distinct SKU/row, with its own price and stock.
+            sku = build_sku(base_code, unit)
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.products"))
 
-        if not sku or not item_name or variant not in ("Male", "Female", "Unisex"):
-            flash("Please fill in every field with a valid value.", "error")
-        else:
-            try:
-                with transaction() as conn:
-                    cur = conn.cursor()
+        try:
+            with transaction() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO products (sku, item_name, variant, unit, price) VALUES (%s, %s, %s, %s, %s)",
+                    (sku, item_name, variant, unit, price),
+                )
+                # Give every existing branch (and HQ) a zero-stock row so
+                # it shows up everywhere. Both writes happen in one
+                # transaction so a crash partway through can't leave the
+                # product created with no inventory rows.
+                cur.execute("SELECT branch_id FROM branches")
+                branch_ids = [row[0] for row in cur.fetchall()]
+                for branch_id in branch_ids:
                     cur.execute(
-                        "INSERT INTO products (sku, item_name, variant, price) VALUES (%s, %s, %s, %s)",
-                        (sku, item_name, variant, price),
+                        "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
+                        (branch_id, sku),
                     )
-                    # Give every existing branch (and HQ) a zero-stock row so
-                    # it shows up everywhere. branch_price is left NULL,
-                    # meaning the branch uses this HQ price until an admin
-                    # sets an override on the Branch Stock page. Both writes
-                    # happen in one transaction so a crash partway through
-                    # can't leave the product created with no inventory rows.
-                    cur.execute("SELECT branch_id FROM branches")
-                    branch_ids = [row[0] for row in cur.fetchall()]
-                    for branch_id in branch_ids:
-                        cur.execute(
-                            "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
-                            (branch_id, sku),
-                        )
-                    cur.close()
-                notify_all(["products", "inventory"])
-                log_action("add_product", target=sku, details=f"{item_name} ({variant}) — ₱{price:,.2f}")
-                flash(f"{item_name} ({sku}) added to the catalog.", "success")
-            except Exception:
-                flash(f"SKU '{sku}' already exists.", "error")
+                cur.close()
+            notify_all(["products", "inventory"])
+            log_action("add_product", target=sku, details=f"{item_name} ({variant}, {unit}) — ₱{price:,.2f}")
+            flash(f"{item_name} — {unit} ({sku}) added to the catalog.", "success")
+        except Exception:
+            flash(f"'{base_code}' already has a {unit} entry (SKU {sku}).", "error")
         return redirect(url_for("admin.products"))
 
     catalog = query(
@@ -162,7 +168,7 @@ def products():
            LEFT JOIN branch_inventory bi ON p.sku = bi.sku
            GROUP BY p.sku ORDER BY p.item_name"""
     )
-    return render_template("admin/products.html", catalog=catalog)
+    return render_template("admin/products.html", catalog=catalog, unit_choices=PRODUCT_UNITS)
 
 
 @bp.route("/products/<sku>/toggle", methods=["POST"])
@@ -231,14 +237,14 @@ def production():
             flash("Couldn't log this production run — please try again.", "error")
         return redirect(url_for("admin.production"))
 
-    products_list = query("SELECT sku, item_name FROM products WHERE is_active = TRUE ORDER BY item_name")
+    products_list = query("SELECT sku, item_name, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
     logs = query(
-        """SELECT pl.*, p.item_name FROM production_logs pl
+        """SELECT pl.*, p.item_name, p.unit FROM production_logs pl
            JOIN products p ON pl.sku = p.sku
            ORDER BY pl.produced_at DESC LIMIT 40"""
     )
     hq_stock = query(
-        """SELECT p.sku, p.item_name, p.variant, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.unit, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
@@ -286,20 +292,24 @@ def branches():
     return render_template("admin/branches.html", branch_list=branch_list)
 
 
-# ---------------------------------------------------------------- branch stock & pricing
+# ---------------------------------------------------------------- branch stock
 @bp.route("/branch-stock")
 @admin_required
 def branch_stock():
+    """Read-only view of stock levels per branch.
+
+    There's no per-branch price to set anymore — every branch sells at
+    the HQ price on the product catalog (see products()). This page is
+    purely about stock levels now.
+    """
     branch_filter = request.args.get("branch_id", "all")
     branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
 
     rows = []
     if branch_filter != "all":
         rows = query(
-            """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant,
-                      p.price AS base_price, bi.branch_price,
-                      COALESCE(bi.branch_price, p.price) AS effective_price,
-                      bi.stock_qty, bi.reorder_level
+            """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant, p.unit,
+                      p.price AS hq_price, bi.stock_qty, bi.reorder_level
                FROM branch_inventory bi
                JOIN branches b ON bi.branch_id = b.branch_id
                JOIN products p ON bi.sku = p.sku
@@ -323,35 +333,137 @@ def branch_stock():
     )
 
 
-@bp.route("/branch-stock/price", methods=["POST"])
+# ---------------------------------------------------------------- record sale (HQ direct)
+@bp.route("/record-sale", methods=["GET", "POST"])
 @admin_required
-def update_branch_price():
-    branch_id = request.form.get("branch_id")
-    sku = request.form.get("sku")
-    raw_price = request.form.get("branch_price", "").strip()
+def record_sale():
+    """HQ selling straight from the warehouse (branch_id=1) — walk-in
+    sales, refills, or an employee taking product with the cost deducted
+    from their salary. Mirrors branch.record_sale(); the only difference
+    is HQ can't produce here, only sell/refill from whatever the
+    warehouse already has on hand (see production() for adding stock).
 
-    if raw_price == "":
-        execute(
-            "UPDATE branch_inventory SET branch_price = NULL WHERE branch_id = %s AND sku = %s",
-            (branch_id, sku),
-        )
-        notify_admin_and_branch(branch_id, "inventory")
-        flash("Branch price cleared — this branch now uses the HQ price.", "success")
-    else:
+    There's no branch price to fall back to anymore — the HQ price is
+    only ever a suggested starting point; the actual amount charged is
+    typed in on every sale/refill.
+    """
+    if request.method == "POST":
+        sku = request.form.get("sku")
+        sale_type = request.form.get("sale_type")
+        payment_method = request.form.get("payment_method")
+        raw_buyer = request.form.get("buyer_user_id", "").strip()
+
         try:
-            new_price = parse_non_negative_decimal(raw_price, "Branch price")
+            qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")
+            unit_price = parse_non_negative_decimal(request.form.get("unit_price"), "Price charged")
         except ValidationError as err:
             flash(str(err), "error")
-            return redirect(url_for("admin.branch_stock", branch_id=branch_id))
+            return redirect(url_for("admin.record_sale"))
 
-        execute(
-            "UPDATE branch_inventory SET branch_price = %s WHERE branch_id = %s AND sku = %s",
-            (new_price, branch_id, sku),
-        )
-        notify_admin_and_branch(branch_id, "inventory")
-        flash("Branch price updated.", "success")
+        if sale_type not in SALE_TYPES:
+            flash("Select whether this is a sale or a refill.", "error")
+            return redirect(url_for("admin.record_sale"))
+        if payment_method not in PAYMENT_METHODS:
+            flash("Select a payment method.", "error")
+            return redirect(url_for("admin.record_sale"))
+        if not sku:
+            flash("Select a product.", "error")
+            return redirect(url_for("admin.record_sale"))
 
-    return redirect(url_for("admin.branch_stock", branch_id=branch_id))
+        buyer_user_id = None
+        if payment_method == "Salary Deduction":
+            if not raw_buyer:
+                flash("Enter which employee this salary deduction applies to.", "error")
+                return redirect(url_for("admin.record_sale"))
+            # The Employee field is now a free-text combobox (typed text +
+            # datalist suggestions of real usernames), not a <select> of
+            # user_ids — so the typed text has to be resolved to a real,
+            # active account by username here rather than trusted as an
+            # id. Case-insensitive so "Manila" vs "manila" doesn't spuriously
+            # fail to match. Anything that doesn't resolve to exactly one
+            # active account is rejected outright, so buyer_user_id (and
+            # the payroll reporting/dedup that depends on it) never ends
+            # up pointing at a typo or a made-up name.
+            buyer = query(
+                "SELECT user_id, username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE",
+                (raw_buyer,), fetchone=True,
+            )
+            if not buyer:
+                flash(
+                    f"'{raw_buyer}' isn't a valid, active employee account. "
+                    "Pick a name from the suggestions as you type.",
+                    "error",
+                )
+                return redirect(url_for("admin.record_sale"))
+            buyer_user_id = buyer["user_id"]
+
+        try:
+            with transaction() as conn:
+                cur = conn.cursor(dictionary=True)
+                # Row-lock HQ's own stock for this SKU for the rest of the
+                # transaction — same reasoning as branch.record_sale().
+                cur.execute(
+                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
+                    (HQ_BRANCH_ID, sku),
+                )
+                stock_row = cur.fetchone()
+                if not stock_row:
+                    cur.close()
+                    flash("That product isn't stocked at the HQ warehouse.", "error")
+                    return redirect(url_for("admin.record_sale"))
+                if stock_row["stock_qty"] < qty:
+                    cur.close()
+                    flash("Not enough HQ warehouse stock on hand for that.", "error")
+                    return redirect(url_for("admin.record_sale"))
+
+                before_qty = stock_row["stock_qty"]
+                after_qty = before_qty - qty
+
+                cur.execute(
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_user_id)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (HQ_BRANCH_ID, sku, qty, unit_price, sale_type, payment_method, buyer_user_id),
+                )
+                cur.execute(
+                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                    (after_qty, HQ_BRANCH_ID, sku),
+                )
+                movement_type = "SALE" if sale_type == "Sale" else "REFILL"
+                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Salary deduction — {buyer['username']}"
+                cur.execute(
+                    """INSERT INTO stock_movement_logs
+                       (branch_id, sku, change_qty, movement_type, notes,
+                        created_by_user_id, reference_type, before_qty, after_qty)
+                       VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
+                    (HQ_BRANCH_ID, sku, -qty, movement_type, notes, session.get("user_id"), before_qty, after_qty),
+                )
+                cur.close()
+            notify_admin(["inventory", "sales", "movement_logs"])
+            flash(f"{sale_type} recorded.", "success")
+        except Exception:
+            current_app.logger.exception("admin record_sale failed for sku=%s", sku)
+            flash("Couldn't record that — please try again.", "error")
+        return redirect(url_for("admin.record_sale"))
+
+    inventory = query(
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
+           FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
+           WHERE bi.branch_id = %s AND p.is_active = TRUE AND bi.stock_qty > 0 ORDER BY p.item_name""",
+        (HQ_BRANCH_ID,),
+    )
+    recent_sales = query(
+        """SELECT s.*, p.item_name, bu.username AS buyer_username
+           FROM sales s JOIN products p ON s.sku = p.sku
+           LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
+           WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
+        (HQ_BRANCH_ID,),
+    )
+    employees = query(
+        "SELECT user_id, username, role FROM users WHERE is_active = TRUE ORDER BY username"
+    )
+    return render_template(
+        "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
+    )
 
 
 # ---------------------------------------------------------------- user accounts
@@ -470,7 +582,7 @@ def reset_user_password(user_id):
 @admin_required
 def requests_list():
     status_filter = request.args.get("status", "all")
-    sql = """SELECT sr.*, b.branch_name, p.item_name, p.variant
+    sql = """SELECT sr.*, b.branch_name, p.item_name, p.variant, p.unit
               FROM stock_requests sr
               JOIN branches b ON sr.branch_id = b.branch_id
               JOIN products p ON sr.sku = p.sku"""
@@ -625,7 +737,9 @@ def reports():
         {"key": key, "label": meta["label"], "windowed": meta["windowed"]}
         for key, meta in REPORT_TYPES.items() if meta["admin"]
     ]
-    return render_template("admin/reports.html", branch_list=branch_list, report_types=report_types)
+    return render_template(
+        "admin/reports.html", branch_list=branch_list, report_types=report_types, unit_choices=PRODUCT_UNITS,
+    )
 
 
 @bp.route("/reports/generate")
@@ -644,6 +758,10 @@ def generate_report():
 
     filters = parse_report_filters(request.args)
     report = get_report(report_type, filters, branch_scope=None, actor_label=f"HQ Admin — {session.get('username')}")
+
+    if report["row_count"] == 0:
+        flash(f"No data matches the selected filters for {report['title']}.", "warning")
+        return redirect(url_for("admin.reports"))
 
     stamp = datetime.date.today().isoformat()
     if fmt == "xlsx":
@@ -679,18 +797,22 @@ def reports_data():
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
-    # Average discount/markup each branch is currently running vs. the HQ price,
-    # based on active SKUs that have a branch_price override set.
-    branch_pricing = query(
-        """SELECT b.branch_name,
-                  AVG(CASE WHEN bi.branch_price IS NOT NULL AND p.price > 0
-                           THEN (p.price - bi.branch_price) / p.price * 100
-                           ELSE 0 END) AS avg_discount_pct
-           FROM branches b
-           JOIN branch_inventory bi ON b.branch_id = bi.branch_id
-           JOIN products p ON bi.sku = p.sku
-           WHERE b.is_hq = FALSE AND p.is_active = TRUE
-           GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    # How much of total revenue is a normal cash sale vs. an employee
+    # taking product against their salary — useful at a glance for
+    # payroll to see how much is riding on deductions this period.
+    payment_breakdown = query(
+        """SELECT payment_method, COALESCE(SUM(qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales GROUP BY payment_method"""
+    )
+
+    # Straight sale (customer takes a bottle) vs. refill (customer brings
+    # their own bottle back) — both consume stock, typically at
+    # different price points, so it's worth tracking separately.
+    sale_type_breakdown = query(
+        """SELECT sale_type, COALESCE(SUM(qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales GROUP BY sale_type"""
     )
 
     # Bucket size for the "Ledger movement" trend chart. Same allow-list
@@ -727,6 +849,7 @@ def reports_data():
         row["day"] = row["day"].isoformat()
 
     return jsonify(
-        by_variant=by_variant, by_branch=by_branch, branch_pricing=branch_pricing,
+        by_variant=by_variant, by_branch=by_branch,
+        payment_breakdown=payment_breakdown, sale_type_breakdown=sale_type_breakdown,
         movement_trend=movement_trend, stock_by_branch=stock_by_branch, totals=totals,
     )

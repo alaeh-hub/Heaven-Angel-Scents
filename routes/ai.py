@@ -115,18 +115,33 @@ def _admin_snapshot():
            FROM branches b LEFT JOIN sales s ON b.branch_id = s.branch_id
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
+    # revenue_by_branch above is retail branches only (b.is_hq = FALSE), so
+    # sales rung up directly at the HQ warehouse (branch_id = the is_hq
+    # branch, via routes/admin.py's Record Sale page) never showed up
+    # anywhere in this snapshot. Surface them as their own block instead
+    # of folding them into revenue_by_branch, so the assistant can tell
+    # "sold from HQ" apart from "sold from a branch" rather than treating
+    # HQ as just another branch row.
+    hq_sales = query(
+        """SELECT b.branch_name,
+                  COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM branches b LEFT JOIN sales s ON b.branch_id = s.branch_id
+           WHERE b.is_hq = TRUE GROUP BY b.branch_id, b.branch_name""",
+        fetchone=True,
+    )
     return {
         "stats": stats,
         "low_stock_across_branches": low_stock,
         "pending_stock_requests": pending_requests,
         "revenue_by_branch": revenue_by_branch,
+        "hq_sales": hq_sales,
     }
 
 
 def _branch_snapshot(branch_id):
     inventory = query(
-        """SELECT p.item_name, bi.stock_qty, bi.reorder_level,
-                  COALESCE(bi.branch_price, p.price) AS price
+        """SELECT p.item_name, bi.stock_qty, bi.reorder_level, p.price AS price
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
         (branch_id,),

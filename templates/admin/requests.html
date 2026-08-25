@@ -22,13 +22,14 @@
     </div>
     <div class="table-wrap">
       <table class="smart-table">
-        <thead><tr><th>Requested</th><th>Branch</th><th>Item</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Requested</th><th>Branch</th><th>Item</th><th>Unit</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {% for r in stock_requests %}
           <tr data-search="{{ (r.branch_name ~ ' ' ~ r.item_name)|lower }}">
             <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Branch">{{ r.branch_name }}</td>
             <td data-label="Item"><div class="item-name">{{ r.item_name }}</div><div class="item-sub">{{ m.variant_badge(r.variant) }}</div></td>
+            <td class="mono text-soft" data-label="Unit">{{ r.unit }}</td>
             <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="">

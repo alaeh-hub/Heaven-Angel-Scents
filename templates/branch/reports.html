@@ -202,6 +202,23 @@
   </div>
 </div>
 
+<div class="grid grid-2 stack">
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Sale vs. Refill</h2>
+      <span class="hint">by revenue</span>
+    </div>
+    <canvas id="saleTypeChart"></canvas>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
+      <h2>Cash vs. Salary Deduction</h2>
+      <span class="hint">by revenue</span>
+    </div>
+    <canvas id="paymentChart"></canvas>
+  </div>
+</div>
+
 <div class="grid grid-1 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
@@ -226,6 +243,8 @@
 <script>
   const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
   const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
+  const SALE_TYPE_COLORS = { Sale: '#17975E', Refill: '#2E5AF0' };
+  const PAYMENT_COLORS = { Cash: '#17975E', 'Salary Deduction': '#C9820B' };
 
   const TREND_WINDOW_LABELS = {
     daily: 'last 14 days',
@@ -324,6 +343,56 @@
             datasets: [{ label: 'Units on hand', data: data.stock_by_variant.map(d => d.total_stock), backgroundColor: data.stock_by_variant.map(d => VARIANT_COLORS[d.variant] || '#7C5CFA'), borderRadius: 4 }]
           },
           options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+        });
+
+        charts.saleType = new Chart(document.getElementById('saleTypeChart'), {
+          type: 'doughnut',
+          data: {
+            labels: data.sale_type_breakdown.map(d => d.sale_type),
+            datasets: [{
+              data: data.sale_type_breakdown.map(d => d.revenue),
+              backgroundColor: data.sale_type_breakdown.map(d => SALE_TYPE_COLORS[d.sale_type] || '#7C5CFA'),
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'bottom' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const row = data.sale_type_breakdown[ctx.dataIndex];
+                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        charts.payment = new Chart(document.getElementById('paymentChart'), {
+          type: 'doughnut',
+          data: {
+            labels: data.payment_breakdown.map(d => d.payment_method),
+            datasets: [{
+              data: data.payment_breakdown.map(d => d.revenue),
+              backgroundColor: data.payment_breakdown.map(d => PAYMENT_COLORS[d.payment_method] || '#7C5CFA'),
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'bottom' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const row = data.payment_breakdown[ctx.dataIndex];
+                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                  }
+                }
+              }
+            }
+          }
         });
 
         const trendLabelEl = document.getElementById('trendWindowLabel');
