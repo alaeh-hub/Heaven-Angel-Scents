@@ -93,7 +93,7 @@ def _admin_snapshot():
         )["c"],
     }
     low_stock = query(
-        """SELECT b.branch_name, p.item_name, bi.stock_qty, bi.reorder_level
+        """SELECT b.branch_name, p.sku, p.item_name, p.unit, bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi
            JOIN branches b ON bi.branch_id = b.branch_id
            JOIN products p ON bi.sku = p.sku
@@ -101,7 +101,7 @@ def _admin_snapshot():
            ORDER BY bi.stock_qty ASC LIMIT 12"""
     )
     pending_requests = query(
-        """SELECT b.branch_name, p.item_name, sr.requested_qty, sr.requested_at
+        """SELECT b.branch_name, p.sku, p.item_name, p.unit, sr.requested_qty, sr.requested_at
            FROM stock_requests sr
            JOIN branches b ON sr.branch_id = b.branch_id
            JOIN products p ON sr.sku = p.sku
@@ -141,14 +141,14 @@ def _admin_snapshot():
 
 def _branch_snapshot(branch_id):
     inventory = query(
-        """SELECT p.item_name, bi.stock_qty, bi.reorder_level, p.price AS price
+        """SELECT p.sku, p.item_name, p.unit, bi.stock_qty, bi.reorder_level, p.price AS price
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
         (branch_id,),
     )
     low_stock = [row for row in inventory if row["stock_qty"] <= row["reorder_level"]]
     pending_requests = query(
-        """SELECT p.item_name, sr.requested_qty, sr.status, sr.requested_at
+        """SELECT p.sku, p.item_name, p.unit, sr.requested_qty, sr.status, sr.requested_at
            FROM stock_requests sr JOIN products p ON sr.sku = p.sku
            WHERE sr.branch_id = %s AND sr.status IN ('Pending', 'In Transit')
            ORDER BY sr.requested_at DESC""",
@@ -160,7 +160,7 @@ def _branch_snapshot(branch_id):
         (branch_id,), fetchone=True,
     )
     recent_sales = query(
-        """SELECT p.item_name, s.qty_sold, s.unit_price, s.sold_at
+        """SELECT p.sku, p.item_name, p.unit, s.qty_sold, s.unit_price, s.sold_at
            FROM sales s JOIN products p ON s.sku = p.sku
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 8""",
         (branch_id,),

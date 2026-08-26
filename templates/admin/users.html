@@ -22,7 +22,7 @@
             <tr data-search="{{ (a.username ~ ' ' ~ a.role ~ ' ' ~ (a.branch_name or ''))|lower }}" data-role="{{ a.role }}">
               <td class="item-name" data-label="Username">{{ a.username }}</td>
               <td data-label="Role"><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
-              <td class="text-soft" data-label="Branch">{{ a.branch_name or '— HQ —' }}</td>
+              <td class="text-soft" data-label="Branch">{{ a.branch_name or '— Main Branch —' }}</td>
               <td data-label="Status"><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
               <td data-label="">
                 <div class="inline-form">
@@ -56,7 +56,7 @@
 
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts can only see and act on their own branch's data. New accounts must set their own password at first login.</p>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts only see their own branch. Users set their password at first login.</p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
@@ -66,7 +66,7 @@
       <div class="field">
         <label for="password">Temporary password</label>
         <input type="password" id="password" name="password" minlength="8" required>
-        <div class="help">At least 8 characters. Share it with the staff member securely — they'll be asked to set their own at first login.</div>
+        <div class="help">At least 8 characters. Share securely — they'll set their own at login.</div>
       </div>
       <div class="field">
         <label for="role">Role</label>

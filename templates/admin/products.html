@@ -1,40 +1,68 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Product Catalog{% endblock %}
+{% block title %}Products{% endblock %}
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
-{% block heading %}Product Catalog{% endblock %}
+{% block heading %}Products{% endblock %}
 
 {% block content %}
 <div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
   <div class="card">
     <div class="card-header">
-      <h2>Master catalog</h2>
+      <h2>All Products</h2>
       <span class="hint" id="catalogCount">{{ catalog|length }} SKU{{ 's' if catalog|length != 1 }}</span>
     </div>
     {% if catalog %}
+    <!-- AFTER -->
     <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU">
       <div class="table-toolbar">
         <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
           <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
+        </div>
+        <div class="table-filter">
+          <select class="smart-filter-select" data-filter-key="unit">
+            <option value="">All units</option>
+            {% for u in unit_choices %}
+            <option value="{{ u }}">{{ u }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
       <div class="table-wrap">
         <table class="smart-table">
-          <thead><tr><th>Item</th><th>Variant</th><th>Unit</th><th class="num">Price</th><th class="num">Total stock</th><th>Status</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Variant</th>
+              <th>Unit</th>
+              <th class="num">Price</th>
+              <th class="num">Total stock</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
             {% for p in catalog %}
-            <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}" data-unit="{{ p.unit }}">
-              <td data-label="Item"><div class="item-name">{{ p.item_name }}</div><div class="item-sub mono">{{ p.sku }}</div></td>
+            <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
+              data-unit="{{ p.unit }}">
+              <td data-label="Item">
+                <div class="item-name">{{ p.item_name }}</div>
+                <div class="item-sub mono">{{ p.sku }}</div>
+              </td>
               <td data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
               <td class="mono text-soft" data-label="Unit">{{ p.unit }}</td>
               <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
               <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
-              <td data-label="Status"><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{ 'Active' if p.is_active else 'Discontinued' }}</span></td>
+              <td data-label="Status"><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{
+                  'Active' if p.is_active else 'Discontinued' }}</span></td>
               <td data-label="">
                 <form method="POST" action="{{ url_for('admin.toggle_product', sku=p.sku) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-ghost btn-sm" type="submit">{{ 'Discontinue' if p.is_active else 'Reactivate' }}</button>
+                  <button class="btn btn-ghost btn-sm" type="submit">{{ 'Discontinue' if p.is_active else 'Reactivate'
+                    }}</button>
                 </form>
               </td>
             </tr>
@@ -53,23 +81,23 @@
       </div>
     </div>
     {% else %}
-    <div class="empty-state"><div class="glyph">✦</div><p>No products yet — add the first fragrance to the catalog.</p></div>
+    <div class="empty-state">
+      <div class="glyph">✦</div>
+      <p>No products yet — add the first fragrance to the catalog.</p>
+    </div>
     {% endif %}
   </div>
 
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Discontinuing hides a product code from new requests without touching its history. Reuse the
-      same product code for another size of the same fragrance — pick the new unit and its own
-      price, and it's saved as its own row below, separate from the other size.
+      Discontinuing hides it but keeps its history. Reuse the code for another size as a new row.
     </p>
     <form method="POST" id="addProductForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="base_code">Product code</label>
         <input type="text" id="base_code" name="base_code" placeholder="A1" required>
-        <div class="help">A short code you choose. Combined with the unit below to make the actual SKU — see preview.</div>
       </div>
       <div class="field">
         <label for="item_name">Fragrance name</label>
@@ -98,7 +126,7 @@
       <div class="field">
         <label for="price">Price for this unit (₱)</label>
         <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
-        <div class="help">Each unit of a product has its own price — branches can still charge a different amount at the register, see Record Sale.</div>
+        <div class="help">Each unit has its own price. Branches can charge differently at checkout.</div>
       </div>
       <div class="field" id="skuPreviewField" style="display:none;">
         <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>

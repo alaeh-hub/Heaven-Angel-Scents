@@ -123,11 +123,19 @@ function initThemeToggle() {
     window.setTimeout(() => root.classList.remove('theme-transitioning'), 400);
 
     if (window.Motion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      window.Motion.animate(
+      var toggleAnim = window.Motion.animate(
         btn,
         { transform: ['scale(1)', 'scale(1.15)', 'scale(1)'] },
         { duration: 0.4, easing: [0.34, 1.56, 0.64, 1] }
       );
+      // Motion's returned controls are thenable; if this animation gets
+      // cut short (e.g. the user clicks again before it finishes) it
+      // rejects with an AbortError. Nothing else here needs to react to
+      // that, so swallow it rather than let it surface as an unhandled
+      // promise rejection in the console.
+      if (toggleAnim && typeof toggleAnim.then === 'function') {
+        toggleAnim.then(null, function () {});
+      }
     }
   });
 }
@@ -147,16 +155,27 @@ function revealContent() {
   const items = document.querySelectorAll('.content > *');
   if (!items.length) return;
 
-  window.Motion.animate(
+  var revealAnim = window.Motion.animate(
     items,
     { opacity: [0, 1], transform: ['translateY(8px)', 'translateY(0px)'] },
     { duration: 0.4, delay: window.Motion.stagger(0.05), easing: [0.16, 1, 0.3, 1] }
   );
+  // softRefresh() (see initRealtime() below) can replace .content with
+  // fresh markup while this entrance animation is still mid-flight —
+  // that cancels the in-progress animation on the old elements, which
+  // rejects Motion's returned (thenable) controls with an AbortError
+  // ("Transition was skipped"). That's expected here, not a real
+  // failure, so it's swallowed rather than left as an unhandled
+  // promise rejection in the console.
+  if (revealAnim && typeof revealAnim.then === 'function') {
+    revealAnim.then(null, function () {});
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initMobileSidebar();
   initThemeToggle();
+  initPhClock();
   revealContent();
   // Set stock "fill" bar widths from their data-pct attribute. Done here
   // (rather than an inline style="width: {{ pct }}%") so template output
@@ -476,10 +495,10 @@ function initNotificationBell() {
 
     list.innerHTML = items.map((n) => (
       '<div class="notif-item ' + (n.read ? '' : 'unread') + '">' +
-        '<span class="notif-dot ' + (n.level || 'info') + '"></span>' +
-        '<span class="notif-body">' + escapeHtml(n.message) +
-          '<span class="notif-time">' + timeAgo(n.ts) + '</span>' +
-        '</span>' +
+      '<span class="notif-dot ' + (n.level || 'info') + '"></span>' +
+      '<span class="notif-body">' + escapeHtml(n.message) +
+      '<span class="notif-time">' + timeAgo(n.ts) + '</span>' +
+      '</span>' +
       '</div>'
     )).join('');
   }
@@ -670,7 +689,7 @@ function initRealtime(notifBell) {
         const fresh = new DOMParser().parseFromString(html, 'text/html');
         patchSidebarBadges(fresh);
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 
   document.addEventListener('focusout', () => {
@@ -693,4 +712,34 @@ function initRealtime(notifBell) {
   socket.on('bell_notification', (payload) => {
     if (notifBell) notifBell.add(payload);
   });
+}
+
+/**
+ * Live Philippines-time clock shown in the topbar. Purely a display
+ * aid — every date/time actually used for business logic (today's
+ * sales, reports, etc.) is computed server-side in PH time already
+ * (see db.py). This just makes "what time does the system think it
+ * is" visible at a glance, since the server can be hosted anywhere.
+ */
+function initPhClock() {
+  const el = document.getElementById('phClock');
+  if (!el) return;
+
+  const formatter = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+
+  function tick() {
+    el.textContent = formatter.format(new Date());
+  }
+
+  tick();
+  setInterval(tick, 1000);
 }

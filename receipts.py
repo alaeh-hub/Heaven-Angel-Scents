@@ -33,14 +33,15 @@ from reportlab.platypus import (
 
 from db import query
 
-INK = colors.HexColor("#1C1B19")
-INK_FAINT = colors.HexColor("#6E6A62")
-ACCENT = colors.HexColor("#A17A3A")
-ACCENT_SOFT = colors.HexColor("#F3EBDB")
-BORDER = colors.HexColor("#E7E3D9")
-DANGER = colors.HexColor("#AE4B3B")
-DANGER_SOFT = colors.HexColor("#F7E9E5")
-GOOD = colors.HexColor("#4F7A5C")
+INK = colors.HexColor("#12141A")
+INK_FAINT = colors.HexColor("#5B6272")
+ACCENT = colors.HexColor("#2E5AF0")
+ACCENT_INK = colors.HexColor("#1D3BC4")
+ACCENT_SOFT = colors.HexColor("#E7ECFE")
+BORDER = colors.HexColor("#E5E8EF")
+DANGER = colors.HexColor("#E23A48")
+DANGER_SOFT = colors.HexColor("#FCE7EA")
+GOOD = colors.HexColor("#17975E")
 
 
 def _fetch_request(request_id, branch_id=None):
@@ -79,7 +80,7 @@ def _styles():
         "brand_sub": ParagraphStyle("brand_sub", parent=base["Normal"], fontName="Helvetica",
                                     fontSize=8.5, textColor=INK_FAINT, leading=12),
         "doc_title": ParagraphStyle("doc_title", parent=base["Normal"], fontName="Helvetica-Bold",
-                                    fontSize=12.5, textColor=ACCENT, alignment=TA_RIGHT, leading=15),
+                                    fontSize=12.5, textColor=ACCENT_INK, alignment=TA_RIGHT, leading=15),
         "doc_meta": ParagraphStyle("doc_meta", parent=base["Normal"], fontName="Helvetica",
                                    fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
         "label": ParagraphStyle("label", parent=base["Normal"], fontName="Helvetica-Bold",
@@ -145,7 +146,7 @@ def build_receipt_pdf(request_id, branch_id=None):
     header = Table(
         [[
             Table(
-                [[Paragraph("Heaven <font color='#A17A3A'>&amp;</font> Angel Scents", s["brand"])],
+                [[Paragraph("Heaven <font color='#2E5AF0'>&amp;</font> Angel Scents", s["brand"])],
                  [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
                 colWidths=[95 * mm],
             ),

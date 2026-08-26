@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Audit Log{% endblock %}
+{% block title %}Admin Log{% endblock %}
 {% block eyebrow %}Organization{% endblock %}
-{% block heading %}Audit Log{% endblock %}
+{% block heading %}Admin Log{% endblock %}
 
 {% block content %}
 <div class="card">
@@ -12,8 +12,8 @@
   </div>
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
-      This is a history of account, product, and branch changes made by HQ admins — separate from the
-      <a href="{{ url_for('admin.movement_logs') }}">Movement Ledger</a>, which tracks stock quantity changes only.
+      This is a history of account, product, and branch changes made by admins — separate from the
+      <a href="{{ url_for('admin.movement_logs') }}">Inventory Log</a>, which tracks stock quantity changes only.
     </p>
   </div>
   {% if logs %}

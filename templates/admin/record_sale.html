@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Record Sale{% endblock %}
-{% block eyebrow %}HQ Warehouse{% endblock %}
+{% block eyebrow %}Main Branch{% endblock %}
 {% block heading %}Record Sale{% endblock %}
 
 {% block head %}
@@ -15,6 +15,7 @@
     padding: 3px;
     width: 100%;
   }
+
   .rb-mode-opt {
     flex: 1;
     padding: 8px 13px;
@@ -28,11 +29,13 @@
     cursor: pointer;
     transition: color 0.12s ease;
   }
+
   .rb-mode-opt.active {
     background: var(--surface);
     border: 1px solid var(--border-strong);
     color: var(--accent-ink);
   }
+
   .price-hint {
     font-size: 11.5px;
     color: var(--ink-faint);
@@ -46,7 +49,7 @@
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Sells straight from the HQ warehouse and deducts from its stock immediately. To add stock, use HQ Production instead.
+      Deducts from warehouse stock immediately. Use Production to add stock.
     </p>
     <form method="POST" id="saleForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -90,24 +93,21 @@
           <label>Payment method</label>
           <div class="rb-mode" id="paymentSwitch">
             <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
-            <button type="button" class="rb-mode-opt" data-value="Salary Deduction">Salary Ded.</button>
+            <button type="button" class="rb-mode-opt" data-value="Salary Deduction">Salary</button>
           </div>
           <input type="hidden" name="payment_method" id="payment_method" value="Cash">
         </div>
       </div>
-      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">A Refill is the customer bringing back their own bottle and paying for product only.</div>
-
+      <!-- AFTER -->
+      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Refill: customer's own bottle, product cost only — doesn't deduct stock.</div>
+      <!-- AFTER -->
       <div class="form-row" id="buyerField" style="display:none;">
         <div class="field" style="flex:1;">
           <label for="buyer_user_id">Employee (Salary Deduction)</label>
-          <input type="text" id="buyer_user_id" name="buyer_user_id" list="employeeList"
-                 placeholder="Start typing a username…" autocomplete="off">
-          <datalist id="employeeList">
-            {% for e in employees %}
-            <option value="{{ e.username }}">{{ e.role }}</option>
-            {% endfor %}
-          </datalist>
-          <div class="help">Must match a real, active account — pick a suggestion as you type.</div>
+          <input type="text" id="buyer_user_id" name="buyer_user_id" placeholder="Type the employee's name…"
+            autocomplete="off" maxlength="120">
+          <div class="help">Free text — type whatever name identifies them for payroll. Not tied to a login account.
+          </div>
         </div>
       </div>
 
@@ -116,11 +116,23 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h2>Recent sales</h2><span class="hint">at HQ</span></div>
+    <div class="card-header">
+      <h2>Recent sales</h2><span class="hint">at Main Branch</span>
+    </div>
     {% if recent_sales %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>When</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th>Payment</th></tr></thead>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Item</th>
+            <th>Type</th>
+            <th class="num">Qty</th>
+            <th class="num">Price</th>
+            <th class="num">Total</th>
+            <th>Payment</th>
+          </tr>
+        </thead>
         <tbody>
           {% for s in recent_sales %}
           <tr>
@@ -137,7 +149,10 @@
       </table>
     </div>
     {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No sales recorded at HQ yet.</p></div>
+    <div class="empty-state">
+      <div class="glyph">—</div>
+      <p>No sales recorded yet.</p>
+    </div>
     {% endif %}
   </div>
 </div>
@@ -208,7 +223,7 @@
       var suggested = opt ? opt.dataset.price : null;
       if (suggested) {
         priceInput.value = suggested;
-        priceHint.textContent = 'HQ reference price is ₱' + Number(suggested).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' — edit if you charged something else.';
+        priceHint.textContent = 'Reference price: ₱' + Number(suggested).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' — edit if different.';
       } else {
         priceHint.textContent = '';
       }

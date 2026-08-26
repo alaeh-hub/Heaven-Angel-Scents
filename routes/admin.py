@@ -124,9 +124,11 @@ def products():
 
         try:
             base_code = parse_base_code(request.form.get("base_code"))
-            price = parse_non_negative_decimal(request.form.get("price"), "Price")
+            price = parse_non_negative_decimal(
+                request.form.get("price"), "Price")
             if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
-                raise ValidationError("Please fill in every field with a valid value.")
+                raise ValidationError(
+                    "Please fill in every field with a valid value.")
             # The base code is reusable across sizes (e.g. base 'A1' + unit
             # '85ML' and base 'A1' + unit '15ML' both come from the same
             # admin-entered code) — build_sku() is what actually makes each
@@ -156,7 +158,8 @@ def products():
                     )
                 cur.close()
             notify_all(["products", "inventory"])
-            log_action("add_product", target=sku, details=f"{item_name} ({variant}, {unit}) — ₱{price:,.2f}")
+            log_action("add_product", target=sku,
+                       details=f"{item_name} ({variant}, {unit}) — ₱{price:,.2f}")
             flash(f"{item_name} — {unit} ({sku}) added to the catalog.", "success")
         except Exception:
             flash(f"'{base_code}' already has a {unit} entry (SKU {sku}).", "error")
@@ -174,16 +177,20 @@ def products():
 @bp.route("/products/<sku>/toggle", methods=["POST"])
 @admin_required
 def toggle_product(sku):
-    product = query("SELECT item_name, is_active FROM products WHERE sku = %s", (sku,), fetchone=True)
+    product = query(
+        "SELECT item_name, is_active FROM products WHERE sku = %s", (sku,), fetchone=True)
     execute("UPDATE products SET is_active = NOT is_active WHERE sku = %s", (sku,))
     notify_all(["products", "inventory"])
     if product:
         new_status = "Discontinued" if product["is_active"] else "Reactivated"
-        log_action("toggle_product", target=sku, details=f"{product['item_name']} — {new_status}")
+        log_action("toggle_product", target=sku,
+                   details=f"{product['item_name']} — {new_status}")
         if new_status == "Discontinued":
-            notify_bell(f"{product['item_name']} ({sku}) was discontinued.", level="warning")
+            notify_bell(
+                f"{product['item_name']} ({sku}) was discontinued.", level="warning")
         else:
-            notify_bell(f"{product['item_name']} ({sku}) is available again.", level="success")
+            notify_bell(
+                f"{product['item_name']} ({sku}) is available again.", level="success")
     flash("Product status updated.", "success")
     return redirect(url_for("admin.products"))
 
@@ -196,7 +203,8 @@ def production():
         sku = request.form.get("sku")
         batch_code = request.form.get("batch_code", "").strip() or None
         try:
-            qty = parse_positive_int(request.form.get("qty_produced"), "Units produced")
+            qty = parse_positive_int(request.form.get(
+                "qty_produced"), "Units produced")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.production"))
@@ -220,7 +228,8 @@ def production():
                 )
                 row = cur.fetchone()
                 after_qty = row[0] if row else None
-                before_qty = (after_qty - qty) if after_qty is not None else None
+                before_qty = (
+                    after_qty - qty) if after_qty is not None else None
                 cur.execute(
                     """INSERT INTO stock_movement_logs
                        (branch_id, sku, change_qty, movement_type, notes,
@@ -231,13 +240,16 @@ def production():
                 )
                 cur.close()
             notify_admin(["production", "inventory", "movement_logs"])
-            flash(f"Logged {qty} units produced and added to HQ warehouse stock.", "success")
+            flash(
+                f"Logged {qty} units produced and added to HQ warehouse stock.", "success")
         except Exception:
-            current_app.logger.exception("production logging failed for sku=%s", sku)
+            current_app.logger.exception(
+                "production logging failed for sku=%s", sku)
             flash("Couldn't log this production run — please try again.", "error")
         return redirect(url_for("admin.production"))
 
-    products_list = query("SELECT sku, item_name, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
+    products_list = query(
+        "SELECT sku, item_name, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
     logs = query(
         """SELECT pl.*, p.item_name, p.unit FROM production_logs pl
            JOIN products p ON pl.sku = p.sku
@@ -266,7 +278,8 @@ def branches():
                 with transaction() as conn:
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO branches (branch_name, location) VALUES (%s, %s)", (name, location)
+                        "INSERT INTO branches (branch_name, location) VALUES (%s, %s)", (
+                            name, location)
                     )
                     new_branch_id = cur.lastrowid
                     cur.execute("SELECT sku FROM products")
@@ -303,7 +316,8 @@ def branch_stock():
     purely about stock levels now.
     """
     branch_filter = request.args.get("branch_id", "all")
-    branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
 
     rows = []
     if branch_filter != "all":
@@ -330,6 +344,7 @@ def branch_stock():
     return render_template(
         "admin/branch_stock.html",
         rows=rows, branch_list=branch_list, branch_filter=branch_filter, totals=totals,
+        unit_choices=PRODUCT_UNITS,
     )
 
 
@@ -355,7 +370,8 @@ def record_sale():
 
         try:
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")
-            unit_price = parse_non_negative_decimal(request.form.get("unit_price"), "Price charged")
+            unit_price = parse_non_negative_decimal(
+                request.form.get("unit_price"), "Price charged")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.record_sale"))
@@ -370,32 +386,19 @@ def record_sale():
             flash("Select a product.", "error")
             return redirect(url_for("admin.record_sale"))
 
-        buyer_user_id = None
+        # AFTER
+        buyer_name = None
         if payment_method == "Salary Deduction":
             if not raw_buyer:
                 flash("Enter which employee this salary deduction applies to.", "error")
                 return redirect(url_for("admin.record_sale"))
-            # The Employee field is now a free-text combobox (typed text +
-            # datalist suggestions of real usernames), not a <select> of
-            # user_ids — so the typed text has to be resolved to a real,
-            # active account by username here rather than trusted as an
-            # id. Case-insensitive so "Manila" vs "manila" doesn't spuriously
-            # fail to match. Anything that doesn't resolve to exactly one
-            # active account is rejected outright, so buyer_user_id (and
-            # the payroll reporting/dedup that depends on it) never ends
-            # up pointing at a typo or a made-up name.
-            buyer = query(
-                "SELECT user_id, username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE",
-                (raw_buyer,), fetchone=True,
-            )
-            if not buyer:
-                flash(
-                    f"'{raw_buyer}' isn't a valid, active employee account. "
-                    "Pick a name from the suggestions as you type.",
-                    "error",
-                )
+            if len(raw_buyer) > 120:
+                flash("Employee name is too long (max 120 characters).", "error")
                 return redirect(url_for("admin.record_sale"))
-            buyer_user_id = buyer["user_id"]
+            # This is now a plain free-text name, not a lookup against real
+            # login accounts — HQ handles reconciling it against payroll
+            # themselves. Whatever the admin types is what's recorded.
+            buyer_name = raw_buyer
 
         try:
             with transaction() as conn:
@@ -411,37 +414,48 @@ def record_sale():
                     cur.close()
                     flash("That product isn't stocked at the HQ warehouse.", "error")
                     return redirect(url_for("admin.record_sale"))
-                if stock_row["stock_qty"] < qty:
+
+                is_refill = sale_type == "Refill"
+
+                if not is_refill and stock_row["stock_qty"] < qty:
                     cur.close()
                     flash("Not enough HQ warehouse stock on hand for that.", "error")
                     return redirect(url_for("admin.record_sale"))
 
                 before_qty = stock_row["stock_qty"]
-                after_qty = before_qty - qty
+                after_qty = before_qty if is_refill else before_qty - qty
 
+                # AFTER
                 cur.execute(
-                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_user_id)
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_name)
                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (HQ_BRANCH_ID, sku, qty, unit_price, sale_type, payment_method, buyer_user_id),
+                    (HQ_BRANCH_ID, sku, qty, unit_price,
+                     sale_type, payment_method, buyer_name),
                 )
-                cur.execute(
-                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                    (after_qty, HQ_BRANCH_ID, sku),
-                )
+                if not is_refill:
+                    cur.execute(
+                        "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                        (after_qty, HQ_BRANCH_ID, sku),
+                    )
                 movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Salary deduction — {buyer['username']}"
+                # AFTER
+                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Salary deduction — {buyer_name}"
+                if is_refill:
+                    notes += " · no stock deducted (refill)"
                 cur.execute(
                     """INSERT INTO stock_movement_logs
                        (branch_id, sku, change_qty, movement_type, notes,
                         created_by_user_id, reference_type, before_qty, after_qty)
                        VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
-                    (HQ_BRANCH_ID, sku, -qty, movement_type, notes, session.get("user_id"), before_qty, after_qty),
+                    (HQ_BRANCH_ID, sku, 0 if is_refill else -qty, movement_type, notes,
+                     session.get("user_id"), before_qty, after_qty),
                 )
                 cur.close()
             notify_admin(["inventory", "sales", "movement_logs"])
             flash(f"{sale_type} recorded.", "success")
         except Exception:
-            current_app.logger.exception("admin record_sale failed for sku=%s", sku)
+            current_app.logger.exception(
+                "admin record_sale failed for sku=%s", sku)
             flash("Couldn't record that — please try again.", "error")
         return redirect(url_for("admin.record_sale"))
 
@@ -452,7 +466,7 @@ def record_sale():
         (HQ_BRANCH_ID,),
     )
     recent_sales = query(
-        """SELECT s.*, p.item_name, bu.username AS buyer_username
+        """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
@@ -497,18 +511,22 @@ def users():
         elif role == "Branch" and not valid_branch:
             flash("Select a valid branch.", "error")
         elif not username or len(password) < 8:
-            flash("Username is required and password must be at least 8 characters.", "error")
+            flash(
+                "Username is required and password must be at least 8 characters.", "error")
         else:
             try:
                 execute(
                     """INSERT INTO users (username, password_hash, role, branch_id, must_change_password)
                        VALUES (%s, %s, %s, %s, TRUE)""",
-                    (username, generate_password_hash(password), role, branch_id if role == "Branch" else None),
+                    (username, generate_password_hash(password),
+                     role, branch_id if role == "Branch" else None),
                 )
                 notify_admin("users")
                 branch_detail = f", branch_id={branch_id}" if role == "Branch" else ""
-                log_action("create_account", target=username, details=f"role={role}{branch_detail}")
-                flash(f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
+                log_action("create_account", target=username,
+                           details=f"role={role}{branch_detail}")
+                flash(
+                    f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
             except Exception:
                 flash(f"Username '{username}' is already taken.", "error")
         return redirect(url_for("admin.users"))
@@ -518,7 +536,8 @@ def users():
            FROM users u LEFT JOIN branches b ON u.branch_id = b.branch_id
            ORDER BY u.role, b.branch_name"""
     )
-    branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
     # pop(), not get() — this must only ever be readable once. If it's
     # left in the session, refreshing this page (or hitting back/forward)
     # would keep re-showing a temporary password that may already have
@@ -536,12 +555,15 @@ def toggle_user(user_id):
     if user_id == session.get("user_id"):
         flash("You can't deactivate your own account.", "error")
     else:
-        target = query("SELECT username, is_active FROM users WHERE user_id = %s", (user_id,), fetchone=True)
-        execute("UPDATE users SET is_active = NOT is_active WHERE user_id = %s", (user_id,))
+        target = query(
+            "SELECT username, is_active FROM users WHERE user_id = %s", (user_id,), fetchone=True)
+        execute(
+            "UPDATE users SET is_active = NOT is_active WHERE user_id = %s", (user_id,))
         notify_admin("users")
         if target:
             new_status = "Deactivated" if target["is_active"] else "Reactivated"
-            log_action("toggle_user", target=target["username"], details=new_status)
+            log_action("toggle_user",
+                       target=target["username"], details=new_status)
         flash("Account status updated.", "success")
     return redirect(url_for("admin.users"))
 
@@ -549,7 +571,8 @@ def toggle_user(user_id):
 @bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
 @admin_required
 def reset_user_password(user_id):
-    target = query("SELECT username FROM users WHERE user_id = %s", (user_id,), fetchone=True)
+    target = query("SELECT username FROM users WHERE user_id = %s",
+                   (user_id,), fetchone=True)
     if not target:
         flash("Account not found.", "error")
         return redirect(url_for("admin.users"))
@@ -567,7 +590,8 @@ def reset_user_password(user_id):
     # "won't be shown again" framing), and users() pops it from the
     # session immediately after reading it so a page refresh or back
     # button can't bring it back.
-    session["temp_password_reveal"] = {"username": target["username"], "password": temp_password}
+    session["temp_password_reveal"] = {
+        "username": target["username"], "password": temp_password}
     log_action("reset_password", target=target["username"])
     flash(
         f"Password for '{target['username']}' has been reset. "
@@ -600,7 +624,8 @@ def requests_list():
 def dispatch_request(request_id):
     raw_qty = request.form.get("dispatched_qty")
     try:
-        dispatched_qty = parse_positive_int(raw_qty, "Dispatched quantity") if raw_qty not in (None, "") else None
+        dispatched_qty = parse_positive_int(
+            raw_qty, "Dispatched quantity") if raw_qty not in (None, "") else None
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.requests_list"))
@@ -613,14 +638,16 @@ def dispatch_request(request_id):
             # of this transaction, so two admins dispatching at the same
             # moment can't both pass the "enough HQ stock?" check and
             # jointly over-dispatch below zero.
-            cur.execute("SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
+            cur.execute(
+                "SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
             req = cur.fetchone()
             if not req or req["status"] != "Pending":
                 cur.close()
                 flash("This request can no longer be dispatched.", "error")
                 return redirect(url_for("admin.requests_list"))
 
-            qty_to_dispatch = dispatched_qty if dispatched_qty is not None else req["requested_qty"]
+            qty_to_dispatch = dispatched_qty if dispatched_qty is not None else req[
+                "requested_qty"]
 
             cur.execute(
                 "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
@@ -629,7 +656,8 @@ def dispatch_request(request_id):
             hq_row = cur.fetchone()
             if not hq_row or hq_row["stock_qty"] < qty_to_dispatch:
                 cur.close()
-                flash("Not enough HQ warehouse stock to dispatch that quantity.", "error")
+                flash(
+                    "Not enough HQ warehouse stock to dispatch that quantity.", "error")
                 return redirect(url_for("admin.requests_list"))
 
             before_qty = hq_row["stock_qty"]
@@ -652,10 +680,13 @@ def dispatch_request(request_id):
                  session.get("user_id"), request_id, before_qty, after_qty),
             )
             cur.close()
-        notify_admin_and_branch(req["branch_id"], ["requests", "inventory", "movement_logs"])
-        flash(f"Dispatched {qty_to_dispatch} units — now in transit to the branch.", "success")
+        notify_admin_and_branch(
+            req["branch_id"], ["requests", "inventory", "movement_logs"])
+        flash(
+            f"Dispatched {qty_to_dispatch} units — now in transit to the branch.", "success")
     except Exception:
-        current_app.logger.exception("dispatch_request failed for request_id=%s", request_id)
+        current_app.logger.exception(
+            "dispatch_request failed for request_id=%s", request_id)
         flash("Couldn't dispatch this request — please try again.", "error")
     return redirect(url_for("admin.requests_list"))
 
@@ -679,7 +710,8 @@ def request_receipt(request_id):
 @bp.route("/requests/<int:request_id>/reject", methods=["POST"])
 @admin_required
 def reject_request(request_id):
-    req = query("SELECT branch_id FROM stock_requests WHERE request_id = %s", (request_id,), fetchone=True)
+    req = query("SELECT branch_id FROM stock_requests WHERE request_id = %s",
+                (request_id,), fetchone=True)
     execute(
         "UPDATE stock_requests SET status = 'Rejected' WHERE request_id = %s AND status = 'Pending'",
         (request_id,),
@@ -705,7 +737,8 @@ def movement_logs():
         params = (branch_filter,)
     sql += " ORDER BY sml.created_at DESC LIMIT 200"
     logs = query(sql, params)
-    branch_list = query("SELECT branch_id, branch_name FROM branches ORDER BY branch_name")
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches ORDER BY branch_name")
     return render_template("admin/movement_logs.html", logs=logs, branch_list=branch_list, branch_filter=branch_filter)
 
 
@@ -732,7 +765,8 @@ def audit_log():
 @bp.route("/reports")
 @admin_required
 def reports():
-    branch_list = query("SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
     report_types = [
         {"key": key, "label": meta["label"], "windowed": meta["windowed"]}
         for key, meta in REPORT_TYPES.items() if meta["admin"]
@@ -757,10 +791,12 @@ def generate_report():
         abort(404)
 
     filters = parse_report_filters(request.args)
-    report = get_report(report_type, filters, branch_scope=None, actor_label=f"HQ Admin — {session.get('username')}")
+    report = get_report(report_type, filters, branch_scope=None,
+                        actor_label=f"HQ Admin — {session.get('username')}")
 
     if report["row_count"] == 0:
-        flash(f"No data matches the selected filters for {report['title']}.", "warning")
+        flash(
+            f"No data matches the selected filters for {report['title']}.", "warning")
         return redirect(url_for("admin.reports"))
 
     stamp = datetime.date.today().isoformat()
@@ -824,7 +860,8 @@ def reports_data():
     # (parameterizing a GROUP BY expression itself isn't possible with
     # a plain %s placeholder).
     granularity = request.args.get("granularity", "daily")
-    trend_bucket = _TREND_GRANULARITIES.get(granularity, _TREND_GRANULARITIES["daily"])
+    trend_bucket = _TREND_GRANULARITIES.get(
+        granularity, _TREND_GRANULARITIES["daily"])
 
     movement_trend = query(
         f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total

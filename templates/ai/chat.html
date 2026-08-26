@@ -1,125 +1,476 @@
 {% extends "base.html" %}
 {% block title %}AI Assistant{% endblock %}
-{% block eyebrow %}{{ 'HQ Overview' if session.role == 'Admin' else session.branch_name }}{% endblock %}
+{% block eyebrow %}{{ 'Admin Overview' if session.role == 'Admin' else session.branch_name }}{% endblock %}
 {% block heading %}AI Assistant{% endblock %}
 
 {% block head %}
 <style>
-  .chat-shell { display: flex; flex-direction: column; height: calc(100vh - 220px); min-height: 480px; padding: 0; overflow: hidden; }
+  .chat-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 220px);
+    min-height: 480px;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+  }
 
-  .chat-log { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  /* ---- scrollable log ---- */
+  .chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 26px 24px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    scroll-behavior: smooth;
+  }
 
-  .chat-row { display: flex; gap: 10px; align-items: flex-end; max-width: 84%; }
-  .chat-row.user { align-self: flex-end; flex-direction: row-reverse; }
-  .chat-row.assistant { align-self: flex-start; }
+  /* Quiet top fade so messages feel like they surface into view rather
+     than getting clipped hard by the scroll container. Purely cosmetic —
+     sits above the log, doesn't intercept clicks. */
+  .chat-log-fade {
+    position: absolute;
+    top: 0;
+    left: 1px;
+    right: 1px;
+    height: 22px;
+    background: linear-gradient(to bottom, var(--surface), transparent);
+    pointer-events: none;
+    z-index: 2;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .chat-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    max-width: 82%;
+  }
+
+  .chat-row.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .chat-row.assistant,
+  .chat-row.error {
+    align-self: flex-start;
+  }
 
   .chat-avatar {
-    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; font-family: 'Inter', sans-serif;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
   }
-  .chat-avatar.assistant-avatar { background: var(--accent-soft); color: var(--accent-ink); }
-  .chat-avatar.user-avatar { background: var(--plum-soft); color: var(--plum); }
 
-  .chat-msg { padding: 11px 15px; border-radius: 14px; font-size: 13.8px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-  .chat-row.user .chat-msg { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
-  .chat-row.assistant .chat-msg { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-  .chat-row.error .chat-msg { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-border); }
+  .chat-avatar svg {
+    width: 15px;
+    height: 15px;
+  }
 
-  .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
+  .chat-avatar.assistant-avatar {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+
+  .chat-avatar.user-avatar {
+    background: var(--plum-soft);
+    color: var(--plum);
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .chat-msg-col {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .chat-row.user .chat-msg-col {
+    align-items: flex-end;
+  }
+
+  .chat-row.assistant .chat-msg-col,
+  .chat-row.error .chat-msg-col {
+    align-items: flex-start;
+  }
+
+  .chat-msg {
+    padding: 11px 15px;
+    border-radius: 14px;
+    font-size: 13.8px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .chat-row.user .chat-msg {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+
+  .chat-row.assistant .chat-msg {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    border-bottom-left-radius: 4px;
+  }
+
+  .chat-row.error .chat-msg {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid var(--danger-border);
+    border-bottom-left-radius: 4px;
+  }
+
+  /* ---- timestamp + copy row under each bubble ---- */
+  .chat-msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    min-height: 16px;
+  }
+
+  .chat-time {
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .chat-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: transparent;
+    color: var(--ink-faint);
+    font-size: 10.5px;
+    font-family: inherit;
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease;
+  }
+
+  .chat-copy-btn svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .chat-row.assistant:hover .chat-copy-btn {
+    opacity: 1;
+  }
+
+  .chat-copy-btn:hover {
+    color: var(--accent-ink);
+  }
+
+  .chat-copy-btn:focus-visible {
+    opacity: 1;
+  }
+
+  .chat-copy-btn.copied {
+    opacity: 1;
+    color: var(--success);
+  }
+
+  /* ---- typing indicator ---- */
+  .typing-dots {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px 2px;
+  }
+
   .typing-dots span {
-    width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ink-faint);
     animation: typing-bounce 1.2s infinite ease-in-out;
   }
-  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
-  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
   @keyframes typing-bounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-    30% { transform: translateY(-4px); opacity: 1; }
+
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.5;
+    }
+
+    30% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
   }
 
-  .chat-empty-wrap { margin: auto; text-align: center; max-width: 480px; padding: 20px; }
+  /* ---- empty state ---- */
+  .chat-empty-wrap {
+    margin: auto;
+    text-align: center;
+    max-width: 460px;
+    padding: 20px;
+  }
+
   .chat-empty-icon {
-    width: 52px; height: 52px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink);
-    display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
   }
-  .chat-empty-icon svg { width: 24px; height: 24px; }
-  .chat-empty-wrap h3 { font-size: 17px; margin-bottom: 6px; }
-  .chat-empty-wrap p { font-size: 13px; color: var(--ink-faint); line-height: 1.6; margin: 0 0 22px; }
 
-  .chat-suggestions { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .chat-empty-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .chat-empty-wrap h3 {
+    font-size: 17px;
+    margin-bottom: 6px;
+  }
+
+  .chat-empty-wrap p {
+    font-size: 13px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+    margin: 0 0 22px;
+  }
+
+  .chat-suggestions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    text-align: left;
+  }
+
   .chat-suggestion {
-    display: flex; align-items: center; gap: 10px;
-    padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-    background: var(--surface); font-size: 13px; font-weight: 500; color: var(--ink-soft);
-    cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
-    font-family: inherit; text-align: left; width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
+    font-family: inherit;
+    text-align: left;
   }
-  .chat-suggestion:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
-  .chat-suggestion svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.7; }
 
-  .chat-form { display: flex; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); align-items: flex-end; }
-  .chat-form textarea {
-    flex: 1; resize: none; min-height: 44px; max-height: 140px; font-family: inherit;
-    padding: 11px 14px;
+  .chat-suggestion:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
   }
-  .chat-form .btn { flex-shrink: 0; }
-  .chat-hint-row { padding: 0 22px 14px; margin-top: -4px; }
+
+  .chat-suggestion-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chat-suggestion:hover .chat-suggestion-icon {
+    background: var(--surface);
+  }
+
+  .chat-suggestion-icon svg {
+    width: 13px;
+    height: 13px;
+    opacity: 0.75;
+  }
+
+  @media (max-width: 560px) {
+    .chat-suggestions {
+      grid-template-columns: 1fr;
+    }
+
+    .chat-row {
+      max-width: 92%;
+    }
+  }
+
+  /* ---- composer ---- */
+  .chat-form {
+    display: flex;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    align-items: flex-end;
+    background: var(--surface-2);
+  }
+
+  .chat-form textarea {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+    max-height: 140px;
+    font-family: inherit;
+    padding: 11px 16px;
+    border-radius: 22px;
+    background: var(--surface);
+  }
+
+  .chat-send-btn {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.12s ease, transform 0.1s ease, opacity 0.12s ease;
+  }
+
+  .chat-send-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .chat-send-btn:hover:not(:disabled) {
+    background: var(--accent-ink);
+  }
+
+  .chat-send-btn:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+
+  .chat-send-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .chat-hint-row {
+    padding: 0 20px 12px;
+    margin-top: -6px;
+  }
+
   .chat-hint-row .chip-suggestion {
-    display: inline-flex; align-items: center; padding: 5px 11px; margin: 0 6px 6px 0;
-    border: 1px solid var(--border); border-radius: 99px; font-size: 12px; color: var(--ink-soft);
-    background: var(--surface); cursor: pointer; font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 11px;
+    margin: 0 6px 6px 0;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: var(--surface);
+    cursor: pointer;
+    font-family: inherit;
     transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
   }
-  .chat-hint-row .chip-suggestion:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+
+  .chat-hint-row .chip-suggestion:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card chat-shell">
+  <div class="chat-log-fade"></div>
   <div class="chat-log" id="chatLog">
     <div class="chat-empty-wrap" id="chatEmpty">
       <div class="chat-empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z"/><path d="M10 21h4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
+          <path d="M10 21h4" />
+        </svg>
       </div>
       <h3>Ask the H&amp;A Assistant</h3>
       <p>
-        Ask about {{ 'company-wide' if session.role == 'Admin' else 'branch' }} stock levels, pending requests, or recent sales.
-        It only knows what you can already see in this app, and it can't make changes on its own.
+        Ask about {{ 'company-wide' if session.role == 'Admin' else 'branch' }} stock, requests, or sales.
+        It only sees what you can see, and can't make changes.
       </p>
       <div class="chat-suggestions" id="chatSuggestions">
         {% if session.role == 'Admin' %}
         <button type="button" class="chat-suggestion" data-q="Which branches are lowest on stock right now?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          </span>
           Which branches are lowest on stock right now?
         </button>
         <button type="button" class="chat-suggestion" data-q="What stock requests are still pending my approval?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          </span>
           What stock requests are still pending my approval?
         </button>
         <button type="button" class="chat-suggestion" data-q="How is revenue split across branches so far?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          </span>
           How is revenue split across branches so far?
         </button>
-        <button type="button" class="chat-suggestion" data-q="Summarize today's overall activity for HQ.">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
-          Summarize today's overall activity for HQ.
+        <button type="button" class="chat-suggestion" data-q="Summarize today's overall activity.">
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          </span>
+          Summarize today's overall activity.
         </button>
         {% else %}
         <button type="button" class="chat-suggestion" data-q="What items are running low at my branch?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          </span>
           What items are running low at my branch?
         </button>
         <button type="button" class="chat-suggestion" data-q="Do I have any stock requests still pending?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+          </span>
           Do I have any stock requests still pending?
         </button>
         <button type="button" class="chat-suggestion" data-q="How much have I sold today?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+          </span>
           How much have I sold today?
         </button>
         <button type="button" class="chat-suggestion" data-q="What were my most recent sales?">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          <span class="chat-suggestion-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M11 19V4M18 19v-7"/></svg>
+          </span>
           What were my most recent sales?
         </button>
         {% endif %}
@@ -128,7 +479,11 @@
   </div>
   <form class="chat-form" id="chatForm">
     <textarea id="chatInput" placeholder="Ask something…" rows="1" required></textarea>
-    <button type="submit" class="btn btn-accent" id="chatSend">Send</button>
+    <button type="submit" class="chat-send-btn" id="chatSend" aria-label="Send message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </button>
   </form>
 </div>
 {% endblock %}
@@ -144,12 +499,28 @@
   var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
   var history = [];
   var userInitial = "{{ (session.username[0]|upper) if session.username else '?' }}";
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var assistantAvatarSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">' +
+    '<path d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z"/>' +
+    '<path d="M10 21h4"/></svg>';
+
+  var copyIconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">' +
+    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
 
   function avatarHtml(role) {
     if (role === 'user') {
       return '<div class="chat-avatar user-avatar">' + userInitial + '</div>';
     }
-    return '<div class="chat-avatar assistant-avatar">H</div>';
+    return '<div class="chat-avatar assistant-avatar">' + assistantAvatarSvg + '</div>';
+  }
+
+  function formatTime(date) {
+    try {
+      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    } catch (e) {
+      return '';
+    }
   }
 
   function escapeHtml(str) {
@@ -170,22 +541,82 @@
     return escaped;
   }
 
+  function copyText(text, btn) {
+    var done = function () {
+      var original = btn.dataset.label || 'Copy';
+      btn.classList.add('copied');
+      btn.textContent = 'Copied';
+      window.setTimeout(function () {
+        btn.classList.remove('copied');
+        btn.textContent = original;
+      }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () {});
+      return;
+    }
+    var tmp = document.createElement('textarea');
+    tmp.value = text;
+    tmp.style.position = 'fixed';
+    tmp.style.opacity = '0';
+    document.body.appendChild(tmp);
+    tmp.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(tmp);
+  }
+
   function addMessage(role, text) {
     if (empty) { empty.remove(); empty = null; }
+
     var row = document.createElement('div');
     row.className = 'chat-row ' + role;
+    row.innerHTML = avatarHtml(role === 'error' ? 'assistant' : role);
+
+    var col = document.createElement('div');
+    col.className = 'chat-msg-col';
+
     var bubble = document.createElement('div');
     bubble.className = 'chat-msg';
     if (role === 'user') {
-      row.innerHTML = avatarHtml('user');
       bubble.textContent = text;
     } else {
-      row.innerHTML = avatarHtml('assistant');
       bubble.innerHTML = formatAssistantText(text);
     }
-    row.appendChild(bubble);
+    col.appendChild(bubble);
+
+    var meta = document.createElement('div');
+    meta.className = 'chat-msg-meta';
+    var time = document.createElement('span');
+    time.className = 'chat-time';
+    time.textContent = formatTime(new Date());
+    meta.appendChild(time);
+
+    if (role === 'assistant') {
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'chat-copy-btn';
+      copyBtn.dataset.label = 'Copy';
+      copyBtn.innerHTML = copyIconSvg + '<span>Copy</span>';
+      copyBtn.addEventListener('click', function () { copyText(text, copyBtn); });
+      meta.appendChild(copyBtn);
+    }
+    col.appendChild(meta);
+
+    row.appendChild(col);
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
+
+    if (window.Motion && !reduceMotion) {
+      var msgAnim = window.Motion.animate(
+        row,
+        { opacity: [0, 1], transform: ['translateY(6px)', 'translateY(0px)'] },
+        { duration: 0.28, easing: [0.16, 1, 0.3, 1] }
+      );
+      if (msgAnim && typeof msgAnim.then === 'function') {
+        msgAnim.then(null, function () {});
+      }
+    }
+
     return row;
   }
 
@@ -194,7 +625,7 @@
     var row = document.createElement('div');
     row.className = 'chat-row assistant';
     row.innerHTML = avatarHtml('assistant') +
-      '<div class="chat-msg"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+      '<div class="chat-msg-col"><div class="chat-msg"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>';
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
     return row;
@@ -228,7 +659,7 @@
           addMessage('assistant', res.data.reply);
           history.push({ role: 'model', text: res.data.reply });
         } else {
-          var row = addMessage('error', res.data.error || 'Something went wrong.');
+          addMessage('error', res.data.error || 'Something went wrong.');
         }
       })
       .catch(function () {

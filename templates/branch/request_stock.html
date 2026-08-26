@@ -7,8 +7,8 @@
 {% block content %}
 <div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
   <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">New requisition</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Sends a request to HQ for dispatch approval.</p>
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Request Stock</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Sends a request to Main Branch for dispatch approval.</p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">

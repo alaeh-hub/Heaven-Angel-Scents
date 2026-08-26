@@ -68,12 +68,32 @@ This release completes the operational inventory lifecycle from HQ production th
 Key updates in the current codebase:
 
 - Modernized production and warehouse inventory tracking, including HQ stock updates and richer movement logging.
+- Fixed the HQ Production product/unit flow so each product's unit dropdown is populated from its distinct catalog SKUs without duplicate choices.
 - Completed branch-side request and receipt flows, including received, damaged, and unaccounted quantities during shipment confirmation.
-- Finalized the sales lifecycle by recording quantity, price, sale type, payment method, and employee deduction metadata at the time of sale.
+- Finalized the sales lifecycle by recording quantity, price, sale type, payment method, and free-text employee deduction names at the time of sale.
+- Added refill handling that records the sale and revenue while leaving countable inventory unchanged.
 - Added admin audit entries and human-readable bell notifications for operational status changes.
-- Improved dashboard and report views for branch-level and HQ-level analysis, including movement trends and stock reports.
+- Improved dashboard and report views for branch-level and HQ-level analysis, including movement trends, stock reports, unit filtering, and themed PDF/Excel exports.
+- Added an Admin salary-deduction report with branch visibility and filtering, plus responsive salary-deduction badges for web tables.
+- Added a live Philippines-time dashboard clock and server-side `+08:00` database sessions so AI and dashboard "today" sales use Philippine time.
 - Added a read-only AI assistant with role-scoped summaries for admin and branch users.
 - Hardened the application with production-ready settings, database safeguards, and security checks.
+
+### Requested Feature Verification
+
+The following requested features are implemented in the current codebase:
+
+| Feature | Status | Implementation |
+| --- | --- | --- |
+| HQ Production — duplicate unit in dropdown | Implemented | Product rows are grouped by item name and the unit dropdown is populated once per catalog SKU/unit. |
+| AI "today" sales — Philippines timezone | Implemented | Each MySQL connection sets `time_zone = '+08:00'`, so `CURDATE()` in the AI snapshot uses Philippine time. |
+| Refill should not decrease stock | Implemented | Refill sales keep inventory at its previous quantity and write a zero-change `REFILL` movement. |
+| Salary Deduction — free text instead of picker | Implemented | Admin and Branch sale forms accept a free-text employee name, stored in `sales.buyer_name`. |
+| Branch Stock — unit filter dropdown | Implemented | The Branch Stock table includes an `All units` filter backed by the shared product-unit choices. |
+| Salary Deduction badge styling and mobile responsiveness | Implemented | Salary badges have dedicated colors, employee-name truncation, and narrower mobile sizing. |
+| PDF/Excel report theming | Implemented | PDF exports use the branded two-color header, badges, DejaVu fonts, and peso formatting; Excel exports use branded fills, fonts, filters, frozen headers, and numeric/date formats. |
+| Admin visibility into branch salary deductions in reports | Implemented | Admin Reports includes `Employee Purchases (Salary Deduction)` with branch and date filters; Branch Reports remain scoped to the signed-in branch. |
+| Dashboard clock (PH time) | Implemented | The shared top bar displays a live `Asia/Manila` date and time. |
 
 ## Roles And Access
 

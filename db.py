@@ -15,6 +15,9 @@ def get_db():
             database=current_app.config["MYSQL_DB"],
             autocommit=False,
         )
+        cur = g.db.cursor()
+        cur.execute("SET time_zone = '+08:00'")
+        cur.close()
     return g.db
 
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Dashboard{% endblock %}
-{% block eyebrow %}HQ Overview{% endblock %}
+{% block eyebrow %}Admin Overview{% endblock %}
 {% block heading %}Good to see you, {{ session.username }}{% endblock %}
 
 {% block content %}
@@ -20,7 +20,7 @@
     </div>
     <div class="stat-label">Branches</div>
     <div class="stat-value">{{ stats.branch_count }}</div>
-    <div class="stat-foot">receiving from HQ</div>
+    <div class="stat-foot">receiving from Main Branch</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-icon {{ 'stat-icon-red' if stats.pending_requests else 'stat-icon-neutral' }}">
@@ -121,7 +121,7 @@
 
 <div class="card">
   <div class="card-header">
-    <h2>Recent ledger activity</h2>
+    <h2>Recent Activity</h2>
     <a href="{{ url_for('admin.movement_logs') }}" class="hint">full ledger →</a>
   </div>
   {% if recent_activity %}

@@ -19,10 +19,16 @@ from extensions import limiter, ratelimit_storage_is_memory, socketio, socketio_
 _CSP = {
     "default-src": "'self'",
     "script-src": ["'self'", "'unsafe-inline'", "https://cdn.socket.io"],
-    "style-src": ["'self'", "'unsafe-inline'"],
-    "connect-src": ["'self'", "wss:", "ws:"],
+    # motion.js used to load from cdn.jsdelivr.net — it's now vendored at
+    # static/js/motion.js (see base.html / login.html), so jsdelivr no
+    # longer needs to be here. Being a third-party origin was also why
+    # Edge's Tracking Prevention / Brave Shields blocked it from storage
+    # access in the console — self-hosting removes that too, since the
+    # browser now sees it as same-origin.
+    "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    "font-src": ["'self'", "https://fonts.gstatic.com"],
+    "connect-src": ["'self'", "wss:", "ws:", "https://cdn.socket.io"],
     "img-src": ["'self'", "data:"],
-    "font-src": ["'self'"],
 }
 
 
@@ -52,6 +58,12 @@ def create_app():
         force_https=(environment == "production"),
         strict_transport_security=(environment == "production"),
         session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],
+        # Talisman defaults to sending Permissions-Policy: browsing-topics=(),
+        # opting out of Chrome's Topics API. This app has no ads/tracking to
+        # opt out of, and Edge/Brave don't recognize that feature name — they
+        # just log "Unrecognized feature: 'browsing-topics'" for it. Disabling
+        # it here removes that console noise on browsers that don't implement it.
+        permissions_policy={},
     )
 
     if not app.config["DEBUG"]:

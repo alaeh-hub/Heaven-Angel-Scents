@@ -122,12 +122,14 @@ CREATE TABLE IF NOT EXISTS stock_requests (
 --    since refills are usually charged a different amount than a full
 --    sale of the same SKU.
 --
---    payment_method + buyer_user_id: covers employees who take product
---    for themselves where the cost is deducted from their salary rather
---    than paid in cash at the register. buyer_user_id is only set when
---    payment_method = 'Salary Deduction', and identifies which login
---    account (which employee) the deduction applies to — it does not
---    have to be the same account that rang up the sale.
+--    payment_method + buyer_name: covers employees who take product for
+--    themselves where the cost is deducted from their salary rather than
+--    paid in cash at the register. buyer_name is free text (whatever
+--    name the person recording the sale types in) and is only set when
+--    payment_method = 'Salary Deduction' — it is NOT tied to a login
+--    account, so it does not have to match any real username.
+--    buyer_user_id is legacy: kept only so sales recorded before this
+--    change still show who the deduction was against.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sales (
     sale_id        INT AUTO_INCREMENT PRIMARY KEY,
@@ -257,6 +259,13 @@ BEGIN
         ALTER TABLE sales ADD CONSTRAINT fk_sales_buyer_user
             FOREIGN KEY (buyer_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
         ALTER TABLE sales ADD INDEX idx_sales_payment_method (payment_method);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'buyer_name'
+    ) THEN
+        ALTER TABLE sales ADD COLUMN buyer_name VARCHAR(120) NULL AFTER buyer_user_id;
     END IF;
 
     -- stock_movement_logs.movement_type gains 'REFILL' -------------------

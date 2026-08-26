@@ -22,6 +22,8 @@ import io
 import os
 
 from openpyxl import Workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
@@ -46,31 +48,86 @@ from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
 # this app runs on, regardless of what fonts happen to be installed
 # system-wide.
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
-pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(_FONTS_DIR, "DejaVuSans.ttf")))
-pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(_FONTS_DIR, "DejaVuSans-Bold.ttf")))
+pdfmetrics.registerFont(
+    TTFont("DejaVuSans", os.path.join(_FONTS_DIR, "DejaVuSans.ttf")))
+pdfmetrics.registerFont(
+    TTFont("DejaVuSans-Bold", os.path.join(_FONTS_DIR, "DejaVuSans-Bold.ttf")))
 
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
 STATUS_CHOICES = ("Pending", "In Transit", "Fulfilled", "Rejected")
-MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH", "RECEIPT", "SALE", "REFILL", "ADJUSTMENT", "DAMAGE")
+MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH",
+                         "RECEIPT", "SALE", "REFILL", "ADJUSTMENT", "DAMAGE")
 VARIANT_CHOICES = ("Male", "Female", "Unisex")
 ROLE_CHOICES = ("Admin", "Branch")
 UNIT_CHOICES = PRODUCT_UNITS
 SALE_TYPE_CHOICES = SALE_TYPES
 PAYMENT_METHOD_CHOICES = PAYMENT_METHODS
 
-INK = colors.HexColor("#1C1B19")
-INK_FAINT = colors.HexColor("#6E6A62")
-ACCENT = colors.HexColor("#A17A3A")
-ACCENT_SOFT = colors.HexColor("#F3EBDB")
-BORDER = colors.HexColor("#E7E3D9")
-ROW_ALT = colors.HexColor("#FBF9F4")
+INK = colors.HexColor("#12141A")
+INK_FAINT = colors.HexColor("#5B6272")
+ACCENT = colors.HexColor("#2E5AF0")
+ACCENT_INK = colors.HexColor("#1D3BC4")
+ACCENT_SOFT = colors.HexColor("#E7ECFE")
+BORDER = colors.HexColor("#E5E8EF")
+ROW_ALT = colors.HexColor("#FAFBFD")
 
-XL_HEADER_FILL = PatternFill("solid", fgColor="A17A3A")
-XL_TITLE_FILL = PatternFill("solid", fgColor="F3EBDB")
-XL_BORDER = Border(*(Side(style="thin", color="E7E3D9"),) * 4)
+# Brand red — the "Angel" half of the wordmark, and the same red the
+# badge system uses for Female/Rejected/danger states. Kept next to
+# ACCENT (blue, "Heaven") so report headers can render the same
+# two-tone brand mark used everywhere else (sidebar, login, receipts)
+# instead of printing the whole name in one flat color.
+BRAND_RED = colors.HexColor("#E23A48")
+BRAND_RED_INK = colors.HexColor("#B31E30")
+
+# Hex pairs (background, text) for each badge "style" — a direct port
+# of the badge-* classes in style.css (light-theme values), so a
+# Status/Type/Variant column in a generated report is colored exactly
+# like the matching badge the person already sees on screen.
+BADGE_STYLES = {
+    "pending":   ("#FBF0D9", "#C9820B"),  # --warning-soft / --warning
+    "transit":   ("#E7ECFE", "#1D3BC4"),  # --blue-soft / --blue-ink
+    "fulfilled": ("#E1F5EC", "#17975E"),  # --success-soft / --success
+    "rejected":  ("#FCE7EA", "#B31E30"),  # --red-soft / --red-ink
+    "active":    ("#E1F5EC", "#17975E"),
+    "inactive":  ("#F4F5F8", "#97A0AF"),  # --bg / --ink-faint
+    "male":      ("#E7ECFE", "#1D3BC4"),
+    "female":    ("#FCE7EA", "#B31E30"),
+    "unisex":    ("#EFEAFE", "#7C5CFA"),  # --plum-soft / --plum
+}
+
+# Maps a column's *semantic kind* (not its literal value) to the
+# badge-style key for each value it can hold. Mirrors the macro logic
+# in _macros.html (status_badge / movement_badge / sale_type_badge /
+# payment_method_badge / variant_badge) line for line, so report
+# coloring can never drift out of sync with what the web UI shows for
+# that same value.
+BADGE_KIND_MAPS = {
+    "status": {"Pending": "pending", "In Transit": "transit", "Fulfilled": "fulfilled", "Rejected": "rejected"},
+    "movement_type": {
+        "PRODUCTION": "fulfilled", "DISPATCH": "transit", "RECEIPT": "fulfilled",
+        "SALE": "unisex", "REFILL": "female", "ADJUSTMENT": "pending", "DAMAGE": "rejected",
+    },
+    "sale_type": {"Sale": "fulfilled", "Refill": "transit"},
+    "payment_method": {"Cash": "active", "Salary Deduction": "pending"},
+    "variant": {"Male": "male", "Female": "female", "Unisex": "unisex"},
+    "active_status": {"Active": "active", "Discontinued": "inactive", "Deactivated": "inactive"},
+    "role": {"Admin": "unisex", "Branch": "transit"},
+}
+
+
+def _badge_colors(kind, value):
+    """Return (bg_hex, text_hex) for a badge-kind column's value, or
+    None to fall back to plain text (unrecognized kind/value)."""
+    style_key = BADGE_KIND_MAPS.get(kind, {}).get(value)
+    return BADGE_STYLES.get(style_key) if style_key else None
+
+
+XL_HEADER_FILL = PatternFill("solid", fgColor="2E5AF0")
+XL_TITLE_FILL = PatternFill("solid", fgColor="E7ECFE")
+XL_BORDER = Border(*(Side(style="thin", color="E5E8EF"),) * 4)
 XL_MONEY_FMT = '"₱"#,##0.00'
-XL_DATE_FMT = "yyyy-mm-dd hh:mm"
+XL_DATE_FMT = "mmm dd, yyyy hh:mm AM/PM"
 
 # ---------------------------------------------------------------- registry
 # admin / branch: whether that role can generate this report at all.
@@ -79,12 +136,12 @@ REPORT_TYPES = {
     "product_catalog": {"label": "Product Catalog", "admin": True, "branch": False, "windowed": False},
     "hq_production":   {"label": "HQ Production",   "admin": True, "branch": False, "windowed": True},
     "branch_stock":    {"label": "Branch Stock",     "admin": True, "branch": True,  "windowed": False,
-                         "branch_label": "My Inventory"},
+                        "branch_label": "My Inventory"},
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
     "movement_logs":   {"label": "Movement Ledger",  "admin": True, "branch": True,  "windowed": True},
     "sales_history":   {"label": "Sales History",    "admin": True, "branch": True,  "windowed": True},
     "employee_purchases": {"label": "Employee Purchases (Salary Deduction)", "admin": True, "branch": True,
-                            "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
+                           "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
     "accounts":        {"label": "User Accounts",    "admin": True, "branch": False, "windowed": False},
 }
 
@@ -184,7 +241,8 @@ def _window_note(filters, truncated):
 def _branch_name(branch_id):
     if branch_id in (None, "all"):
         return None
-    row = query("SELECT branch_name FROM branches WHERE branch_id = %s", (branch_id,), fetchone=True)
+    row = query("SELECT branch_name FROM branches WHERE branch_id = %s",
+                (branch_id,), fetchone=True)
     return row["branch_name"] if row else None
 
 
@@ -218,9 +276,11 @@ def _report_product_catalog(filters, branch_scope):
         r["is_active"] = "Active" if r["is_active"] else "Discontinued"
 
     columns = [
-        ("sku", "SKU", "str"), ("item_name", "Item", "str"), ("variant", "Variant", "str"),
+        ("sku", "SKU", "str"), ("item_name", "Item",
+                                "str"), ("variant", "Variant", "badge:variant"),
         ("unit", "Unit", "str"), ("price", "HQ Price", "money"),
-        ("total_stock", "Total Stock (all branches)", "int"), ("is_active", "Status", "str"),
+        ("total_stock", "Total Stock (all branches)",
+         "int"), ("is_active", "Status", "badge:active_status"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
 
@@ -234,7 +294,8 @@ def _report_hq_production(filters, branch_scope):
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR pl.batch_code LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like, like]
-    time_where, order, limit_n, truncated = _time_window("pl.produced_at", filters, params)
+    time_where, order, limit_n, truncated = _time_window(
+        "pl.produced_at", filters, params)
     where += time_where
 
     rows = query(
@@ -247,8 +308,10 @@ def _report_hq_production(filters, branch_scope):
         r["batch_code"] = r["batch_code"] or "—"
 
     columns = [
-        ("produced_at", "Produced", "datetime"), ("sku", "SKU", "str"), ("item_name", "Item", "str"),
-        ("unit", "Unit", "str"), ("batch_code", "Batch", "str"), ("qty_produced", "Qty Produced", "int"),
+        ("produced_at", "Produced", "datetime"), ("sku",
+                                                  "SKU", "str"), ("item_name", "Item", "str"),
+        ("unit", "Unit", "str"), ("batch_code", "Batch",
+                                  "str"), ("qty_produced", "Qty Produced", "int"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -290,9 +353,11 @@ def _report_branch_stock(filters, branch_scope):
     for r in rows:
         r["hq_price"] = float(r["hq_price"])
 
-    columns = [("branch_name", "Branch", "str")] if branch_scope is None else []
+    columns = [("branch_name", "Branch", "str")
+               ] if branch_scope is None else []
     columns += [
-        ("sku", "SKU", "str"), ("item_name", "Item", "str"), ("variant", "Variant", "str"),
+        ("sku", "SKU", "str"), ("item_name", "Item",
+                                "str"), ("variant", "Variant", "badge:variant"),
         ("unit", "Unit", "str"), ("hq_price", "HQ Price", "money"),
         ("stock_qty", "Stock Qty", "int"), ("reorder_level", "Reorder Level", "int"),
     ]
@@ -314,7 +379,8 @@ def _report_stock_requests(filters, branch_scope):
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like]
-    time_where, order, limit_n, truncated = _time_window("sr.requested_at", filters, params)
+    time_where, order, limit_n, truncated = _time_window(
+        "sr.requested_at", filters, params)
     where += time_where
 
     rows = query(
@@ -330,11 +396,14 @@ def _report_stock_requests(filters, branch_scope):
         for k in ("dispatched_qty", "received_qty", "damaged_qty"):
             r[k] = r[k] or 0
 
-    columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
+    columns = [] if branch_scope is not None else [
+        ("branch_name", "Branch", "str")]
     columns = [("requested_at", "Requested", "datetime")] + columns + [
-        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("requested_qty", "Requested Qty", "int"),
-        ("dispatched_qty", "Dispatched Qty", "int"), ("received_qty", "Received Qty", "int"),
-        ("damaged_qty", "Damaged Qty", "int"), ("status", "Status", "str"),
+        ("item_name", "Item", "str"), ("sku", "SKU",
+                                       "str"), ("requested_qty", "Requested Qty", "int"),
+        ("dispatched_qty", "Dispatched Qty",
+         "int"), ("received_qty", "Received Qty", "int"),
+        ("damaged_qty", "Damaged Qty", "int"), ("status", "Status", "badge:status"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -355,7 +424,8 @@ def _report_movement_logs(filters, branch_scope):
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR sml.notes LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like, like]
-    time_where, order, limit_n, truncated = _time_window("sml.created_at", filters, params)
+    time_where, order, limit_n, truncated = _time_window(
+        "sml.created_at", filters, params)
     where += time_where
 
     rows = query(
@@ -370,9 +440,11 @@ def _report_movement_logs(filters, branch_scope):
     for r in rows:
         r["notes"] = r["notes"] or "—"
 
-    columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
+    columns = [] if branch_scope is not None else [
+        ("branch_name", "Branch", "str")]
     columns = [("created_at", "When", "datetime")] + columns + [
-        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("movement_type", "Type", "str"),
+        ("item_name", "Item", "str"), ("sku", "SKU",
+                                       "str"), ("movement_type", "Type", "badge:movement_type"),
         ("change_qty", "Change", "int"), ("notes", "Notes", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
@@ -403,13 +475,14 @@ def _report_sales_history(filters, branch_scope):
         where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like]
-    time_where, order, limit_n, truncated = _time_window("s.sold_at", filters, params)
+    time_where, order, limit_n, truncated = _time_window(
+        "s.sold_at", filters, params)
     where += time_where
 
     rows = query(
         f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, p.variant, p.unit,
                    s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total,
-                   s.sale_type, s.payment_method, bu.username AS buyer_username
+                   s.sale_type, s.payment_method, COALESCE(s.buyer_name, bu.username) AS buyer_username
             FROM sales s
             JOIN branches b ON s.branch_id = b.branch_id
             JOIN products p ON s.sku = p.sku
@@ -422,12 +495,16 @@ def _report_sales_history(filters, branch_scope):
         r["line_total"] = float(r["line_total"])
         r["buyer_username"] = r["buyer_username"] or "—"
 
-    columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
+    columns = [] if branch_scope is not None else [
+        ("branch_name", "Branch", "str")]
     columns = [("sold_at", "Sold", "datetime")] + columns + [
-        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("variant", "Variant", "str"),
-        ("unit", "Unit", "str"), ("sale_type", "Type", "str"), ("qty_sold", "Qty", "int"),
+        ("item_name", "Item", "str"), ("sku", "SKU",
+                                       "str"), ("variant", "Variant", "badge:variant"),
+        ("unit", "Unit", "str"), ("sale_type",
+                                  "Type", "badge:sale_type"), ("qty_sold", "Qty", "int"),
         ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
-        ("payment_method", "Payment", "str"), ("buyer_username", "Employee (if salary deduction)", "str"),
+        ("payment_method", "Payment", "badge:payment_method"), ("buyer_username",
+                                               "Employee (if salary deduction)", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -451,16 +528,17 @@ def _report_employee_purchases(filters, branch_scope):
         where += " AND s.sale_type = %s"
         params.append(filters["sale_type"])
     if filters["search"]:
-        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR bu.username LIKE %s)"
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR COALESCE(s.buyer_name, bu.username) LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like, like]
-    time_where, order, limit_n, truncated = _time_window("s.sold_at", filters, params)
+    time_where, order, limit_n, truncated = _time_window(
+        "s.sold_at", filters, params)
     where += time_where
 
     rows = query(
         f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, s.sale_type,
                    s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total,
-                   COALESCE(bu.username, '(account deleted)') AS buyer_username
+                   COALESCE(s.buyer_name, bu.username, '(unspecified)') AS buyer_username
             FROM sales s
             JOIN branches b ON s.branch_id = b.branch_id
             JOIN products p ON s.sku = p.sku
@@ -472,9 +550,11 @@ def _report_employee_purchases(filters, branch_scope):
         r["unit_price"] = float(r["unit_price"])
         r["line_total"] = float(r["line_total"])
 
-    columns = [] if branch_scope is not None else [("branch_name", "Branch", "str")]
+    columns = [] if branch_scope is not None else [
+        ("branch_name", "Branch", "str")]
     columns = [("sold_at", "Date", "datetime"), ("buyer_username", "Employee", "str")] + columns + [
-        ("item_name", "Item", "str"), ("sku", "SKU", "str"), ("sale_type", "Type", "str"),
+        ("item_name", "Item", "str"), ("sku", "SKU",
+                                       "str"), ("sale_type", "Type", "badge:sale_type"),
         ("qty_sold", "Qty", "int"), ("unit_price", "Unit Price", "money"),
         ("line_total", "Amount to Deduct", "money"),
     ]
@@ -505,8 +585,9 @@ def _report_accounts(filters, branch_scope):
         r["is_active"] = "Active" if r["is_active"] else "Deactivated"
 
     columns = [
-        ("username", "Username", "str"), ("role", "Role", "str"), ("branch_name", "Branch", "str"),
-        ("is_active", "Status", "str"), ("created_at", "Created", "datetime"),
+        ("username", "Username", "str"), ("role", "Role",
+                                          "badge:role"), ("branch_name", "Branch", "str"),
+        ("is_active", "Status", "badge:active_status"), ("created_at", "Created", "datetime"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
 
@@ -535,12 +616,15 @@ def get_report(report_type, filters, branch_scope=None, actor_label=""):
         raise ValueError(f"Unknown report type: {report_type}")
 
     meta = REPORT_TYPES[report_type]
-    label = meta["branch_label"] if (branch_scope is not None and "branch_label" in meta) else meta["label"]
+    label = meta["branch_label"] if (
+        branch_scope is not None and "branch_label" in meta) else meta["label"]
 
-    columns, rows, truncated, window_note = _BUILDERS[report_type](filters, branch_scope)
+    columns, rows, truncated, window_note = _BUILDERS[report_type](
+        filters, branch_scope)
 
     scoped_branch_name = _branch_name(branch_scope) if branch_scope is not None else (
-        _branch_name(filters.get("branch_id")) if filters.get("branch_id") not in (None, "all") else None
+        _branch_name(filters.get("branch_id")) if filters.get(
+            "branch_id") not in (None, "all") else None
     )
     subtitle_bits = [scoped_branch_name] if scoped_branch_name else []
     if meta["windowed"]:
@@ -565,21 +649,21 @@ def _pdf_styles():
     base = getSampleStyleSheet()
     return {
         "brand": ParagraphStyle("brand", parent=base["Normal"], fontName="DejaVuSans-Bold",
-                                 fontSize=16, textColor=INK, leading=19),
+                                fontSize=16, textColor=INK, leading=19),
         "brand_sub": ParagraphStyle("brand_sub", parent=base["Normal"], fontName="DejaVuSans",
-                                     fontSize=8, textColor=INK_FAINT, leading=11),
+                                    fontSize=8, textColor=INK_FAINT, leading=11),
         "doc_title": ParagraphStyle("doc_title", parent=base["Normal"], fontName="DejaVuSans-Bold",
-                                     fontSize=13, textColor=ACCENT, alignment=TA_RIGHT, leading=16),
+                                    fontSize=13, textColor=ACCENT_INK, alignment=TA_RIGHT, leading=16),
         "doc_meta": ParagraphStyle("doc_meta", parent=base["Normal"], fontName="DejaVuSans",
-                                    fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
+                                   fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
         "th": ParagraphStyle("th", parent=base["Normal"], fontName="DejaVuSans-Bold",
-                              fontSize=7.6, textColor=colors.white, leading=10),
+                             fontSize=7.6, textColor=colors.white, leading=10),
         "td": ParagraphStyle("td", parent=base["Normal"], fontName="DejaVuSans",
-                              fontSize=7.6, textColor=INK, leading=10),
+                             fontSize=7.6, textColor=INK, leading=10),
         "td_num": ParagraphStyle("td_num", parent=base["Normal"], fontName="DejaVuSans",
-                                  fontSize=7.6, textColor=INK, leading=10, alignment=TA_RIGHT),
+                                 fontSize=7.6, textColor=INK, leading=10, alignment=TA_RIGHT),
         "footer": ParagraphStyle("footer", parent=base["Normal"], fontName="DejaVuSans",
-                                  fontSize=7.3, textColor=INK_FAINT, leading=10),
+                                 fontSize=7.3, textColor=INK_FAINT, leading=10),
     }
 
 
@@ -608,7 +692,9 @@ def render_report_pdf(report):
 
     header = Table(
         [[
-            Table([[Paragraph("Heaven <font color='#A17A3A'>&amp;</font> Angel Scents", s["brand"])],
+            Table([[Paragraph(
+                       "<font color='#2E5AF0'>Heaven</font> <font color='#5B6272'>&amp;</font> "
+                       "<font color='#E23A48'>Angel</font> Scents", s["brand"])],
                    [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
                   colWidths=[130 * mm]),
             Table([[Paragraph(report["title"].upper() + " REPORT", s["doc_title"])],
@@ -623,30 +709,54 @@ def render_report_pdf(report):
     )
     story.append(header)
     story.append(Spacer(1, 6))
-    story.append(HRFlowable(width="100%", thickness=1.2, color=ACCENT, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=1.2,
+                 color=ACCENT, spaceAfter=10))
 
     columns = report["columns"]
     rows = report["rows"]
 
     if not rows:
         story.append(Spacer(1, 30))
-        story.append(Paragraph("No data matches the selected filters.", s["footer"]))
+        story.append(
+            Paragraph("No data matches the selected filters.", s["footer"]))
     else:
         num_types = ("money", "int")
         header_row = [Paragraph(label, s["th"]) for _, label, _ in columns]
         data = [header_row]
-        for row in rows:
-            data.append([
-                Paragraph(_fmt_cell(row.get(key), ctype), s["td_num"] if ctype in num_types else s["td"])
-                for key, _, ctype in columns
-            ])
+        # Collect (row, col, bg_hex) for every badge-kind cell that
+        # matched a known value, so the table style below can paint
+        # just that cell — same colored-pill look as the web UI,
+        # instead of every column rendering as flat black text.
+        badge_cells = []
+        for r_idx, row in enumerate(rows, start=1):
+            cells = []
+            for c_idx, (key, _, ctype) in enumerate(columns):
+                value = row.get(key)
+                if ctype.startswith("badge:"):
+                    kind = ctype.split(":", 1)[1]
+                    badge = _badge_colors(kind, value)
+                    text = _fmt_cell(value, "str")
+                    if badge:
+                        bg_hex, text_hex = badge
+                        badge_cells.append((r_idx, c_idx, bg_hex))
+                        badge_style = ParagraphStyle(
+                            f"badge_{r_idx}_{c_idx}", parent=s["td"],
+                            textColor=colors.HexColor(text_hex), fontName="DejaVuSans-Bold",
+                        )
+                        cells.append(Paragraph(text, badge_style))
+                    else:
+                        cells.append(Paragraph(text, s["td"]))
+                else:
+                    cells.append(Paragraph(
+                        _fmt_cell(value, ctype), s["td_num"] if ctype in num_types else s["td"]))
+            data.append(cells)
 
         available_width = doc.width
         n = len(columns)
         base_w = available_width / n
         table = Table(data, colWidths=[base_w] * n, repeatRows=1)
         style = [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#A17A3A")),
+            ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING", (0, 0), (-1, -1), 4.5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
@@ -655,6 +765,12 @@ def render_report_pdf(report):
             ("LINEBELOW", (0, 0), (-1, -1), 0.5, BORDER),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROW_ALT]),
         ]
+        # Badge backgrounds are appended after ROWBACKGROUNDS so they
+        # win for their specific cell — later commands override earlier
+        # ones on the same cell in ReportLab's TableStyle.
+        for r_idx, c_idx, bg_hex in badge_cells:
+            style.append(
+                ("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor(bg_hex)))
         table.setStyle(TableStyle(style))
         story.append(table)
 
@@ -665,7 +781,8 @@ def render_report_pdf(report):
         story.append(Paragraph(count_note, s["footer"]))
 
     story.append(Spacer(1, 14))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=6))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                 color=BORDER, spaceAfter=6))
     story.append(Paragraph(
         "Generated from the Heaven &amp; Angel Scents inventory system. Figures reflect the underlying "
         "data at the moment this report was generated.",
@@ -689,24 +806,37 @@ def render_report_excel(report):
     n_cols = len(columns)
 
     # ---- title block ----
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(n_cols, 1))
-    title_cell = ws.cell(row=1, column=1, value=f"{report['title']} Report — Heaven & Angel Scents")
-    title_cell.font = Font(name="Calibri", size=14, bold=True, color="1C1B19")
+    ws.merge_cells(start_row=1, start_column=1,
+                   end_row=1, end_column=max(n_cols, 1))
+    title_cell = ws.cell(row=1, column=1)
+    # Rich text so "Heaven" / "Angel" render in the same two brand
+    # colors as the sidebar, login page, and PDF report header,
+    # instead of the whole title printing in one flat dark color.
+    title_cell.value = CellRichText(
+        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="2E5AF0"), "Heaven "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="5B6272"), "& "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="E23A48"), "Angel "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="12141A"),
+                  f"Scents — {report['title']} Report"),
+    )
     title_cell.fill = XL_TITLE_FILL
     title_cell.alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[1].height = 24
 
-    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(n_cols, 1))
+    ws.merge_cells(start_row=2, start_column=1,
+                   end_row=2, end_column=max(n_cols, 1))
     meta = report["subtitle"]
     meta += f"  ·  Generated {report['generated_at'].strftime('%Y-%m-%d %H:%M')}"
     if report["actor_label"]:
         meta += f" by {report['actor_label']}"
     meta_cell = ws.cell(row=2, column=1, value=meta)
-    meta_cell.font = Font(name="Calibri", size=9.5, italic=True, color="6E6A62")
+    meta_cell.font = Font(name="Calibri", size=9.5,
+                          italic=True, color="5B6272")
 
     header_row_idx = 4
     if not rows:
-        ws.cell(row=header_row_idx, column=1, value="No data matches the selected filters.").font = Font(italic=True)
+        ws.cell(row=header_row_idx, column=1,
+                value="No data matches the selected filters.").font = Font(italic=True)
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -717,7 +847,8 @@ def render_report_excel(report):
         cell = ws.cell(row=header_row_idx, column=c, value=label)
         cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
         cell.fill = XL_HEADER_FILL
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.alignment = Alignment(
+            horizontal="center", vertical="center", wrap_text=True)
         cell.border = XL_BORDER
     ws.row_dimensions[header_row_idx].height = 20
 
@@ -741,6 +872,20 @@ def render_report_excel(report):
             elif ctype == "datetime" and isinstance(value, (datetime.date, datetime.datetime)):
                 cell.value = value
                 cell.number_format = XL_DATE_FMT
+            elif ctype.startswith("badge:"):
+                cell.value = str(value)
+                # Same fill/text color as that value's badge on screen
+                # (see BADGE_STYLES/BADGE_KIND_MAPS above) — falls back
+                # to plain text if the value doesn't map to a badge.
+                badge = _badge_colors(ctype.split(":", 1)[1], value)
+                if badge:
+                    bg_hex, text_hex = badge
+                    cell.fill = PatternFill(
+                        "solid", fgColor=bg_hex.lstrip("#"))
+                    cell.font = Font(
+                        name="Calibri", size=10, bold=True, color=text_hex.lstrip("#"))
+                    cell.alignment = Alignment(
+                        horizontal="center", vertical="center")
             else:
                 cell.value = str(value)
             width = len(str(cell.value)) if cell.value is not None else 0
@@ -752,13 +897,15 @@ def render_report_excel(report):
     ws.freeze_panes = f"A{header_row_idx + 1}"
 
     for c, width in enumerate(col_widths, start=1):
-        ws.column_dimensions[get_column_letter(c)].width = min(max(width + 3, 10), 42)
+        ws.column_dimensions[get_column_letter(
+            c)].width = min(max(width + 3, 10), 42)
 
     footer_row = header_row_idx + len(rows) + 2
     note = f"{report['row_count']:,} row(s) shown."
     if report["truncated"]:
         note += f" Results were capped at {MAX_ROWS:,} rows — narrow the filters for a complete report."
-    ws.cell(row=footer_row, column=1, value=note).font = Font(size=9, italic=True, color="6E6A62")
+    ws.cell(row=footer_row, column=1, value=note).font = Font(
+        size=9, italic=True, color="5B6272")
 
     buf = io.BytesIO()
     wb.save(buf)

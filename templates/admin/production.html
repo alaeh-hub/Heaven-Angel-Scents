@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}HQ Production{% endblock %}
+{% block title %}Production Log{% endblock %}
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
-{% block heading %}HQ Production{% endblock %}
+{% block heading %}Production Log{% endblock %}
 
 {% block content %}
 {% set total_hq_units = hq_stock|sum(attribute='stock_qty') if hq_stock else 0 %}
@@ -13,7 +13,7 @@
   <div class="card stat-tile">
     <div class="stat-label">Warehouse SKUs</div>
     <div class="stat-value">{{ hq_stock|length }}</div>
-    <div class="stat-foot">carried at HQ</div>
+    <div class="stat-foot">carried at Main Branch</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Units on hand</div>
@@ -35,7 +35,7 @@
 <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;">
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Log a production run</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Adds finished units straight to the HQ warehouse.
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Adds finished units straight to warehouse stock.
     </p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -68,7 +68,7 @@
 
   <div class="card">
     <div class="card-header">
-      <h2>HQ warehouse stock</h2><span class="hint" id="hqStockCount">{{ hq_stock|length }} SKU{{ 's' if hq_stock|length
+      <h2>Main Stock</h2><span class="hint" id="hqStockCount">{{ hq_stock|length }} SKU{{ 's' if hq_stock|length
         != 1 }}</span>
     </div>
     {% if hq_stock %}
@@ -119,8 +119,7 @@
       </div>
     </div>
     <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Bars are scaled against your best-stocked SKU, so a short bar means
-        low relative to the rest of the warehouse — not necessarily out of stock.</p>
+      <p class="text-faint" style="font-size:12px;">Bars are relative to your best-stocked SKU — a short bar isn't necessarily out of stock.</p>
     </div>
     {% else %}
     <div class="empty-state">
@@ -246,9 +245,9 @@
         return;
       }
       if (Object.prototype.hasOwnProperty.call(stockMap, sku)) {
-        preview.textContent = stockMap[sku] + ' unit(s) currently on hand at HQ.';
+        preview.textContent = stockMap[sku] + ' unit(s) currently on hand.';
       } else {
-        preview.textContent = 'No HQ stock recorded yet for this SKU.';
+        preview.textContent = 'No stock recorded yet for this SKU.';
       }
       preview.style.display = 'block';
     }
@@ -269,7 +268,7 @@
       rows.forEach(function (row) {
         var opt = document.createElement('option');
         opt.value = row.sku;
-        opt.textContent = row.unit + ' — ' + row.sku;
+        opt.textContent = row.unit;
         skuSelect.appendChild(opt);
       });
       updatePreview();

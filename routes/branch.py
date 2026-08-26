@@ -51,7 +51,8 @@ def dashboard():
            WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
         (bid,),
     )
-    low_stock = [row for row in inventory if row["stock_qty"] <= row["reorder_level"]]
+    low_stock = [row for row in inventory if row["stock_qty"]
+                 <= row["reorder_level"]]
 
     pending_requests = query(
         """SELECT sr.request_id, p.item_name, sr.requested_qty, sr.dispatched_qty, sr.status, sr.requested_at
@@ -87,7 +88,7 @@ def inventory():
            ORDER BY p.item_name""",
         (bid,),
     )
-    return render_template("branch/inventory.html", rows=rows)
+    return render_template("branch/inventory.html", rows=rows, unit_choices=PRODUCT_UNITS)
 
 
 # ---------------------------------------------------------------- request stock
@@ -98,7 +99,8 @@ def request_stock():
     if request.method == "POST":
         sku = request.form.get("sku")
         try:
-            qty = parse_positive_int(request.form.get("requested_qty"), "Requested quantity")
+            qty = parse_positive_int(request.form.get(
+                "requested_qty"), "Requested quantity")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.request_stock"))
@@ -126,7 +128,8 @@ def request_stock():
                     flash("Couldn't send this request — please try again.", "error")
         return redirect(url_for("branch.request_stock"))
 
-    products_list = query("SELECT sku, item_name, variant, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
+    products_list = query(
+        "SELECT sku, item_name, variant, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
     history = query(
         """SELECT sr.*, p.item_name, p.unit FROM stock_requests sr JOIN products p ON sr.sku = p.sku
            WHERE sr.branch_id = %s ORDER BY sr.requested_at DESC LIMIT 25""",
@@ -143,8 +146,10 @@ def receive_stock():
     if request.method == "POST":
         request_id = request.form.get("request_id")
         try:
-            received_qty = parse_non_negative_int(request.form.get("received_qty"), "Received quantity")
-            damaged_qty = parse_non_negative_int(request.form.get("damaged_qty"), "Damaged quantity")
+            received_qty = parse_non_negative_int(
+                request.form.get("received_qty"), "Received quantity")
+            damaged_qty = parse_non_negative_int(
+                request.form.get("damaged_qty"), "Damaged quantity")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.receive_stock"))
@@ -170,7 +175,8 @@ def receive_stock():
                 dispatched = req["dispatched_qty"] or 0
                 if received_qty + damaged_qty > dispatched:
                     cur.close()
-                    flash("Received + damaged can't exceed the dispatched quantity.", "error")
+                    flash(
+                        "Received + damaged can't exceed the dispatched quantity.", "error")
                     return redirect(url_for("branch.receive_stock"))
 
                 cur.execute(
@@ -228,15 +234,19 @@ def receive_stock():
                     )
                 cur.close()
         except Exception:
-            current_app.logger.exception("receive_stock failed for request_id=%s", request_id)
+            current_app.logger.exception(
+                "receive_stock failed for request_id=%s", request_id)
             flash("Couldn't confirm this receipt — please try again.", "error")
             return redirect(url_for("branch.receive_stock"))
 
         if shortfall > 0:
-            notify_admin_and_branch(bid, ["requests", "inventory", "movement_logs"])
-            flash(f"Received recorded. Note: {shortfall} unit(s) unaccounted for — flagged in the ledger.", "warning")
+            notify_admin_and_branch(
+                bid, ["requests", "inventory", "movement_logs"])
+            flash(
+                f"Received recorded. Note: {shortfall} unit(s) unaccounted for — flagged in the ledger.", "warning")
         else:
-            notify_admin_and_branch(bid, ["requests", "inventory", "movement_logs"])
+            notify_admin_and_branch(
+                bid, ["requests", "inventory", "movement_logs"])
             flash("Shipment receipt confirmed and inventory updated.", "success")
         return redirect(url_for("branch.receive_stock"))
 
@@ -291,8 +301,10 @@ def record_sale():
         raw_buyer = request.form.get("buyer_user_id", "").strip()
 
         try:
-            qty = parse_positive_int(request.form.get("qty_sold"), "Quantity sold")
-            unit_price = parse_non_negative_decimal(request.form.get("unit_price"), "Price charged")
+            qty = parse_positive_int(
+                request.form.get("qty_sold"), "Quantity sold")
+            unit_price = parse_non_negative_decimal(
+                request.form.get("unit_price"), "Price charged")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.record_sale"))
@@ -307,29 +319,18 @@ def record_sale():
             flash("Select a product to sell.", "error")
             return redirect(url_for("branch.record_sale"))
 
-        buyer = None
-        buyer_user_id = None
+        # AFTER
+        buyer_name = None
         if payment_method == "Salary Deduction":
             if not raw_buyer:
                 flash("Enter which employee this salary deduction applies to.", "error")
                 return redirect(url_for("branch.record_sale"))
-            # See admin.py's record_sale() for why this resolves a typed
-            # username rather than trusting a select-supplied user_id: the
-            # Employee field is now a free-text combobox with a datalist of
-            # real usernames, so the typed text has to be checked against a
-            # real, active account here.
-            buyer = query(
-                "SELECT user_id, username FROM users WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE",
-                (raw_buyer,), fetchone=True,
-            )
-            if not buyer:
-                flash(
-                    f"'{raw_buyer}' isn't a valid, active employee account. "
-                    "Pick a name from the suggestions as you type.",
-                    "error",
-                )
+            if len(raw_buyer) > 120:
+                flash("Employee name is too long (max 120 characters).", "error")
                 return redirect(url_for("branch.record_sale"))
-            buyer_user_id = buyer["user_id"]
+            # Free-text name, not a login lookup — see admin.py's
+            # record_sale() for the same change and reasoning.
+            buyer_name = raw_buyer
 
         try:
             with transaction() as conn:
@@ -348,37 +349,52 @@ def record_sale():
                     cur.close()
                     flash("That product isn't stocked at this branch.", "error")
                     return redirect(url_for("branch.record_sale"))
-                if stock_row["stock_qty"] < qty:
+                # AFTER
+                # See admin.py's record_sale() for the reasoning: a Refill
+                # doesn't draw down countable branch_inventory the way a
+                # Sale does — it's still a real sales row (counts toward
+                # revenue and "today's sales") and still gets its own
+                # ledger entry, just with a zero stock change.
+                is_refill = sale_type == "Refill"
+
+                if not is_refill and stock_row["stock_qty"] < qty:
                     cur.close()
                     flash("Not enough stock on hand for that sale.", "error")
                     return redirect(url_for("branch.record_sale"))
 
                 before_qty = stock_row["stock_qty"]
-                after_qty = before_qty - qty
+                after_qty = before_qty if is_refill else before_qty - qty
 
                 cur.execute(
-                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_user_id)
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_name)
                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (bid, sku, qty, unit_price, sale_type, payment_method, buyer_user_id),
+                    (bid, sku, qty, unit_price, sale_type,
+                     payment_method, buyer_name),
                 )
-                cur.execute(
-                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                    (after_qty, bid, sku),
-                )
+                if not is_refill:
+                    cur.execute(
+                        "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                        (after_qty, bid, sku),
+                    )
                 movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale" if payment_method == "Cash" else f"Salary deduction — {buyer['username']}"
+                notes = "Point-of-sale" if payment_method == "Cash" else f"Salary deduction — {buyer_name}"
+                if is_refill:
+                    notes += " · no stock deducted (refill)"
                 cur.execute(
                     """INSERT INTO stock_movement_logs
                        (branch_id, sku, change_qty, movement_type, notes,
                         created_by_user_id, reference_type, before_qty, after_qty)
                        VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
-                    (bid, sku, -qty, movement_type, notes, session.get("user_id"), before_qty, after_qty),
+                    (bid, sku, 0 if is_refill else -qty, movement_type, notes,
+                     session.get("user_id"), before_qty, after_qty),
                 )
                 cur.close()
-            notify_admin_and_branch(bid, ["inventory", "sales", "movement_logs"])
+            notify_admin_and_branch(
+                bid, ["inventory", "sales", "movement_logs"])
             flash(f"{sale_type} recorded.", "success")
         except Exception:
-            current_app.logger.exception("record_sale failed for branch_id=%s sku=%s", bid, sku)
+            current_app.logger.exception(
+                "record_sale failed for branch_id=%s sku=%s", bid, sku)
             flash("Couldn't record that sale — please try again.", "error")
         return redirect(url_for("branch.record_sale"))
 
@@ -389,7 +405,7 @@ def record_sale():
         (bid,),
     )
     recent_sales = query(
-        """SELECT s.*, p.item_name, bu.username AS buyer_username
+        """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
@@ -426,7 +442,8 @@ def sales_history():
 @branch_required
 def reports():
     report_types = [
-        {"key": key, "label": meta.get("branch_label", meta["label"]), "windowed": meta["windowed"]}
+        {"key": key, "label": meta.get(
+            "branch_label", meta["label"]), "windowed": meta["windowed"]}
         for key, meta in REPORT_TYPES.items() if meta["branch"]
     ]
     return render_template("branch/reports.html", report_types=report_types, unit_choices=PRODUCT_UNITS)
@@ -455,7 +472,8 @@ def generate_report():
     )
 
     if report["row_count"] == 0:
-        flash(f"No data matches the selected filters for {report['title']}.", "warning")
+        flash(
+            f"No data matches the selected filters for {report['title']}.", "warning")
         return redirect(url_for("branch.reports"))
 
     stamp = datetime.date.today().isoformat()
@@ -517,7 +535,8 @@ def reports_data():
     )
 
     granularity = request.args.get("granularity", "daily")
-    trend_bucket = _TREND_GRANULARITIES.get(granularity, _TREND_GRANULARITIES["daily"])
+    trend_bucket = _TREND_GRANULARITIES.get(
+        granularity, _TREND_GRANULARITIES["daily"])
     movement_trend = query(
         f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
             FROM stock_movement_logs

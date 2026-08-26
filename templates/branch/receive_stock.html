@@ -3,8 +3,24 @@
 {% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Receive Shipment{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 680px) {
+    #receiveTable .table-wrap td[data-label=""] {
+      justify-content: stretch;
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+
+    #receiveTable .table-wrap td[data-label=""] .btn {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card">
+<div class="card" id="receiveTable">
   <div class="card-header"><h2>Shipments in transit</h2><span class="hint">confirm what actually arrived</span></div>
   {% if in_transit %}
   <div class="table-wrap">
@@ -15,15 +31,15 @@
         <tr>
           <td class="item-name" data-label="Item">{{ r.item_name }}</td>
           <td class="num mono" data-label="Dispatched">{{ r.dispatched_qty }}</td>
-          <td class="num" style="width:110px;" data-label="Received">
+          <td class="num" data-label="Received">
             <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ r.request_id }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="request_id" value="{{ r.request_id }}">
-              <input type="number" name="received_qty" value="{{ r.dispatched_qty }}" min="0" max="{{ r.dispatched_qty }}" class="mono" required>
+              <input type="number" name="received_qty" value="{{ r.dispatched_qty }}" min="0" max="{{ r.dispatched_qty }}" class="mono" style="width:90px;" required>
             </form>
           </td>
-          <td class="num" style="width:110px;" data-label="Damaged">
-            <input type="number" name="damaged_qty" value="0" min="0" max="{{ r.dispatched_qty }}" class="mono" form="receive-{{ r.request_id }}">
+          <td class="num" data-label="Damaged">
+            <input type="number" name="damaged_qty" value="0" min="0" max="{{ r.dispatched_qty }}" class="mono" style="width:90px;" form="receive-{{ r.request_id }}">
           </td>
           <td data-label=""><button type="submit" form="receive-{{ r.request_id }}" class="btn btn-accent btn-sm">Confirm receipt</button></td>
         </tr>
@@ -32,7 +48,7 @@
     </table>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Received + damaged should add up to what was dispatched. Anything short is flagged automatically in the ledger for HQ follow-up.</p>
+    <p class="text-faint" style="font-size:12px;">Received + damaged should add up to what was dispatched. Anything short is flagged automatically in the ledger for Main Branch follow-up.</p>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">✓</div><p>Nothing currently in transit to your branch.</p></div>
