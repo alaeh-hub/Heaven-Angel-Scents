@@ -57,16 +57,18 @@
   'toggle_user': 'Account status changed',
   'reset_password': 'Password reset',
   'add_product': 'Product added',
-  'toggle_product': 'Product status changed',
-  'add_branch': 'Branch added'
+  'edit_product': 'Product edited',
+  'add_branch': 'Branch added',
+  'add_material': 'Material added',
+  'edit_material': 'Material edited'
 } %}
 {{ map.get(action, action|replace('_', ' ')|capitalize) }}
 {% endmacro %}
 
 {% macro action_badge(action) %}
 {% set map = {
-  'create_account': 'fulfilled', 'add_product': 'fulfilled', 'add_branch': 'fulfilled',
-  'toggle_user': 'pending', 'toggle_product': 'pending',
+  'create_account': 'fulfilled', 'add_product': 'fulfilled', 'add_branch': 'fulfilled', 'add_material': 'fulfilled',
+  'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit',
   'reset_password': 'transit'
 } %}
 <span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>

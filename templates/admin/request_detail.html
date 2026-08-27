@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ req.delivery_number }}{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}{{ req.delivery_number }}{% endblock %}
+
+{% block head %}
+<style>
+  /* ---- meta strip ---- */
+  .rd-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .rd-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    flex: 1 1 180px;
+    min-width: 0;
+  }
+
+  .rd-meta-icon {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .rd-meta-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .rd-meta-item .label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--ink-faint);
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .rd-meta-item .value {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rd-meta-item .value:has(.badge) {
+    white-space: normal;
+  }
+
+  /* ---- items table ---- */
+  .rd-items-table input[type="number"] {
+    width: 88px;
+    text-align: right;
+    padding: 8px 10px;
+  }
+
+  .rd-total-row td {
+    font-weight: 700;
+    background: var(--bg);
+  }
+
+  .rd-total-row .rd-total-label {
+    text-align: right;
+  }
+
+  .rd-total-row .rd-total-empty {
+    display: none;
+  }
+
+  /* ---- actions ---- */
+  .rd-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px 20px;
+    flex-wrap: wrap;
+  }
+
+  .rd-actions-note {
+    color: var(--ink-faint);
+    font-size: 12px;
+    line-height: 1.5;
+    flex: 1 1 260px;
+  }
+
+  .rd-actions-buttons {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* ---- mobile ---- */
+  @media (max-width: 680px) {
+    .rd-meta {
+      padding: 14px;
+      gap: 8px;
+    }
+
+    .rd-meta-item {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    .rd-items-table input[type="number"] {
+      width: 100%;
+      max-width: 120px;
+    }
+
+    .rd-actions {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 14px;
+    }
+
+    .rd-actions-note {
+      order: 2;
+      text-align: center;
+    }
+
+    .rd-actions-buttons {
+      order: 1;
+      flex-direction: column-reverse;
+    }
+
+    .rd-actions-buttons .btn,
+    .rd-actions > .btn {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .rd-meta-item {
+      flex: 1 1 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 0 0 4px;">
+  <a href="{{ url_for('admin.requests_list') }}" class="hint">← back to Stock Requests</a>
+</div>
+
+<div class="card">
+  <div class="rd-meta">
+    <div class="rd-meta-item">
+      <div class="rd-meta-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+      </div>
+      <div>
+        <div class="label">Branch</div>
+        <div class="value">{{ req.branch_name }}</div>
+      </div>
+    </div>
+    <div class="rd-meta-item">
+      <div class="rd-meta-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      </div>
+      <div>
+        <div class="label">Requested</div>
+        <div class="value">{{ req.requested_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+      </div>
+    </div>
+    <div class="rd-meta-item">
+      <div class="rd-meta-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+      </div>
+      <div>
+        <div class="label">Status</div>
+        <div class="value">{{ m.status_badge(req.status) }}</div>
+      </div>
+    </div>
+    <div class="rd-meta-item">
+      <div class="rd-meta-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+      </div>
+      <div>
+        <div class="label">Total value</div>
+        <div class="value">{{ total_value|peso }}</div>
+      </div>
+    </div>
+  </div>
+
+  {% if req.status == 'Pending' %}
+  <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=req.request_id) }}" id="dispatchForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="rd-items-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Variant</th>
+            <th>Unit</th>
+            <th class="num">Requested</th>
+            <th class="num">Ref. price</th>
+            <th class="num">Line total</th>
+            <th class="num">Dispatch qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="item-name" data-label="Item">{{ item.item_name }}
+              <div class="item-sub mono">{{ item.sku }}</div>
+            </td>
+            <td data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
+            <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
+            <td class="num mono" data-label="Ref. price">{{ item.unit_price|peso }}</td>
+            <td class="num mono" data-label="Line total">{{ (item.requested_qty * item.unit_price)|peso }}</td>
+            <td class="num" data-label="Dispatch qty">
+              <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
+              <input type="number" name="dispatched_qty[]" value="{{ item.requested_qty }}" min="0"
+                     max="{{ item.requested_qty }}" class="mono" aria-label="Dispatch quantity for {{ item.item_name }} {{ item.unit }}">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="rd-total-row">
+            <td colspan="5" class="rd-total-label" data-label="">Total requested value</td>
+            <td class="num mono" data-label="Total">{{ total_value|peso }}</td>
+            <td class="rd-total-empty" data-label=""></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="rd-actions">
+      <span class="rd-actions-note">Dispatch quantities default to what was requested — lower any line if HQ can't fully cover it, or set it to 0 to leave that item off this shipment.</span>
+      <div class="rd-actions-buttons">
+        <button type="button" class="btn btn-danger" id="rejectBtn">Reject delivery</button>
+        <button type="submit" class="btn btn-accent">Dispatch this delivery</button>
+      </div>
+    </div>
+  </form>
+  <form method="POST" action="{{ url_for('admin.reject_request', request_id=req.request_id) }}" id="rejectForm" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Variant</th>
+          <th>Unit</th>
+          <th class="num">Requested</th>
+          <th class="num">Dispatched</th>
+          <th class="num">Received</th>
+          <th class="num">Damaged</th>
+          <th class="num">Unit price</th>
+          <th class="num">Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="item-name" data-label="Item">{{ item.item_name }}
+            <div class="item-sub mono">{{ item.sku }}</div>
+          </td>
+          <td data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
+          <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
+          <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
+          <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty if item.dispatched_qty is not none else '—' }}</td>
+          <td class="num mono" data-label="Received">{{ item.received_qty if item.received_qty is not none else '—' }}</td>
+          <td class="num mono" data-label="Damaged">{{ item.damaged_qty }}</td>
+          <td class="num mono" data-label="Unit price">{{ item.unit_price|peso }}</td>
+          <td class="num mono" data-label="Line total">{{ (item.requested_qty * item.unit_price)|peso }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="rd-total-row">
+          <td colspan="8" class="rd-total-label" data-label="">Total requested value</td>
+          <td class="num mono" data-label="Total">{{ total_value|peso }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <div class="rd-actions">
+    {% if req.status == 'In Transit' %}
+    <span class="rd-actions-note">Dispatched — awaiting the branch to confirm receipt.</span>
+    {% elif req.status == 'Fulfilled' %}
+    <a href="{{ url_for('admin.request_receipt', request_id=req.request_id) }}" class="btn btn-accent">Download receipt</a>
+    {% else %}
+    <span class="rd-actions-note">This delivery was rejected.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var rejectBtn = document.getElementById('rejectBtn');
+    var rejectForm = document.getElementById('rejectForm');
+    if (!rejectBtn || !rejectForm) return;
+    rejectBtn.addEventListener('click', function () {
+      if (confirm('Reject this delivery? This can\'t be undone.')) {
+        rejectForm.submit();
+      }
+    });
+  })();
+</script>
+{% endblock %}

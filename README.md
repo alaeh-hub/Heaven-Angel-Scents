@@ -61,6 +61,22 @@ Production configuration forces `DEBUG=False`, secure session cookies, HTTPS, an
 5. Branch staff record customer sales, which atomically reduce branch stock and create sales records.
 6. Admin and branch reports read the resulting inventory, sales, request, production, and movement data.
 
+## Feature Delta From the Earlier README
+
+The codebase has moved far beyond the original inventory-tracking baseline. The current live system now includes:
+
+- Multi-item delivery requests, not one SKU per request, with `delivery_number`, line-item pricing, and branch-side receipt confirmation.
+- Shipment variance handling for `received_qty`, `damaged_qty`, and unaccounted shortfalls, with adjustment entries for HQ follow-up.
+- Sale and refill workflows with `sale_type`, `payment_method`, and free-text employee deduction names for salary deduction tracking.
+- Material usage costing and business capital ledgers, so production cost and funding are both auditable.
+- Operational audit logging for admin actions and browser bell notifications for human-readable status updates.
+- Real-time Socket.IO refresh events and per-role task badges for admin and branch UI updates.
+- AI assistant support using Gemini with role-scoped snapshots and Philippines-time business logic.
+- Advanced reporting with themed PDF/Excel exports, branch filters, salary deduction reporting, and live dashboard metrics.
+- Production hardening for secure sessions, runtime validation, audit-safe DB behavior, and timezone-aware recordkeeping.
+
+In short, the app now functions as a more complete HQ + branch operations platform rather than a simple stock register.
+
 ## Recent Project Update
 
 This release completes the operational inventory lifecycle from HQ production through branch receiving, sales recording, and reporting. It also strengthens the operational audit trail and the user experience for both HQ and branch workflows.

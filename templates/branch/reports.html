@@ -449,7 +449,7 @@
     const REPORT_FIELDS = {
       branch_stock: ['variant', 'low_stock_only', 'search'],
       stock_requests: ['status', 'search', 'window'],
-      movement_logs: ['movement_type', 'search', 'window'],
+      inventory_log: ['movement_type', 'search', 'window'],
       sales_history: ['variant', 'search', 'window'],
     };
 
@@ -457,7 +457,7 @@
     // field/name stays the same (name="search"), only the label/hint
     // changes to match what reports.py actually searches.
     const SEARCH_LABELS = {
-      movement_logs: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+      inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
     };
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 

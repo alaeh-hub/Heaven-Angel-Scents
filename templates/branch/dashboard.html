@@ -63,12 +63,13 @@
     {% if pending_requests %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Item</th><th class="num">Qty</th><th>Status</th></tr></thead>
+        <thead><tr><th>Delivery #</th><th class="num">Items</th><th class="num">Qty</th><th>Status</th></tr></thead>
         <tbody>
           {% for r in pending_requests %}
           <tr>
-            <td data-label="Item">{{ r.item_name }}</td>
-            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
+            <td class="num mono" data-label="Items">{{ r.item_count }}</td>
+            <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
           </tr>
           {% endfor %}

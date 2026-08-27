@@ -4,46 +4,393 @@
 {% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Request Stock{% endblock %}
 
+{% block head %}
+<style>
+  .cart-add-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .request-form-card {
+    max-width: 760px;
+  }
+
+  .cart-add-row .field {
+    margin-bottom: 0;
+  }
+
+  .cart-add-row .field-product {
+    flex: 1.4;
+  }
+
+  .cart-add-row .field-unit {
+    flex: 1;
+  }
+
+  .cart-add-row .field-qty {
+    flex: 0 0 84px;
+  }
+
+  .cart-add-row .btn {
+    flex: 0 0 auto;
+  }
+
+  @media (max-width: 640px) {
+    .cart-add-row {
+      flex-wrap: wrap;
+      row-gap: 12px;
+    }
+
+    .cart-add-row .field-product {
+      flex: 1 1 100%;
+    }
+
+    .cart-add-row .field-unit {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .cart-add-row .field-qty {
+      flex: 0 0 72px;
+    }
+
+    .cart-add-row .btn {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+  }
+
+  .cart-table-wrap {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .cart-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .cart-table th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--ink-faint);
+    padding: 9px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cart-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+
+  .cart-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .cart-table td.num,
+  .cart-table th.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .cart-table th:nth-child(3),
+  .cart-table td:nth-child(3) {
+    width: 110px;
+  }
+
+  .cart-table th:last-child,
+  .cart-table td:last-child {
+    width: 40px;
+  }
+
+  .cart-qty-input {
+    width: 80px;
+    text-align: right;
+  }
+
+  .cart-remove {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 6px;
+  }
+
+  .cart-remove:hover {
+    background: var(--danger-soft, rgba(226, 58, 72, .1));
+    border-radius: 6px;
+  }
+
+  .cart-empty-row td {
+    padding: 20px 14px;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+
+  .cart-total-row td {
+    font-weight: 700;
+    background: var(--bg);
+  }
+
+  .cart-total-row .cart-total-label {
+    text-align: right;
+  }
+
+  @media (max-width: 680px) {
+    .cart-table-wrap {
+      overflow: visible;
+      border: none;
+      border-radius: 0;
+    }
+
+    .cart-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+
+    .cart-table,
+    .cart-table tbody {
+      display: block;
+      width: 100%;
+    }
+
+    /* Each cart item becomes a compact 2-row card: item name + remove
+       button on top, and unit/qty/price/total condensed into a single
+       row of four narrow columns underneath — instead of six separate
+       full-width rows stacked on top of each other. */
+    .cart-table tbody tr {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: auto auto;
+      column-gap: 8px;
+      row-gap: 8px;
+      margin-bottom: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+
+    .cart-table tbody tr:last-child {
+      margin-bottom: 0;
+    }
+
+    .cart-table tbody td {
+      padding: 0;
+      border-bottom: none;
+      font-size: 12.5px;
+      text-align: left;
+    }
+
+    /* Item name — spans the first three columns of row 1 */
+    .cart-table tbody td:nth-child(1) {
+      grid-column: 1 / 4;
+      grid-row: 1;
+      align-self: center;
+      font-size: 13.5px;
+    }
+
+    /* Remove button — last column of row 1, right-aligned */
+    .cart-table tbody td:nth-child(6) {
+      grid-column: 4 / 5;
+      grid-row: 1;
+      align-self: center;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* Unit / Qty / Ref. price / Line total — one narrow column each on row 2 */
+    .cart-table tbody td:nth-child(2),
+    .cart-table tbody td:nth-child(3),
+    .cart-table tbody td:nth-child(4),
+    .cart-table tbody td:nth-child(5) {
+      grid-row: 2;
+    }
+
+    .cart-table tbody td:nth-child(2) { grid-column: 1 / 2; }
+    .cart-table tbody td:nth-child(3) { grid-column: 2 / 3; }
+    .cart-table tbody td:nth-child(4) { grid-column: 3 / 4; }
+    .cart-table tbody td:nth-child(5) { grid-column: 4 / 5; }
+
+    .cart-table tbody td[data-label]:not([data-label=""])::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-faint);
+      margin-bottom: 3px;
+    }
+
+    .cart-table tbody td[data-label]:not([data-label=""]):nth-child(1)::before {
+      content: none;
+    }
+
+    .cart-table tbody td.num {
+      text-align: left;
+      white-space: normal;
+    }
+
+    #cartEmptyRow {
+      display: block !important;
+      padding: 20px 14px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    #cartEmptyRow td {
+      display: block;
+      width: 100%;
+      text-align: center;
+    }
+
+    .cart-qty-input {
+      width: 100%;
+      max-width: 68px;
+      padding: 6px 8px;
+    }
+
+    .cart-remove {
+      font-size: 19px;
+      padding: 0 4px;
+    }
+
+    .cart-table tr.cart-total-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-top: 10px;
+      background: var(--bg);
+    }
+
+    .cart-table tr.cart-total-row td {
+      display: contents;
+    }
+
+    .cart-table tr.cart-total-row td:empty {
+      display: none;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Request Stock</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Sends a request to Main Branch for dispatch approval.</p>
-    <form method="POST">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
+<div class="card card-pad stack request-form-card">
+  <div class="card-header" style="padding:0 0 4px; border:none;">
+    <h2 style="font-size:16.5px;">Request Stock</h2>
+  </div>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Add as many products as you need, then send it as one delivery request to Main Branch.
+  </p>
+
+    <div class="cart-add-row">
+      <div class="field field-product">
         <label for="productName">Product</label>
-        <select id="productName" required data-products='{{ products | tojson }}'>
+        <select id="productName" data-products='{{ products | tojson }}'>
           <option value="">Select…</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field field-unit">
         <label for="sku">Unit</label>
-        <select id="sku" name="sku" required disabled>
+        <select id="sku" disabled>
           <option value="">Select a product first…</option>
         </select>
       </div>
-      <div class="field">
-        <label for="requested_qty">Quantity</label>
-        <input type="number" id="requested_qty" name="requested_qty" min="1" required>
+      <div class="field field-qty">
+        <label for="addQty">Qty</label>
+        <input type="number" id="addQty" min="1" value="1">
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Send request</button>
+      <button type="button" class="btn btn-ghost" id="addItemBtn">Add</button>
+    </div>
+
+    <div class="cart-table-wrap">
+      <table class="cart-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Unit</th>
+            <th class="num">Qty</th>
+            <th class="num">Ref. price</th>
+            <th class="num">Line total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cartBody">
+          <tr class="cart-empty-row" id="cartEmptyRow">
+            <td colspan="6">No items added yet — pick a product above.</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="cart-total-row" id="cartTotalRow">
+            <td colspan="4" class="cart-total-label">Total</td>
+            <td class="num mono" id="cartTotal">₱0.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <form method="POST" id="requestForm" style="margin-top:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div id="cartInputs"></div>
+      <button type="submit" class="btn btn-accent" style="width:100%;" id="submitRequestBtn" disabled>Send
+        request to HQ</button>
     </form>
+    <p class="text-faint" style="font-size:11.5px; margin-top:10px;">
+      Priced at each product's current reference price — HQ may still adjust what's actually dispatched.
+    </p>
   </div>
 
   <div class="card">
-    <div class="card-header"><h2>Request history</h2></div>
+    <div class="card-header">
+      <h2>Request history</h2>
+    </div>
     {% if history %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Requested</th><th>Item</th><th>Unit</th><th class="num">Qty</th><th>Status</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            <th>Requested</th>
+            <th>Delivery #</th>
+            <th class="num">Items</th>
+            <th class="num">Qty</th>
+            <th class="num">Value</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in history %}
           <tr>
             <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-            <td data-label="Item">{{ r.item_name }}</td>
-            <td class="mono text-soft" data-label="Unit">{{ r.unit }}</td>
-            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
+            <td class="num mono" data-label="Items">{{ r.item_count }}</td>
+            <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
+            <td class="num mono" data-label="Value">{{ r.total_value|peso }}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="">
               {% if r.status == 'Fulfilled' %}
@@ -59,7 +406,6 @@
     <div class="empty-state"><div class="glyph">—</div><p>No requests submitted yet.</p></div>
     {% endif %}
   </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -67,25 +413,28 @@
   (function () {
     var productSelect = document.getElementById('productName');
     var skuSelect = document.getElementById('sku');
+    var qtyInput = document.getElementById('addQty');
+    var addBtn = document.getElementById('addItemBtn');
+    var cartBody = document.getElementById('cartBody');
+    var emptyRow = document.getElementById('cartEmptyRow');
+    var cartTotalEl = document.getElementById('cartTotal');
+    var cartInputs = document.getElementById('cartInputs');
+    var submitBtn = document.getElementById('submitRequestBtn');
+    var form = document.getElementById('requestForm');
     if (!productSelect || !skuSelect) return;
 
     var products = [];
-    try {
-      products = JSON.parse(productSelect.dataset.products || '[]');
-    } catch (e) {
-      products = [];
-    }
+    try { products = JSON.parse(productSelect.dataset.products || '[]'); } catch (e) { products = []; }
 
+    // Group rows (each its own SKU/unit/price) by item_name so the
+    // branch picks a product first, then only sees the sizes that
+    // product actually has — same cascade pattern used elsewhere.
     var byProduct = {};
     var productNames = [];
     products.forEach(function (row) {
-      if (!byProduct[row.item_name]) {
-        byProduct[row.item_name] = [];
-        productNames.push(row.item_name);
-      }
+      if (!byProduct[row.item_name]) { byProduct[row.item_name] = []; productNames.push(row.item_name); }
       byProduct[row.item_name].push(row);
     });
-
     productNames.forEach(function (name) {
       var opt = document.createElement('option');
       opt.value = name;
@@ -108,17 +457,149 @@
       rows.forEach(function (row) {
         var opt = document.createElement('option');
         opt.value = row.sku;
+        opt.dataset.itemName = row.item_name;
+        opt.dataset.unit = row.unit;
+        opt.dataset.price = row.price;
         opt.textContent = row.unit;
         skuSelect.appendChild(opt);
       });
     }
 
     productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
-
     if (productNames.length) {
       productSelect.value = productNames[0];
       populateUnits(productNames[0]);
     }
+
+    // ---- cart state: sku -> { item_name, unit, price, qty } ----
+    var cart = {};
+
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderCart() {
+      var skus = Object.keys(cart);
+      cartBody.innerHTML = '';
+
+      if (!skus.length) {
+        cartBody.appendChild(emptyRow);
+        cartTotalEl.textContent = formatPeso(0);
+        submitBtn.disabled = true;
+      } else {
+        submitBtn.disabled = false;
+        var total = 0;
+        skus.forEach(function (sku) {
+          var line = cart[sku];
+          var lineTotal = line.qty * line.price;
+          total += lineTotal;
+
+          var tr = document.createElement('tr');
+
+          var nameTd = document.createElement('td');
+          nameTd.className = 'item-name';
+          nameTd.setAttribute('data-label', 'Item');
+          nameTd.textContent = line.item_name;
+          tr.appendChild(nameTd);
+
+          var unitTd = document.createElement('td');
+          unitTd.className = 'mono text-soft';
+          unitTd.setAttribute('data-label', 'Unit');
+          unitTd.textContent = line.unit;
+          tr.appendChild(unitTd);
+
+          var qtyTd = document.createElement('td');
+          qtyTd.className = 'num';
+          qtyTd.setAttribute('data-label', 'Qty');
+          var qtyEl = document.createElement('input');
+          qtyEl.type = 'number';
+          qtyEl.min = '1';
+          qtyEl.value = line.qty;
+          qtyEl.className = 'cart-qty-input mono';
+          qtyEl.addEventListener('change', function () {
+            var v = parseInt(qtyEl.value, 10);
+            if (!v || v < 1) v = 1;
+            cart[sku].qty = v;
+            renderCart();
+          });
+          qtyTd.appendChild(qtyEl);
+          tr.appendChild(qtyTd);
+
+          var priceTd = document.createElement('td');
+          priceTd.className = 'num mono';
+          priceTd.setAttribute('data-label', 'Ref. price');
+          priceTd.textContent = formatPeso(line.price);
+          tr.appendChild(priceTd);
+
+          var totalTd = document.createElement('td');
+          totalTd.className = 'num mono';
+          totalTd.setAttribute('data-label', 'Line total');
+          totalTd.textContent = formatPeso(lineTotal);
+          tr.appendChild(totalTd);
+
+          var removeTd = document.createElement('td');
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'cart-remove';
+          removeBtn.innerHTML = '&times;';
+          removeBtn.title = 'Remove';
+          removeBtn.addEventListener('click', function () {
+            delete cart[sku];
+            renderCart();
+          });
+          removeTd.appendChild(removeBtn);
+          tr.appendChild(removeTd);
+
+          cartBody.appendChild(tr);
+        });
+        cartTotalEl.textContent = formatPeso(total);
+      }
+
+      // Rebuild the hidden inputs the form actually submits.
+      cartInputs.innerHTML = '';
+      Object.keys(cart).forEach(function (sku) {
+        var skuInput = document.createElement('input');
+        skuInput.type = 'hidden';
+        skuInput.name = 'sku[]';
+        skuInput.value = sku;
+        cartInputs.appendChild(skuInput);
+
+        var qtyHidden = document.createElement('input');
+        qtyHidden.type = 'hidden';
+        qtyHidden.name = 'requested_qty[]';
+        qtyHidden.value = cart[sku].qty;
+        cartInputs.appendChild(qtyHidden);
+      });
+    }
+
+    addBtn.addEventListener('click', function () {
+      var opt = skuSelect.options[skuSelect.selectedIndex];
+      if (!opt || !opt.value) return;
+      var sku = opt.value;
+      var qty = parseInt(qtyInput.value, 10);
+      if (!qty || qty < 1) qty = 1;
+
+      if (cart[sku]) {
+        cart[sku].qty += qty;
+      } else {
+        cart[sku] = {
+          item_name: opt.dataset.itemName,
+          unit: opt.dataset.unit,
+          price: parseFloat(opt.dataset.price) || 0,
+          qty: qty,
+        };
+      }
+      qtyInput.value = 1;
+      renderCart();
+    });
+
+    form.addEventListener('submit', function (e) {
+      if (!Object.keys(cart).length) {
+        e.preventDefault();
+      }
+    });
+
+    renderCart();
   })();
 </script>
 {% endblock %}

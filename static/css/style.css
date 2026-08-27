@@ -10,12 +10,10 @@
   --border: #E5E8EF;
   --border-strong: #D2D7E2;
 
-  /* brand: blue (Male / primary) */
   --blue: #2E5AF0;
   --blue-ink: #1D3BC4;
   --blue-soft: #E7ECFE;
 
-  /* brand: red (Female / danger) */
   --red: #E23A48;
   --red-ink: #B31E30;
   --red-soft: #FCE7EA;
@@ -84,12 +82,25 @@
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5), 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
-html.theme-transitioning,
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after {
-  transition: background-color 0.35s ease, border-color 0.35s ease,
-    color 0.35s ease, box-shadow 0.35s ease, fill 0.35s ease !important;
+@media (hover: hover) and (pointer: fine) {
+
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: background-color 0.35s ease, border-color 0.35s ease,
+      color 0.35s ease, box-shadow 0.35s ease, fill 0.35s ease !important;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: background-color 0.15s ease, color 0.15s ease !important;
+  }
 }
 
 @view-transition {
@@ -176,7 +187,6 @@ a {
   border-radius: 3px;
 }
 
-/* Every interactive control gets the same quiet, physical feel. */
 .btn,
 .theme-toggle,
 .tab,
@@ -200,7 +210,6 @@ th.num {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- layout */
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -216,6 +225,7 @@ th.num {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -558,7 +568,6 @@ th.num {
   gap: 14px;
 }
 
-/* AFTER */
 .topbar-right {
   display: flex;
   align-items: center;
@@ -573,7 +582,6 @@ th.num {
   padding: 0 4px;
 }
 
-/* ---------------------------------------------------------------- theme toggle */
 .theme-toggle {
   position: relative;
   width: 38px;
@@ -651,7 +659,6 @@ th.num {
   margin-top: 22px;
 }
 
-/* ---------------------------------------------------------------- flashes / toasts */
 .flashes {
   position: fixed;
   top: 18px;
@@ -731,7 +738,6 @@ th.num {
   border-color: #F0D69B;
 }
 
-/* ---------------------------------------------------------------- cards */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -827,10 +833,6 @@ th.num {
   font-size: 40px;
 }
 
-/* The hero tile wraps its icon+label a level deeper than the plain
-   stat tiles (see .stat-tile:has(>.stat-icon) above), so it needs its
-   own rule to get the same icon-beside-label treatment instead of
-   the icon sitting stacked on top of the label. */
 .bento-hero>div:first-child {
   display: flex;
   align-items: center;
@@ -856,7 +858,6 @@ th.num {
   }
 }
 
-/* AFTER */
 @media (max-width: 640px) {
   .bento-grid {
     grid-template-columns: 1fr;
@@ -868,7 +869,6 @@ th.num {
   }
 }
 
-/* ---------------------------------------------------------------- stat tiles */
 .stat-tile,
 .chart-card {
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
@@ -921,11 +921,6 @@ th.num {
   border: 1px solid var(--border);
 }
 
-/* Icon sits beside its label instead of stacked above it. Scoped to
-   tiles where .stat-icon is a direct child (the plain stat-tile
-   markup: icon, label, value, foot in a row) so the bento-hero tile
-   — which wraps its icon a level deeper alongside other content — is
-   left on its own flex layout and keeps its current look. */
 .stat-tile:has(>.stat-icon) {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -978,6 +973,10 @@ th.num {
   color: var(--accent-ink);
 }
 
+.stat-value.success {
+  color: var(--success);
+}
+
 .stat-value.danger {
   color: var(--danger);
 }
@@ -988,11 +987,6 @@ th.num {
   margin-top: 6px;
 }
 
-/* ---------------------------------------------------------------- fill indicator (signature element)
-   Blue when healthy, red once a SKU crosses into reorder territory —
-   the same two colors the rest of the app uses for "on track" vs
-   "needs attention," so the signal reads at a glance without having
-   to check the number next to it. */
 .fill-track {
   position: relative;
   height: 7px;
@@ -1034,7 +1028,6 @@ th.num {
   text-align: right;
 }
 
-/* ---------------------------------------------------------------- tables */
 .table-wrap {
   overflow: auto;
   max-height: 520px;
@@ -1149,7 +1142,6 @@ th.num {
   color: var(--ink-faint);
 }
 
-
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1201,7 +1193,6 @@ th.num {
   border: 1px solid var(--border);
 }
 
-/* AFTER */
 .badge-payroll {
   white-space: nowrap;
   max-width: 100%;
@@ -1267,7 +1258,6 @@ th.num {
   color: var(--plum);
 }
 
-/* ---------------------------------------------------------------- buttons & forms */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1408,7 +1398,6 @@ textarea:focus {
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
 
-/* ---------------------------------------------------------------- empty state */
 .empty-state {
   text-align: center;
   padding: 48px 24px;
@@ -1426,7 +1415,6 @@ textarea:focus {
   margin: 4px auto 0;
 }
 
-/* ---------------------------------------------------------------- utility */
 .text-soft {
   color: var(--ink-soft);
 }
@@ -1446,7 +1434,6 @@ textarea:focus {
   margin-bottom: 20px;
 }
 
-/* ---------------------------------------------------------------- smart table: search + pagination */
 .table-toolbar {
   display: flex;
   align-items: center;
@@ -1511,7 +1498,6 @@ textarea:focus {
   cursor: not-allowed;
 }
 
-/* ---------------------------------------------------------------- smart table: compact variant */
 .table-compact .table-wrap {
   max-height: 400px;
 }
@@ -1581,7 +1567,6 @@ textarea:focus {
   font-size: 11.5px;
 }
 
-/* AFTER */
 @media (max-width: 560px) {
   .table-toolbar {
     flex-direction: column;
@@ -1597,7 +1582,6 @@ textarea:focus {
   }
 }
 
-/* ---------------------------------------------------------------- tables: narrow screens */
 @media (max-width: 680px) {
 
   .table-wrap,
@@ -1874,7 +1858,6 @@ textarea:focus {
   }
 }
 
-/* ---------------------------------------------------------------- error pages */
 .error-shell {
   min-height: 100vh;
   display: flex;
@@ -1896,7 +1879,6 @@ textarea:focus {
   color: transparent;
 }
 
-/* ---------------------------------------------------------------- charts */
 .chart-card {
   padding: 22px 24px;
 }
@@ -1962,6 +1944,7 @@ textarea:focus {
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
     width: min(280px, 84vw);
     z-index: 50;
     transform: translateX(-100%);

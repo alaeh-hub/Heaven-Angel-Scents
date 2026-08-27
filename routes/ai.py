@@ -1,22 +1,3 @@
-"""
-AI Assistant — a read-only Q&A helper backed by the Gemini API.
-
-Design intent (read this before changing scope):
-- The model NEVER touches the database and NEVER runs SQL. All it ever
-  sees is a small JSON "snapshot" that THIS route builds using the exact
-  same parameterized queries and session-based scoping as the normal
-  admin/branch dashboards (Admin -> all branches, Branch -> only their
-  own branch_id from the session).
-- The system prompt tells the model its limits, but the prompt is not
-  what enforces them — the enforcement is that a Branch user's snapshot
-  simply never contains another branch's rows, so there's nothing to
-  leak even if someone tries to talk the model into it.
-- The model has no tool-calling / function-calling access, so it cannot
-  record sales, dispatch stock, change prices, or write anything back.
-  It's a pure conversational read-only assistant over a fixed snapshot.
-- The chat endpoint is rate-limited per signed-in user (see AI_CHAT_RATE_LIMIT
-  in config.py) since every call is a billed Gemini API request.
-"""
 import datetime
 import decimal
 import json
@@ -54,11 +35,15 @@ that does it instead (e.g. "Record Sale", "Request Stock", "Branch Stock").
 hash headers, or bullet/numbered list syntax. For a page name, just write it plainly, e.g. \
 Record Sale, not **Record Sale**. If you need to list a few things, put each on its own line \
 with a dash and a space, e.g. "- Item name".
+7. The current date is {current_date} (Philippine time, UTC+8) — also given as snapshot.as_of.date. \
+"Today" means exactly this date. Use only fields scoped to today (today_sales, today_by_branch, \
+today_hq_sales) when asked about today's sales. Never assume the newest rows in recent_sales or \
+recent_activity are from today — check each row's own date against {current_date} first, since \
+they may be from a prior day if nothing has sold yet today.
 
 DATA SNAPSHOT (current as of this message):
 {snapshot_json}
 """
-
 
 def _json_default(o):
     if isinstance(o, (datetime.date, datetime.datetime)):
@@ -67,26 +52,53 @@ def _json_default(o):
         return float(o)
     return str(o)
 
-
 def _rate_limit_key():
-    """Rate-limit per signed-in user rather than per IP.
-
-    Several branch cashiers can share one office's public IP, and one
-    admin can be behind a NAT with many other people — keying on
-    user_id keeps the limit meaningful per account instead of
-    accidentally throttling (or failing to throttle) whole offices.
-    """
     return str(session.get("user_id") or get_remote_address())
-
 
 def _ai_chat_rate_limit():
     return current_app.config.get("AI_CHAT_RATE_LIMIT", "15 per minute;150 per day")
 
+def _current_business_date():
+    row = query("SELECT CURDATE() AS today, NOW() AS now_ts", fetchone=True)
+    return row["today"], row["now_ts"]
 
-# ---------------------------------------------------------------- snapshots
+def _stock_request_items_by_request(request_ids):
+    """Group stock_request_items rows by request_id, with product name/unit
+    resolved. Shared by both snapshot builders below (admin sees pending
+    requests across every branch, branch staff see just their own) since
+    a delivery's line-item shape — name, unit, qty, price — is identical
+    either way.
+
+    A stock request is a *delivery* now (see stock_request_items) — it
+    can carry any number of SKUs, each with its own qty and its own price
+    snapshotted at request time. There's no sku/requested_qty column on
+    stock_requests itself anymore, so this can't be read off the header
+    row the way an older, one-item-per-request version of this snapshot
+    used to.
+    """
+    if not request_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(request_ids))
+    item_rows = query(
+        f"""SELECT sri.request_id, p.item_name, p.unit, sri.requested_qty, sri.unit_price
+            FROM stock_request_items sri JOIN products p ON sri.sku = p.sku
+            WHERE sri.request_id IN ({placeholders})
+            ORDER BY sri.request_id, p.item_name""",
+        tuple(request_ids),
+    )
+    items_by_request = {}
+    for row in item_rows:
+        items_by_request.setdefault(row["request_id"], []).append({
+            "item_name": row["item_name"],
+            "unit": row["unit"],
+            "requested_qty": row["requested_qty"],
+            "unit_price": row["unit_price"],
+        })
+    return items_by_request
+
 def _admin_snapshot():
     stats = {
-        "active_skus": query("SELECT COUNT(*) c FROM products WHERE is_active = TRUE", fetchone=True)["c"],
+        "sku_count": query("SELECT COUNT(*) c FROM products", fetchone=True)["c"],
         "branches": query("SELECT COUNT(*) c FROM branches WHERE is_hq = FALSE", fetchone=True)["c"],
         "pending_requests": query(
             "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
@@ -100,14 +112,38 @@ def _admin_snapshot():
            WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
            ORDER BY bi.stock_qty ASC LIMIT 12"""
     )
-    pending_requests = query(
-        """SELECT b.branch_name, p.sku, p.item_name, p.unit, sr.requested_qty, sr.requested_at
+    # A stock request is a delivery header now — item_count/total_qty come
+    # from stock_request_items, and each delivery's own products/quantities/
+    # prices are attached below via _stock_request_items_by_request() so the
+    # assistant can still answer "what's on order for Manila" without the
+    # old assumption that one request == one SKU.
+    pending_headers = query(
+        """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at, b.branch_name,
+                  COUNT(sri.item_id) AS item_count,
+                  COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                  COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value
            FROM stock_requests sr
            JOIN branches b ON sr.branch_id = b.branch_id
-           JOIN products p ON sr.sku = p.sku
+           LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
            WHERE sr.status = 'Pending'
+           GROUP BY sr.request_id, sr.delivery_number, sr.status, sr.requested_at, b.branch_name
            ORDER BY sr.requested_at ASC LIMIT 12"""
     )
+    items_by_request = _stock_request_items_by_request(
+        [h["request_id"] for h in pending_headers])
+    pending_requests = [
+        {
+            "delivery_number": h["delivery_number"],
+            "branch_name": h["branch_name"],
+            "status": h["status"],
+            "requested_at": h["requested_at"],
+            "item_count": h["item_count"],
+            "total_qty": h["total_qty"],
+            "total_value": h["total_value"],
+            "items": items_by_request.get(h["request_id"], []),
+        }
+        for h in pending_headers
+    ]
     revenue_by_branch = query(
         """SELECT b.branch_name,
                   COALESCE(SUM(s.qty_sold), 0) AS units_sold,
@@ -115,13 +151,7 @@ def _admin_snapshot():
            FROM branches b LEFT JOIN sales s ON b.branch_id = s.branch_id
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
-    # revenue_by_branch above is retail branches only (b.is_hq = FALSE), so
-    # sales rung up directly at the HQ warehouse (branch_id = the is_hq
-    # branch, via routes/admin.py's Record Sale page) never showed up
-    # anywhere in this snapshot. Surface them as their own block instead
-    # of folding them into revenue_by_branch, so the assistant can tell
-    # "sold from HQ" apart from "sold from a branch" rather than treating
-    # HQ as just another branch row.
+
     hq_sales = query(
         """SELECT b.branch_name,
                   COALESCE(SUM(s.qty_sold), 0) AS units_sold,
@@ -130,30 +160,65 @@ def _admin_snapshot():
            WHERE b.is_hq = TRUE GROUP BY b.branch_id, b.branch_name""",
         fetchone=True,
     )
+    today_by_branch = query(
+        """SELECT b.branch_name,
+                  COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM branches b
+           LEFT JOIN sales s ON b.branch_id = s.branch_id AND DATE(s.sold_at) = CURDATE()
+           WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    )
+    today_hq_sales = query(
+        """SELECT COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN branches b ON s.branch_id = b.branch_id
+           WHERE b.is_hq = TRUE AND DATE(s.sold_at) = CURDATE()""",
+        fetchone=True,
+    )
     return {
         "stats": stats,
         "low_stock_across_branches": low_stock,
         "pending_stock_requests": pending_requests,
         "revenue_by_branch": revenue_by_branch,
         "hq_sales": hq_sales,
+        "today_by_branch": today_by_branch,
+        "today_hq_sales": today_hq_sales,
     }
-
 
 def _branch_snapshot(branch_id):
     inventory = query(
         """SELECT p.sku, p.item_name, p.unit, bi.stock_qty, bi.reorder_level, p.price AS price
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s AND p.is_active = TRUE ORDER BY p.item_name""",
+           WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (branch_id,),
     )
     low_stock = [row for row in inventory if row["stock_qty"] <= row["reorder_level"]]
-    pending_requests = query(
-        """SELECT p.sku, p.item_name, p.unit, sr.requested_qty, sr.status, sr.requested_at
-           FROM stock_requests sr JOIN products p ON sr.sku = p.sku
+    pending_headers = query(
+        """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at,
+                  COUNT(sri.item_id) AS item_count,
+                  COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                  COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value
+           FROM stock_requests sr
+           LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
            WHERE sr.branch_id = %s AND sr.status IN ('Pending', 'In Transit')
+           GROUP BY sr.request_id, sr.delivery_number, sr.status, sr.requested_at
            ORDER BY sr.requested_at DESC""",
         (branch_id,),
     )
+    items_by_request = _stock_request_items_by_request(
+        [h["request_id"] for h in pending_headers])
+    pending_requests = [
+        {
+            "delivery_number": h["delivery_number"],
+            "status": h["status"],
+            "requested_at": h["requested_at"],
+            "item_count": h["item_count"],
+            "total_qty": h["total_qty"],
+            "total_value": h["total_value"],
+            "items": items_by_request.get(h["request_id"], []),
+        }
+        for h in pending_headers
+    ]
     today_sales = query(
         """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
            FROM sales WHERE branch_id = %s AND DATE(sold_at) = CURDATE()""",
@@ -173,8 +238,6 @@ def _branch_snapshot(branch_id):
         "recent_sales": recent_sales,
     }
 
-
-# ---------------------------------------------------------------- gemini call
 def _call_gemini(system_instruction, contents):
     api_key = current_app.config.get("GEMINI_API_KEY")
     if not api_key:
@@ -211,13 +274,10 @@ def _call_gemini(system_instruction, contents):
         return None, "The assistant returned an empty response."
     return text, None
 
-
-# ---------------------------------------------------------------- routes
 @bp.route("/")
 @login_required
 def chat_page():
     return render_template("ai/chat.html")
-
 
 @bp.route("/chat", methods=["POST"])
 @login_required
@@ -240,14 +300,15 @@ def chat():
         snapshot = _branch_snapshot(session.get("branch_id"))
         scope_label = f"Branch staff at {session.get('branch_name')} — can only see this branch's own data"
 
+    today, now_ts = _current_business_date()
+    snapshot["as_of"] = {"date": str(today), "datetime": str(now_ts), "timezone": "Asia/Manila (UTC+8)"}
+
     system_instruction = SYSTEM_PROMPT.format(
         scope_label=scope_label,
+        current_date=today,
         snapshot_json=json.dumps(snapshot, default=_json_default, indent=2),
     )
 
-    # Client-supplied history is only ever used as conversational text —
-    # it never changes what data the model can see (that's rebuilt above,
-    # fresh and scoped, on every single call).
     contents = []
     for turn in history_in[-10:]:
         turn_role = "model" if turn.get("role") == "model" else "user"

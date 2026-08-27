@@ -6,6 +6,13 @@
 
 {% block content %}
 <div class="card">
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      This tracks Production, Sale, and Refill activity. Dispatch, receipt, and damage detail for stock
+      requests now lives on each delivery instead — see <a href="{{ url_for('admin.requests_list') }}">Stock
+      Requests</a>, or that delivery's own receipt once it's Fulfilled.
+    </p>
+  </div>
   {% if logs %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">

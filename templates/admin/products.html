@@ -40,7 +40,6 @@
               <th>Unit</th>
               <th class="num">Price</th>
               <th class="num">Total stock</th>
-              <th>Status</th>
               <th></th>
             </tr>
           </thead>
@@ -56,14 +55,10 @@
               <td class="mono text-soft" data-label="Unit">{{ p.unit }}</td>
               <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
               <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
-              <td data-label="Status"><span class="badge badge-{{ 'active' if p.is_active else 'inactive' }}">{{
-                  'Active' if p.is_active else 'Discontinued' }}</span></td>
               <td data-label="">
-                <form method="POST" action="{{ url_for('admin.toggle_product', sku=p.sku) }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-ghost btn-sm" type="submit">{{ 'Discontinue' if p.is_active else 'Reactivate'
-                    }}</button>
-                </form>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditProduct(this)"
+                  data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
+                  data-unit="{{ p.unit }}" data-price="{{ p.price }}">Edit</button>
               </td>
             </tr>
             {% endfor %}
@@ -91,7 +86,7 @@
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Discontinuing hides it but keeps its history. Reuse the code for another size as a new row.
+      Reuse the code for another size as a new row. Need to change an existing product's details? Use Edit on that row instead.
     </p>
     <form method="POST" id="addProductForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -135,6 +130,47 @@
     </form>
   </div>
 </div>
+
+<div id="editProductOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Edit product</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      SKU <strong id="editProductSkuLabel" class="mono"></strong> — the SKU itself can't be changed here.
+    </p>
+    <form method="POST" action="{{ url_for('admin.edit_product') }}" id="editProductForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="sku" id="editSku">
+      <div class="field">
+        <label for="editItemName">Fragrance name</label>
+        <input type="text" id="editItemName" name="item_name" required>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="editVariant">Variant</label>
+          <select id="editVariant" name="variant" required>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Unisex">Unisex</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Unit</label>
+          <input type="text" id="editUnitDisplay" class="mono" disabled
+            style="background:var(--bg); color:var(--ink-faint);">
+          <div class="help">Fixed to this SKU — add a new size as its own product instead.</div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="editPrice">Price for this unit (₱)</label>
+        <input type="number" id="editPrice" name="price" step="0.01" min="0" required>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="editProductCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -150,21 +186,50 @@
     var unitSelect = document.getElementById('unit');
     var previewField = document.getElementById('skuPreviewField');
     var previewValue = document.getElementById('skuPreviewValue');
-    if (!baseInput || !unitSelect || !previewField || !previewValue) return;
-
-    function updatePreview() {
-      var base = baseInput.value.trim().toUpperCase();
-      var suffix = UNIT_SUFFIXES[unitSelect.value];
-      if (base && suffix) {
-        previewValue.textContent = base + '-' + suffix;
-        previewField.style.display = '';
-      } else {
-        previewField.style.display = 'none';
+    if (baseInput && unitSelect && previewField && previewValue) {
+      function updatePreview() {
+        var base = baseInput.value.trim().toUpperCase();
+        var suffix = UNIT_SUFFIXES[unitSelect.value];
+        if (base && suffix) {
+          previewValue.textContent = base + '-' + suffix;
+          previewField.style.display = '';
+        } else {
+          previewField.style.display = 'none';
+        }
       }
+      baseInput.addEventListener('input', updatePreview);
+      unitSelect.addEventListener('change', updatePreview);
     }
+  })();
 
-    baseInput.addEventListener('input', updatePreview);
-    unitSelect.addEventListener('change', updatePreview);
+  (function () {
+    var overlay = document.getElementById('editProductOverlay');
+    var skuLabel = document.getElementById('editProductSkuLabel');
+    var skuInput = document.getElementById('editSku');
+    var nameInput = document.getElementById('editItemName');
+    var variantSelect = document.getElementById('editVariant');
+    var unitDisplay = document.getElementById('editUnitDisplay');
+    var priceInput = document.getElementById('editPrice');
+    var cancelBtn = document.getElementById('editProductCancelBtn');
+    if (!overlay) return;
+
+    window.openEditProduct = function (btn) {
+      skuLabel.textContent = btn.dataset.sku;
+      skuInput.value = btn.dataset.sku;
+      nameInput.value = btn.dataset.itemName;
+      variantSelect.value = btn.dataset.variant;
+      unitDisplay.value = btn.dataset.unit;
+      priceInput.value = btn.dataset.price;
+      overlay.style.display = 'flex';
+    };
+
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
   })();
 </script>
 {% endblock %}

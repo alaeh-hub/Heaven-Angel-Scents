@@ -5,14 +5,85 @@
 
 {% block head %}
 <style>
+  .delivery-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .delivery-block:last-child {
+    margin-bottom: 0;
+  }
+
+  .delivery-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .delivery-block-header .delivery-number {
+    font-weight: 700;
+  }
+
+  .delivery-items-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .delivery-items-table th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--ink-faint);
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .delivery-items-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .delivery-items-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .delivery-items-table td.num,
+  .delivery-items-table th.num {
+    text-align: right;
+  }
+
+  .delivery-items-table input[type="number"] {
+    width: 90px;
+    text-align: right;
+  }
+
+  .delivery-footer {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
   @media (max-width: 680px) {
-    #receiveTable .table-wrap td[data-label=""] {
-      justify-content: stretch;
-      padding-top: 12px;
-      padding-bottom: 12px;
+
+    .delivery-items-table th,
+    .delivery-items-table td {
+      padding: 8px 10px;
     }
 
-    #receiveTable .table-wrap td[data-label=""] .btn {
+    .delivery-items-table input[type="number"] {
+      width: 74px;
+    }
+
+    .delivery-footer .btn {
       width: 100%;
     }
   }
@@ -21,34 +92,62 @@
 
 {% block content %}
 <div class="card" id="receiveTable">
-  <div class="card-header"><h2>Shipments in transit</h2><span class="hint">confirm what actually arrived</span></div>
+  <div class="card-header">
+    <h2>Shipments in transit</h2><span class="hint">confirm what actually arrived, per delivery</span>
+  </div>
   {% if in_transit %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Item</th><th class="num">Dispatched</th><th class="num">Received</th><th class="num">Damaged</th><th></th></tr></thead>
-      <tbody>
-        {% for r in in_transit %}
-        <tr>
-          <td class="item-name" data-label="Item">{{ r.item_name }}</td>
-          <td class="num mono" data-label="Dispatched">{{ r.dispatched_qty }}</td>
-          <td class="num" data-label="Received">
-            <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ r.request_id }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="request_id" value="{{ r.request_id }}">
-              <input type="number" name="received_qty" value="{{ r.dispatched_qty }}" min="0" max="{{ r.dispatched_qty }}" class="mono" style="width:90px;" required>
-            </form>
-          </td>
-          <td class="num" data-label="Damaged">
-            <input type="number" name="damaged_qty" value="0" min="0" max="{{ r.dispatched_qty }}" class="mono" style="width:90px;" form="receive-{{ r.request_id }}">
-          </td>
-          <td data-label=""><button type="submit" form="receive-{{ r.request_id }}" class="btn btn-accent btn-sm">Confirm receipt</button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div style="padding: 14px 22px 6px;">
+    {% for d in in_transit %}
+    <div class="delivery-block">
+      <div class="delivery-block-header">
+        <div>
+          <span class="mono delivery-number">{{ d.delivery_number }}</span>
+          <span class="text-faint" style="font-size:12px;">· {{ d.line_items|length }} item{{ 's' if d.line_items|length != 1 }}</span>
+        </div>
+        <span class="text-faint" style="font-size:12px;">requested {{ d.requested_at.strftime('%b %d, %Y') }}</span>
+      </div>
+      <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ d.request_id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="request_id" value="{{ d.request_id }}">
+        <table class="delivery-items-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="num">Dispatched</th>
+              <th class="num">Received</th>
+              <th class="num">Damaged</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in d.line_items %}
+            <tr>
+              <td class="item-name" data-label="Item">{{ item.item_name }}
+                <span class="text-soft mono" style="font-size:11.5px;">({{ item.unit }})</span>
+              </td>
+              <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty }}</td>
+              <td class="num" data-label="Received">
+                <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
+                <input type="number" name="received_qty[]" value="{{ item.dispatched_qty }}" min="0"
+                  max="{{ item.dispatched_qty }}" class="mono">
+              </td>
+              <td class="num" data-label="Damaged">
+                <input type="number" name="damaged_qty[]" value="0" min="0" max="{{ item.dispatched_qty }}"
+                  class="mono">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="delivery-footer">
+          <button type="submit" class="btn btn-accent btn-sm">Confirm receipt for {{ d.delivery_number }}</button>
+        </div>
+      </form>
+    </div>
+    {% endfor %}
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Received + damaged should add up to what was dispatched. Anything short is flagged automatically in the ledger for Main Branch follow-up.</p>
+    <p class="text-faint" style="font-size:12px;">Received + damaged should add up to what was dispatched for each
+      item. Anything short is flagged automatically in the ledger for Main Branch follow-up.</p>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">✓</div><p>Nothing currently in transit to your branch.</p></div>

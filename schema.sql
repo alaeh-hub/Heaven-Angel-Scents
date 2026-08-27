@@ -60,8 +60,31 @@ CREATE TABLE IF NOT EXISTS products (
     variant     ENUM('Male', 'Female', 'Unisex') NOT NULL,
     unit        ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL DEFAULT '50ML',
     price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    is_active   BOOLEAN NOT NULL DEFAULT TRUE,   -- soft delete: discontinued items are hidden, not removed
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    -- No is_active column anymore: products are edited in place from the
+    -- admin Products page rather than discontinued/reactivated. See the
+    -- migration block below for the DROP COLUMN that removes it from an
+    -- existing database.
+);
+
+-- ----------------------------------------------------------------------------
+-- 3b. Raw Materials
+--
+--    Tracked the way it's actually purchased (package_qty of `unit` for
+--    package_cost), with cost_per_unit worked out from that at insert
+--    time. No is_active column: materials are edited in place from the
+--    admin Materials page rather than deactivated/reactivated. See the
+--    migration block below for the DROP COLUMN that removes it from an
+--    existing database.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS raw_materials (
+    material_id    INT AUTO_INCREMENT PRIMARY KEY,
+    material_name  VARCHAR(100) NOT NULL UNIQUE,
+    unit           ENUM('Gram', 'Milliliter', 'Liter', 'Gallon', 'Piece') NOT NULL DEFAULT 'Piece',
+    package_qty    DECIMAL(10, 3) NOT NULL DEFAULT 1.000,
+    package_cost   DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    cost_per_unit  DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ----------------------------------------------------------------------------
@@ -96,21 +119,82 @@ CREATE TABLE IF NOT EXISTS production_logs (
 );
 
 -- ----------------------------------------------------------------------------
--- 6. Stock Requests (Requisitions)
+-- 5b. Material Usage Logs
+--
+--    unit_cost_snapshot is copied from raw_materials.cost_per_unit the
+--    moment usage is logged and line_cost = qty_used * unit_cost_snapshot
+--    is stored alongside it — same philosophy as
+--    stock_request_items.unit_price: fixed permanently at log time, so a
+--    later edit to a material's cost never rewrites the cost of a past
+--    entry. production_log_id is optional — usage doesn't have to be
+--    tied to a specific run.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS material_usage_logs (
+    usage_id            INT AUTO_INCREMENT PRIMARY KEY,
+    material_id         INT NOT NULL,
+    production_log_id   INT NULL,
+    qty_used            DECIMAL(10, 3) NOT NULL,
+    unit_cost_snapshot  DECIMAL(10, 4) NOT NULL,
+    line_cost           DECIMAL(10, 2) NOT NULL,
+    notes               VARCHAR(255),
+    created_by_user_id  INT NULL,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+    FOREIGN KEY (production_log_id) REFERENCES production_logs(log_id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_material_usage_material (material_id),
+    INDEX idx_material_usage_production (production_log_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- 6. Stock Requests (Requisitions) — delivery header
+--
+--    A stock request now represents one delivery from HQ to a branch,
+--    which can carry any number of different products. The line-item
+--    detail (which SKUs, how many, at what price) lives in
+--    stock_request_items below; this table is just the header — who
+--    requested it, its delivery number, and its overall status.
+--
+--    delivery_number is the human-facing identifier shown throughout the
+--    app instead of listing every item inline (e.g. on the Stock
+--    Requests and Inventory Log pages) — the full item breakdown is
+--    always one click away on the goods-received receipt (see
+--    receipts.py). It's generated right after insert as
+--    DR-<request_id zero-padded to 6 digits>, mirroring the existing
+--    GR-<request_id> receipt numbering already used by receipts.py.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS stock_requests (
-    request_id     INT AUTO_INCREMENT PRIMARY KEY,
-    branch_id      INT NOT NULL,
-    sku            VARCHAR(50) NOT NULL,
-    requested_qty  INT NOT NULL,
-    dispatched_qty INT NULL,                 -- filled in when HQ dispatches
-    received_qty   INT NULL,                 -- filled in when branch confirms receipt
-    damaged_qty    INT NOT NULL DEFAULT 0,    -- reported at receipt, logged as loss
-    status         ENUM('Pending', 'In Transit', 'Fulfilled', 'Rejected') DEFAULT 'Pending',
-    requested_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
-    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE
+    request_id      INT AUTO_INCREMENT PRIMARY KEY,
+    branch_id        INT NOT NULL,
+    delivery_number  VARCHAR(20) NOT NULL UNIQUE,
+    status           ENUM('Pending', 'In Transit', 'Fulfilled', 'Rejected') DEFAULT 'Pending',
+    requested_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE
+);
+
+-- ----------------------------------------------------------------------------
+-- 6b. Stock Request Items — one row per product on a delivery
+--
+--     unit_price is snapshotted from products.price the moment the
+--     branch submits the request — same philosophy as
+--     material_usage_logs.cost_per_unit: it's what the line was worth
+--     at request time, fixed permanently, so a later HQ price change
+--     never rewrites the value of a past delivery. The line total
+--     (qty * unit_price) is always computed on read, never stored.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_request_items (
+    item_id         INT AUTO_INCREMENT PRIMARY KEY,
+    request_id      INT NOT NULL,
+    sku             VARCHAR(50) NOT NULL,
+    requested_qty   INT NOT NULL,
+    unit_price      DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    dispatched_qty  INT NULL,                 -- filled in when HQ dispatches
+    received_qty    INT NULL,                 -- filled in when branch confirms receipt
+    damaged_qty     INT NOT NULL DEFAULT 0,    -- reported at receipt, logged as loss
+    FOREIGN KEY (request_id) REFERENCES stock_requests(request_id) ON DELETE CASCADE,
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    INDEX idx_sri_request (request_id)
 );
 
 -- ----------------------------------------------------------------------------
@@ -199,7 +283,29 @@ CREATE TABLE IF NOT EXISTS admin_actions (
 );
 
 -- ----------------------------------------------------------------------------
--- 10. Migration block — safe to run against a database created by an
+-- 10. Capital Contributions
+--
+--     Tracks money the owner(s) put into the business. This is a running
+--     ledger, not a single editable value — an admin can log a new
+--     contribution any time (e.g. an initial capital injection, then
+--     later top-ups), and the business's "total capital" is always just
+--     SUM(amount) over every row here. Nothing here is ever edited or
+--     deleted after the fact; a correction should be logged as its own
+--     entry so the ledger stays an honest history, same philosophy as
+--     stock_movement_logs above.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS capital_contributions (
+    capital_id             INT AUTO_INCREMENT PRIMARY KEY,
+    amount                 DECIMAL(12, 2) NOT NULL,
+    note                   VARCHAR(255) NULL,
+    contributed_by_user_id INT NULL,
+    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (contributed_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_capital_created_at (created_at)
+);
+
+-- ----------------------------------------------------------------------------
+-- 11. Migration block — safe to run against a database created by an
 --     earlier version of this file. Every step here first checks
 --     information_schema before touching anything, so re-running this
 --     whole script (fresh install or upgrade) is always safe: on a
@@ -230,6 +336,26 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'branch_inventory' AND column_name = 'branch_price'
     ) THEN
         ALTER TABLE branch_inventory DROP COLUMN branch_price;
+    END IF;
+
+    -- products.is_active — removed; products are now edited in place
+    -- from the admin Products page instead of being discontinued /
+    -- reactivated, so the soft-delete flag no longer applies.
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'is_active'
+    ) THEN
+        ALTER TABLE products DROP COLUMN is_active;
+    END IF;
+
+    -- raw_materials.is_active — removed for the same reason: materials
+    -- are edited in place from the admin Materials page instead of being
+    -- deactivated / reactivated.
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'is_active'
+    ) THEN
+        ALTER TABLE raw_materials DROP COLUMN is_active;
     END IF;
 
     -- sales.sale_type -----------------------------------------------------
@@ -284,3 +410,83 @@ DELIMITER ;
 
 CALL _has_migrations_applied();
 DROP PROCEDURE _has_migrations_applied;
+
+-- ----------------------------------------------------------------------------
+-- 12. Migration — stock_requests: single item -> delivery header + items
+--
+--     Only runs anything if it finds the OLD stock_requests shape (a
+--     'sku' column directly on the table). On a database that's already
+--     current, or a brand-new one where the CREATE TABLE above already
+--     made the new shape, this is a single cheap existence check and a
+--     no-op — same "safe to re-run" contract as the block above.
+--
+--     What it does, in order, entirely inside one transaction-safe
+--     procedure:
+--       1. Copies every existing request row into stock_request_items
+--          (one row each, since every old request was already exactly
+--          one product), pricing it at that product's current price —
+--          the closest available stand-in for "what it was worth then",
+--          since the old schema never recorded that separately.
+--       2. Drops the old sku -> products FK (name looked up rather than
+--          hardcoded, since MySQL auto-generates it and it can differ
+--          between installs).
+--       3. Adds delivery_number, backfills it as DR-<request_id>, then
+--          makes it NOT NULL + UNIQUE.
+--       4. Drops the now-migrated single-item columns from the header
+--          table (sku, requested_qty, dispatched_qty, received_qty,
+--          damaged_qty), leaving it as the header-only shape defined
+--          above.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_stock_requests_to_multi_item()
+BEGIN
+    DECLARE fk_name VARCHAR(128) DEFAULT NULL;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET fk_name = NULL;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'stock_requests' AND column_name = 'sku'
+    ) THEN
+        INSERT INTO stock_request_items
+            (request_id, sku, requested_qty, unit_price, dispatched_qty, received_qty, damaged_qty)
+        SELECT sr.request_id, sr.sku, sr.requested_qty,
+               COALESCE(p.price, 0.00), sr.dispatched_qty, sr.received_qty, sr.damaged_qty
+        FROM stock_requests sr
+        LEFT JOIN products p ON p.sku = sr.sku;
+
+        SELECT CONSTRAINT_NAME INTO fk_name
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_requests'
+              AND COLUMN_NAME = 'sku' AND REFERENCED_TABLE_NAME = 'products'
+        LIMIT 1;
+
+        IF fk_name IS NOT NULL THEN
+            SET @drop_fk_sql = CONCAT('ALTER TABLE stock_requests DROP FOREIGN KEY `', fk_name, '`');
+            PREPARE stmt FROM @drop_fk_sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+        END IF;
+
+        ALTER TABLE stock_requests
+            ADD COLUMN delivery_number VARCHAR(20) NULL AFTER branch_id;
+
+        UPDATE stock_requests
+        SET delivery_number = CONCAT('DR-', LPAD(request_id, 6, '0'))
+        WHERE delivery_number IS NULL;
+
+        ALTER TABLE stock_requests
+            MODIFY COLUMN delivery_number VARCHAR(20) NOT NULL,
+            ADD UNIQUE KEY unique_delivery_number (delivery_number),
+            DROP COLUMN sku,
+            DROP COLUMN requested_qty,
+            DROP COLUMN dispatched_qty,
+            DROP COLUMN received_qty,
+            DROP COLUMN damaged_qty;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_stock_requests_to_multi_item();
+DROP PROCEDURE _migrate_stock_requests_to_multi_item;

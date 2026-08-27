@@ -41,6 +41,8 @@ SALE_TYPES = ("Sale", "Refill")
 # instead of the register — see buyer_user_id on the sales table.
 PAYMENT_METHODS = ("Cash", "Salary Deduction")
 
+MATERIAL_UNITS = ("Gram", "Milliliter", "Liter", "Gallon", "Piece")
+
 
 class ValidationError(ValueError):
     """Raised by the parse_* helpers on bad user input.
@@ -81,6 +83,17 @@ def parse_non_negative_decimal(raw, field_label="Value"):
         raise ValidationError(f"{field_label} must be a valid number.")
     if value < 0:
         raise ValidationError(f"{field_label} can't be negative.")
+    return value
+
+
+def parse_positive_decimal(raw, field_label="Value"):
+    """Parse a form value as a strictly positive (> 0) decimal."""
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValidationError(f"{field_label} must be a valid number.")
+    if value <= 0:
+        raise ValidationError(f"{field_label} must be greater than zero.")
     return value
 
 

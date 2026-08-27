@@ -13,8 +13,9 @@ from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
-    PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, build_sku,
-    generate_temp_password, parse_base_code, parse_non_negative_decimal, parse_positive_int,
+    MATERIAL_UNITS, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, build_sku,
+    generate_temp_password, parse_base_code, parse_non_negative_decimal, parse_non_negative_int,
+    parse_positive_decimal, parse_positive_int,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -55,7 +56,7 @@ _TREND_GRANULARITIES = {
 @admin_required
 def dashboard():
     stats = {
-        "sku_count": query("SELECT COUNT(*) c FROM products WHERE is_active = TRUE", fetchone=True)["c"],
+        "sku_count": query("SELECT COUNT(*) c FROM products", fetchone=True)["c"],
         "branch_count": query("SELECT COUNT(*) c FROM branches WHERE is_hq = FALSE", fetchone=True)["c"],
         "pending_requests": query(
             "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
@@ -78,18 +79,27 @@ def dashboard():
     )
 
     recent_requests = query(
-        """SELECT sr.request_id, b.branch_name, p.item_name, sr.requested_qty, sr.status, sr.requested_at
+        """SELECT sr.request_id, sr.delivery_number, b.branch_name, sr.status, sr.requested_at,
+                  COUNT(sri.item_id) AS item_count,
+                  COALESCE(SUM(sri.requested_qty), 0) AS total_qty
            FROM stock_requests sr
            JOIN branches b ON sr.branch_id = b.branch_id
-           JOIN products p ON sr.sku = p.sku
+           LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
+           GROUP BY sr.request_id
            ORDER BY sr.requested_at DESC LIMIT 6"""
     )
 
+    # Same exclusion as movement_logs() below: a delivery's own
+    # DISPATCH/RECEIPT/DAMAGE/ADJUSTMENT rows (reference_type=
+    # 'STOCK_REQUEST') are left off this preview too, so it doesn't show
+    # one SKU out of a multi-item delivery as if that were the whole
+    # story — that detail belongs on the delivery's own page/receipt.
     recent_activity = query(
         """SELECT sml.created_at, b.branch_name, p.item_name, sml.change_qty, sml.movement_type
            FROM stock_movement_logs sml
            JOIN branches b ON sml.branch_id = b.branch_id
            JOIN products p ON sml.sku = p.sku
+           WHERE (sml.reference_type IS NULL OR sml.reference_type != 'STOCK_REQUEST')
            ORDER BY sml.created_at DESC LIMIT 8"""
     )
 
@@ -105,11 +115,33 @@ def dashboard():
            ORDER BY total_units DESC LIMIT 3"""
     )
 
+    # Business-level financials: total capital ever put in (see
+    # capital_contributions — a running ledger, not a single value),
+    # total revenue across every sale, and total spent on raw
+    # materials, so a simple gross profit can be shown at a glance.
+    # See reports_data() below for the same figures broken out into
+    # charts on the Reports page.
+    total_capital = query(
+        "SELECT COALESCE(SUM(amount), 0) AS v FROM capital_contributions", fetchone=True
+    )["v"]
+    total_revenue = query(
+        "SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales", fetchone=True
+    )["v"]
+    total_materials_cost = query(
+        "SELECT COALESCE(SUM(line_cost), 0) AS v FROM material_usage_logs", fetchone=True
+    )["v"]
+    financials = {
+        "capital": total_capital,
+        "revenue": total_revenue,
+        "materials_cost": total_materials_cost,
+        "profit": total_revenue - total_materials_cost,
+    }
+
     return render_template(
         "admin/dashboard.html",
         stats=stats, low_stock=low_stock,
         recent_requests=recent_requests, recent_activity=recent_activity,
-        top_sellers=top_sellers,
+        top_sellers=top_sellers, financials=financials,
     )
 
 
@@ -174,24 +206,39 @@ def products():
     return render_template("admin/products.html", catalog=catalog, unit_choices=PRODUCT_UNITS)
 
 
-@bp.route("/products/<sku>/toggle", methods=["POST"])
+@bp.route("/products/edit", methods=["POST"])
 @admin_required
-def toggle_product(sku):
-    product = query(
-        "SELECT item_name, is_active FROM products WHERE sku = %s", (sku,), fetchone=True)
-    execute("UPDATE products SET is_active = NOT is_active WHERE sku = %s", (sku,))
+def edit_product():
+    sku = request.form.get("sku")
+    item_name = request.form.get("item_name", "").strip()
+    variant = request.form.get("variant")
+
+    product = query("SELECT sku, item_name, unit FROM products WHERE sku = %s", (sku,), fetchone=True)
+    if not product:
+        flash("That product no longer exists.", "error")
+        return redirect(url_for("admin.products"))
+
+    try:
+        price = parse_non_negative_decimal(request.form.get("price"), "Price")
+        if not item_name or variant not in ("Male", "Female", "Unisex"):
+            raise ValidationError("Please fill in every field with a valid value.")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.products"))
+
+    # unit is intentionally not editable here — it's baked into the SKU
+    # itself (see build_sku() above), so changing it on an existing row
+    # would leave the SKU claiming a size the row no longer has. To
+    # change a product's size, add it again under the same base code
+    # with the new unit — that gets its own SKU, same as any other size.
+    execute(
+        "UPDATE products SET item_name = %s, variant = %s, price = %s WHERE sku = %s",
+        (item_name, variant, price, sku),
+    )
     notify_all(["products", "inventory"])
-    if product:
-        new_status = "Discontinued" if product["is_active"] else "Reactivated"
-        log_action("toggle_product", target=sku,
-                   details=f"{product['item_name']} — {new_status}")
-        if new_status == "Discontinued":
-            notify_bell(
-                f"{product['item_name']} ({sku}) was discontinued.", level="warning")
-        else:
-            notify_bell(
-                f"{product['item_name']} ({sku}) is available again.", level="success")
-    flash("Product status updated.", "success")
+    log_action("edit_product", target=sku,
+               details=f"{item_name} ({variant}, {product['unit']}) — ₱{price:,.2f}")
+    flash(f"{item_name} ({sku}) updated.", "success")
     return redirect(url_for("admin.products"))
 
 
@@ -249,7 +296,7 @@ def production():
         return redirect(url_for("admin.production"))
 
     products_list = query(
-        "SELECT sku, item_name, unit FROM products WHERE is_active = TRUE ORDER BY item_name")
+        "SELECT sku, item_name, unit FROM products ORDER BY item_name")
     logs = query(
         """SELECT pl.*, p.item_name, p.unit FROM production_logs pl
            JOIN products p ON pl.sku = p.sku
@@ -327,7 +374,7 @@ def branch_stock():
                FROM branch_inventory bi
                JOIN branches b ON bi.branch_id = b.branch_id
                JOIN products p ON bi.sku = p.sku
-               WHERE b.is_hq = FALSE AND p.is_active = TRUE AND b.branch_id = %s
+               WHERE b.is_hq = FALSE AND b.branch_id = %s
                ORDER BY p.item_name""",
             (branch_filter,),
         )
@@ -336,7 +383,7 @@ def branch_stock():
         """SELECT b.branch_id, b.branch_name, COALESCE(SUM(bi.stock_qty), 0) AS total_stock
            FROM branches b
            LEFT JOIN branch_inventory bi ON b.branch_id = bi.branch_id
-           LEFT JOIN products p ON bi.sku = p.sku AND p.is_active = TRUE
+           LEFT JOIN products p ON bi.sku = p.sku
            WHERE b.is_hq = FALSE
            GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
@@ -462,7 +509,7 @@ def record_sale():
     inventory = query(
         """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s AND p.is_active = TRUE AND bi.stock_qty > 0 ORDER BY p.item_name""",
+           WHERE bi.branch_id = %s AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
     recent_sales = query(
@@ -602,42 +649,104 @@ def reset_user_password(user_id):
 
 
 # ---------------------------------------------------------------- stock requests
+#
+# A stock request is now a *delivery* — one branch-submitted cart that can
+# carry any number of different SKUs (see stock_requests + the new
+# stock_request_items table in schema.sql). The Requests list therefore
+# shows one row per delivery (Delivery #, item count, total value) rather
+# than one row per product; the actual line items only ever show up on
+# the delivery's own review/dispatch page and on its receipt PDF.
 @bp.route("/requests")
 @admin_required
 def requests_list():
     status_filter = request.args.get("status", "all")
-    sql = """SELECT sr.*, b.branch_name, p.item_name, p.variant, p.unit
+    sql = """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at, sr.branch_id,
+                    b.branch_name,
+                    COUNT(sri.item_id) AS item_count,
+                    COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                    COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value,
+                    COALESCE(SUM(sri.received_qty), 0) AS total_received,
+                    COALESCE(SUM(sri.damaged_qty), 0) AS total_damaged
               FROM stock_requests sr
               JOIN branches b ON sr.branch_id = b.branch_id
-              JOIN products p ON sr.sku = p.sku"""
+              LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id"""
     params = ()
     if status_filter != "all":
         sql += " WHERE sr.status = %s"
         params = (status_filter,)
-    sql += " ORDER BY FIELD(sr.status,'Pending','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"
+    sql += " GROUP BY sr.request_id ORDER BY FIELD(sr.status,'Pending','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"
     stock_requests = query(sql, params)
     return render_template("admin/requests.html", stock_requests=stock_requests, status_filter=status_filter)
+
+
+@bp.route("/requests/<int:request_id>")
+@admin_required
+def review_request(request_id):
+    """Line-item breakdown of one delivery — the only place its individual
+    products/quantities/prices are shown on the admin side (besides the
+    receipt, once Fulfilled). Pending deliveries get an editable dispatch
+    quantity per item; every other status is a read-only breakdown.
+    """
+    req = query(
+        """SELECT sr.*, b.branch_name
+           FROM stock_requests sr JOIN branches b ON sr.branch_id = b.branch_id
+           WHERE sr.request_id = %s""",
+        (request_id,), fetchone=True,
+    )
+    if not req:
+        abort(404)
+    items = query(
+        """SELECT sri.*, p.item_name, p.variant, p.unit
+           FROM stock_request_items sri JOIN products p ON sri.sku = p.sku
+           WHERE sri.request_id = %s ORDER BY p.item_name""",
+        (request_id,),
+    )
+    total_value = sum(
+        (item["requested_qty"] * item["unit_price"]) for item in items)
+    return render_template("admin/request_detail.html", req=req, items=items, total_value=total_value)
 
 
 @bp.route("/requests/<int:request_id>/dispatch", methods=["POST"])
 @admin_required
 def dispatch_request(request_id):
-    raw_qty = request.form.get("dispatched_qty")
-    try:
-        dispatched_qty = parse_positive_int(
-            raw_qty, "Dispatched quantity") if raw_qty not in (None, "") else None
-    except ValidationError as err:
-        flash(str(err), "error")
-        return redirect(url_for("admin.requests_list"))
+    """Dispatch some or all items on a Pending delivery in one shot.
 
-    qty_to_dispatch = None
+    Comes from the per-item quantity inputs on request_detail.html —
+    item_id[] / dispatched_qty[] pairs, one per line on the delivery.
+    Defaults to the full requested_qty per item if the admin didn't touch
+    a field, same as the old single-item flow defaulted to requested_qty
+    when dispatched_qty was left blank.
+    """
+    item_ids = request.form.getlist("item_id[]")
+    raw_qtys = request.form.getlist("dispatched_qty[]")
+
+    if not item_ids:
+        flash("Nothing to dispatch.", "error")
+        return redirect(url_for("admin.review_request", request_id=request_id))
+
+    try:
+        requested_dispatch = {}
+        for raw_id, raw_qty in zip(item_ids, raw_qtys):
+            requested_dispatch[int(raw_id)] = parse_non_negative_int(
+                raw_qty, "Dispatched quantity")
+    except (TypeError, ValueError, ValidationError) as err:
+        flash(str(err) if isinstance(err, ValidationError)
+              else "Invalid item in dispatch request.", "error")
+        return redirect(url_for("admin.review_request", request_id=request_id))
+
+    if all(qty == 0 for qty in requested_dispatch.values()):
+        flash("Dispatch at least one item.", "error")
+        return redirect(url_for("admin.review_request", request_id=request_id))
+
+    req = None
     try:
         with transaction() as conn:
             cur = conn.cursor(dictionary=True)
-            # Lock both the request and the HQ inventory row for the rest
-            # of this transaction, so two admins dispatching at the same
-            # moment can't both pass the "enough HQ stock?" check and
-            # jointly over-dispatch below zero.
+            # Lock the request row, then every one of its line items, then
+            # every HQ stock row they touch — all for the rest of this
+            # transaction — so two admins dispatching the same delivery (or
+            # two deliveries that both draw on the same SKU) at the same
+            # moment can't jointly over-dispatch HQ stock below zero.
             cur.execute(
                 "SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
             req = cur.fetchone()
@@ -646,44 +755,79 @@ def dispatch_request(request_id):
                 flash("This request can no longer be dispatched.", "error")
                 return redirect(url_for("admin.requests_list"))
 
-            qty_to_dispatch = dispatched_qty if dispatched_qty is not None else req[
-                "requested_qty"]
-
             cur.execute(
-                "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
-                (HQ_BRANCH_ID, req["sku"]),
+                "SELECT * FROM stock_request_items WHERE request_id = %s FOR UPDATE",
+                (request_id,),
             )
-            hq_row = cur.fetchone()
-            if not hq_row or hq_row["stock_qty"] < qty_to_dispatch:
+            items_by_id = {row["item_id"]: row for row in cur.fetchall()}
+
+            for item_id, qty in requested_dispatch.items():
+                item = items_by_id.get(item_id)
+                if item is None:
+                    cur.close()
+                    flash("Invalid item in dispatch request.", "error")
+                    return redirect(url_for("admin.review_request", request_id=request_id))
+                if qty > item["requested_qty"]:
+                    cur.close()
+                    flash(
+                        "Dispatched quantity can't exceed what was requested.", "error")
+                    return redirect(url_for("admin.review_request", request_id=request_id))
+
+            dispatched_any = False
+            for item_id, qty in requested_dispatch.items():
+                item = items_by_id[item_id]
+                if qty == 0:
+                    cur.execute(
+                        "UPDATE stock_request_items SET dispatched_qty = 0 WHERE item_id = %s",
+                        (item_id,),
+                    )
+                    continue
+
+                cur.execute(
+                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
+                    (HQ_BRANCH_ID, item["sku"]),
+                )
+                hq_row = cur.fetchone()
+                if not hq_row or hq_row["stock_qty"] < qty:
+                    cur.close()
+                    flash(
+                        f"Not enough HQ warehouse stock to dispatch {item['sku']}.", "error")
+                    return redirect(url_for("admin.review_request", request_id=request_id))
+
+                before_qty = hq_row["stock_qty"]
+                after_qty = before_qty - qty
+                cur.execute(
+                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                    (after_qty, HQ_BRANCH_ID, item["sku"]),
+                )
+                cur.execute(
+                    "UPDATE stock_request_items SET dispatched_qty = %s WHERE item_id = %s",
+                    (qty, item_id),
+                )
+                cur.execute(
+                    """INSERT INTO stock_movement_logs
+                       (branch_id, sku, change_qty, movement_type, notes,
+                        created_by_user_id, reference_type, reference_id, before_qty, after_qty)
+                       VALUES (%s, %s, %s, 'DISPATCH', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
+                    (HQ_BRANCH_ID, item["sku"], -qty, f"Dispatched on {req['delivery_number']}",
+                     session.get("user_id"), request_id, before_qty, after_qty),
+                )
+                dispatched_any = True
+
+            if not dispatched_any:
                 cur.close()
-                flash(
-                    "Not enough HQ warehouse stock to dispatch that quantity.", "error")
-                return redirect(url_for("admin.requests_list"))
-
-            before_qty = hq_row["stock_qty"]
-            after_qty = before_qty - qty_to_dispatch
+                flash("Dispatch at least one item.", "error")
+                return redirect(url_for("admin.review_request", request_id=request_id))
 
             cur.execute(
-                "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                (after_qty, HQ_BRANCH_ID, req["sku"]),
-            )
-            cur.execute(
-                "UPDATE stock_requests SET status = 'In Transit', dispatched_qty = %s WHERE request_id = %s",
-                (qty_to_dispatch, request_id),
-            )
-            cur.execute(
-                """INSERT INTO stock_movement_logs
-                   (branch_id, sku, change_qty, movement_type, notes,
-                    created_by_user_id, reference_type, reference_id, before_qty, after_qty)
-                   VALUES (%s, %s, %s, 'DISPATCH', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
-                (HQ_BRANCH_ID, req["sku"], -qty_to_dispatch, f"Dispatched to request #{request_id}",
-                 session.get("user_id"), request_id, before_qty, after_qty),
+                "UPDATE stock_requests SET status = 'In Transit' WHERE request_id = %s",
+                (request_id,),
             )
             cur.close()
         notify_admin_and_branch(
             req["branch_id"], ["requests", "inventory", "movement_logs"])
         flash(
-            f"Dispatched {qty_to_dispatch} units — now in transit to the branch.", "success")
+            f"{req['delivery_number']} dispatched — now in transit to the branch.", "success")
     except Exception:
         current_app.logger.exception(
             "dispatch_request failed for request_id=%s", request_id)
@@ -710,7 +854,7 @@ def request_receipt(request_id):
 @bp.route("/requests/<int:request_id>/reject", methods=["POST"])
 @admin_required
 def reject_request(request_id):
-    req = query("SELECT branch_id FROM stock_requests WHERE request_id = %s",
+    req = query("SELECT branch_id, delivery_number FROM stock_requests WHERE request_id = %s",
                 (request_id,), fetchone=True)
     execute(
         "UPDATE stock_requests SET status = 'Rejected' WHERE request_id = %s AND status = 'Pending'",
@@ -718,7 +862,9 @@ def reject_request(request_id):
     )
     if req:
         notify_admin_and_branch(req["branch_id"], "requests")
-    flash("Request rejected.", "success")
+        flash(f"{req['delivery_number']} rejected.", "success")
+    else:
+        flash("Request rejected.", "success")
     return redirect(url_for("admin.requests_list"))
 
 
@@ -726,17 +872,30 @@ def reject_request(request_id):
 @bp.route("/movement-logs")
 @admin_required
 def movement_logs():
+    """Production/Sale/Refill activity only.
+
+    Stock-request-driven movements (DISPATCH, RECEIPT, DAMAGE,
+    ADJUSTMENT — every row tagged reference_type='STOCK_REQUEST' by
+    dispatch_request() / receive_stock()) are deliberately excluded
+    here. A delivery can carry any number of SKUs at once now, so one
+    row here — one branch, one item, one qty — would misrepresent it
+    and just duplicate what the delivery's own review page and its
+    receipt PDF already show in full, correctly grouped under one
+    delivery number. See requests_list()/review_request() and
+    receipts.py for that history instead.
+    """
     branch_filter = request.args.get("branch_id", "all")
     sql = """SELECT sml.*, b.branch_name, p.item_name
               FROM stock_movement_logs sml
               JOIN branches b ON sml.branch_id = b.branch_id
-              JOIN products p ON sml.sku = p.sku"""
-    params = ()
+              JOIN products p ON sml.sku = p.sku
+              WHERE (sml.reference_type IS NULL OR sml.reference_type != 'STOCK_REQUEST')"""
+    params = []
     if branch_filter != "all":
-        sql += " WHERE sml.branch_id = %s"
-        params = (branch_filter,)
+        sql += " AND sml.branch_id = %s"
+        params.append(branch_filter)
     sql += " ORDER BY sml.created_at DESC LIMIT 200"
-    logs = query(sql, params)
+    logs = query(sql, tuple(params))
     branch_list = query(
         "SELECT branch_id, branch_name FROM branches ORDER BY branch_name")
     return render_template("admin/movement_logs.html", logs=logs, branch_list=branch_list, branch_filter=branch_filter)
@@ -833,25 +992,10 @@ def reports_data():
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
-    # How much of total revenue is a normal cash sale vs. an employee
-    # taking product against their salary — useful at a glance for
-    # payroll to see how much is riding on deductions this period.
-    payment_breakdown = query(
-        """SELECT payment_method, COALESCE(SUM(qty_sold), 0) AS units_sold,
-                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales GROUP BY payment_method"""
-    )
-
-    # Straight sale (customer takes a bottle) vs. refill (customer brings
-    # their own bottle back) — both consume stock, typically at
-    # different price points, so it's worth tracking separately.
-    sale_type_breakdown = query(
-        """SELECT sale_type, COALESCE(SUM(qty_sold), 0) AS units_sold,
-                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales GROUP BY sale_type"""
-    )
-
-    # Bucket size for the "Ledger movement" trend chart. Same allow-list
+    # Bucket size — and time window — shared by three charts: Ledger
+    # movement (bucketed by day/week/month/year), and Revenue by branch
+    # + Revenue/Materials/Profit (not bucketed, just totaled within the
+    # same window, e.g. "last 14 days" for daily). Same allow-list
     # pattern reports.py uses elsewhere: the value picked here is never
     # user text going into SQL, it's a key into a fixed dict, and only
     # the fixed SQL fragment that key maps to gets interpolated — so
@@ -862,13 +1006,28 @@ def reports_data():
     granularity = request.args.get("granularity", "daily")
     trend_bucket = _TREND_GRANULARITIES.get(
         granularity, _TREND_GRANULARITIES["daily"])
+    window_sql = trend_bucket["window"]
 
     movement_trend = query(
         f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
             FROM stock_movement_logs
-            WHERE created_at >= NOW() - {trend_bucket['window']}
+            WHERE created_at >= NOW() - {window_sql}
             GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day"""
     )
+
+    # Revenue by branch, windowed to match the granularity switch (e.g.
+    # last 14 days for "Daily") rather than all-time — the filter lives
+    # in the JOIN condition, not WHERE, so a branch with zero sales in
+    # the window still shows up with a 0 bar instead of disappearing.
+    by_branch_revenue = query(
+        f"""SELECT b.branch_name,
+                   COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+            FROM branches b
+            LEFT JOIN sales s ON b.branch_id = s.branch_id AND s.sold_at >= NOW() - {window_sql}
+            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    )
+
     stock_by_branch = query(
         """SELECT b.branch_name, SUM(bi.stock_qty) AS total_stock
            FROM branch_inventory bi JOIN branches b ON bi.branch_id = b.branch_id
@@ -876,17 +1035,231 @@ def reports_data():
     )
 
     # Combined totals across every branch, regardless of each branch's price.
+    # All-time — feeds the top stat tiles and the Revenue vs. Capital chart,
+    # neither of which are windowed by the granularity switch.
     totals = query(
         """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
            FROM sales""",
         fetchone=True,
     )
 
+    # Business-level financials.
+    # - capital: a running ledger (see capital_contributions — an admin
+    #   can log a new contribution any time, not just once); always
+    #   all-time, paired with all-time revenue on the Revenue vs.
+    #   Capital chart.
+    # - revenue_windowed / materials_cost / profit: scoped to the same
+    #   window as the granularity switch, for the Revenue, Materials &
+    #   Profit chart. Profit is a simple gross figure — revenue minus
+    #   what's been spent on raw materials in that window — it doesn't
+    #   subtract other costs (rent, payroll, etc.), which the app
+    #   doesn't currently track.
+    capital_total = query(
+        "SELECT COALESCE(SUM(amount), 0) AS v FROM capital_contributions", fetchone=True
+    )["v"]
+    windowed_revenue = query(
+        f"SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales WHERE sold_at >= NOW() - {window_sql}",
+        fetchone=True,
+    )["v"]
+    windowed_materials_cost = query(
+        f"SELECT COALESCE(SUM(line_cost), 0) AS v FROM material_usage_logs WHERE created_at >= NOW() - {window_sql}",
+        fetchone=True,
+    )["v"]
+    financials = {
+        "capital": capital_total,
+        "revenue_windowed": windowed_revenue,
+        "materials_cost": windowed_materials_cost,
+        "profit": float(windowed_revenue) - float(windowed_materials_cost),
+    }
+
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
 
     return jsonify(
-        by_variant=by_variant, by_branch=by_branch,
-        payment_breakdown=payment_breakdown, sale_type_breakdown=sale_type_breakdown,
+        by_variant=by_variant, by_branch=by_branch, by_branch_revenue=by_branch_revenue,
         movement_trend=movement_trend, stock_by_branch=stock_by_branch, totals=totals,
+        financials=financials,
+    )
+
+
+@bp.route("/materials", methods=["GET", "POST"])
+@admin_required
+def materials():
+    if request.method == "POST":
+        material_name = request.form.get("material_name", "").strip()
+        unit = request.form.get("unit")
+
+        try:
+            if not material_name or unit not in MATERIAL_UNITS:
+                raise ValidationError("Please fill in every field with a valid value.")
+            package_qty = parse_positive_decimal(request.form.get("package_qty"), "Package quantity")
+            package_cost = parse_non_negative_decimal(request.form.get("package_cost"), "Package cost")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.materials"))
+
+        cost_per_unit = package_cost / package_qty
+
+        try:
+            execute(
+                """INSERT INTO raw_materials (material_name, unit, package_qty, package_cost, cost_per_unit)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (material_name, unit, package_qty, package_cost, cost_per_unit),
+            )
+            notify_all(["materials"])
+            log_action("add_material", target=material_name,
+                       details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
+            flash(f"{material_name} added at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
+        except Exception:
+            flash(f"'{material_name}' already exists in the materials list.", "error")
+        return redirect(url_for("admin.materials"))
+
+    materials_list = query(
+        "SELECT * FROM raw_materials ORDER BY material_name")
+    recent_production = query(
+        """SELECT pl.log_id, pl.produced_at, pl.batch_code, p.item_name, p.unit
+           FROM production_logs pl JOIN products p ON pl.sku = p.sku
+           ORDER BY pl.produced_at DESC LIMIT 40"""
+    )
+    usage_logs = query(
+        """SELECT mul.*, rm.material_name, rm.unit,
+                  pl.batch_code, p.item_name AS production_item_name
+           FROM material_usage_logs mul
+           JOIN raw_materials rm ON mul.material_id = rm.material_id
+           LEFT JOIN production_logs pl ON mul.production_log_id = pl.log_id
+           LEFT JOIN products p ON pl.sku = p.sku
+           ORDER BY mul.created_at DESC LIMIT 40"""
+    )
+    totals = query(
+        "SELECT COALESCE(SUM(line_cost), 0) AS total_spent FROM material_usage_logs",
+        fetchone=True,
+    )
+    return render_template(
+        "admin/materials.html",
+        materials=materials_list,
+        recent_production=recent_production,
+        usage_logs=usage_logs,
+        totals=totals,
+        unit_choices=MATERIAL_UNITS,
+    )
+
+
+@bp.route("/materials/edit", methods=["POST"])
+@admin_required
+def edit_material():
+    material_id = request.form.get("material_id")
+    material_name = request.form.get("material_name", "").strip()
+    unit = request.form.get("unit")
+
+    try:
+        if not material_name or unit not in MATERIAL_UNITS:
+            raise ValidationError("Please fill in every field with a valid value.")
+        package_qty = parse_positive_decimal(request.form.get("package_qty"), "Package quantity")
+        package_cost = parse_non_negative_decimal(request.form.get("package_cost"), "Package cost")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.materials"))
+
+    # cost_per_unit is recomputed from the new package figures, but this
+    # only affects usage entries logged from now on — past entries keep
+    # the unit_cost_snapshot they were logged with (see log_material_usage()).
+    cost_per_unit = package_cost / package_qty
+
+    try:
+        execute(
+            """UPDATE raw_materials
+               SET material_name = %s, unit = %s, package_qty = %s, package_cost = %s, cost_per_unit = %s
+               WHERE material_id = %s""",
+            (material_name, unit, package_qty, package_cost, cost_per_unit, material_id),
+        )
+        notify_all(["materials"])
+        log_action("edit_material", target=material_name,
+                   details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
+        flash(f"{material_name} updated at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
+    except Exception:
+        flash(f"'{material_name}' already exists in the materials list.", "error")
+    return redirect(url_for("admin.materials"))
+
+
+@bp.route("/materials/log-usage", methods=["POST"])
+@admin_required
+def log_material_usage():
+    material_id = request.form.get("material_id")
+    production_log_id = request.form.get("production_log_id") or None
+    notes = request.form.get("notes", "").strip() or None
+
+    material = query(
+        "SELECT material_name, unit, cost_per_unit FROM raw_materials WHERE material_id = %s",
+        (material_id,), fetchone=True,
+    )
+    if not material:
+        flash("Select a valid material.", "error")
+        return redirect(url_for("admin.materials"))
+
+    try:
+        qty_used = parse_positive_decimal(request.form.get("qty_used"), "Quantity used")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.materials"))
+
+    unit_cost_snapshot = material["cost_per_unit"]
+    line_cost = round(float(qty_used) * float(unit_cost_snapshot), 2)
+
+    execute(
+        """INSERT INTO material_usage_logs
+           (material_id, production_log_id, qty_used, unit_cost_snapshot, line_cost, notes, created_by_user_id)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (material_id, production_log_id, qty_used, unit_cost_snapshot, line_cost, notes, session.get("user_id")),
+    )
+    notify_all(["materials"])
+    log_action("log_material_usage", target=material["material_name"],
+               details=f"{qty_used:g} {material['unit'].lower()} — ₱{line_cost:,.2f}")
+    flash(f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} — ₱{line_cost:,.2f}.", "success")
+    return redirect(url_for("admin.materials"))
+
+
+# ---------------------------------------------------------------- capital
+@bp.route("/capital", methods=["GET", "POST"])
+@admin_required
+def capital():
+    """Business capital, as a running ledger rather than a single value.
+
+    An admin can log a new contribution any time — an initial injection,
+    then later top-ups — and the business's "total capital" is always
+    just the sum of every row here. Nothing is edited or deleted after
+    the fact; see the note on capital_contributions in schema.sql.
+    """
+    if request.method == "POST":
+        note = request.form.get("note", "").strip() or None
+        try:
+            amount = parse_positive_decimal(request.form.get("amount"), "Amount")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.capital"))
+
+        execute(
+            """INSERT INTO capital_contributions (amount, note, contributed_by_user_id)
+               VALUES (%s, %s, %s)""",
+            (amount, note, session.get("user_id")),
+        )
+        notify_all(["capital"])
+        log_action(
+            "add_capital", target=session.get("username"),
+            details=f"₱{amount:,.2f}" + (f" — {note}" if note else ""),
+        )
+        flash(f"Logged ₱{amount:,.2f} in capital.", "success")
+        return redirect(url_for("admin.capital"))
+
+    contributions = query(
+        """SELECT cc.*, u.username
+           FROM capital_contributions cc
+           LEFT JOIN users u ON cc.contributed_by_user_id = u.user_id
+           ORDER BY cc.created_at DESC"""
+    )
+    totals = query(
+        "SELECT COALESCE(SUM(amount), 0) AS total_capital FROM capital_contributions",
+        fetchone=True,
+    )
+    return render_template(
+        "admin/capital.html", contributions=contributions, totals=totals,
     )

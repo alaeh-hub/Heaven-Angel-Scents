@@ -42,8 +42,7 @@
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}"
             data-unit="{{ row.unit }}">
             <td data-label="Item">
-              <div class="item-name-row"><span class="item-name">{{ row.item_name }}</span>{% if not row.is_active %}{{
-                m.discontinued_badge() }}{% endif %}</div>
+              <div class="item-name">{{ row.item_name }}</div>
               <div class="item-sub mono">{{ row.sku }}</div>
             </td>
             <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>

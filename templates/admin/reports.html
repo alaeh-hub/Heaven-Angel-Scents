@@ -75,14 +75,6 @@
           <option value="Unisex">Unisex</option>
         </select>
       </div>
-      <div class="field" data-filter="active_status" style="display:none;">
-        <label for="rb_active_status">Catalog status</label>
-        <select id="rb_active_status" name="active_status">
-          <option value="all">Active &amp; discontinued</option>
-          <option value="active">Active only</option>
-          <option value="discontinued">Discontinued only</option>
-        </select>
-      </div>
       <div class="field" data-filter="role" style="display:none;">
         <label for="rb_role">Role</label>
         <select id="rb_role" name="role">
@@ -156,7 +148,7 @@
   </form>
 </div>
 
-<div class="grid grid-2 stack">
+<div class="grid grid-4 stack">
   <div class="card stat-tile">
     <div class="stat-label">Total units sold</div>
     <div class="stat-value" id="totalUnits">—</div>
@@ -166,6 +158,16 @@
     <div class="stat-label">Total revenue</div>
     <div class="stat-value accent" id="totalRevenue">—</div>
     <div class="stat-foot">combined, at each branch's actual selling price</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Total capital</div>
+    <div class="stat-value" id="totalCapital">—</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.capital') }}" class="text-soft">manage capital →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Net profit</div>
+    <div class="stat-value" id="totalProfit">—</div>
+    <div class="stat-foot" id="totalProfitFoot">revenue minus material cost</div>
   </div>
 </div>
 
@@ -186,27 +188,36 @@
 
 <div class="grid grid-2 stack">
   <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Revenue by branch</h2>
+    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h2>Revenue by branch</h2>
+        <span class="hint" id="branchRevenueWindowLabel">last 14 days</span>
+      </div>
+      <div class="rb-mode" id="trendGranularitySwitch">
+        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
+        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
+      </div>
     </div>
     <canvas id="branchRevenueChart"></canvas>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Sale vs. Refill</h2>
-      <span class="hint">by revenue, all branches</span>
+      <h2>Revenue vs. Capital</h2>
+      <span class="hint">capital invested vs. revenue earned, all-time</span>
     </div>
-    <canvas id="saleTypeChart"></canvas>
+    <canvas id="capitalChart"></canvas>
   </div>
 </div>
 
 <div class="grid grid-2 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Cash vs. Salary Deduction</h2>
-      <span class="hint">by revenue, all branches</span>
+      <h2>Revenue, Materials &amp; Profit</h2>
+      <span class="hint" id="profitWindowLabel">last 14 days</span>
     </div>
-    <canvas id="paymentChart"></canvas>
+    <canvas id="profitChart"></canvas>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
@@ -218,16 +229,10 @@
 
 <div class="grid grid-1 stack">
   <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+    <div class="card-header" style="padding:0 0 14px; border:none;">
       <div>
         <h2>Ledger movement</h2>
         <span class="hint" id="trendWindowLabel">last 14 days</span>
-      </div>
-      <div class="rb-mode" id="trendGranularitySwitch">
-        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
-        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
-        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
-        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
     <canvas id="trendChart"></canvas>
@@ -240,8 +245,6 @@
 <script>
   const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
   const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
-  const SALE_TYPE_COLORS = { Sale: '#17975E', Refill: '#2E5AF0' };
-  const PAYMENT_COLORS = { Cash: '#17975E', 'Salary Deduction': '#C9820B' };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
   // for the "last N ___" label under the chart title, the actual
@@ -308,6 +311,16 @@
 
         document.getElementById('totalUnits').textContent = data.totals.units;
         document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
+        document.getElementById('totalCapital').textContent = formatPeso(data.financials.capital);
+
+        const profitEl = document.getElementById('totalProfit');
+        const profitValue = Number(data.financials.profit);
+        profitEl.textContent = formatPeso(profitValue);
+        profitEl.classList.remove('success', 'danger');
+        profitEl.classList.add(profitValue >= 0 ? 'success' : 'danger');
+        document.getElementById('totalProfitFoot').textContent =
+          (profitValue >= 0 ? 'revenue minus material cost' : 'running at a loss this window') +
+          ' \u00b7 ' + (TREND_WINDOW_LABELS[trendGranularity] || '');
 
         charts.variant = new Chart(document.getElementById('variantChart'), {
           type: 'doughnut',
@@ -339,8 +352,8 @@
         charts.branchRevenue = new Chart(document.getElementById('branchRevenueChart'), {
           type: 'bar',
           data: {
-            labels: data.by_branch.map(d => d.branch_name),
-            datasets: [{ label: 'Revenue', data: data.by_branch.map(d => d.revenue), backgroundColor: '#17975E', borderRadius: 4 }]
+            labels: data.by_branch_revenue.map(d => d.branch_name),
+            datasets: [{ label: 'Revenue', data: data.by_branch_revenue.map(d => d.revenue), backgroundColor: '#17975E', borderRadius: 4 }]
           },
           options: {
             plugins: {
@@ -351,53 +364,41 @@
           }
         });
 
-        charts.saleType = new Chart(document.getElementById('saleTypeChart'), {
-          type: 'doughnut',
+        charts.capital = new Chart(document.getElementById('capitalChart'), {
+          type: 'bar',
           data: {
-            labels: data.sale_type_breakdown.map(d => d.sale_type),
+            labels: ['Capital invested', 'Total revenue'],
             datasets: [{
-              data: data.sale_type_breakdown.map(d => d.revenue),
-              backgroundColor: data.sale_type_breakdown.map(d => SALE_TYPE_COLORS[d.sale_type] || '#7C5CFA'),
-              borderWidth: 0,
+              data: [data.financials.capital, data.totals.revenue],
+              backgroundColor: ['#C9820B', '#2E5AF0'],
+              borderRadius: 4,
             }]
           },
           options: {
             plugins: {
-              legend: { position: 'bottom' },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const row = data.sale_type_breakdown[ctx.dataIndex];
-                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
-                  }
-                }
-              }
-            }
+              legend: { display: false },
+              tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
+            },
+            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
           }
         });
 
-        charts.payment = new Chart(document.getElementById('paymentChart'), {
-          type: 'doughnut',
+        charts.profit = new Chart(document.getElementById('profitChart'), {
+          type: 'bar',
           data: {
-            labels: data.payment_breakdown.map(d => d.payment_method),
+            labels: ['Revenue', 'Material cost', 'Profit'],
             datasets: [{
-              data: data.payment_breakdown.map(d => d.revenue),
-              backgroundColor: data.payment_breakdown.map(d => PAYMENT_COLORS[d.payment_method] || '#7C5CFA'),
-              borderWidth: 0,
+              data: [data.financials.revenue_windowed, data.financials.materials_cost, data.financials.profit],
+              backgroundColor: ['#2E5AF0', '#E23A48', profitValue >= 0 ? '#17975E' : '#E23A48'],
+              borderRadius: 4,
             }]
           },
           options: {
             plugins: {
-              legend: { position: 'bottom' },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const row = data.payment_breakdown[ctx.dataIndex];
-                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
-                  }
-                }
-              }
-            }
+              legend: { display: false },
+              tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
+            },
+            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
           }
         });
 
@@ -410,8 +411,13 @@
           options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#E5E8EF' } }, y: { grid: { display: false } } } }
         });
 
+        const windowLabel = TREND_WINDOW_LABELS[trendGranularity] || '';
         const trendLabelEl = document.getElementById('trendWindowLabel');
-        if (trendLabelEl) trendLabelEl.textContent = TREND_WINDOW_LABELS[trendGranularity] || '';
+        if (trendLabelEl) trendLabelEl.textContent = windowLabel;
+        const branchRevenueLabelEl = document.getElementById('branchRevenueWindowLabel');
+        if (branchRevenueLabelEl) branchRevenueLabelEl.textContent = windowLabel;
+        const profitLabelEl = document.getElementById('profitWindowLabel');
+        if (profitLabelEl) profitLabelEl.textContent = windowLabel;
 
         const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
         const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
@@ -482,11 +488,11 @@
   // nothing extra needed server-side to "ignore" them.
   (function () {
     const REPORT_FIELDS = {
-      product_catalog: ['active_status', 'variant', 'search'],
-      hq_production: ['search', 'window'],
+      products: ['variant', 'search'],
+      production_log: ['search', 'window'],
       branch_stock: ['branch_id', 'variant', 'low_stock_only', 'search'],
       stock_requests: ['branch_id', 'status', 'search', 'window'],
-      movement_logs: ['branch_id', 'movement_type', 'search', 'window'],
+      inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
       sales_history: ['branch_id', 'variant', 'search', 'window'],
       accounts: ['role', 'account_status', 'search'],
     };
@@ -496,7 +502,7 @@
     // and hinted as changes, to match what reports.py actually searches.
     const SEARCH_LABELS = {
       accounts: { label: 'Search username', placeholder: 'e.g. manila' },
-      movement_logs: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+      inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
     };
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 

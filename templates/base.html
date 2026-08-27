@@ -209,6 +209,15 @@
           </svg>
           Production Log
         </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
+          href="{{ url_for('admin.materials') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M9 3h6l1 4H8l1-4z" />
+            <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
+            <path d="M9 13h6" />
+          </svg>
+          Materials
+        </a>
         <a class="nav-link {{ 'active' if request.endpoint == 'admin.branch_stock' }}"
           href="{{ url_for('admin.branch_stock') }}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -263,6 +272,14 @@
             <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
           </svg>
           Accounts
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.capital' }}" href="{{ url_for('admin.capital') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="6" width="20" height="13" rx="2" />
+            <path d="M2 10h20" />
+            <path d="M6 15h4" />
+          </svg>
+          Capital
         </a>
         <a class="nav-link {{ 'active' if request.endpoint == 'admin.reports' }}" href="{{ url_for('admin.reports') }}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">

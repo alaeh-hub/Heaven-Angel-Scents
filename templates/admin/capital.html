@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Capital{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Capital{% endblock %}
+
+{% block content %}
+<div class="bento-grid stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="2" y="6" width="20" height="13" rx="2" />
+        <path d="M2 10h20" />
+        <path d="M6 15h4" />
+      </svg>
+    </div>
+    <div class="stat-label">Total capital</div>
+    <div class="stat-value accent">{{ totals.total_capital|peso }}</div>
+    <div class="stat-foot">across {{ contributions|length }} contribution{{ 's' if contributions|length != 1 }}</div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Capital history</h2>
+      <span class="hint" id="capitalCount">{{ contributions|length }} entr{{ 'y' if contributions|length == 1 else 'ies' }}</span>
+    </div>
+    {% if contributions %}
+    <div data-smart-table data-page-size="12" data-count-target="capitalCount" data-count-label="entry">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="smart-search-input" placeholder="Search by note or admin…" autocomplete="off">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table">
+          <thead><tr><th>When</th><th>Added by</th><th class="num">Amount</th><th>Note</th></tr></thead>
+          <tbody>
+            {% for c in contributions %}
+            <tr data-search="{{ ((c.username or '') ~ ' ' ~ (c.note or ''))|lower }}">
+              <td class="mono text-soft" data-label="When">{{ c.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+              <td data-label="Added by">{{ c.username or '—' }}</td>
+              <td class="num mono qty-up" data-label="Amount">+{{ c.amount|peso }}</td>
+              <td class="text-soft" style="font-size: 12.5px;" data-label="Note">{{ c.note or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No contributions match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Capital is a running total, not a single editable number — every contribution is logged here permanently. To correct a mistake, log a new entry rather than editing an old one.</p>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No capital logged yet — add the first contribution.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add capital</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Log money put into the business — an initial investment or a later top-up. You can add as many entries as needed over time.
+    </p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="amount">Amount (₱)</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0.01" placeholder="50000.00" required>
+      </div>
+      <div class="field">
+        <label for="note">Note <span class="text-faint">(optional)</span></label>
+        <input type="text" id="note" name="note" maxlength="255" placeholder="e.g. initial investment, top-up from owner">
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add capital</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

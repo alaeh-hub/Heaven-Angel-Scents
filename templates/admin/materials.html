@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Materials{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Materials{% endblock %}
+
+{% block content %}
+<div class="bento-grid stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6l1 4H8l1-4z" /><path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" /><path d="M9 13h6" /></svg>
+    </div>
+    <div class="stat-label">Materials tracked</div>
+    <div class="stat-value">{{ materials|length }}</div>
+    <div class="stat-foot">in the cost list</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2" /><path d="M3 10h18M8 15h3" /></svg>
+    </div>
+    <div class="stat-label">Total material spend</div>
+    <div class="stat-value accent">{{ totals.total_spent|peso }}</div>
+    <div class="stat-foot">across every logged usage entry</div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Raw materials</h2>
+      <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
+    </div>
+    {% if materials %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th>Purchased as</th>
+            <th class="num">Cost per unit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mat in materials %}
+          <tr>
+            <td class="item-name" data-label="Material">{{ mat.material_name }}</td>
+            <td class="text-soft" data-label="Purchased as">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit }} for {{ mat.package_cost|peso }}</td>
+            <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
+            <td data-label="">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
+                data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
+                data-package-qty="{{ mat.package_qty }}" data-unit="{{ mat.unit }}"
+                data-package-cost="{{ mat.package_cost }}">Edit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Cost per unit is fixed the moment a usage entry is logged, so editing a material's price later never changes the cost of past entries.</p>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No materials added yet.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a material</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Enter it the way you actually buy it — e.g. 140 grams for ₱490 — and the cost per unit is worked out for you.
+    </p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="material_name">Material name</label>
+        <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="package_qty">Package quantity</label>
+          <input type="number" id="package_qty" name="package_qty" step="0.001" min="0.001" placeholder="140" required>
+        </div>
+        <div class="field">
+          <label for="unit">Unit</label>
+          <select id="unit" name="unit" required>
+            <option value="">Select…</option>
+            {% for u in unit_choices %}
+            <option value="{{ u }}">{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="package_cost">Cost for that package (₱)</label>
+        <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
+        <div class="help" id="costPreview" style="display:none;"></div>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add material</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid mt-24" style="grid-template-columns: 1fr 1.5fr; gap: 18px; align-items: start;">
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Log material usage</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Log how much of a material was used. Linking it to a production run is optional — it's only there to help you total up a batch's cost later.
+    </p>
+    <form method="POST" action="{{ url_for('admin.log_material_usage') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="material_id">Material</label>
+        <select id="material_id" name="material_id" required>
+          <option value="">Select…</option>
+          {% for mat in materials %}
+          <option value="{{ mat.material_id }}" data-unit="{{ mat.unit }}">{{ mat.material_name }} ({{ mat.unit }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="qty_used">Quantity used</label>
+        <input type="number" id="qty_used" name="qty_used" step="0.001" min="0.001" required>
+        <div class="help" id="usageUnitHint"></div>
+      </div>
+      <div class="field">
+        <label for="production_log_id">Link to a production run <span class="text-faint">(optional)</span></label>
+        <select id="production_log_id" name="production_log_id">
+          <option value="">Not linked</option>
+          {% for p in recent_production %}
+          <option value="{{ p.log_id }}">{{ p.produced_at.strftime('%b %d') }} — {{ p.item_name }} ({{ p.unit }}){% if p.batch_code %} · {{ p.batch_code }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+        <input type="text" id="notes" name="notes" maxlength="255" placeholder="e.g. mixing batch for A1 85ML run">
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Log usage</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Usage history</h2><span class="hint">last 40 entries</span>
+    </div>
+    {% if usage_logs %}
+    <div data-smart-table data-page-size="12">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="smart-search-input" placeholder="Search by material or notes…" autocomplete="off">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Material</th>
+              <th class="num">Qty used</th>
+              <th class="num">Cost</th>
+              <th>Linked run</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in usage_logs %}
+            <tr data-search="{{ (u.material_name ~ ' ' ~ (u.notes or ''))|lower }}">
+              <td class="mono text-soft" data-label="When">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+              <td class="item-name" data-label="Material">{{ u.material_name }}</td>
+              <td class="num mono" data-label="Qty used">{{ u.qty_used|round(3)|string|replace('.000','') }} {{ u.unit.lower() }}</td>
+              <td class="num mono" data-label="Cost">{{ u.line_cost|peso }}</td>
+              <td class="text-soft" data-label="Linked run">{% if u.production_item_name %}{{ u.production_item_name }}{% if u.batch_code %} · {{ u.batch_code }}{% endif %}{% else %}—{% endif %}</td>
+              <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ u.notes or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No usage entries match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No usage entries logged yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="editMaterialOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Changing this only affects future usage entries — past entries keep the cost per unit they were logged at.
+    </p>
+    <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="material_id" id="editMaterialId">
+      <div class="field">
+        <label for="editMaterialName">Material name</label>
+        <input type="text" id="editMaterialName" name="material_name" required>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="editPackageQty">Package quantity</label>
+          <input type="number" id="editPackageQty" name="package_qty" step="0.001" min="0.001" required>
+        </div>
+        <div class="field">
+          <label for="editUnit">Unit</label>
+          <select id="editUnit" name="unit" required>
+            {% for u in unit_choices %}
+            <option value="{{ u }}">{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="editPackageCost">Cost for that package (₱)</label>
+        <input type="number" id="editPackageCost" name="package_cost" step="0.01" min="0" required>
+        <div class="help" id="editCostPreview" style="display:none;"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="editMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var packageQty = document.getElementById('package_qty');
+    var packageCost = document.getElementById('package_cost');
+    var unitSelect = document.getElementById('unit');
+    var costPreview = document.getElementById('costPreview');
+
+    function updateCostPreview() {
+      var qty = parseFloat(packageQty.value);
+      var cost = parseFloat(packageCost.value);
+      var unit = unitSelect.value;
+      if (qty > 0 && cost >= 0 && unit) {
+        var perUnit = cost / qty;
+        costPreview.textContent = '≈ ₱' + perUnit.toFixed(4) + ' per ' + unit.toLowerCase();
+        costPreview.style.display = 'block';
+      } else {
+        costPreview.style.display = 'none';
+      }
+    }
+    [packageQty, packageCost, unitSelect].forEach(function (el) {
+      el.addEventListener('input', updateCostPreview);
+      el.addEventListener('change', updateCostPreview);
+    });
+
+    var materialSelect = document.getElementById('material_id');
+    var usageUnitHint = document.getElementById('usageUnitHint');
+    function updateUsageUnitHint() {
+      var opt = materialSelect.options[materialSelect.selectedIndex];
+      var unit = opt ? opt.dataset.unit : null;
+      usageUnitHint.textContent = unit ? 'Enter the amount used in ' + unit.toLowerCase() + '.' : '';
+    }
+    materialSelect.addEventListener('change', updateUsageUnitHint);
+    updateUsageUnitHint();
+  })();
+
+  (function () {
+    var overlay = document.getElementById('editMaterialOverlay');
+    if (!overlay) return;
+    var idInput = document.getElementById('editMaterialId');
+    var nameInput = document.getElementById('editMaterialName');
+    var qtyInput = document.getElementById('editPackageQty');
+    var unitSelect = document.getElementById('editUnit');
+    var costInput = document.getElementById('editPackageCost');
+    var costPreview = document.getElementById('editCostPreview');
+    var cancelBtn = document.getElementById('editMaterialCancelBtn');
+
+    function updateEditCostPreview() {
+      var qty = parseFloat(qtyInput.value);
+      var cost = parseFloat(costInput.value);
+      var unit = unitSelect.value;
+      if (qty > 0 && cost >= 0 && unit) {
+        costPreview.textContent = '≈ ₱' + (cost / qty).toFixed(4) + ' per ' + unit.toLowerCase();
+        costPreview.style.display = 'block';
+      } else {
+        costPreview.style.display = 'none';
+      }
+    }
+    [qtyInput, costInput, unitSelect].forEach(function (el) {
+      el.addEventListener('input', updateEditCostPreview);
+      el.addEventListener('change', updateEditCostPreview);
+    });
+
+    window.openEditMaterial = function (btn) {
+      idInput.value = btn.dataset.materialId;
+      nameInput.value = btn.dataset.materialName;
+      qtyInput.value = btn.dataset.packageQty;
+      unitSelect.value = btn.dataset.unit;
+      costInput.value = btn.dataset.packageCost;
+      updateEditCostPreview();
+      overlay.style.display = 'flex';
+    };
+
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  })();
+</script>
+{% endblock %}

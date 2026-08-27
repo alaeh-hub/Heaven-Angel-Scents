@@ -133,16 +133,16 @@ XL_DATE_FMT = "mmm dd, yyyy hh:mm AM/PM"
 # admin / branch: whether that role can generate this report at all.
 # windowed: whether a time-window (Recent/Range/All) control applies.
 REPORT_TYPES = {
-    "product_catalog": {"label": "Product Catalog", "admin": True, "branch": False, "windowed": False},
-    "hq_production":   {"label": "HQ Production",   "admin": True, "branch": False, "windowed": True},
+    "products":        {"label": "Products",        "admin": True, "branch": False, "windowed": False},
+    "production_log":  {"label": "Production Log",  "admin": True, "branch": False, "windowed": True},
     "branch_stock":    {"label": "Branch Stock",     "admin": True, "branch": True,  "windowed": False,
                         "branch_label": "My Inventory"},
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
-    "movement_logs":   {"label": "Movement Ledger",  "admin": True, "branch": True,  "windowed": True},
+    "inventory_log":   {"label": "Inventory Log",    "admin": True, "branch": True,  "windowed": True},
     "sales_history":   {"label": "Sales History",    "admin": True, "branch": True,  "windowed": True},
     "employee_purchases": {"label": "Employee Purchases (Salary Deduction)", "admin": True, "branch": True,
                            "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
-    "accounts":        {"label": "User Accounts",    "admin": True, "branch": False, "windowed": False},
+    "accounts":        {"label": "Accounts",         "admin": True, "branch": False, "windowed": False},
 }
 
 
@@ -190,7 +190,6 @@ def parse_report_filters(args):
         "unit": _choice("unit", UNIT_CHOICES, "all"),
         "sale_type": _choice("sale_type", SALE_TYPE_CHOICES, "all"),
         "payment_method": _choice("payment_method", PAYMENT_METHOD_CHOICES, "all"),
-        "active_status": _choice("active_status", ("active", "discontinued"), "all"),
         "role": _choice("role", ROLE_CHOICES, "all"),
         "account_status": _choice("account_status", ("active", "inactive"), "all"),
         "low_stock_only": args.get("low_stock_only") == "1",
@@ -247,11 +246,12 @@ def _branch_name(branch_id):
 
 
 # ---------------------------------------------------------------- per-type builders
-def _report_product_catalog(filters, branch_scope):
+def _report_products(filters, branch_scope):
+    # NOTE: products.is_active was dropped from the schema (products are
+    # now edited in place from the admin Products page instead of being
+    # discontinued/reactivated — see schema.sql's migration block), so
+    # there is no active/discontinued status left to filter or show here.
     where, params = "", []
-    if filters["active_status"] != "all":
-        where += " AND p.is_active = %s"
-        params.append(filters["active_status"] == "active")
     if filters["variant"] != "all":
         where += " AND p.variant = %s"
         params.append(filters["variant"])
@@ -264,7 +264,7 @@ def _report_product_catalog(filters, branch_scope):
         params += [like, like]
 
     rows = query(
-        f"""SELECT p.sku, p.item_name, p.variant, p.unit, p.price, p.is_active,
+        f"""SELECT p.sku, p.item_name, p.variant, p.unit, p.price,
                    COALESCE(SUM(bi.stock_qty), 0) AS total_stock
             FROM products p LEFT JOIN branch_inventory bi ON p.sku = bi.sku
             WHERE 1=1 {where}
@@ -273,19 +273,17 @@ def _report_product_catalog(filters, branch_scope):
     )
     for r in rows:
         r["price"] = float(r["price"])
-        r["is_active"] = "Active" if r["is_active"] else "Discontinued"
 
     columns = [
         ("sku", "SKU", "str"), ("item_name", "Item",
                                 "str"), ("variant", "Variant", "badge:variant"),
         ("unit", "Unit", "str"), ("price", "HQ Price", "money"),
-        ("total_stock", "Total Stock (all branches)",
-         "int"), ("is_active", "Status", "badge:active_status"),
+        ("total_stock", "Total Stock (all branches)", "int"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
 
 
-def _report_hq_production(filters, branch_scope):
+def _report_production_log(filters, branch_scope):
     where, params = "", []
     if filters["unit"] != "all":
         where += " AND p.unit = %s"
@@ -340,13 +338,15 @@ def _report_branch_stock(filters, branch_scope):
 
     # No more per-branch price override — every branch sells at
     # products.price, so this is just stock levels per branch now.
+    # (products.is_active no longer exists — see schema.sql's migration
+    # block — so there's nothing to filter out here anymore.)
     rows = query(
         f"""SELECT b.branch_name, p.sku, p.item_name, p.variant, p.unit, p.price AS hq_price,
                    bi.stock_qty, bi.reorder_level
             FROM branch_inventory bi
             JOIN branches b ON bi.branch_id = b.branch_id
             JOIN products p ON bi.sku = p.sku
-            WHERE b.is_hq = FALSE AND p.is_active = TRUE {where}
+            WHERE b.is_hq = FALSE {where}
             ORDER BY b.branch_name, p.item_name LIMIT {MAX_ROWS}""",
         tuple(params),
     )
@@ -365,6 +365,17 @@ def _report_branch_stock(filters, branch_scope):
 
 
 def _report_stock_requests(filters, branch_scope):
+    """One row per product on a delivery.
+
+    A stock request is now a delivery *header* (stock_requests) that can
+    carry several products, each its own line in stock_request_items —
+    sku/requested_qty/dispatched_qty/received_qty/damaged_qty all live on
+    the item row now, not on the request itself (see schema.sql's
+    migration block and receipts.py). So this joins through
+    stock_request_items rather than reading those columns off sr
+    directly, and surfaces delivery_number (the human-facing identifier
+    used everywhere else in the app) alongside them.
+    """
     where, params = "", []
     if branch_scope is not None:
         where += " AND sr.branch_id = %s"
@@ -376,19 +387,20 @@ def _report_stock_requests(filters, branch_scope):
         where += " AND sr.status = %s"
         params.append(filters["status"])
     if filters["search"]:
-        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR sr.delivery_number LIKE %s)"
         like = f"%{filters['search']}%"
-        params += [like, like]
+        params += [like, like, like]
     time_where, order, limit_n, truncated = _time_window(
         "sr.requested_at", filters, params)
     where += time_where
 
     rows = query(
-        f"""SELECT sr.requested_at, b.branch_name, p.item_name, p.sku,
-                   sr.requested_qty, sr.dispatched_qty, sr.received_qty, sr.damaged_qty, sr.status
-            FROM stock_requests sr
+        f"""SELECT sr.requested_at, sr.delivery_number, b.branch_name, p.item_name, p.sku,
+                   sri.requested_qty, sri.dispatched_qty, sri.received_qty, sri.damaged_qty, sr.status
+            FROM stock_request_items sri
+            JOIN stock_requests sr ON sri.request_id = sr.request_id
             JOIN branches b ON sr.branch_id = b.branch_id
-            JOIN products p ON sr.sku = p.sku
+            JOIN products p ON sri.sku = p.sku
             WHERE 1=1 {where} {order} LIMIT {limit_n}""",
         tuple(params),
     )
@@ -398,7 +410,10 @@ def _report_stock_requests(filters, branch_scope):
 
     columns = [] if branch_scope is not None else [
         ("branch_name", "Branch", "str")]
-    columns = [("requested_at", "Requested", "datetime")] + columns + [
+    columns = [
+        ("requested_at", "Requested", "datetime"),
+        ("delivery_number", "Delivery #", "str"),
+    ] + columns + [
         ("item_name", "Item", "str"), ("sku", "SKU",
                                        "str"), ("requested_qty", "Requested Qty", "int"),
         ("dispatched_qty", "Dispatched Qty",
@@ -409,7 +424,7 @@ def _report_stock_requests(filters, branch_scope):
     return columns, rows, truncated, _window_note(filters, truncated)
 
 
-def _report_movement_logs(filters, branch_scope):
+def _report_inventory_log(filters, branch_scope):
     where, params = "", []
     if branch_scope is not None:
         where += " AND sml.branch_id = %s"
@@ -593,11 +608,11 @@ def _report_accounts(filters, branch_scope):
 
 
 _BUILDERS = {
-    "product_catalog": _report_product_catalog,
-    "hq_production": _report_hq_production,
+    "products": _report_products,
+    "production_log": _report_production_log,
     "branch_stock": _report_branch_stock,
     "stock_requests": _report_stock_requests,
-    "movement_logs": _report_movement_logs,
+    "inventory_log": _report_inventory_log,
     "sales_history": _report_sales_history,
     "employee_purchases": _report_employee_purchases,
     "accounts": _report_accounts,

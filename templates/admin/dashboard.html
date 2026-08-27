@@ -40,6 +40,33 @@
   </div>
 </div>
 
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+    </div>
+    <div class="stat-label">Total Capital</div>
+    <div class="stat-value">{{ financials.capital|peso }}</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.capital') }}" class="text-soft">add capital →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
+    </div>
+    <div class="stat-label">Total Revenue</div>
+    <div class="stat-value accent">{{ financials.revenue|peso }}</div>
+    <div class="stat-foot">all-time, every branch</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+    </div>
+    <div class="stat-label">Net Profit</div>
+    <div class="stat-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|peso }}</div>
+    <div class="stat-foot">{{ 'revenue minus material cost' if financials.profit >= 0 else 'running at a loss — revenue minus material cost' }}</div>
+  </div>
+</div>
+
 <div class="grid grid-2 stack">
   <div class="card">
     <div class="card-header">
@@ -74,13 +101,14 @@
     {% if recent_requests %}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Branch</th><th>Item</th><th class="num">Qty</th><th>Status</th></tr></thead>
+        <thead><tr><th>Branch</th><th>Delivery #</th><th class="num">Items</th><th class="num">Qty</th><th>Status</th></tr></thead>
         <tbody>
           {% for r in recent_requests %}
           <tr>
             <td data-label="Branch">{{ r.branch_name }}</td>
-            <td data-label="Item">{{ r.item_name }}</td>
-            <td class="num mono" data-label="Qty">{{ r.requested_qty }}</td>
+            <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
+            <td class="num mono" data-label="Items">{{ r.item_count }}</td>
+            <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
           </tr>
           {% endfor %}
