@@ -1128,6 +1128,23 @@ tbody tr:hover {
   background: rgba(46, 90, 240, 0.055);
 }
 
+/* Airier row rhythm for tables whose cells carry two lines of content
+   (e.g. "140 g for ₱490.00") — the default 14px/22px padding is tuned
+   for single-line rows, so stacked content reads as cramped without
+   the extra breathing room and line-height here. */
+.table-airy th {
+  padding: 13px 24px;
+}
+
+.table-airy td {
+  padding: 17px 24px;
+  line-height: 1.55;
+}
+
+.table-airy .item-name {
+  margin-bottom: 3px;
+}
+
 :root[data-theme="dark"] tbody tr:hover {
   background: rgba(110, 147, 255, 0.09);
 }
@@ -1367,6 +1384,10 @@ input[type="text"],
 input[type="password"],
 input[type="number"],
 input[type="date"],
+input[type="email"],
+input[type="tel"],
+input[type="search"],
+input[type="url"],
 select,
 textarea {
   width: 100%;
@@ -1385,6 +1406,57 @@ textarea:focus {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* File inputs render very differently across browsers (a bare OS button
+   with no border), so they get their own treatment instead of being
+   lumped in with the text-like inputs above: a field-styled outer shell
+   plus a themed "Choose file" button via ::file-selector-button. */
+input[type="file"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+input[type="file"]:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+input[type="file"]:focus {
+  border-color: var(--accent);
+  border-style: solid;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  margin-right: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+input[type="file"]:hover::file-selector-button,
+input[type="file"]:hover::-webkit-file-upload-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .form-row {

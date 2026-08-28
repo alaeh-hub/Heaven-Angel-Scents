@@ -87,11 +87,14 @@ def create_app():
     from routes.admin import bp as admin_bp
     from routes.branch import bp as branch_bp
     from routes.ai import bp as ai_bp
+    from routes.portal import bp as portal_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(branch_bp)
     app.register_blueprint(ai_bp)
+    # Public, unauthenticated — see routes/portal.py's module docstring.
+    app.register_blueprint(portal_bp)
 
     import sockets
 
@@ -140,7 +143,13 @@ def create_app():
                 row = db.query(
                     "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
                 )
-                return {"pending_requests_count": row["c"] if row else 0}
+                inquiries_row = db.query(
+                    "SELECT COUNT(*) c FROM partner_inquiries WHERE status = 'New'", fetchone=True
+                )
+                return {
+                    "pending_requests_count": row["c"] if row else 0,
+                    "new_inquiries_count": inquiries_row["c"] if inquiries_row else 0,
+                }
             if role == "Branch":
                 row = db.query(
                     "SELECT COUNT(*) c FROM stock_requests WHERE branch_id = %s AND status = 'In Transit'",

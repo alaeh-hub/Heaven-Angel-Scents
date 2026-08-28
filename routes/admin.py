@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import os
 import uuid
 
@@ -16,9 +17,9 @@ from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
-    MATERIAL_UNITS, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, build_sku,
-    generate_temp_password, parse_base_code, parse_non_negative_decimal, parse_non_negative_int,
-    parse_optional_id, parse_positive_decimal, parse_positive_int,
+    MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
+    build_sku, generate_temp_password, parse_base_code, parse_non_negative_decimal,
+    parse_non_negative_int, parse_optional_id, parse_positive_decimal, parse_positive_int,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -1461,3 +1462,360 @@ def capital():
     return render_template(
         "admin/capital.html", contributions=contributions, totals=totals,
     )
+
+
+# ---------------------------------------------------------------- partners (distributors & resellers)
+@bp.route("/partners", methods=["GET", "POST"])
+@admin_required
+def partners():
+    """Distributors and resellers HQ sells to in bulk, outside the retail
+    branch network. This page is the partner directory — who they are
+    and how to reach them.
+
+    Partners don't "invest" — any money they put in comes from the
+    packages they order (see the Packages tab), not a manually logged
+    contribution — so there's no way to log a new entry here anymore.
+    Any investment total shown below is purely historical, from
+    partner_investments rows logged before this changed; it will
+    never grow for a partner going forward.
+    """
+    if request.method == "POST":
+        return_type = request.form.get("return_type", "all")
+        partner_type = request.form.get("partner_type", "").strip()
+        name = request.form.get("partner_name", "").strip()
+        contact_person = request.form.get("contact_person", "").strip() or None
+        phone = request.form.get("phone", "").strip() or None
+        email = request.form.get("email", "").strip() or None
+        address = request.form.get("address", "").strip() or None
+        notes = request.form.get("notes", "").strip() or None
+
+        if partner_type not in PARTNER_TYPES:
+            flash("Select whether this is a Distributor or a Reseller.", "error")
+        elif not name:
+            flash("Partner name is required.", "error")
+        else:
+            execute(
+                """INSERT INTO partners
+                       (partner_type, partner_name, contact_person, phone, email, address, notes)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (partner_type, name, contact_person, phone, email, address, notes),
+            )
+            notify_all(["partners"])
+            log_action("add_partner", target=name, details=partner_type)
+            flash(f"{name} added as a {partner_type.lower()}.", "success")
+        return redirect(url_for("admin.partners", type=return_type))
+
+    type_filter = request.args.get("type", "all")
+    where_sql = ""
+    params = ()
+    if type_filter in PARTNER_TYPES:
+        where_sql = "WHERE p.partner_type = %s"
+        params = (type_filter,)
+
+    partner_list = query(
+        f"""SELECT p.*,
+                   COALESCE(SUM(pi.amount), 0) AS total_invested,
+                   COUNT(pi.investment_id) AS investment_count,
+                   MAX(pi.created_at) AS last_investment_at
+            FROM partners p
+            LEFT JOIN partner_investments pi ON pi.partner_id = p.partner_id
+            {where_sql}
+            GROUP BY p.partner_id
+            ORDER BY p.partner_name""",
+        params,
+    )
+
+    totals = query(
+        """SELECT
+               COALESCE(SUM(pi.amount), 0) AS total_all,
+               COALESCE(SUM(CASE WHEN p.partner_type = 'Distributor' THEN pi.amount ELSE 0 END), 0)
+                   AS total_distributor,
+               COALESCE(SUM(CASE WHEN p.partner_type = 'Reseller' THEN pi.amount ELSE 0 END), 0)
+                   AS total_reseller
+           FROM partner_investments pi JOIN partners p ON pi.partner_id = p.partner_id""",
+        fetchone=True,
+    )
+    counts = query(
+        """SELECT
+               COALESCE(SUM(CASE WHEN partner_type = 'Distributor' THEN 1 ELSE 0 END), 0)
+                   AS distributor_count,
+               COALESCE(SUM(CASE WHEN partner_type = 'Reseller' THEN 1 ELSE 0 END), 0)
+                   AS reseller_count
+           FROM partners""",
+        fetchone=True,
+    )
+
+    return render_template(
+        "admin/partners.html",
+        partner_list=partner_list, type_filter=type_filter,
+        totals=totals, counts=counts, partner_types=PARTNER_TYPES,
+    )
+
+
+# NOTE: partners no longer "invest" — a distributor/reseller's money comes
+# from the packages they order (see the Packages tab + the upcoming
+# order/inquiry flow), not from a manually logged investment. The old
+# POST /admin/partners/investment route has been removed. The
+# partner_investments table and its historical totals are still shown
+# below (read-only) so any past entries aren't lost, but nothing writes
+# to that table anymore.
+
+
+# ---------------------------------------------------------------- packages (distributor/reseller bundles)
+def _package_value(discount_percent, reference_total):
+    """Apply a package's discount_percent to a reference total, returning
+    (reference_total, discounted_total) as Decimals. Shared by the list
+    and detail views so the math can't drift between them."""
+    reference_total = decimal.Decimal(reference_total)
+    discount_percent = decimal.Decimal(discount_percent)
+    discounted_total = reference_total * (decimal.Decimal("1") - (discount_percent / decimal.Decimal("100")))
+    return reference_total, discounted_total
+
+
+@bp.route("/packages", methods=["GET", "POST"])
+@admin_required
+def packages():
+    """Bundles of products HQ offers distributors/resellers at a discount.
+
+    Creating a package here only sets its shell (name, discount, who it's
+    for) — products are added one at a time on its own detail page (see
+    package_detail() below), the same two-step shape as adding a branch
+    then assigning it stock.
+    """
+    if request.method == "POST":
+        name = request.form.get("package_name", "").strip()
+        description = request.form.get("description", "").strip() or None
+        scope = request.form.get("partner_scope", "Both")
+        if scope not in ("Both",) + PARTNER_TYPES:
+            scope = "Both"
+
+        try:
+            discount = parse_non_negative_decimal(
+                request.form.get("discount_percent") or 0, "Discount")
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.packages"))
+
+        if discount > 100:
+            flash("Discount can't exceed 100%.", "error")
+            return redirect(url_for("admin.packages"))
+        if not name:
+            flash("Package name is required.", "error")
+            return redirect(url_for("admin.packages"))
+
+        new_id, _ = execute(
+            """INSERT INTO packages (package_name, description, partner_scope, discount_percent)
+               VALUES (%s, %s, %s, %s)""",
+            (name, description, scope, discount),
+        )
+        notify_all(["packages"])
+        log_action("add_package", target=name, details=f"{discount}% off, {scope}")
+        flash(f"{name} created — add products to it below.", "success")
+        return redirect(url_for("admin.package_detail", package_id=new_id))
+
+    package_rows = query(
+        """SELECT pkg.*, COUNT(pi.package_item_id) AS item_count,
+                  COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
+           FROM packages pkg
+           LEFT JOIN package_items pi ON pi.package_id = pkg.package_id
+           LEFT JOIN products p ON p.sku = pi.sku
+           GROUP BY pkg.package_id
+           ORDER BY pkg.created_at DESC"""
+    )
+    package_list = []
+    for row in package_rows:
+        reference_total, discounted_total = _package_value(row["discount_percent"], row["reference_total"])
+        row["reference_total"] = reference_total
+        row["discounted_total"] = discounted_total
+        package_list.append(row)
+
+    return render_template(
+        "admin/packages.html", package_list=package_list, partner_types=PARTNER_TYPES,
+    )
+
+
+@bp.route("/packages/<int:package_id>")
+@admin_required
+def package_detail(package_id):
+    pkg = query("SELECT * FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    if not pkg:
+        abort(404)
+
+    items = query(
+        """SELECT pi.package_item_id, pi.sku, pi.qty, p.item_name, p.variant, p.unit, p.price
+           FROM package_items pi JOIN products p ON pi.sku = p.sku
+           WHERE pi.package_id = %s ORDER BY p.item_name""",
+        (package_id,),
+    )
+    reference_total = sum(
+        (decimal.Decimal(i["qty"]) * decimal.Decimal(i["price"]) for i in items), decimal.Decimal("0")
+    )
+    reference_total, discounted_total = _package_value(pkg["discount_percent"], reference_total)
+
+    existing_skus = {i["sku"] for i in items}
+    catalog = query("SELECT sku, item_name, variant, unit, price FROM products ORDER BY item_name")
+    available_products = [p for p in catalog if p["sku"] not in existing_skus]
+
+    return render_template(
+        "admin/package_detail.html",
+        pkg=pkg, items=items, reference_total=reference_total, discounted_total=discounted_total,
+        available_products=available_products, partner_types=PARTNER_TYPES,
+    )
+
+
+@bp.route("/packages/<int:package_id>/edit", methods=["POST"])
+@admin_required
+def edit_package(package_id):
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    if not pkg:
+        abort(404)
+
+    name = request.form.get("package_name", "").strip()
+    description = request.form.get("description", "").strip() or None
+    scope = request.form.get("partner_scope", "Both")
+    if scope not in ("Both",) + PARTNER_TYPES:
+        scope = "Both"
+    is_active = request.form.get("is_active") == "1"
+
+    try:
+        discount = parse_non_negative_decimal(
+            request.form.get("discount_percent") or 0, "Discount")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+
+    if discount > 100:
+        flash("Discount can't exceed 100%.", "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+    if not name:
+        flash("Package name is required.", "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+
+    execute(
+        """UPDATE packages SET package_name = %s, description = %s, partner_scope = %s,
+               discount_percent = %s, is_active = %s WHERE package_id = %s""",
+        (name, description, scope, discount, is_active, package_id),
+    )
+    notify_all(["packages"])
+    log_action("edit_package", target=name, details=f"{discount}% off, {scope}")
+    flash("Package updated.", "success")
+    return redirect(url_for("admin.package_detail", package_id=package_id))
+
+
+@bp.route("/packages/<int:package_id>/items", methods=["POST"])
+@admin_required
+def add_package_item(package_id):
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    if not pkg:
+        abort(404)
+
+    sku = request.form.get("sku", "").strip()
+    product = query("SELECT sku FROM products WHERE sku = %s", (sku,), fetchone=True)
+
+    try:
+        qty = parse_positive_int(request.form.get("qty"), "Quantity")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+
+    if not product:
+        flash("Select a valid product.", "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+
+    try:
+        execute(
+            "INSERT INTO package_items (package_id, sku, qty) VALUES (%s, %s, %s)",
+            (package_id, sku, qty),
+        )
+    except Exception:
+        flash(
+            "That product is already in this package — remove it first if you need to change its quantity.",
+            "error",
+        )
+        return redirect(url_for("admin.package_detail", package_id=package_id))
+
+    notify_all(["packages"])
+    flash("Product added to package.", "success")
+    return redirect(url_for("admin.package_detail", package_id=package_id))
+
+
+@bp.route("/packages/<int:package_id>/items/remove", methods=["POST"])
+@admin_required
+def remove_package_item(package_id):
+    item_id = request.form.get("package_item_id")
+    execute(
+        "DELETE FROM package_items WHERE package_item_id = %s AND package_id = %s",
+        (item_id, package_id),
+    )
+    notify_all(["packages"])
+    flash("Product removed from package.", "success")
+    return redirect(url_for("admin.package_detail", package_id=package_id))
+
+
+# ---------------------------------------------------------------- partner inquiries
+# History of every inquiry a distributor/reseller has submitted through
+# the public partner portal (see routes/portal.py + partner_inquiries in
+# schema.sql). This is the "Partner Inquiries" page referenced in
+# portal.py's module docstring — read-only except for `status`, a simple
+# triage field (New -> Contacted -> Closed) an admin can advance while
+# following up. Nothing else about a submitted inquiry is ever edited;
+# see the note on partner_inquiries in schema.sql for why (it's a
+# permanent record, same philosophy as capital_contributions).
+INQUIRY_STATUSES = ("New", "Contacted", "Closed")
+
+
+@bp.route("/partners/inquiries")
+@admin_required
+def partner_inquiries():
+    status_filter = request.args.get("status", "all")
+    sql = "SELECT * FROM partner_inquiries"
+    params = ()
+    if status_filter in INQUIRY_STATUSES:
+        sql += " WHERE status = %s"
+        params = (status_filter,)
+    sql += " ORDER BY created_at DESC LIMIT 300"
+    inquiries = query(sql, params)
+
+    counts = query(
+        """SELECT
+               COUNT(*) AS total_count,
+               COALESCE(SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END), 0) AS new_count,
+               COALESCE(SUM(CASE WHEN status = 'Contacted' THEN 1 ELSE 0 END), 0) AS contacted_count,
+               COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed_count
+           FROM partner_inquiries""",
+        fetchone=True,
+    )
+
+    return render_template(
+        "admin/partner_inquiries.html",
+        inquiries=inquiries, status_filter=status_filter, counts=counts,
+        inquiry_statuses=INQUIRY_STATUSES,
+    )
+
+
+@bp.route("/partners/inquiries/<int:inquiry_id>/status", methods=["POST"])
+@admin_required
+def update_inquiry_status(inquiry_id):
+    return_status = request.form.get("return_status", "all")
+    new_status = request.form.get("status")
+
+    if new_status not in INQUIRY_STATUSES:
+        flash("Select a valid status.", "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+    inquiry = query(
+        "SELECT company_name FROM partner_inquiries WHERE inquiry_id = %s",
+        (inquiry_id,), fetchone=True,
+    )
+    if not inquiry:
+        flash("That inquiry no longer exists.", "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+    execute(
+        "UPDATE partner_inquiries SET status = %s WHERE inquiry_id = %s",
+        (new_status, inquiry_id),
+    )
+    notify_admin(["partner_inquiries"])
+    log_action("update_inquiry_status", target=inquiry["company_name"], details=new_status)
+    flash(f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
+    return redirect(url_for("admin.partner_inquiries", status=return_status))

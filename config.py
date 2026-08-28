@@ -45,6 +45,22 @@ class Config:
     AI_CHAT_RATE_LIMIT = os.environ.get(
         "AI_CHAT_RATE_LIMIT", "15 per minute;150 per day")
 
+    # Outbound mail (SMTP), used only to notify HQ of a new inquiry from
+    # the public partner portal — see mailer.py / routes/portal.py. If
+    # MAIL_SERVER, MAIL_DEFAULT_SENDER, or PARTNER_INQUIRY_NOTIFY_EMAIL is
+    # blank, mailer.py just logs a warning and skips sending; the inquiry
+    # itself is still saved either way, so an unconfigured mailer never
+    # loses a lead — see partner_inquiries.email_sent in schema.sql.
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
+    MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "1") == "1"
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "")
+    # Where new-inquiry notifications are sent — the HQ inbox that should
+    # follow up with the distributor/reseller.
+    PARTNER_INQUIRY_NOTIFY_EMAIL = os.environ.get("PARTNER_INQUIRY_NOTIFY_EMAIL", "")
+
 
 class ProductionConfig(Config):
     """Settings for deployment behind HTTPS and a production WSGI server."""

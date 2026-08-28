@@ -295,6 +295,39 @@
           Admin Log
         </a>
       </nav>
+      <nav class="nav-group">
+        <div class="nav-label">Partners &amp; Distribution</div>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.partners' }}"
+          href="{{ url_for('admin.partners') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M8.5 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
+            <path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6" />
+            <path d="M16.5 12a3 3 0 1 0 0-6" />
+            <path d="M15 14.2c2.7.4 4.5 2.6 4.5 5.8" />
+          </svg>
+          Partners
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint in ('admin.packages', 'admin.package_detail') }}"
+          href="{{ url_for('admin.packages') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M21 8 12 3 3 8l9 5 9-5z" />
+            <path d="M3 8v8l9 5 9-5V8" />
+            <path d="M12 13v8" />
+          </svg>
+          Packages
+        </a>
+        <a class="nav-link {{ 'active' if request.endpoint == 'admin.partner_inquiries' }}"
+          href="{{ url_for('admin.partner_inquiries') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 4h16v13H7l-3 3V4z" />
+            <path d="M8 9h8M8 12.5h5" />
+          </svg>
+          Partner Inquiries
+          {% if new_inquiries_count %}
+          <span class="nav-badge">{{ new_inquiries_count }}</span>
+          {% endif %}
+        </a>
+      </nav>
       {% else %}
       <nav class="nav-group">
         <div class="nav-label">Overview</div>

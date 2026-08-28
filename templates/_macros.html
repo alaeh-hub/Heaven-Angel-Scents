@@ -66,7 +66,12 @@
   {% endif %}
   {% endmacro %}
 
-  {% macro discontinued_badge() %}
+  {% macro inquiry_status_badge(status) %}
+{% set map = {'New': 'pending', 'Contacted': 'transit', 'Closed': 'fulfilled'} %}
+<span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro discontinued_badge() %}
   <span class="badge badge-inactive" title="No longer available to request or sell">Discontinued</span>
   {% endmacro %}
 
@@ -81,7 +86,12 @@
   'add_material': 'Material added',
   'edit_material': 'Material edited',
   'add_supplier': 'Supplier added',
-  'edit_supplier': 'Supplier edited'
+  'edit_supplier': 'Supplier edited',
+  'add_partner': 'Partner added',
+  'add_partner_investment': 'Partner investment logged',
+  'add_package': 'Package created',
+  'edit_package': 'Package edited',
+  'update_inquiry_status': 'Partner inquiry status changed'
   } %}
   {{ map.get(action, action|replace('_', ' ')|capitalize) }}
   {% endmacro %}
@@ -89,9 +99,10 @@
   {% macro action_badge(action) %}
   {% set map = {
   'create_account': 'fulfilled', 'add_product': 'fulfilled', 'add_branch': 'fulfilled', 'add_material': 'fulfilled',
-  'add_supplier': 'fulfilled',
+  'add_supplier': 'fulfilled', 'add_partner': 'fulfilled', 'add_partner_investment': 'fulfilled',
+  'add_package': 'fulfilled',
   'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit', 'edit_supplier': 'transit',
-  'reset_password': 'transit'
+  'reset_password': 'transit', 'edit_package': 'transit', 'update_inquiry_status': 'transit'
   } %}
   <span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
   {% endmacro %}

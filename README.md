@@ -2,6 +2,8 @@
 
 Heaven & Angel Scents is a Flask web application for managing perfume production, HQ warehouse stock, retail branches, stock transfers, sales, reporting, and operational audit trails. It provides separate Admin/HQ and Branch workspaces backed by MySQL or MariaDB.
 
+> **Development status:** This project is not yet complete. The current build includes the core inventory system and an in-progress partner distribution portal. Additional testing, fixes, and production hardening are still planned, so behavior and interfaces may change.
+
 ## Local Setup
 
 ### Requirements
@@ -95,6 +97,8 @@ Key updates in the current codebase:
 - Added a read-only AI assistant with role-scoped summaries for admin and branch users.
 - Added supplier records with optional supplier details and material-to-supplier links for purchasing traceability.
 - Added optional product image upload, replacement, removal, and thumbnail display in product and branch inventory views.
+- Added an in-progress public partner portal for browsing active packages and submitting distributor or reseller inquiries without an account.
+- Added admin package management, partner records, inquiry tracking, dashboard inquiry badges, and optional SMTP notifications to HQ.
 - Hardened the application with production-ready settings, database safeguards, and security checks.
 
 ### Requested Feature Verification
@@ -151,6 +155,9 @@ Branch accounts are assigned to one retail branch. They can view their branch da
 | Admin audit log | `/admin/audit-log` | Review up to 300 recent non-inventory administrative actions. |
 | Reports | `/admin/reports` | Select and download Admin reports. |
 | Report data | `/admin/api/reports-data` | Return JSON metrics for Admin charts. |
+| Partners | `/admin/partners` | Manage distributor and reseller records and review historical investment totals. |
+| Packages | `/admin/packages` | Create, edit, activate, retire, and manage discounted product packages. |
+| Partner inquiries | `/admin/partners/inquiries` | Review and update inquiries submitted through the public partner portal. |
 
 Products use the variants `Male`, `Female`, or `Unisex`. Product images are optional and accept JPG, PNG, or WEBP uploads; admins can replace or remove an image while editing a product. Discontinuing a product is a soft status change; historical records remain available.
 
@@ -168,6 +175,12 @@ Products use the variants `Male`, `Female`, or `Unisex`. Product images are opti
 | Reports | `/branch/reports` | Select and download branch-scoped reports. |
 
 A shipment must satisfy `received_qty + damaged_qty <= dispatched_qty`. Any remaining shortfall is recorded as an `ADJUSTMENT` ledger entry for HQ follow-up.
+
+## Partner Portal
+
+The public catalog is available at `/partner-portal/packages` without authentication. Distributors and resellers can filter active packages, review bundled products and discounted pricing, and submit an inquiry with their contact details. The portal matches repeat inquiries to an existing partner by email or phone when possible, otherwise creating a partner record automatically.
+
+Admin users manage packages, partners, and inquiries from the authenticated workspace. Inquiry records are saved even when email is not configured or an SMTP delivery attempt fails. When SMTP is configured, new inquiry notifications are sent to the HQ address in `PARTNER_INQUIRY_NOTIFY_EMAIL`.
 
 ## Pricing And Revenue
 
@@ -267,6 +280,13 @@ Configuration is loaded from environment variables by `config.py`. Development d
 | `GEMINI_API_KEY` | Empty | Enables Gemini requests for the AI assistant. |
 | `GEMINI_MODEL` | `gemini-2.5-flash` in code; `gemini-3.5-flash` in `.env.example` | Gemini model name. |
 | `AI_CHAT_RATE_LIMIT` | `15 per minute;150 per day` | Per-user AI chat limit. |
+| `MAIL_SERVER` | Empty | SMTP server for partner inquiry notifications. |
+| `MAIL_PORT` | `587` | SMTP port. |
+| `MAIL_USE_TLS` | `1` | Enables SMTP TLS when set to `1`. |
+| `MAIL_USERNAME` | Empty | SMTP username. |
+| `MAIL_PASSWORD` | Empty | SMTP password. |
+| `MAIL_DEFAULT_SENDER` | Empty | Sender address for inquiry notifications. |
+| `PARTNER_INQUIRY_NOTIFY_EMAIL` | Empty | HQ recipient for new partner inquiry notifications. |
 | `RATELIMIT_STORAGE_URI` | Flask-Limiter default | Optional limiter storage backend setting. |
 | `SOCKETIO_CORS_ALLOWED_ORIGINS` | Extension default | Optional Socket.IO CORS setting. |
 
@@ -299,6 +319,8 @@ routes/auth.py         Login, logout, and password changes
 routes/admin.py        HQ/Admin workflows and endpoints
 routes/branch.py       Branch workflows and endpoints
 routes/ai.py           Role-scoped read-only Gemini assistant
+routes/portal.py       Public partner package catalog and inquiry submission
+mailer.py              Best-effort SMTP notifications for partner inquiries
 templates/             Jinja pages and shared layout
 static/                CSS, frontend behavior, and bundled Chart.js
 schema.sql             Core MySQL/MariaDB schema and starter branches
@@ -311,7 +333,7 @@ The application starts through `create_app()` in `app.py`. Database connections 
 
 ## Current Scope And Limitations
 
-The system covers the production-to-sale inventory lifecycle, branch transfers, sales history, operational reporting, receipts, realtime refresh notifications, and read-only assistance. It does not currently provide:
+The system covers the production-to-sale inventory lifecycle, branch transfers, sales history, operational reporting, receipts, realtime refresh notifications, read-only assistance, and an in-progress partner package portal. It does not currently provide:
 
 - Supplier purchase orders or procurement workflows.
 - Barcode scanning.
@@ -321,5 +343,6 @@ The system covers the production-to-sale inventory lifecycle, branch transfers, 
 - Multi-currency accounting.
 - Batch-linked sales or FIFO deduction.
 - Automated deployment orchestration.
+- Complete end-to-end validation of the partner portal, package ordering lifecycle, and SMTP delivery in production.
 
-The repository does not include automated end-to-end tests for the complete production-to-sale workflow.
+The repository does not yet include automated end-to-end tests for the complete production-to-sale workflow or the partner portal. The project remains under active development and will require further fixes and testing before it should be treated as complete.

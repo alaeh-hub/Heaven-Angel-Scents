@@ -43,6 +43,12 @@ PAYMENT_METHODS = ("Cash", "Salary Deduction")
 
 MATERIAL_UNITS = ("Gram", "Milliliter", "Liter", "Gallon", "Piece")
 
+# A Distributor buys in bulk to resell further down a chain of their own;
+# a Reseller buys in bulk to sell directly to end customers. Both are
+# bulk buyers outside the retail branch network — see the `partners`
+# table in schema.sql.
+PARTNER_TYPES = ("Distributor", "Reseller")
+
 
 class ValidationError(ValueError):
     """Raised by the parse_* helpers on bad user input.

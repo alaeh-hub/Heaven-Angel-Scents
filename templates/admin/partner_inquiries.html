@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Partner Inquiries{% endblock %}
+{% block eyebrow %}Partners &amp; Distribution{% endblock %}
+{% block heading %}Partner Inquiries{% endblock %}
+
+{% block content %}
+<div class="bento-grid stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-red">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H7l-3 3V4z"/><path d="M8 9h8M8 12.5h5"/></svg>
+    </div>
+    <div class="stat-label">New</div>
+    <div class="stat-value accent">{{ counts.new_count }}</div>
+    <div class="stat-foot">not yet followed up on</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+    </div>
+    <div class="stat-label">Contacted</div>
+    <div class="stat-value">{{ counts.contacted_count }}</div>
+    <div class="stat-foot">reached out, in progress</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-neutral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <div class="stat-label">Closed</div>
+    <div class="stat-value">{{ counts.closed_count }}</div>
+    <div class="stat-foot">{{ counts.total_count }} total inquir{{ 'y' if counts.total_count == 1 else 'ies' }}</div>
+  </div>
+</div>
+
+<div class="tabs">
+  {% for key, label in [('all','All'), ('New','New'), ('Contacted','Contacted'), ('Closed','Closed')] %}
+  <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('admin.partner_inquiries', status=key) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Package inquiries</h2>
+    <span class="hint">from the public partner portal &middot; last 300</span>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Every inquiry a distributor or reseller has submitted while browsing
+      <a href="{{ url_for('portal.packages') }}" target="_blank" rel="noopener">the public packages page</a>.
+      Submitting one automatically adds (or matches) them on the <a href="{{ url_for('admin.partners') }}">Partners</a> page —
+      this is just the history of the inquiry itself. Only the status below can be changed; everything else is a
+      permanent record of what was submitted.
+    </p>
+  </div>
+  {% if inquiries %}
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by company, contact, or package…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Company</th>
+            <th>Type</th>
+            <th>Contact</th>
+            <th>Package</th>
+            <th>Message</th>
+            <th>Email</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inq in inquiries %}
+          <tr data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name" data-label="Company">{{ inq.company_name }}</td>
+            <td data-label="Type">
+              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
+            </td>
+            <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
+              {% if inq.contact_person %}{{ inq.contact_person }}<br>{% endif %}
+              {% if inq.phone %}<span class="mono">{{ inq.phone }}</span>{% endif %}
+              {% if inq.email %}{{ ' · ' if inq.phone }}{{ inq.email }}{% endif %}
+              {% if not inq.contact_person and not inq.phone and not inq.email %}—{% endif %}
+            </td>
+            <td data-label="Package">{{ inq.package_name_snapshot }}</td>
+            <td class="text-soft" style="font-size:12.5px; max-width:220px;" data-label="Message">{{ inq.message or '—' }}</td>
+            <td data-label="Email">
+              {% if inq.email_sent %}
+              <span class="badge badge-active" title="HQ notification email was sent">Sent</span>
+              {% else %}
+              <span class="badge badge-inactive" title="Notification email wasn't sent — mail may be unconfigured. The inquiry itself is still saved.">Not sent</span>
+              {% endif %}
+            </td>
+            <td data-label="Status">
+              <form method="POST" action="{{ url_for('admin.update_inquiry_status', inquiry_id=inq.inquiry_id) }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_status" value="{{ status_filter }}">
+                <select name="status" class="mono" style="font-size:12px; padding:6px 8px;" onchange="this.form.submit()" aria-label="Update status for {{ inq.company_name }}'s inquiry">
+                  {% for s in inquiry_statuses %}
+                  <option value="{{ s }}" {{ 'selected' if inq.status == s }}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No inquiries match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No inquiries in this view yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -336,6 +336,142 @@ CREATE TABLE IF NOT EXISTS capital_contributions (
 );
 
 -- ----------------------------------------------------------------------------
+-- 10b. Partners (Distributors &amp; Resellers)
+--
+--      A distributor/reseller is a bulk buyer outside the retail branch
+--      network — they don't get a branch_inventory row or a login of
+--      their own here, they're just a record of who they are. Ordering
+--      (what they can buy, at what package discount) is separate — see
+--      package_orders in a later migration.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS partners (
+    partner_id      INT AUTO_INCREMENT PRIMARY KEY,
+    partner_type    ENUM('Distributor', 'Reseller') NOT NULL,
+    partner_name    VARCHAR(150) NOT NULL,
+    contact_person  VARCHAR(100) NULL,
+    phone           VARCHAR(30) NULL,
+    email           VARCHAR(120) NULL,
+    address         VARCHAR(255) NULL,
+    notes           VARCHAR(255) NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_partners_type (partner_type)
+);
+
+-- ----------------------------------------------------------------------------
+-- 10c. Partner Investments
+--
+--      What a distributor/reseller has put in — same running-ledger
+--      philosophy as capital_contributions: an admin logs a new entry
+--      any time (an initial buy-in, a later top-up), a partner's
+--      "total invested" is always SUM(amount) over their own rows, and
+--      nothing here is ever edited or deleted — a correction is logged
+--      as its own entry so the ledger stays an honest history.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS partner_investments (
+    investment_id      INT AUTO_INCREMENT PRIMARY KEY,
+    partner_id          INT NOT NULL,
+    amount               DECIMAL(12, 2) NOT NULL,
+    note                 VARCHAR(255) NULL,
+    logged_by_user_id   INT NULL,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (partner_id) REFERENCES partners(partner_id) ON DELETE CASCADE,
+    FOREIGN KEY (logged_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_partner_investments_partner (partner_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- 10d. Packages
+--
+--      A curated bundle of products that HQ offers to distributors and/or
+--      resellers at a discount off the reference price. discount_percent
+--      is a plain admin-editable number (0–100), applied to the sum of
+--      each item's products.price * qty at order time — see
+--      package_orders in a later migration for how an order snapshots
+--      this the same way stock_request_items snapshots unit_price, so a
+--      later change to a package's discount or a product's price never
+--      rewrites the value of a past order.
+--
+--      partner_scope restricts who can see/order it: 'Both' (default),
+--      or locked to just 'Distributor' or just 'Reseller' pricing tiers.
+--      is_active lets HQ retire a package from the order screen without
+--      deleting its history.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS packages (
+    package_id       INT AUTO_INCREMENT PRIMARY KEY,
+    package_name     VARCHAR(150) NOT NULL,
+    description      VARCHAR(255) NULL,
+    partner_scope    ENUM('Both', 'Distributor', 'Reseller') NOT NULL DEFAULT 'Both',
+    discount_percent DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_packages_active (is_active)
+);
+
+-- ----------------------------------------------------------------------------
+-- 10e. Package Items — one row per product in a package, and how many
+--      units of it make up one "set" of the package.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS package_items (
+    package_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    package_id      INT NOT NULL,
+    sku             VARCHAR(50) NOT NULL,
+    qty             INT NOT NULL,
+    FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE CASCADE,
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    UNIQUE KEY unique_package_sku (package_id, sku)
+);
+
+-- ----------------------------------------------------------------------------
+-- 10f. Partner Inquiries — leads from the public partner portal
+--
+--      Anyone can submit one of these without logging in (see
+--      routes/portal.py) — a distributor/reseller browsing the public
+--      packages page and asking about one. This is the "history" of
+--      that pipeline: every inquiry ever submitted, kept permanently,
+--      never edited except for `status` (an admin-side triage field —
+--      New -> Contacted -> Closed — that doesn't affect anything else).
+--
+--      package_name_snapshot freezes what the package was called and
+--      discounted at the moment of inquiry — same "snapshot, don't
+--      recompute later" philosophy as stock_request_items.unit_price —
+--      so a later package rename or discount change never rewrites the
+--      story of a past inquiry. package_id/partner_id are both
+--      nullable + ON DELETE SET NULL for the same reason: deleting a
+--      package or partner later should never erase inquiry history,
+--      only the live link to it.
+--
+--      partner_id is filled in automatically at submit time — the
+--      portal matches an existing partner by email/phone, or creates a
+--      new one, and links it here. See routes/portal.py's inquire().
+--
+--      email_sent records whether the HQ notification email actually
+--      went out (mail can be unconfigured or fail) — the inquiry
+--      itself is always saved either way, so a broken mailer never
+--      loses a lead, just the immediate notification.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS partner_inquiries (
+    inquiry_id             INT AUTO_INCREMENT PRIMARY KEY,
+    package_id              INT NULL,
+    partner_id               INT NULL,
+    partner_type             ENUM('Distributor', 'Reseller') NOT NULL,
+    company_name              VARCHAR(150) NOT NULL,
+    contact_person            VARCHAR(100) NULL,
+    phone                     VARCHAR(30) NULL,
+    email                     VARCHAR(120) NULL,
+    address                   VARCHAR(255) NULL,
+    message                   VARCHAR(500) NULL,
+    package_name_snapshot     VARCHAR(180) NOT NULL,
+    status                    ENUM('New', 'Contacted', 'Closed') NOT NULL DEFAULT 'New',
+    email_sent                BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE SET NULL,
+    FOREIGN KEY (partner_id) REFERENCES partners(partner_id) ON DELETE SET NULL,
+    INDEX idx_partner_inquiries_created (created_at),
+    INDEX idx_partner_inquiries_partner (partner_id),
+    INDEX idx_partner_inquiries_status (status)
+);
+
+-- ----------------------------------------------------------------------------
 -- 11. Migration block — safe to run against a database created by an
 --     earlier version of this file. Every step here first checks
 --     information_schema before touching anything, so re-running this

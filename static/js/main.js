@@ -399,6 +399,9 @@ function initRealtime(notifBell) {
     { match: /^\/admin\/movement-logs\/?$/, scopes: ['movement_logs'] },
     { match: /^\/admin\/products\/?$/, scopes: ['products'] },
     { match: /^\/admin\/branches\/?$/, scopes: ['branches'] },
+    { match: /^\/admin\/partners\/?$/, scopes: ['partners'] },
+    { match: /^\/admin\/packages(\/\d+)?\/?$/, scopes: ['packages'] },
+    { match: /^\/admin\/partners\/inquiries\/?$/, scopes: ['partner_inquiries'] },
     { match: /^\/admin\/users\/?$/, scopes: ['users'] },
     { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production'] },
     { match: /^\/branch\/inventory\/?$/, scopes: ['inventory'] },
@@ -504,7 +507,7 @@ function initRealtime(notifBell) {
     const mine = currentScopes();
     if (scopes.some((s) => mine.includes(s))) {
       softRefresh();
-    } else if (scopes.includes('requests')) {
+    } else if (scopes.includes('requests') || scopes.includes('partner_inquiries')) {
       refreshBadgesOnly();
     }
   });

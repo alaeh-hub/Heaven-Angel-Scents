@@ -24,178 +24,104 @@
   </div>
 </div>
 
-<div class="grid" style="grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
-    <div class="card-header">
-      <h2>Raw materials</h2>
-      <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
-    </div>
-    {% if materials %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Material</th>
-            <th>Purchased as</th>
-            <th>Supplier</th>
-            <th class="num">Cost per unit</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for mat in materials %}
-          <tr>
-            <td class="item-name" data-label="Material">{{ mat.material_name }}</td>
-            <td class="text-soft" data-label="Purchased as">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit }} for {{ mat.package_cost|peso }}</td>
-            <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
-            <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
-            <td data-label="">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
-                data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
-                data-package-qty="{{ mat.package_qty }}" data-unit="{{ mat.unit }}"
-                data-package-cost="{{ mat.package_cost }}" data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Cost per unit is fixed the moment a usage entry is logged, so editing a material's price later never changes the cost of past entries.</p>
-    </div>
-    {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No materials added yet.</p></div>
-    {% endif %}
-  </div>
 
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a material</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Enter it the way you actually buy it — e.g. 140 grams for ₱490 — and the cost per unit is worked out for you.
-    </p>
-    <form method="POST">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="material_name">Material name</label>
-        <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="package_qty">Package quantity</label>
-          <input type="number" id="package_qty" name="package_qty" step="0.001" min="0.001" placeholder="140" required>
-        </div>
-        <div class="field">
-          <label for="unit">Unit</label>
-          <select id="unit" name="unit" required>
-            <option value="">Select…</option>
-            {% for u in unit_choices %}
-            <option value="{{ u }}">{{ u }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label for="package_cost">Cost for that package (₱)</label>
-        <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
-        <div class="help" id="costPreview" style="display:none;"></div>
-      </div>
-      <div class="field">
-        <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
-        <select id="supplier_id" name="supplier_id">
-          <option value="">No supplier on record</option>
-          {% for s in suppliers %}
-          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add material</button>
-    </form>
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Suppliers</h2>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="hint" id="suppliersCount">{{ suppliers|length }} supplier{{ 's' if suppliers|length != 1 }}</span>
+      <button type="button" class="btn btn-accent btn-sm" id="openAddSupplierBtn">+ Add supplier</button>
+    </div>
   </div>
+  {% if suppliers %}
+  <div class="table-wrap table-airy">
+    <table>
+      <thead>
+        <tr>
+          <th>Supplier</th>
+          <th>Contact</th>
+          <th>Reach</th>
+          <th class="num">Materials</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in suppliers %}
+        <tr>
+          <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+          <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
+          <td data-label="Reach">
+            <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
+            <div class="item-sub">{{ s.email or '—' }}</div>
+          </td>
+          <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
+          <td data-label="">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
+              data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
+              data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
+              data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
+              data-notes="{{ s.notes or '' }}">Edit</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No suppliers added yet.</p></div>
+  {% endif %}
 </div>
 
-<div class="grid mt-24" style="grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
-    <div class="card-header">
-      <h2>Suppliers</h2>
-      <span class="hint" id="suppliersCount">{{ suppliers|length }} supplier{{ 's' if suppliers|length != 1 }}</span>
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Raw materials</h2>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
+      <button type="button" class="btn btn-accent btn-sm" id="openAddMaterialBtn">+ Add material</button>
     </div>
-    {% if suppliers %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Supplier</th>
-            <th>Contact</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th class="num">Materials</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in suppliers %}
-          <tr>
-            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
-            <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
-            <td class="mono text-soft" data-label="Phone">{{ s.phone or '—' }}</td>
-            <td class="text-soft" data-label="Email">{{ s.email or '—' }}</td>
-            <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
-            <td data-label="">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
-                data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
-                data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
-                data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
-                data-notes="{{ s.notes or '' }}">Edit</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
-    </div>
-    {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No suppliers added yet.</p></div>
-    {% endif %}
   </div>
-
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a supplier</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Only the name is required — fill in what you have and add the rest later from Edit.
-    </p>
-    <form method="POST" action="{{ url_for('admin.add_supplier') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="supplier_name">Supplier name</label>
-        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100" required>
-      </div>
-      <div class="field">
-        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
-        <input type="text" id="contact_person" name="contact_person" maxlength="100">
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
-          <input type="text" id="phone" name="phone" maxlength="30">
-        </div>
-        <div class="field">
-          <label for="email">Email <span class="text-faint">(optional)</span></label>
-          <input type="email" id="email" name="email" maxlength="120">
-        </div>
-      </div>
-      <div class="field">
-        <label for="address">Address <span class="text-faint">(optional)</span></label>
-        <input type="text" id="address" name="address" maxlength="255">
-      </div>
-      <div class="field">
-        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
-        <input type="text" id="notes" name="notes" maxlength="255">
-      </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add supplier</button>
-    </form>
+  {% if materials %}
+  <div class="table-wrap table-airy">
+    <table>
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th>Purchased as</th>
+          <th>Supplier</th>
+          <th class="num">Cost per unit</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mat in materials %}
+        <tr>
+          <td class="item-name" data-label="Material">{{ mat.material_name }}</td>
+          <td data-label="Purchased as">
+            <div class="item-name">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</div>
+            <div class="item-sub">for {{ mat.package_cost|peso }}</div>
+          </td>
+          <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
+          <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
+          <td data-label="">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
+              data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
+              data-package-qty="{{ mat.package_qty }}" data-unit="{{ mat.unit }}"
+              data-package-cost="{{ mat.package_cost }}" data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Cost per unit is fixed the moment a usage entry is logged, so editing a material's price later never changes the cost of past entries.</p>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No materials added yet.</p></div>
+  {% endif %}
 </div>
 
 <div class="grid mt-24" style="grid-template-columns: 1fr 1.5fr; gap: 18px; align-items: start;">
@@ -288,6 +214,97 @@
     {% else %}
     <div class="empty-state"><div class="glyph">—</div><p>No usage entries logged yet.</p></div>
     {% endif %}
+  </div>
+</div>
+
+<div id="addMaterialOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Add a material</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Enter it the way you actually buy it — e.g. 140 grams for ₱490 — and the cost per unit is worked out for you.
+    </p>
+    <form method="POST" id="addMaterialForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="material_name">Material name</label>
+        <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="package_qty">Package quantity</label>
+          <input type="number" id="package_qty" name="package_qty" step="0.001" min="0.001" placeholder="140" required>
+        </div>
+        <div class="field">
+          <label for="unit">Unit</label>
+          <select id="unit" name="unit" required>
+            <option value="">Select…</option>
+            {% for u in unit_choices %}
+            <option value="{{ u }}">{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="package_cost">Cost for that package (₱)</label>
+        <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
+        <div class="help" id="costPreview" style="display:none;"></div>
+      </div>
+      <div class="field">
+        <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
+        <select id="supplier_id" name="supplier_id">
+          <option value="">No supplier on record</option>
+          {% for s in suppliers %}
+          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="addMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Add material</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="addSupplierOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Only the name is required — fill in what you have and add the rest later from Edit.
+    </p>
+    <form method="POST" action="{{ url_for('admin.add_supplier') }}" id="addSupplierForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="supplier_name">Supplier name</label>
+        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
+        <input type="text" id="contact_person" name="contact_person" maxlength="100">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
+          <input type="text" id="phone" name="phone" maxlength="30">
+        </div>
+        <div class="field">
+          <label for="email">Email <span class="text-faint">(optional)</span></label>
+          <input type="email" id="email" name="email" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="address">Address <span class="text-faint">(optional)</span></label>
+        <input type="text" id="address" name="address" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+        <input type="text" id="notes" name="notes" maxlength="255">
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="addSupplierCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Add supplier</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -418,6 +435,38 @@
     }
     materialSelect.addEventListener('change', updateUsageUnitHint);
     updateUsageUnitHint();
+  })();
+
+  (function () {
+    var overlay = document.getElementById('addMaterialOverlay');
+    var openBtn = document.getElementById('openAddMaterialBtn');
+    var cancelBtn = document.getElementById('addMaterialCancelBtn');
+    if (!overlay || !openBtn) return;
+
+    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  })();
+
+  (function () {
+    var overlay = document.getElementById('addSupplierOverlay');
+    var openBtn = document.getElementById('openAddSupplierBtn');
+    var cancelBtn = document.getElementById('addSupplierCancelBtn');
+    if (!overlay || !openBtn) return;
+
+    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
   })();
 
   (function () {

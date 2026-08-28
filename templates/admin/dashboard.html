@@ -5,15 +5,7 @@
 {% block heading %}Good to see you, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="bento-grid stack">
-  <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
-    </div>
-    <div class="stat-label">Active SKUs</div>
-    <div class="stat-value">{{ stats.sku_count }}</div>
-    <div class="stat-foot">across the catalog</div>
-  </div>
+<div class="grid grid-3 stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>

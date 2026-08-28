@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ pkg.package_name }}{% endblock %}
+{% block eyebrow %}Partners &amp; Distribution{% endblock %}
+{% block heading %}{{ pkg.package_name }}{% endblock %}
+
+{% block content %}
+<div style="padding: 0 0 4px;">
+  <a href="{{ url_for('admin.packages') }}" class="hint">← back to Packages</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Products in this package</h2>
+      <span class="hint">{{ items|length }} item{{ 's' if items|length != 1 }}</span>
+    </div>
+    {% if items %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Variant</th>
+            <th>Unit</th>
+            <th class="num">Qty per set</th>
+            <th class="num">Ref. price</th>
+            <th class="num">Line total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="item-name" data-label="Item">{{ item.item_name }}
+              <div class="item-sub mono">{{ item.sku }}</div>
+            </td>
+            <td data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
+            <td class="num mono" data-label="Qty per set">{{ item.qty }}</td>
+            <td class="num mono" data-label="Ref. price">{{ item.price|peso }}</td>
+            <td class="num mono" data-label="Line total">{{ (item.qty * item.price)|peso }}</td>
+            <td data-label="">
+              <form method="POST" action="{{ url_for('admin.remove_package_item', package_id=pkg.package_id) }}"
+                onsubmit="return confirm('Remove {{ item.item_name }} from this package?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="package_item_id" value="{{ item.package_item_id }}">
+                <button type="submit" class="btn btn-ghost btn-sm">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="rd-total-row">
+            <td colspan="5" style="text-align:right; font-weight:700; background:var(--bg);" data-label="">Reference total</td>
+            <td class="num mono" style="font-weight:700; background:var(--bg);" data-label="Total">{{ reference_total|peso }}</td>
+            <td style="background:var(--bg);" data-label=""></td>
+          </tr>
+          <tr class="rd-total-row">
+            <td colspan="5" style="text-align:right; font-weight:700; background:var(--bg);" data-label="">Order price ({{ pkg.discount_percent|round(2) }}% off)</td>
+            <td class="num mono qty-up" style="font-weight:700; background:var(--bg);" data-label="Total">{{ discounted_total|peso }}</td>
+            <td style="background:var(--bg);" data-label=""></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="glyph">—</div>
+      <p>No products in this package yet — add one on the right.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
+    {% if available_products %}
+    <form method="POST" action="{{ url_for('admin.add_package_item', package_id=pkg.package_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="sku">Product</label>
+        <select id="sku" name="sku" required>
+          <option value="">Select…</option>
+          {% for p in available_products %}
+          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.unit }} ({{ p.variant }}) · {{ p.price|peso }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="qty">Qty per set</label>
+        <input type="number" id="qty" name="qty" min="1" value="1" required>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add to package</button>
+    </form>
+    {% else %}
+    <p class="text-faint" style="font-size:12.5px;">Every product in the catalog is already in this package.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card card-pad mt-24" style="max-width:640px;">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Package details</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Name, discount, and availability — editable any time.</p>
+  <form method="POST" action="{{ url_for('admin.edit_package', package_id=pkg.package_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="package_name">Package name</label>
+      <input type="text" id="package_name" name="package_name" value="{{ pkg.package_name }}" required>
+    </div>
+    <div class="field">
+      <label for="description">Description <span class="text-faint">(optional)</span></label>
+      <input type="text" id="description" name="description" maxlength="255" value="{{ pkg.description or '' }}">
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="partner_scope">Available to</label>
+        <select id="partner_scope" name="partner_scope" required>
+          <option value="Both" {{ 'selected' if pkg.partner_scope == 'Both' }}>Both distributors &amp; resellers</option>
+          {% for t in partner_types %}
+          <option value="{{ t }}" {{ 'selected' if pkg.partner_scope == t }}>{{ t }}s only</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="discount_percent">Discount (%)</label>
+        <input type="number" id="discount_percent" name="discount_percent" step="0.01" min="0" max="100" value="{{ pkg.discount_percent }}" required>
+      </div>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
+        <input type="checkbox" name="is_active" value="1" style="width:auto;" {{ 'checked' if pkg.is_active }}>
+        Active — visible for partners to order
+      </label>
+      <div class="help">Uncheck to retire this package without deleting its history.</div>
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%;">Save changes</button>
+  </form>
+</div>
+{% endblock %}

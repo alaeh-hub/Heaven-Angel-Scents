@@ -16,6 +16,9 @@ __pycache__/
 *.sqlite3
 instance/
 
+# Uploaded product images stay local and are not committed
+static/uploads/
+
 # Local tooling and test output
 .pytest_cache/
 .coverage

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Packages{% endblock %}
+{% block eyebrow %}Partners &amp; Distribution{% endblock %}
+{% block heading %}Packages{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>All packages</h2>
+      <span class="hint">{{ package_list|length }} total</span>
+    </div>
+    {% if package_list %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>For</th>
+            <th class="num">Items</th>
+            <th class="num">Reference value</th>
+            <th class="num">Discount</th>
+            <th class="num">Order price</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in package_list %}
+          <tr>
+            <td data-label="Package">
+              <div class="item-name">{{ pkg.package_name }}</div>
+              {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
+            </td>
+            <td data-label="For">
+              <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+            </td>
+            <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
+            <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
+            <td class="num mono" data-label="Discount">{{ pkg.discount_percent|round(2) }}%</td>
+            <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
+            <td data-label="Status">
+              <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
+            </td>
+            <td data-label="">
+              <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount — this is what shows up when they order.</p>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="glyph">✦</div>
+      <p>No packages yet — create one, then add products to it.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create a package</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Give it a name and a discount now — you'll add the actual products on the next screen.
+    </p>
+    <form method="POST" action="{{ url_for('admin.packages') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="package_name">Package name</label>
+        <input type="text" id="package_name" name="package_name" placeholder="e.g. Starter Bundle" required>
+      </div>
+      <div class="field">
+        <label for="description">Description <span class="text-faint">(optional)</span></label>
+        <input type="text" id="description" name="description" maxlength="255" placeholder="What's this bundle for?">
+      </div>
+      <div class="field">
+        <label for="partner_scope">Available to</label>
+        <select id="partner_scope" name="partner_scope" required>
+          <option value="Both">Both distributors &amp; resellers</option>
+          {% for t in partner_types %}
+          <option value="{{ t }}">{{ t }}s only</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="discount_percent">Discount off reference price (%)</label>
+        <input type="number" id="discount_percent" name="discount_percent" step="0.01" min="0" max="100" placeholder="15.00" required>
+        <div class="help">Applied to the combined price of everything in the bundle. Editable any time from the package's page.</div>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Create package</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
