@@ -35,6 +35,7 @@
         <table class="smart-table">
           <thead>
             <tr>
+              <th></th>
               <th>Item</th>
               <th>Variant</th>
               <th>Unit</th>
@@ -47,6 +48,7 @@
             {% for p in catalog %}
             <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
               data-unit="{{ p.unit }}">
+              <td data-label="">{{ m.product_thumb(p.image_path, p.item_name) }}</td>
               <td data-label="Item">
                 <div class="item-name">{{ p.item_name }}</div>
                 <div class="item-sub mono">{{ p.sku }}</div>
@@ -58,7 +60,8 @@
               <td data-label="">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="openEditProduct(this)"
                   data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
-                  data-unit="{{ p.unit }}" data-price="{{ p.price }}">Edit</button>
+                  data-unit="{{ p.unit }}" data-price="{{ p.price }}"
+                  data-image-url="{{ url_for('static', filename=p.image_path) if p.image_path else '' }}">Edit</button>
               </td>
             </tr>
             {% endfor %}
@@ -88,7 +91,7 @@
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
       Reuse the code for another size as a new row. Need to change an existing product's details? Use Edit on that row instead.
     </p>
-    <form method="POST" id="addProductForm">
+    <form method="POST" id="addProductForm" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="base_code">Product code</label>
@@ -123,6 +126,11 @@
         <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
         <div class="help">Each unit has its own price. Branches can charge differently at checkout.</div>
       </div>
+      <div class="field">
+        <label for="image">Product image <span class="text-faint">(optional)</span></label>
+        <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp">
+        <div class="help">JPG, PNG, or WEBP. This is per size — reusing the code for another size needs its own image too.</div>
+      </div>
       <div class="field" id="skuPreviewField" style="display:none;">
         <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>
       </div>
@@ -137,7 +145,7 @@
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       SKU <strong id="editProductSkuLabel" class="mono"></strong> — the SKU itself can't be changed here.
     </p>
-    <form method="POST" action="{{ url_for('admin.edit_product') }}" id="editProductForm">
+    <form method="POST" action="{{ url_for('admin.edit_product') }}" id="editProductForm" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="sku" id="editSku">
       <div class="field">
@@ -163,6 +171,18 @@
       <div class="field">
         <label for="editPrice">Price for this unit (₱)</label>
         <input type="number" id="editPrice" name="price" step="0.01" min="0" required>
+      </div>
+      <div class="field">
+        <label>Product image</label>
+        <div id="editImagePreviewWrap" style="margin-bottom:8px;"></div>
+        <input type="file" id="editImage" name="image" accept="image/png,image/jpeg,image/webp">
+        <div class="help">Leave blank to keep the current image.</div>
+      </div>
+      <div class="field" id="editRemoveImageField" style="display:none;">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
+          <input type="checkbox" id="editRemoveImage" name="remove_image" value="1" style="width:auto;">
+          Remove current image
+        </label>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="editProductCancelBtn">Cancel</button>
@@ -211,6 +231,10 @@
     var unitDisplay = document.getElementById('editUnitDisplay');
     var priceInput = document.getElementById('editPrice');
     var cancelBtn = document.getElementById('editProductCancelBtn');
+    var imageInput = document.getElementById('editImage');
+    var imagePreviewWrap = document.getElementById('editImagePreviewWrap');
+    var removeImageField = document.getElementById('editRemoveImageField');
+    var removeImageCheckbox = document.getElementById('editRemoveImage');
     if (!overlay) return;
 
     window.openEditProduct = function (btn) {
@@ -220,6 +244,18 @@
       variantSelect.value = btn.dataset.variant;
       unitDisplay.value = btn.dataset.unit;
       priceInput.value = btn.dataset.price;
+
+      imageInput.value = '';
+      removeImageCheckbox.checked = false;
+      var imageUrl = btn.dataset.imageUrl;
+      if (imageUrl) {
+        imagePreviewWrap.innerHTML = '<img src="' + imageUrl + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">';
+        removeImageField.style.display = '';
+      } else {
+        imagePreviewWrap.innerHTML = '<span class="text-faint" style="font-size:12.5px;">No image set yet.</span>';
+        removeImageField.style.display = 'none';
+      }
+
       overlay.style.display = 'flex';
     };
 

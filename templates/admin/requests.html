@@ -6,11 +6,12 @@
 
 {% block content %}
 <div class="tabs">
-  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Fulfilled','Fulfilled'), ('Rejected','Rejected')] %}
-  <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('admin.requests_list', status=key) }}">{{ label }}</a>
+  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Fulfilled','Fulfilled'),
+  ('Rejected','Rejected')] %}
+  <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('admin.requests_list', status=key) }}">{{ label
+    }}</a>
   {% endfor %}
 </div>
-
 <div class="card">
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
@@ -19,23 +20,37 @@
     </p>
   </div>
   {% if stock_requests %}
-  <div data-smart-table data-page-size="12">
+  <div data-smart-table data-page-size="10">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
         <input type="text" class="smart-search-input" placeholder="Search by branch or delivery #…" autocomplete="off">
       </div>
     </div>
     <div class="table-wrap">
       <table class="smart-table">
-        <thead><tr><th>Requested</th><th>Branch</th><th>Delivery #</th><th class="num">Items</th><th class="num">Total value</th><th>Status</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            <th>Requested</th>
+            <th>Branch</th>
+            <th>Delivery #</th>
+            <th class="num">Items</th>
+            <th class="num">Total value</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in stock_requests %}
           <tr data-search="{{ (r.branch_name ~ ' ' ~ r.delivery_number)|lower }}">
             <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Branch">{{ r.branch_name }}</td>
             <td data-label="Delivery #">
-              <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}" class="mono item-name">{{ r.delivery_number }}</a>
+              <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}" class="mono item-name">{{
+                r.delivery_number }}</a>
             </td>
             <td class="num mono" data-label="Items">{{ r.item_count }}</td>
             <td class="num mono" data-label="Total value">{{ r.total_value|peso }}</td>
@@ -43,9 +58,10 @@
             <td data-label="">
               {% if r.status == 'Pending' %}
               <div class="inline-form">
-                <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}" class="btn btn-accent btn-sm">Review &amp; dispatch</a>
+                <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}"
+                  class="btn btn-accent btn-sm">Review &amp; dispatch</a>
                 <form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}"
-                      onsubmit="return confirm('Reject {{ r.delivery_number }}? This can\'t be undone.');">
+                  onsubmit="return confirm('Reject {{ r.delivery_number }}? This can\'t be undone.');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger btn-sm">Reject</button>
                 </form>
@@ -54,8 +70,10 @@
               <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
               {% elif r.status == 'Fulfilled' %}
               <div class="inline-form">
-                <span class="text-faint" style="font-size:12.5px;">received {{ r.total_received }}{% if r.total_damaged %}, {{ r.total_damaged }} damaged{% endif %}</span>
-                <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+                <span class="text-faint" style="font-size:12.5px;">received {{ r.total_received }}{% if r.total_damaged
+                  %}, {{ r.total_damaged }} damaged{% endif %}</span>
+                <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}"
+                  class="btn btn-ghost btn-sm">Receipt</a>
               </div>
               {% else %}
               <span class="text-faint" style="font-size:12.5px;">—</span>
@@ -77,7 +95,10 @@
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No requests in this view.</p></div>
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No requests in this view.</p>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

@@ -77,6 +77,7 @@
       <table class="smart-table">
         <thead>
           <tr>
+            <th></th>
             <th>Item</th>
             <th>Variant</th>
             <th>Unit</th>
@@ -89,6 +90,7 @@
           {% for row in rows %}
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}"
             data-unit="{{ row.unit }}">
+            <td data-label="">{{ m.product_thumb(row.image_path, row.item_name) }}</td>
             <td data-label="Item">
               <div class="item-name">{{ row.item_name }}</div>
               <div class="item-sub mono">{{ row.sku }}</div>
@@ -113,7 +115,8 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Every branch sells at the reference price by default — the amount actually
+    <p class="text-faint" style="font-size:12px;">Every branch sells at the reference price by default — the amount
+      actually
       charged is recorded per sale on the Record Sale page, not set here.</p>
   </div>
   {% else %}

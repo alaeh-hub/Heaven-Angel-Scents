@@ -89,7 +89,7 @@ def dashboard():
 def inventory():
     bid = _branch_id()
     rows = query(
-        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price,
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, p.image_path,
                   bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s

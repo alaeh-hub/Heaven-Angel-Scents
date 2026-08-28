@@ -60,11 +60,36 @@ CREATE TABLE IF NOT EXISTS products (
     variant     ENUM('Male', 'Female', 'Unisex') NOT NULL,
     unit        ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL DEFAULT '50ML',
     price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    -- Path to the uploaded product photo, relative to the Flask app's
+    -- static folder (e.g. 'uploads/products/<uuid>.jpg'), so it can be
+    -- rendered anywhere with url_for('static', filename=image_path).
+    -- NULL means no image has been uploaded for this SKU yet.
+    image_path  VARCHAR(255) NULL,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     -- No is_active column anymore: products are edited in place from the
     -- admin Products page rather than discontinued/reactivated. See the
     -- migration block below for the DROP COLUMN that removes it from an
     -- existing database.
+);
+
+-- ----------------------------------------------------------------------------
+-- 3a. Suppliers
+--
+--    Vendors raw materials are purchased from. Kept separate from
+--    raw_materials (rather than a free-text field on it) so the same
+--    supplier can be reused across many materials and edited in one
+--    place. supplier_id on raw_materials is nullable — a material
+--    doesn't have to have a supplier on record yet.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS suppliers (
+    supplier_id     INT AUTO_INCREMENT PRIMARY KEY,
+    supplier_name   VARCHAR(100) NOT NULL UNIQUE,
+    contact_person  VARCHAR(100) NULL,
+    phone           VARCHAR(30) NULL,
+    email           VARCHAR(120) NULL,
+    address         VARCHAR(255) NULL,
+    notes           VARCHAR(255) NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ----------------------------------------------------------------------------
@@ -76,6 +101,10 @@ CREATE TABLE IF NOT EXISTS products (
 --    admin Materials page rather than deactivated/reactivated. See the
 --    migration block below for the DROP COLUMN that removes it from an
 --    existing database.
+--
+--    supplier_id is nullable — a material can exist before its supplier
+--    is on record — and set to NULL (not cascaded) if its supplier is
+--    ever removed, so a material never disappears because of that.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS raw_materials (
     material_id    INT AUTO_INCREMENT PRIMARY KEY,
@@ -84,7 +113,9 @@ CREATE TABLE IF NOT EXISTS raw_materials (
     package_qty    DECIMAL(10, 3) NOT NULL DEFAULT 1.000,
     package_cost   DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     cost_per_unit  DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
-    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    supplier_id    INT NULL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL
 );
 
 -- ----------------------------------------------------------------------------
@@ -329,6 +360,15 @@ BEGIN
                 NOT NULL DEFAULT '50ML' AFTER variant;
     END IF;
 
+    -- products.image_path -------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'image_path'
+    ) THEN
+        ALTER TABLE products
+            ADD COLUMN image_path VARCHAR(255) NULL AFTER price;
+    END IF;
+
     -- branch_inventory.branch_price — removed; per-branch price
     -- overrides no longer exist, every branch sells at products.price.
     IF EXISTS (
@@ -356,6 +396,21 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'is_active'
     ) THEN
         ALTER TABLE raw_materials DROP COLUMN is_active;
+    END IF;
+
+    -- raw_materials.supplier_id -------------------------------------------
+    -- Added alongside the new suppliers table (see section 3a above,
+    -- which is always created earlier in this script, so the FK target
+    -- exists by the time this ALTER runs on either a fresh install or
+    -- an upgrade).
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'supplier_id'
+    ) THEN
+        ALTER TABLE raw_materials
+            ADD COLUMN supplier_id INT NULL AFTER cost_per_unit;
+        ALTER TABLE raw_materials ADD CONSTRAINT fk_raw_materials_supplier
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL;
     END IF;
 
     -- sales.sale_type -----------------------------------------------------

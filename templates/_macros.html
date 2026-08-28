@@ -1,58 +1,77 @@
 {% macro fill_bar(qty, reference) %}
 {% set pct = (qty / reference * 100) if reference else 0 %}
 {% set pct = 100 if pct > 100 else pct %}
-{% set low = qty <= (reference / 4) %}
-<div class="fill-row">
-  <div class="fill-track"><div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}"></div></div>
+{% set low = qty <= (reference / 4) %} <div class="fill-row">
+  <div class="fill-track">
+    <div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}"></div>
+  </div>
   <span class="fill-qty num">{{ qty }} u</span>
-</div>
-{% endmacro %}
+  </div>
+  {% endmacro %}
 
-{% macro status_badge(status) %}
-{% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
-<span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
-{% endmacro %}
+  {% macro status_badge(status) %}
+  {% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
+  <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
+  {% endmacro %}
 
-{% macro variant_badge(variant) %}
-<span class="badge badge-{{ variant|lower }}">{{ variant }}</span>
-{% endmacro %}
+  {% macro product_thumb(image_path, alt, size=40) %}
+  {% if image_path %}
+  <img src="{{ url_for('static', filename=image_path) }}" alt="{{ alt }}" class="product-thumb" width="{{ size }}"
+    height="{{ size }}">
+  {% else %}
+  <div class="product-thumb product-thumb-empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="20" height="20">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </svg>
+  </div>
+  {% endif %}
+  {% endmacro %}
 
-{% macro variant_tag(variant) %}
-<span class="tag-dot tag-{{ variant|lower }}">{{ variant }}</span>
-{% endmacro %}
+  {% macro variant_badge(variant) %}
+  <span class="badge badge-{{ variant|lower }}">{{ variant }}</span>
+  {% endmacro %}
 
-{% macro movement_badge(mtype) %}
-{% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL': 'female', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
-<span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
-{% endmacro %}
+  {% macro variant_tag(variant) %}
+  <span class="tag-dot tag-{{ variant|lower }}">{{ variant }}</span>
+  {% endmacro %}
 
-{# A Sale is the normal case (customer takes a bottle). A Refill is a
-   customer bringing their own bottle back and only paying for product.
-   Both consume stock the same way — this badge is purely a visual cue
-   for which one a given row was. #}
-{% macro sale_type_badge(sale_type) %}
-{% set map = {'Sale': 'fulfilled', 'Refill': 'transit'} %}
-<span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
-{% endmacro %}
+  {% macro movement_badge(mtype) %}
+  {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL':
+  'female', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
+  <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
+  {% endmacro %}
 
-{# Cash is a normal register transaction. Salary Deduction is an employee
-   taking product for themselves where the cost comes out of their pay
-   instead of the register — flagged distinctly so it's easy to spot
-   rows that need to be reconciled with payroll rather than the till. #}
-{% macro payment_method_badge(payment_method, buyer_username=None) %}
-{% if payment_method == 'Salary Deduction' %}
-<span class="badge badge-pending badge-payroll" title="Deducted from {{ buyer_username or 'an employee' }}'s salary, not paid in cash">Salary{% if buyer_username %}<span class="badge-payroll-name"> · {{ buyer_username }}</span>{% endif %}</span>
-{% else %}
-<span class="badge badge-active">Cash</span>
-{% endif %}
-{% endmacro %}
+  {# A Sale is the normal case (customer takes a bottle). A Refill is a
+  customer bringing their own bottle back and only paying for product.
+  Both consume stock the same way — this badge is purely a visual cue
+  for which one a given row was. #}
+  {% macro sale_type_badge(sale_type) %}
+  {% set map = {'Sale': 'fulfilled', 'Refill': 'transit'} %}
+  <span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
+  {% endmacro %}
 
-{% macro discontinued_badge() %}
-<span class="badge badge-inactive" title="No longer available to request or sell">Discontinued</span>
-{% endmacro %}
+  {# Cash is a normal register transaction. Salary Deduction is an employee
+  taking product for themselves where the cost comes out of their pay
+  instead of the register — flagged distinctly so it's easy to spot
+  rows that need to be reconciled with payroll rather than the till. #}
+  {% macro payment_method_badge(payment_method, buyer_username=None) %}
+  {% if payment_method == 'Salary Deduction' %}
+  <span class="badge badge-pending badge-payroll"
+    title="Deducted from {{ buyer_username or 'an employee' }}'s salary, not paid in cash">Salary{% if buyer_username
+    %}<span class="badge-payroll-name"> · {{ buyer_username }}</span>{% endif %}</span>
+  {% else %}
+  <span class="badge badge-active">Cash</span>
+  {% endif %}
+  {% endmacro %}
 
-{% macro action_label(action) %}
-{% set map = {
+  {% macro discontinued_badge() %}
+  <span class="badge badge-inactive" title="No longer available to request or sell">Discontinued</span>
+  {% endmacro %}
+
+  {% macro action_label(action) %}
+  {% set map = {
   'create_account': 'Account created',
   'toggle_user': 'Account status changed',
   'reset_password': 'Password reset',
@@ -60,16 +79,19 @@
   'edit_product': 'Product edited',
   'add_branch': 'Branch added',
   'add_material': 'Material added',
-  'edit_material': 'Material edited'
-} %}
-{{ map.get(action, action|replace('_', ' ')|capitalize) }}
-{% endmacro %}
+  'edit_material': 'Material edited',
+  'add_supplier': 'Supplier added',
+  'edit_supplier': 'Supplier edited'
+  } %}
+  {{ map.get(action, action|replace('_', ' ')|capitalize) }}
+  {% endmacro %}
 
-{% macro action_badge(action) %}
-{% set map = {
+  {% macro action_badge(action) %}
+  {% set map = {
   'create_account': 'fulfilled', 'add_product': 'fulfilled', 'add_branch': 'fulfilled', 'add_material': 'fulfilled',
-  'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit',
+  'add_supplier': 'fulfilled',
+  'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit', 'edit_supplier': 'transit',
   'reset_password': 'transit'
-} %}
-<span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
-{% endmacro %}
+  } %}
+  <span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
+  {% endmacro %}

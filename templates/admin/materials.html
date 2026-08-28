@@ -37,6 +37,7 @@
           <tr>
             <th>Material</th>
             <th>Purchased as</th>
+            <th>Supplier</th>
             <th class="num">Cost per unit</th>
             <th></th>
           </tr>
@@ -46,12 +47,13 @@
           <tr>
             <td class="item-name" data-label="Material">{{ mat.material_name }}</td>
             <td class="text-soft" data-label="Purchased as">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit }} for {{ mat.package_cost|peso }}</td>
+            <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
             <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
             <td data-label="">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
                 data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
                 data-package-qty="{{ mat.package_qty }}" data-unit="{{ mat.unit }}"
-                data-package-cost="{{ mat.package_cost }}">Edit</button>
+                data-package-cost="{{ mat.package_cost }}" data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
             </td>
           </tr>
           {% endfor %}
@@ -97,7 +99,101 @@
         <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
         <div class="help" id="costPreview" style="display:none;"></div>
       </div>
+      <div class="field">
+        <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
+        <select id="supplier_id" name="supplier_id">
+          <option value="">No supplier on record</option>
+          {% for s in suppliers %}
+          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <button type="submit" class="btn btn-accent" style="width:100%;">Add material</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid mt-24" style="grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Suppliers</h2>
+      <span class="hint" id="suppliersCount">{{ suppliers|length }} supplier{{ 's' if suppliers|length != 1 }}</span>
+    </div>
+    {% if suppliers %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Contact</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th class="num">Materials</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in suppliers %}
+          <tr>
+            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+            <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
+            <td class="mono text-soft" data-label="Phone">{{ s.phone or '—' }}</td>
+            <td class="text-soft" data-label="Email">{{ s.email or '—' }}</td>
+            <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
+            <td data-label="">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
+                data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
+                data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
+                data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
+                data-notes="{{ s.notes or '' }}">Edit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No suppliers added yet.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a supplier</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+      Only the name is required — fill in what you have and add the rest later from Edit.
+    </p>
+    <form method="POST" action="{{ url_for('admin.add_supplier') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="supplier_name">Supplier name</label>
+        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
+        <input type="text" id="contact_person" name="contact_person" maxlength="100">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
+          <input type="text" id="phone" name="phone" maxlength="30">
+        </div>
+        <div class="field">
+          <label for="email">Email <span class="text-faint">(optional)</span></label>
+          <input type="email" id="email" name="email" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="address">Address <span class="text-faint">(optional)</span></label>
+        <input type="text" id="address" name="address" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+        <input type="text" id="notes" name="notes" maxlength="255">
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Add supplier</button>
     </form>
   </div>
 </div>
@@ -227,8 +323,60 @@
         <input type="number" id="editPackageCost" name="package_cost" step="0.01" min="0" required>
         <div class="help" id="editCostPreview" style="display:none;"></div>
       </div>
+      <div class="field">
+        <label for="editMaterialSupplierId">Supplier <span class="text-faint">(optional)</span></label>
+        <select id="editMaterialSupplierId" name="supplier_id">
+          <option value="">No supplier on record</option>
+          {% for s in suppliers %}
+          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="editMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="editSupplierOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Edit supplier</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Changes apply immediately — every material already linked to this supplier will show the updated details.
+    </p>
+    <form method="POST" action="{{ url_for('admin.edit_supplier') }}" id="editSupplierForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="supplier_id" id="editSupplierId">
+      <div class="field">
+        <label for="editSupplierName">Supplier name</label>
+        <input type="text" id="editSupplierName" name="supplier_name" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="editContactPerson">Contact person</label>
+        <input type="text" id="editContactPerson" name="contact_person" maxlength="100">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="editPhone">Phone</label>
+          <input type="text" id="editPhone" name="phone" maxlength="30">
+        </div>
+        <div class="field">
+          <label for="editEmail">Email</label>
+          <input type="email" id="editEmail" name="email" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="editAddress">Address</label>
+        <input type="text" id="editAddress" name="address" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="editSupplierNotes">Notes</label>
+        <input type="text" id="editSupplierNotes" name="notes" maxlength="255">
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="editSupplierCancelBtn">Cancel</button>
         <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
       </div>
     </form>
@@ -281,6 +429,7 @@
     var unitSelect = document.getElementById('editUnit');
     var costInput = document.getElementById('editPackageCost');
     var costPreview = document.getElementById('editCostPreview');
+    var supplierSelect = document.getElementById('editMaterialSupplierId');
     var cancelBtn = document.getElementById('editMaterialCancelBtn');
 
     function updateEditCostPreview() {
@@ -305,7 +454,40 @@
       qtyInput.value = btn.dataset.packageQty;
       unitSelect.value = btn.dataset.unit;
       costInput.value = btn.dataset.packageCost;
+      supplierSelect.value = btn.dataset.supplierId || '';
       updateEditCostPreview();
+      overlay.style.display = 'flex';
+    };
+
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  })();
+
+  (function () {
+    var overlay = document.getElementById('editSupplierOverlay');
+    if (!overlay) return;
+    var idInput = document.getElementById('editSupplierId');
+    var nameInput = document.getElementById('editSupplierName');
+    var contactInput = document.getElementById('editContactPerson');
+    var phoneInput = document.getElementById('editPhone');
+    var emailInput = document.getElementById('editEmail');
+    var addressInput = document.getElementById('editAddress');
+    var notesInput = document.getElementById('editSupplierNotes');
+    var cancelBtn = document.getElementById('editSupplierCancelBtn');
+
+    window.openEditSupplier = function (btn) {
+      idInput.value = btn.dataset.supplierId;
+      nameInput.value = btn.dataset.supplierName;
+      contactInput.value = btn.dataset.contactPerson;
+      phoneInput.value = btn.dataset.phone;
+      emailInput.value = btn.dataset.email;
+      addressInput.value = btn.dataset.address;
+      notesInput.value = btn.dataset.notes;
       overlay.style.display = 'flex';
     };
 

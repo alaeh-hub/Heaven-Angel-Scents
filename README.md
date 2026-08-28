@@ -93,6 +93,8 @@ Key updates in the current codebase:
 - Added an Admin salary-deduction report with branch visibility and filtering, plus responsive salary-deduction badges for web tables.
 - Added a live Philippines-time dashboard clock and server-side `+08:00` database sessions so AI and dashboard "today" sales use Philippine time.
 - Added a read-only AI assistant with role-scoped summaries for admin and branch users.
+- Added supplier records with optional supplier details and material-to-supplier links for purchasing traceability.
+- Added optional product image upload, replacement, removal, and thumbnail display in product and branch inventory views.
 - Hardened the application with production-ready settings, database safeguards, and security checks.
 
 ### Requested Feature Verification
@@ -137,6 +139,7 @@ Branch accounts are assigned to one retail branch. They can view their branch da
 | --- | --- | --- |
 | Dashboard | `/admin/` | Active SKU, branch, pending-request, and low-stock metrics; alerts; recent activity; top sellers. |
 | Products | `/admin/products` | Create products and view the catalog with total stock. |
+| Materials and suppliers | `/admin/materials` | Record material usage, manage supplier contact details, and link materials to suppliers. |
 | Product status | `/admin/products/<sku>/toggle` | Toggle active/discontinued status without deleting the product. |
 | Production | `/admin/production` | Record production, optional batch code, and HQ stock changes. |
 | Branches | `/admin/branches` | Create retail branches and initialize product inventory rows. |
@@ -149,7 +152,7 @@ Branch accounts are assigned to one retail branch. They can view their branch da
 | Reports | `/admin/reports` | Select and download Admin reports. |
 | Report data | `/admin/api/reports-data` | Return JSON metrics for Admin charts. |
 
-Products use the variants `Male`, `Female`, or `Unisex`. Discontinuing a product is a soft status change; historical records remain available.
+Products use the variants `Male`, `Female`, or `Unisex`. Product images are optional and accept JPG, PNG, or WEBP uploads; admins can replace or remove an image while editing a product. Discontinuing a product is a soft status change; historical records remain available.
 
 ## Branch Workflows
 
@@ -233,7 +236,9 @@ The core schema is defined in `schema.sql`.
 | --- | --- |
 | `branches` | HQ and retail branch identity, location, and HQ flag. |
 | `users` | Username, password hash, role, branch assignment, active status, and forced-password flag. |
-| `products` | SKU, item name, variant, HQ price, and active status. |
+| `products` | SKU, item name, variant, HQ price, optional image path, and active status. |
+| `suppliers` | Supplier name, contact details, address, notes, and timestamps. |
+| `raw_materials` | Material usage, package costing, and optional supplier link. |
 | `branch_inventory` | One row per branch/SKU with stock, reorder threshold, and optional price override. |
 | `production_logs` | HQ production quantity, optional batch code, and timestamp. |
 | `stock_requests` | Requested, dispatched, received, and damaged quantities plus request status. |

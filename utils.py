@@ -131,6 +131,25 @@ def build_sku(base_code, unit):
     return f"{base_code}-{suffix}"
 
 
+def parse_optional_id(raw, field_label="Value"):
+    """Parse an optional foreign-key id from a form <select> (e.g. a
+    'No supplier' blank option). Returns None for an empty value, or a
+    positive int. Unlike parse_positive_int, blank is valid here — the
+    field itself is optional; callers are still responsible for
+    confirming the id actually exists before using it.
+    """
+    raw = str(raw or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError(f"{field_label} is invalid.")
+    if value <= 0:
+        raise ValidationError(f"{field_label} is invalid.")
+    return value
+
+
 def generate_temp_password(length=12):
     """Generate a random temporary password for admin-triggered resets."""
     alphabet = string.ascii_letters + string.digits

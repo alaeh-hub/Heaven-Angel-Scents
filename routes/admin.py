@@ -1,10 +1,13 @@
 import datetime
+import os
+import uuid
 
 from flask import (
     Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
     request, send_file, session, url_for,
 )
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 
 from db import execute, query, transaction
 from decorators import admin_required
@@ -15,7 +18,7 @@ from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_be
 from utils import (
     MATERIAL_UNITS, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, build_sku,
     generate_temp_password, parse_base_code, parse_non_negative_decimal, parse_non_negative_int,
-    parse_positive_decimal, parse_positive_int,
+    parse_optional_id, parse_positive_decimal, parse_positive_int,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -145,6 +148,56 @@ def dashboard():
     )
 
 
+# ---------------------------------------------------------------- product images
+# Uploaded product photos are stored under <static>/uploads/products/ and
+# referenced from products.image_path as a path relative to the static
+# folder (e.g. "uploads/products/<uuid>.jpg"), so they can be rendered
+# anywhere with url_for('static', filename=...).
+ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+PRODUCT_IMAGE_SUBDIR = "uploads/products"
+
+
+def _save_product_image(file_storage):
+    """Validate and persist an uploaded product image. Returns the
+    image_path to store on the product row, or None if no file was
+    actually chosen (the field is optional). Raises ValidationError on
+    an unsupported file type.
+    """
+    if not file_storage or not file_storage.filename:
+        return None
+
+    filename = secure_filename(file_storage.filename)
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValidationError(
+            "Product image must be a JPG, PNG, or WEBP file.")
+
+    upload_dir = os.path.join(
+        current_app.static_folder, *PRODUCT_IMAGE_SUBDIR.split("/"))
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # Random filename — never trust/re-use the uploader's own filename
+    # beyond checking its extension, and this also sidesteps any
+    # collision between products.
+    stored_name = f"{uuid.uuid4().hex}.{ext}"
+    file_storage.save(os.path.join(upload_dir, stored_name))
+    return f"{PRODUCT_IMAGE_SUBDIR}/{stored_name}"
+
+
+def _delete_product_image(image_path):
+    """Best-effort removal of a product image file that's being replaced
+    or cleared. Never raises — a missing/already-gone file shouldn't
+    block the request that's replacing it."""
+    if not image_path:
+        return
+    full_path = os.path.join(current_app.static_folder, image_path)
+    try:
+        if os.path.isfile(full_path):
+            os.remove(full_path)
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------- products
 @bp.route("/products", methods=["GET", "POST"])
 @admin_required
@@ -166,6 +219,9 @@ def products():
             # admin-entered code) — build_sku() is what actually makes each
             # one a distinct SKU/row, with its own price and stock.
             sku = build_sku(base_code, unit)
+            # Optional — validated and saved to disk here so a bad file
+            # type is caught before we touch the database at all.
+            image_path = _save_product_image(request.files.get("image"))
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.products"))
@@ -174,8 +230,9 @@ def products():
             with transaction() as conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "INSERT INTO products (sku, item_name, variant, unit, price) VALUES (%s, %s, %s, %s, %s)",
-                    (sku, item_name, variant, unit, price),
+                    "INSERT INTO products (sku, item_name, variant, unit, price, image_path) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (sku, item_name, variant, unit, price, image_path),
                 )
                 # Give every existing branch (and HQ) a zero-stock row so
                 # it shows up everywhere. Both writes happen in one
@@ -194,6 +251,11 @@ def products():
                        details=f"{item_name} ({variant}, {unit}) — ₱{price:,.2f}")
             flash(f"{item_name} — {unit} ({sku}) added to the catalog.", "success")
         except Exception:
+            # The SKU insert failed (almost always a duplicate base
+            # code + unit) — don't leave an orphaned image file behind
+            # for a product row that was never created.
+            if image_path:
+                _delete_product_image(image_path)
             flash(f"'{base_code}' already has a {unit} entry (SKU {sku}).", "error")
         return redirect(url_for("admin.products"))
 
@@ -212,8 +274,13 @@ def edit_product():
     sku = request.form.get("sku")
     item_name = request.form.get("item_name", "").strip()
     variant = request.form.get("variant")
+    # Checkbox only rendered (and only meaningful) when the product
+    # already has an image — see products.html.
+    remove_image = request.form.get("remove_image") == "1"
 
-    product = query("SELECT sku, item_name, unit FROM products WHERE sku = %s", (sku,), fetchone=True)
+    product = query(
+        "SELECT sku, item_name, unit, image_path FROM products WHERE sku = %s", (sku,), fetchone=True
+    )
     if not product:
         flash("That product no longer exists.", "error")
         return redirect(url_for("admin.products"))
@@ -221,10 +288,23 @@ def edit_product():
     try:
         price = parse_non_negative_decimal(request.form.get("price"), "Price")
         if not item_name or variant not in ("Male", "Female", "Unisex"):
-            raise ValidationError("Please fill in every field with a valid value.")
+            raise ValidationError(
+                "Please fill in every field with a valid value.")
+        # Optional — a new file replaces the existing image. Validated
+        # and saved here so a bad file type is caught before the row
+        # is touched at all.
+        new_image_path = _save_product_image(request.files.get("image"))
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.products"))
+
+    old_image_path = product["image_path"]
+    if new_image_path:
+        image_path = new_image_path
+    elif remove_image:
+        image_path = None
+    else:
+        image_path = old_image_path
 
     # unit is intentionally not editable here — it's baked into the SKU
     # itself (see build_sku() above), so changing it on an existing row
@@ -232,9 +312,15 @@ def edit_product():
     # change a product's size, add it again under the same base code
     # with the new unit — that gets its own SKU, same as any other size.
     execute(
-        "UPDATE products SET item_name = %s, variant = %s, price = %s WHERE sku = %s",
-        (item_name, variant, price, sku),
+        "UPDATE products SET item_name = %s, variant = %s, price = %s, image_path = %s WHERE sku = %s",
+        (item_name, variant, price, image_path, sku),
     )
+    # Only delete the old file once the row has been updated to point
+    # elsewhere (or nowhere) — never delete first, so a crash mid-request
+    # can't leave the row referencing a file that's already gone.
+    if old_image_path and old_image_path != image_path:
+        _delete_product_image(old_image_path)
+
     notify_all(["products", "inventory"])
     log_action("edit_product", target=sku,
                details=f"{item_name} ({variant}, {product['unit']}) — ₱{price:,.2f}")
@@ -370,7 +456,7 @@ def branch_stock():
     if branch_filter != "all":
         rows = query(
             """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant, p.unit,
-                      p.price AS hq_price, bi.stock_qty, bi.reorder_level
+                      p.price AS hq_price, p.image_path, bi.stock_qty, bi.reorder_level
                FROM branch_inventory bi
                JOIN branches b ON bi.branch_id = b.branch_id
                JOIN products p ON bi.sku = p.sku
@@ -433,7 +519,6 @@ def record_sale():
             flash("Select a product.", "error")
             return redirect(url_for("admin.record_sale"))
 
-        # AFTER
         buyer_name = None
         if payment_method == "Salary Deduction":
             if not raw_buyer:
@@ -472,7 +557,6 @@ def record_sale():
                 before_qty = stock_row["stock_qty"]
                 after_qty = before_qty if is_refill else before_qty - qty
 
-                # AFTER
                 cur.execute(
                     """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_name)
                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
@@ -485,7 +569,6 @@ def record_sale():
                         (after_qty, HQ_BRANCH_ID, sku),
                     )
                 movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                # AFTER
                 notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Salary deduction — {buyer_name}"
                 if is_refill:
                     notes += " · no stock deducted (refill)"
@@ -1082,6 +1165,7 @@ def reports_data():
     )
 
 
+# ---------------------------------------------------------------- materials
 @bp.route("/materials", methods=["GET", "POST"])
 @admin_required
 def materials():
@@ -1091,31 +1175,56 @@ def materials():
 
         try:
             if not material_name or unit not in MATERIAL_UNITS:
-                raise ValidationError("Please fill in every field with a valid value.")
-            package_qty = parse_positive_decimal(request.form.get("package_qty"), "Package quantity")
-            package_cost = parse_non_negative_decimal(request.form.get("package_cost"), "Package cost")
+                raise ValidationError(
+                    "Please fill in every field with a valid value.")
+            package_qty = parse_positive_decimal(
+                request.form.get("package_qty"), "Package quantity")
+            package_cost = parse_non_negative_decimal(
+                request.form.get("package_cost"), "Package cost")
+            supplier_id = parse_optional_id(
+                request.form.get("supplier_id"), "Supplier")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.materials"))
+
+        if supplier_id is not None:
+            supplier_exists = query(
+                "SELECT 1 FROM suppliers WHERE supplier_id = %s", (supplier_id,), fetchone=True
+            )
+            if not supplier_exists:
+                flash("Select a valid supplier.", "error")
+                return redirect(url_for("admin.materials"))
 
         cost_per_unit = package_cost / package_qty
 
         try:
             execute(
-                """INSERT INTO raw_materials (material_name, unit, package_qty, package_cost, cost_per_unit)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (material_name, unit, package_qty, package_cost, cost_per_unit),
+                """INSERT INTO raw_materials (material_name, unit, package_qty, package_cost, cost_per_unit, supplier_id)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (material_name, unit, package_qty,
+                 package_cost, cost_per_unit, supplier_id),
             )
             notify_all(["materials"])
             log_action("add_material", target=material_name,
                        details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
-            flash(f"{material_name} added at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
+            flash(
+                f"{material_name} added at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
         except Exception:
-            flash(f"'{material_name}' already exists in the materials list.", "error")
+            flash(
+                f"'{material_name}' already exists in the materials list.", "error")
         return redirect(url_for("admin.materials"))
 
     materials_list = query(
-        "SELECT * FROM raw_materials ORDER BY material_name")
+        """SELECT rm.*, s.supplier_name
+           FROM raw_materials rm
+           LEFT JOIN suppliers s ON rm.supplier_id = s.supplier_id
+           ORDER BY rm.material_name"""
+    )
+    suppliers_list = query(
+        """SELECT s.*, COUNT(rm.material_id) AS material_count
+           FROM suppliers s LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+           GROUP BY s.supplier_id ORDER BY s.supplier_name"""
+    )
     recent_production = query(
         """SELECT pl.log_id, pl.produced_at, pl.batch_code, p.item_name, p.unit
            FROM production_logs pl JOIN products p ON pl.sku = p.sku
@@ -1137,6 +1246,7 @@ def materials():
     return render_template(
         "admin/materials.html",
         materials=materials_list,
+        suppliers=suppliers_list,
         recent_production=recent_production,
         usage_logs=usage_logs,
         totals=totals,
@@ -1153,12 +1263,25 @@ def edit_material():
 
     try:
         if not material_name or unit not in MATERIAL_UNITS:
-            raise ValidationError("Please fill in every field with a valid value.")
-        package_qty = parse_positive_decimal(request.form.get("package_qty"), "Package quantity")
-        package_cost = parse_non_negative_decimal(request.form.get("package_cost"), "Package cost")
+            raise ValidationError(
+                "Please fill in every field with a valid value.")
+        package_qty = parse_positive_decimal(
+            request.form.get("package_qty"), "Package quantity")
+        package_cost = parse_non_negative_decimal(
+            request.form.get("package_cost"), "Package cost")
+        supplier_id = parse_optional_id(
+            request.form.get("supplier_id"), "Supplier")
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.materials"))
+
+    if supplier_id is not None:
+        supplier_exists = query(
+            "SELECT 1 FROM suppliers WHERE supplier_id = %s", (supplier_id,), fetchone=True
+        )
+        if not supplier_exists:
+            flash("Select a valid supplier.", "error")
+            return redirect(url_for("admin.materials"))
 
     # cost_per_unit is recomputed from the new package figures, but this
     # only affects usage entries logged from now on — past entries keep
@@ -1168,14 +1291,17 @@ def edit_material():
     try:
         execute(
             """UPDATE raw_materials
-               SET material_name = %s, unit = %s, package_qty = %s, package_cost = %s, cost_per_unit = %s
+               SET material_name = %s, unit = %s, package_qty = %s, package_cost = %s,
+                   cost_per_unit = %s, supplier_id = %s
                WHERE material_id = %s""",
-            (material_name, unit, package_qty, package_cost, cost_per_unit, material_id),
+            (material_name, unit, package_qty, package_cost,
+             cost_per_unit, supplier_id, material_id),
         )
         notify_all(["materials"])
         log_action("edit_material", target=material_name,
                    details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
-        flash(f"{material_name} updated at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
+        flash(
+            f"{material_name} updated at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
     except Exception:
         flash(f"'{material_name}' already exists in the materials list.", "error")
     return redirect(url_for("admin.materials"))
@@ -1197,7 +1323,8 @@ def log_material_usage():
         return redirect(url_for("admin.materials"))
 
     try:
-        qty_used = parse_positive_decimal(request.form.get("qty_used"), "Quantity used")
+        qty_used = parse_positive_decimal(
+            request.form.get("qty_used"), "Quantity used")
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.materials"))
@@ -1209,12 +1336,82 @@ def log_material_usage():
         """INSERT INTO material_usage_logs
            (material_id, production_log_id, qty_used, unit_cost_snapshot, line_cost, notes, created_by_user_id)
            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-        (material_id, production_log_id, qty_used, unit_cost_snapshot, line_cost, notes, session.get("user_id")),
+        (material_id, production_log_id, qty_used, unit_cost_snapshot,
+         line_cost, notes, session.get("user_id")),
     )
     notify_all(["materials"])
     log_action("log_material_usage", target=material["material_name"],
                details=f"{qty_used:g} {material['unit'].lower()} — ₱{line_cost:,.2f}")
-    flash(f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} — ₱{line_cost:,.2f}.", "success")
+    flash(
+        f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} — ₱{line_cost:,.2f}.", "success")
+    return redirect(url_for("admin.materials"))
+
+
+# ---------------------------------------------------------------- suppliers
+@bp.route("/materials/suppliers/add", methods=["POST"])
+@admin_required
+def add_supplier():
+    supplier_name = request.form.get("supplier_name", "").strip()
+    contact_person = request.form.get("contact_person", "").strip() or None
+    phone = request.form.get("phone", "").strip() or None
+    email = request.form.get("email", "").strip() or None
+    address = request.form.get("address", "").strip() or None
+    notes = request.form.get("notes", "").strip() or None
+
+    if not supplier_name:
+        flash("Supplier name is required.", "error")
+        return redirect(url_for("admin.materials"))
+    if len(supplier_name) > 100:
+        flash("Supplier name is too long (max 100 characters).", "error")
+        return redirect(url_for("admin.materials"))
+
+    try:
+        execute(
+            """INSERT INTO suppliers (supplier_name, contact_person, phone, email, address, notes)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (supplier_name, contact_person, phone, email, address, notes),
+        )
+        notify_all(["materials"])
+        log_action("add_supplier", target=supplier_name,
+                   details=contact_person or None)
+        flash(f"Supplier '{supplier_name}' added.", "success")
+    except Exception:
+        flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
+    return redirect(url_for("admin.materials"))
+
+
+@bp.route("/materials/suppliers/edit", methods=["POST"])
+@admin_required
+def edit_supplier():
+    supplier_id = request.form.get("supplier_id")
+    supplier_name = request.form.get("supplier_name", "").strip()
+    contact_person = request.form.get("contact_person", "").strip() or None
+    phone = request.form.get("phone", "").strip() or None
+    email = request.form.get("email", "").strip() or None
+    address = request.form.get("address", "").strip() or None
+    notes = request.form.get("notes", "").strip() or None
+
+    if not supplier_name:
+        flash("Supplier name is required.", "error")
+        return redirect(url_for("admin.materials"))
+    if len(supplier_name) > 100:
+        flash("Supplier name is too long (max 100 characters).", "error")
+        return redirect(url_for("admin.materials"))
+
+    try:
+        execute(
+            """UPDATE suppliers
+               SET supplier_name = %s, contact_person = %s, phone = %s, email = %s, address = %s, notes = %s
+               WHERE supplier_id = %s""",
+            (supplier_name, contact_person, phone,
+             email, address, notes, supplier_id),
+        )
+        notify_all(["materials"])
+        log_action("edit_supplier", target=supplier_name,
+                   details=contact_person or None)
+        flash(f"Supplier '{supplier_name}' updated.", "success")
+    except Exception:
+        flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
     return redirect(url_for("admin.materials"))
 
 
@@ -1232,7 +1429,8 @@ def capital():
     if request.method == "POST":
         note = request.form.get("note", "").strip() or None
         try:
-            amount = parse_positive_decimal(request.form.get("amount"), "Amount")
+            amount = parse_positive_decimal(
+                request.form.get("amount"), "Amount")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.capital"))
