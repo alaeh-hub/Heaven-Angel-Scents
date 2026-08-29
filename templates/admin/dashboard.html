@@ -39,7 +39,7 @@
     </div>
     <div class="stat-label">Total Capital</div>
     <div class="stat-value">{{ financials.capital|peso }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.capital') }}" class="text-soft">add capital →</a></div>
+    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">from raw materials →</a></div>
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
@@ -47,7 +47,7 @@
     </div>
     <div class="stat-label">Total Revenue</div>
     <div class="stat-value accent">{{ financials.revenue|peso }}</div>
-    <div class="stat-foot">all-time, every branch</div>
+    <div class="stat-foot">{{ financials.branch_sales_revenue|peso }} branches &middot; {{ financials.package_sales_revenue|peso }} packages</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-blue">
@@ -55,7 +55,7 @@
     </div>
     <div class="stat-label">Net Profit</div>
     <div class="stat-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|peso }}</div>
-    <div class="stat-foot">{{ 'revenue minus material cost' if financials.profit >= 0 else 'running at a loss — revenue minus material cost' }}</div>
+    <div class="stat-foot">{{ 'revenue (branches + packages) minus material cost' if financials.profit >= 0 else 'running at a loss — revenue minus material cost' }}</div>
   </div>
 </div>
 
@@ -137,6 +137,67 @@
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet.</p></div>
   {% endif %}
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card">
+    <div class="card-header">
+      <h2>Top packages</h2>
+      <span class="hint"><a href="{{ url_for('admin.packages') }}" class="text-soft">all packages →</a></span>
+    </div>
+    {% if top_packages %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;"></th><th>Package</th><th class="num">Orders</th><th class="num">Revenue</th></tr></thead>
+        <tbody>
+          {% for pkg in top_packages %}
+          <tr>
+            <td class="mono text-faint" data-label="Rank">#{{ loop.index }}</td>
+            <td class="item-name" data-label="Package">{{ pkg.package_name }}</td>
+            <td class="num mono" data-label="Orders">{{ pkg.order_count }}</td>
+            <td class="num mono" data-label="Revenue">{{ pkg.total_revenue|peso }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Only inquiries marked Closed count as an order here — a New or Contacted lead hasn't converted yet.</p>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No closed package orders yet.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Top distributors &amp; resellers</h2>
+      <span class="hint"><a href="{{ url_for('admin.partners') }}" class="text-soft">all partners →</a></span>
+    </div>
+    {% if top_partners %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;"></th><th>Partner</th><th>Type</th><th class="num">Orders</th><th class="num">Total sales</th></tr></thead>
+        <tbody>
+          {% for p in top_partners %}
+          <tr>
+            <td class="mono text-faint" data-label="Rank">#{{ loop.index }}</td>
+            <td data-label="Partner"><a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a></td>
+            <td data-label="Type"><span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span></td>
+            <td class="num mono" data-label="Orders">{{ p.order_count }}</td>
+            <td class="num mono" data-label="Total sales">{{ p.total_spent|peso }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Total sales counts Closed package orders only, same rule as Top packages.</p>
+    </div>
+    {% else %}
+    <div class="empty-state"><div class="glyph">—</div><p>No closed package orders yet.</p></div>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card">

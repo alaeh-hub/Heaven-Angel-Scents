@@ -20,7 +20,7 @@
     </div>
     <div class="stat-label">Total material spend</div>
     <div class="stat-value accent">{{ totals.total_spent|peso }}</div>
-    <div class="stat-foot">across every logged usage entry</div>
+    <div class="stat-foot">across every material package logged</div>
   </div>
 </div>
 
@@ -92,6 +92,7 @@
           <th>Purchased as</th>
           <th>Supplier</th>
           <th class="num">Cost per unit</th>
+          <th style="min-width:170px;">On hand</th>
           <th></th>
         </tr>
       </thead>
@@ -105,6 +106,15 @@
           </td>
           <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
           <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
+          <td data-label="On hand">
+            <div class="fill-row">
+              <div class="fill-track">
+                <div class="fill-bar {{ 'low' if mat.stock_qty <= (mat.package_qty / 4) }}"
+                  data-pct="{{ [(mat.stock_qty / mat.package_qty * 100) if mat.package_qty else 0, 100]|min }}"></div>
+              </div>
+              <span class="fill-qty num">{{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</span>
+            </div>
+          </td>
           <td data-label="">
             <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
               data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
@@ -117,7 +127,7 @@
     </table>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Cost per unit is fixed the moment a usage entry is logged, so editing a material's price later never changes the cost of past entries.</p>
+    <p class="text-faint" style="font-size:12px;">On hand starts at the package quantity the moment a material is added, and goes down as usage is logged below — it isn't restocked automatically by editing a material's purchase details. Total material spend (above) is what's been paid for packages, not what's been used.</p>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No materials added yet.</p></div>
@@ -128,7 +138,7 @@
   <div class="card card-pad">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">Log material usage</h2>
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Log how much of a material was used. Linking it to a production run is optional — it's only there to help you total up a batch's cost later.
+      Log how much of a material was used — this just records the quantity and reduces what's on hand; it doesn't compute a cost. Linking it to a production run is optional.
     </p>
     <form method="POST" action="{{ url_for('admin.log_material_usage') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -137,7 +147,8 @@
         <select id="material_id" name="material_id" required>
           <option value="">Select…</option>
           {% for mat in materials %}
-          <option value="{{ mat.material_id }}" data-unit="{{ mat.unit }}">{{ mat.material_name }} ({{ mat.unit }})</option>
+          <option value="{{ mat.material_id }}" data-unit="{{ mat.unit }}"
+            data-stock="{{ mat.stock_qty|round(3)|string|replace('.000','') }}">{{ mat.material_name }} ({{ mat.unit }})</option>
           {% endfor %}
         </select>
       </div>
@@ -182,7 +193,6 @@
               <th>When</th>
               <th>Material</th>
               <th class="num">Qty used</th>
-              <th class="num">Cost</th>
               <th>Linked run</th>
               <th>Notes</th>
             </tr>
@@ -192,8 +202,7 @@
             <tr data-search="{{ (u.material_name ~ ' ' ~ (u.notes or ''))|lower }}">
               <td class="mono text-soft" data-label="When">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
               <td class="item-name" data-label="Material">{{ u.material_name }}</td>
-              <td class="num mono" data-label="Qty used">{{ u.qty_used|round(3)|string|replace('.000','') }} {{ u.unit.lower() }}</td>
-              <td class="num mono" data-label="Cost">{{ u.line_cost|peso }}</td>
+              <td class="num mono qty-down" data-label="Qty used">-{{ u.qty_used|round(3)|string|replace('.000','') }} {{ u.unit.lower() }}</td>
               <td class="text-soft" data-label="Linked run">{% if u.production_item_name %}{{ u.production_item_name }}{% if u.batch_code %} · {{ u.batch_code }}{% endif %}{% else %}—{% endif %}</td>
               <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ u.notes or '—' }}</td>
             </tr>
@@ -312,7 +321,7 @@
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Changing this only affects future usage entries — past entries keep the cost per unit they were logged at.
+      Changing this updates the reference cost per unit. It doesn't restock the material — on-hand quantity only moves via Log material usage.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -428,10 +437,18 @@
 
     var materialSelect = document.getElementById('material_id');
     var usageUnitHint = document.getElementById('usageUnitHint');
+    var qtyUsedInput = document.getElementById('qty_used');
     function updateUsageUnitHint() {
       var opt = materialSelect.options[materialSelect.selectedIndex];
       var unit = opt ? opt.dataset.unit : null;
-      usageUnitHint.textContent = unit ? 'Enter the amount used in ' + unit.toLowerCase() + '.' : '';
+      var stock = opt ? opt.dataset.stock : null;
+      if (unit && stock) {
+        usageUnitHint.textContent = stock + ' ' + unit.toLowerCase() + ' on hand — enter the amount used in ' + unit.toLowerCase() + '.';
+        qtyUsedInput.max = stock;
+      } else {
+        usageUnitHint.textContent = '';
+        qtyUsedInput.removeAttribute('max');
+      }
     }
     materialSelect.addEventListener('change', updateUsageUnitHint);
     updateUsageUnitHint();

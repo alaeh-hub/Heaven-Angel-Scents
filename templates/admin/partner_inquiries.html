@@ -4,11 +4,309 @@
 {% block eyebrow %}Partners &amp; Distribution{% endblock %}
 {% block heading %}Partner Inquiries{% endblock %}
 
+{% block head %}
+<style>
+  /* table-layout: fixed with percentage columns left big dead gaps
+     whenever a column's content (e.g. a short email) didn't fill its
+     allotted width. table-layout: auto lets each column hug its own
+     content instead, so the row reads as continuous rather than full
+     of empty rectangles. Long values (emails, long company names)
+     still wrap via overflow-wrap rather than stretching the column. */
+  .pi-table {
+    table-layout: auto;
+    width: 100%;
+    font-size: 13px;
+  }
+
+  .pi-table th {
+    font-size: 10.5px;
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+
+  .pi-table td {
+    padding: 12px 14px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
+
+  .pi-col-when,
+  .pi-col-type,
+  .pi-col-status {
+    white-space: nowrap;
+  }
+
+  .pi-col-company {
+    max-width: 220px;
+  }
+
+  .pi-col-contact {
+    max-width: 240px;
+  }
+
+  .pi-col-package {
+    max-width: 150px;
+  }
+
+  .pi-table .mono.text-soft {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .pi-company {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+  }
+
+  .pi-avatar {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+  }
+
+  .pi-company .item-name {
+    font-size: 13.5px;
+    overflow-wrap: break-word;
+  }
+
+  .pi-company .item-sub {
+    font-size: 11px;
+  }
+
+  .pi-msg-icon {
+    display: inline-flex;
+    vertical-align: -2px;
+    color: var(--ink-faint);
+    cursor: help;
+  }
+
+  .pi-msg-icon svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .pi-msg-icon:hover {
+    color: var(--accent-ink);
+  }
+
+  /* Badges are short fixed words ("Distributor") — letting them wrap
+     mid-word inside a narrow column is what broke the layout before, so
+     they get their own no-wrap rule regardless of the column's general
+     wrap behavior. */
+  .pi-table .badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+
+  .pi-contact-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 3px;
+  }
+
+  .pi-contact-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .pi-contact-row svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  .pi-contact-row a {
+    color: inherit;
+    text-decoration: none;
+    overflow-wrap: break-word;
+  }
+
+  .pi-contact-row a:hover {
+    color: var(--accent-ink);
+    text-decoration: underline;
+  }
+
+  .pi-package-chip {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 999px;
+    line-height: 1.4;
+  }
+
+  .pi-status-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* The colored dot is a plain, non-interactive div; the real <select>
+     sits invisibly on top of it so clicking still opens a normal native
+     dropdown (with normal text and background) instead of the select
+     itself being styled, which is what produced the oversized green
+     swatch when the dropdown opened before. */
+  .pi-status-wrap {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .pi-status-dot {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--surface);
+    pointer-events: none;
+  }
+
+  /* Class names are the status slugified (lowercased, spaces -> hyphens)
+     — see the `|lower|replace(' ', '-')` used below when the class is
+     printed. Keep this list in sync with INQUIRY_STATUSES in admin.py. */
+  .pi-status-dot.status-new {
+    background: var(--danger);
+  }
+
+  .pi-status-dot.status-contacted {
+    background: var(--blue);
+  }
+
+  .pi-status-dot.status-follow-up {
+    background: var(--plum);
+  }
+
+  .pi-status-dot.status-on-hold {
+    background: var(--ink-faint);
+  }
+
+  .pi-status-dot.status-closed {
+    background: var(--success);
+  }
+
+  .pi-status-dot.status-declined {
+    background: var(--danger);
+  }
+
+  .pi-status-select {
+    position: absolute;
+    inset: 0;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .pi-email-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .pi-email-dot svg {
+    width: 9.5px;
+    height: 9.5px;
+  }
+
+  .pi-email-dot.sent {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  .pi-email-dot.not-sent {
+    background: var(--surface-2);
+    color: var(--ink-faint);
+  }
+
+  /* ---- Remarks column + modal ---- */
+  .pi-col-remarks {
+    max-width: 180px;
+  }
+
+  .pi-remarks-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 180px;
+  }
+
+  .pi-remarks-preview {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .pi-remarks-btn {
+    font-size: 11.5px;
+    padding: 4px 10px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .pi-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(28, 27, 25, 0.45);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .pi-modal-overlay.open {
+    display: flex;
+  }
+
+  .pi-modal textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 110px;
+    font-family: inherit;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="bento-grid stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-red">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H7l-3 3V4z"/><path d="M8 9h8M8 12.5h5"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M4 4h16v13H7l-3 3V4z" />
+        <path d="M8 9h8M8 12.5h5" />
+      </svg>
     </div>
     <div class="stat-label">New</div>
     <div class="stat-value accent">{{ counts.new_count }}</div>
@@ -16,25 +314,42 @@
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
+      </svg>
     </div>
     <div class="stat-label">Contacted</div>
     <div class="stat-value">{{ counts.contacted_count }}</div>
     <div class="stat-foot">reached out, in progress</div>
   </div>
   <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 8v4l3 3" />
+        <circle cx="12" cy="12" r="9" />
+      </svg>
+    </div>
+    <div class="stat-label">Follow-up / On Hold</div>
+    <div class="stat-value">{{ counts.in_progress_count }}</div>
+    <div class="stat-foot">needs a nudge, or waiting on them</div>
+  </div>
+  <div class="card stat-tile">
     <div class="stat-icon stat-icon-neutral">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
     </div>
     <div class="stat-label">Closed</div>
     <div class="stat-value">{{ counts.closed_count }}</div>
-    <div class="stat-foot">{{ counts.total_count }} total inquir{{ 'y' if counts.total_count == 1 else 'ies' }}</div>
+    <div class="stat-foot">{{ counts.total_count }} total &middot; {{ counts.declined_count }} declined</div>
   </div>
 </div>
 
 <div class="tabs">
-  {% for key, label in [('all','All'), ('New','New'), ('Contacted','Contacted'), ('Closed','Closed')] %}
-  <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('admin.partner_inquiries', status=key) }}">{{ label }}</a>
+  <a class="tab {{ 'active' if status_filter == 'all' }}" href="{{ url_for('admin.partner_inquiries') }}">All</a>
+  {% for s in inquiry_statuses %}
+  <a class="tab {{ 'active' if status_filter == s }}" href="{{ url_for('admin.partner_inquiries', status=s) }}">{{ s
+    }}</a>
   {% endfor %}
 </div>
 
@@ -46,67 +361,136 @@
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
       Every inquiry a distributor or reseller has submitted while browsing
-      <a href="{{ url_for('portal.packages') }}" target="_blank" rel="noopener">the public packages page</a>.
-      Submitting one automatically adds (or matches) them on the <a href="{{ url_for('admin.partners') }}">Partners</a> page —
-      this is just the history of the inquiry itself. Only the status below can be changed; everything else is a
-      permanent record of what was submitted.
+      <a href="{{ portal_link }}" target="_blank" rel="noopener">the partner portal</a> — a private link,
+      not a public page (see the Partners tab for the current link to share). Submitting one automatically
+      adds (or matches) them on the <a href="{{ url_for('admin.partners') }}">Partners</a> page — this is
+      just the history of the inquiry itself. Status and remarks are the only things an admin can change here
+      — status moves an inquiry through New &rarr; Contacted &rarr; Follow-up / On Hold &rarr; Closed / Declined,
+      and remarks is a private internal note (never shown to the partner) for things like "on hold, still
+      deciding" or "call back next week." Everything else on a row is a permanent record of what was submitted.
     </p>
   </div>
   {% if inquiries %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" class="smart-search-input" placeholder="Search by company, contact, or package…" autocomplete="off">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by company, contact, package, or remarks…"
+          autocomplete="off">
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table pi-table">
         <thead>
           <tr>
-            <th>When</th>
-            <th>Company</th>
-            <th>Type</th>
-            <th>Contact</th>
-            <th>Package</th>
-            <th>Message</th>
-            <th>Email</th>
-            <th>Status</th>
+            <th class="pi-col-when">When</th>
+            <th class="pi-col-company">Company</th>
+            <th class="pi-col-type">Type</th>
+            <th class="pi-col-contact">Contact</th>
+            <th class="pi-col-package">Package</th>
+            <th class="pi-col-status">Status</th>
+            <th class="pi-col-remarks">Remarks</th>
           </tr>
         </thead>
         <tbody>
           {% for inq in inquiries %}
-          <tr data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            <td class="item-name" data-label="Company">{{ inq.company_name }}</td>
+          <tr
+            data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or '') ~ ' ' ~ (inq.remarks or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ inq.created_at.strftime('%b %d, %Y') }}<br>{{
+              inq.created_at.strftime('%I:%M %p') }}</td>
+            <td data-label="Company">
+              <div class="pi-company">
+                <div class="pi-avatar">{{ inq.company_name[:2]|upper }}</div>
+                <div>
+                  <div class="item-name">{{ inq.company_name }}{% if inq.message %} <span class="pi-msg-icon"
+                      title="{{ inq.message }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg></span>{% endif %}</div>
+                  {% if inq.contact_person %}<div class="item-sub">{{ inq.contact_person }}</div>{% endif %}
+                </div>
+              </div>
+            </td>
             <td data-label="Type">
-              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
+              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
+                inq.partner_type }}</span>
             </td>
-            <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
-              {% if inq.contact_person %}{{ inq.contact_person }}<br>{% endif %}
-              {% if inq.phone %}<span class="mono">{{ inq.phone }}</span>{% endif %}
-              {% if inq.email %}{{ ' · ' if inq.phone }}{{ inq.email }}{% endif %}
-              {% if not inq.contact_person and not inq.phone and not inq.email %}—{% endif %}
-            </td>
-            <td data-label="Package">{{ inq.package_name_snapshot }}</td>
-            <td class="text-soft" style="font-size:12.5px; max-width:220px;" data-label="Message">{{ inq.message or '—' }}</td>
-            <td data-label="Email">
-              {% if inq.email_sent %}
-              <span class="badge badge-active" title="HQ notification email was sent">Sent</span>
-              {% else %}
-              <span class="badge badge-inactive" title="Notification email wasn't sent — mail may be unconfigured. The inquiry itself is still saved.">Not sent</span>
+            <td data-label="Contact">
+              {% if inq.phone %}
+              <div class="pi-contact-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+                <a href="tel:{{ inq.phone }}" class="mono">{{ inq.phone }}</a>
+              </div>
               {% endif %}
+              {% if inq.email %}
+              <div class="pi-contact-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4h16v16H4z" opacity="0" />
+                  <path d="M22 6 12 13 2 6" />
+                  <path d="M2 6h20v12H2z" />
+                </svg>
+                <a href="mailto:{{ inq.email }}">{{ inq.email }}</a>
+              </div>
+              {% endif %}
+              {% if not inq.phone and not inq.email %}<span class="text-faint">—</span>{% endif %}
+            </td>
+            <td data-label="Package"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
             </td>
             <td data-label="Status">
-              <form method="POST" action="{{ url_for('admin.update_inquiry_status', inquiry_id=inq.inquiry_id) }}" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="return_status" value="{{ status_filter }}">
-                <select name="status" class="mono" style="font-size:12px; padding:6px 8px;" onchange="this.form.submit()" aria-label="Update status for {{ inq.company_name }}'s inquiry">
-                  {% for s in inquiry_statuses %}
-                  <option value="{{ s }}" {{ 'selected' if inq.status == s }}>{{ s }}</option>
-                  {% endfor %}
-                </select>
-              </form>
+              <div class="pi-status-cell">
+                <div class="pi-status-wrap">
+                  <div class="pi-status-dot status-{{ inq.status|lower|replace(' ', '-') }}"
+                    title="Status: {{ inq.status }}"></div>
+                  <form method="POST" action="{{ url_for('admin.update_inquiry_status', inquiry_id=inq.inquiry_id) }}"
+                    class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="return_status" value="{{ status_filter }}">
+                    <select name="status" class="pi-status-select" onchange="this.form.submit();"
+                      aria-label="Update status for {{ inq.company_name }}'s inquiry">
+                      {% for s in inquiry_statuses %}
+                      <option value="{{ s }}" {{ 'selected' if inq.status==s }}>{{ s }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                </div>
+                {% if inq.email_sent %}
+                <span class="pi-email-dot sent" title="HQ notification email was sent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </span>
+                {% else %}
+                <span class="pi-email-dot not-sent"
+                  title="Notification email wasn't sent — mail may be unconfigured. The inquiry itself is still saved.">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M4 4h16v16H4z" opacity="0" />
+                    <path d="M22 6 12 13 2 6" />
+                    <path d="M2 6h20v12H2z" />
+                  </svg>
+                </span>
+                {% endif %}
+              </div>
+            </td>
+            <td data-label="Remarks">
+              <div class="pi-remarks-cell">
+                {% if inq.remarks %}
+                <span class="pi-remarks-preview" title="{{ inq.remarks }}">{{ inq.remarks }}</span>
+                {% else %}
+                <span class="text-faint" style="font-size:12px;">No remarks yet</span>
+                {% endif %}
+                <button type="button" class="btn btn-ghost btn-sm pi-remarks-btn"
+                  data-url="{{ url_for('admin.update_inquiry_remarks', inquiry_id=inq.inquiry_id) }}"
+                  data-company="{{ inq.company_name }}" data-remarks="{{ inq.remarks or '' }}"
+                  data-return-status="{{ status_filter }}">
+                  {{ 'Edit' if inq.remarks else 'Add remarks' }}
+                </button>
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -130,4 +514,60 @@
   </div>
   {% endif %}
 </div>
+
+<div class="pi-modal-overlay" id="remarksOverlay">
+  <div class="card card-pad pi-modal" style="max-width:460px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Remarks</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Internal note for <strong id="remarksCompanyLabel"></strong>'s inquiry — visible to admins only, never
+      shown to the partner. Independent of status; leave it blank to clear it.
+    </p>
+    <form method="POST" id="remarksForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_status" id="remarksReturnStatus" value="{{ status_filter }}">
+      <div class="field">
+        <label for="remarksTextarea">Remarks</label>
+        <textarea id="remarksTextarea" name="remarks" rows="4" maxlength="1000"
+          placeholder="e.g. On hold — still comparing packages with another supplier. Follow up next week."></textarea>
+        <div class="help">Up to 1000 characters.</div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="remarksCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Save remarks</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var overlay = document.getElementById('remarksOverlay');
+    var form = document.getElementById('remarksForm');
+    var textarea = document.getElementById('remarksTextarea');
+    var companyLabel = document.getElementById('remarksCompanyLabel');
+    var returnStatusInput = document.getElementById('remarksReturnStatus');
+    var cancelBtn = document.getElementById('remarksCancelBtn');
+    if (!overlay || !form) return;
+
+    function open(btn) {
+      form.action = btn.dataset.url;
+      textarea.value = btn.dataset.remarks || '';
+      companyLabel.textContent = btn.dataset.company || 'this';
+      returnStatusInput.value = btn.dataset.returnStatus || 'all';
+      overlay.classList.add('open');
+      textarea.focus();
+    }
+    function close() { overlay.classList.remove('open'); }
+
+    document.querySelectorAll('.pi-remarks-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { open(btn); });
+    });
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  })();
+</script>
 {% endblock %}

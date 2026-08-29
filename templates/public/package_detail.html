@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+{% import "_macros.html" as m %}
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{{ pkg.package_name }} · Heaven &amp; Angel Scents</title>
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body { min-height: 100vh; }
+
+    .pp-shell { min-height: 100vh; padding: 36px 20px 60px; }
+    .pp-inner { max-width: 960px; margin: 0 auto; }
+
+    .pp-brand .mark { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
+    .pp-brand .sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+
+    .pp-back { display: inline-block; margin: 18px 0 14px; font-size: 12.5px; color: var(--ink-faint); }
+    .pp-back:hover { color: var(--ink); }
+
+    .pp-head { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+    .pp-head h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.01em; }
+    .pp-head p.desc { font-size: 13.5px; color: var(--ink-soft); max-width: 560px; line-height: 1.6; margin: 0; }
+
+    .pp-items-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      margin: 22px 0;
+    }
+
+    .pp-item-card {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+    }
+
+    .pp-item-card .item-name { font-size: 13.5px; }
+    .pp-item-card .item-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+    .pp-item-qty { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+    .pp-item-qty strong { display: block; font-size: 14px; color: var(--ink); }
+
+    .pp-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px;
+      margin: 22px 0;
+    }
+
+    .pp-summary-line { font-size: 12.5px; color: var(--ink-faint); }
+    .pp-summary-price { font-size: 26px; font-weight: 800; color: var(--accent-ink); }
+    .pp-summary-ref { font-size: 13px; color: var(--ink-faint); text-decoration: line-through; margin-right: 6px; }
+
+    .pp-inquire-cta { text-align: center; margin: 30px 0 10px; }
+
+    /* ---- Inquire modal ---- */
+    .pp-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(28, 27, 25, 0.5);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .pp-modal-overlay.open { display: flex; }
+
+    .pp-modal { max-width: 480px; width: 100%; padding: 26px; margin: auto; }
+    .pp-modal h2 { font-size: 17px; margin: 0 0 4px; }
+    .pp-modal p.sub { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 18px; }
+
+    .pp-footnote { margin-top: 40px; text-align: center; font-size: 12px; color: var(--ink-faint); }
+  </style>
+</head>
+
+<body>
+  <button type="button" class="theme-toggle theme-toggle-fixed" id="themeToggle" aria-label="Switch between light and dark theme">
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
+  </button>
+
+  <div class="pp-shell">
+    <div class="pp-inner">
+      <div class="pp-brand">
+        <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
+        <div class="sub">Scents · Partner Program</div>
+      </div>
+
+      <a class="pp-back" href="{{ url_for('portal.packages', slug=slug) }}">← All packages</a>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flashes" style="margin-bottom:18px;">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="pp-head">
+        <div>
+          <h1>{{ pkg.package_name }}</h1>
+          <p class="desc">{{ pkg.description or 'A curated set of our fragrances.' }}</p>
+        </div>
+        <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+      </div>
+
+      {% if items %}
+      <div class="pp-items-grid">
+        {% for item in items %}
+        <div class="card pp-item-card">
+          {{ m.product_thumb(item.image_path, item.item_name, 48) }}
+          <div>
+            <div class="item-name">{{ item.item_name }}</div>
+            <div class="item-sub">{{ m.variant_badge(item.variant) }} · {{ item.unit }}</div>
+          </div>
+          <div class="pp-item-qty"><strong>x{{ item.qty }}</strong>per set</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state"><div class="glyph">—</div><p>This package doesn't list any products yet.</p></div>
+      {% endif %}
+
+      <div class="card pp-summary">
+        <div>
+          <div class="pp-summary-line">Reference value of everything above, at full price</div>
+          <div><span class="pp-summary-ref">{{ reference_total|peso }}</span></div>
+        </div>
+        <div style="text-align:right;">
+          <div class="pp-summary-line">Your price ({{ pkg.discount_percent|round(2) }}% off)</div>
+          <div class="pp-summary-price">{{ discounted_total|peso }}</div>
+        </div>
+      </div>
+
+      <div class="pp-inquire-cta">
+        <button type="button" class="btn btn-accent" id="openInquireBtn" style="padding:14px 32px; font-size:14.5px;">Inquire About This Package</button>
+      </div>
+
+      <div class="pp-footnote">
+        This link is shared privately with our distributors and resellers — please don't forward it publicly.
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-modal-overlay" id="inquireOverlay">
+    <div class="card pp-modal">
+      <h2>Inquire about {{ pkg.package_name }}</h2>
+      <p class="sub">Tell us a bit about your business — our team will follow up by phone or email.</p>
+      <form method="POST" action="{{ url_for('portal.inquire', slug=slug, package_id=pkg.package_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if pkg.partner_scope == 'Both' %}
+        <div class="field">
+          <label for="partner_type">You are a</label>
+          <select id="partner_type" name="partner_type" required>
+            <option value="">Select…</option>
+            {% for t in partner_types %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
+        <input type="hidden" id="partner_type" name="partner_type" value="{{ pkg.partner_scope }}">
+        <div class="field">
+          <label>You are a</label>
+          <input type="text" value="{{ pkg.partner_scope }}" disabled style="background:var(--bg); color:var(--ink-faint);">
+        </div>
+        {% endif %}
+
+        <div class="field">
+          <label for="company_name" id="companyNameLabel">Business / company name</label>
+          <input type="text" id="company_name" name="company_name" required maxlength="150" placeholder="e.g. Golden Scent Trading">
+        </div>
+        <div class="field">
+          <label for="contact_person" id="contactPersonLabel">Contact person</label>
+          <input type="text" id="contact_person" name="contact_person" required maxlength="100">
+          <div class="help" id="contactPersonHelp" style="display:none;">If you're inquiring as an individual, this can be the same as your name above.</div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input type="text" id="phone" name="phone" required maxlength="30" placeholder="09xx xxx xxxx"
+              pattern="[0-9+\-().\s]{7,30}" title="Digits, spaces, +, -, and ( ) only.">
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required maxlength="120" placeholder="name@example.com">
+          </div>
+        </div>
+        <div class="help" style="margin:-8px 0 14px;">We'll only use these to follow up about this inquiry.</div>
+        <div class="field">
+          <label for="address">Address <span class="text-faint">(optional)</span></label>
+          <input type="text" id="address" name="address" maxlength="255" placeholder="City / area you operate from">
+        </div>
+        <div class="field">
+          <label for="message">Message <span class="text-faint">(optional)</span></label>
+          <textarea id="message" name="message" maxlength="500" rows="3" placeholder="Anything else we should know?"></textarea>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button type="button" class="btn btn-ghost" style="flex:1;" id="closeInquireBtn">Cancel</button>
+          <button type="submit" class="btn btn-accent" style="flex:1;">Send inquiry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var toggle = document.getElementById('themeToggle');
+      if (toggle) {
+        toggle.addEventListener('click', function () {
+          var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+          var next = current === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          try { localStorage.setItem('theme', next); } catch (e) {}
+        });
+      }
+
+      // ---- Relabel "company name" / show a hint on contact person,
+      // depending on whether this inquiry is from a Distributor (has a
+      // registered business) or a Reseller (may just be an individual).
+      // Runs once on load (covers a page fixed to one partner_scope,
+      // where #partner_type is a hidden input) and again on every
+      // change of the "You are a" select when the package is open to
+      // Both. ----
+      var partnerTypeEl = document.getElementById('partner_type');
+      var companyLabel = document.getElementById('companyNameLabel');
+      var companyInput = document.getElementById('company_name');
+      var contactHelp = document.getElementById('contactPersonHelp');
+
+      function applyPartnerTypeLabels() {
+        var type = partnerTypeEl ? partnerTypeEl.value : '';
+        if (type === 'Reseller') {
+          companyLabel.textContent = 'Your full name';
+          companyInput.placeholder = 'e.g. Maria Santos';
+          contactHelp.style.display = 'block';
+        } else {
+          companyLabel.textContent = 'Business / company name';
+          companyInput.placeholder = 'e.g. Golden Scent Trading';
+          contactHelp.style.display = 'none';
+        }
+      }
+
+      if (partnerTypeEl) {
+        applyPartnerTypeLabels();
+        if (partnerTypeEl.tagName === 'SELECT') {
+          partnerTypeEl.addEventListener('change', applyPartnerTypeLabels);
+        }
+      }
+
+      var overlay = document.getElementById('inquireOverlay');
+      var openBtn = document.getElementById('openInquireBtn');
+      var closeBtn = document.getElementById('closeInquireBtn');
+      if (!overlay || !openBtn) return;
+
+      function open() { overlay.classList.add('open'); }
+      function close() { overlay.classList.remove('open'); }
+
+      openBtn.addEventListener('click', open);
+      if (closeBtn) closeBtn.addEventListener('click', close);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+      // If the form was just submitted with a validation error, a flash
+      // message is already showing above — reopen the modal automatically
+      // so the visitor doesn't have to click "Inquire" again to fix it.
+      {% if get_flashed_messages(category_filter=['error'])|length %}
+      open();
+      {% endif %}
+    })();
+  </script>
+</body>
+
+</html>

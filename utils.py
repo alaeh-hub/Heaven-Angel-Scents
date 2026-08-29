@@ -49,6 +49,15 @@ MATERIAL_UNITS = ("Gram", "Milliliter", "Liter", "Gallon", "Piece")
 # table in schema.sql.
 PARTNER_TYPES = ("Distributor", "Reseller")
 
+# Deliberately simple/permissive — this only guards against obvious
+# typos and junk input on the public partner-portal inquiry form (see
+# routes/portal.py), not full RFC 5322 / ITU E.164 correctness. Being
+# too strict here would reject real addresses/numbers a distributor or
+# reseller actually uses; the real verification happens when HQ calls
+# or emails them back.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+_PHONE_RE = re.compile(r"^[0-9+\-().\s]{7,30}$")
+
 
 class ValidationError(ValueError):
     """Raised by the parse_* helpers on bad user input.
@@ -153,6 +162,41 @@ def parse_optional_id(raw, field_label="Value"):
         raise ValidationError(f"{field_label} is invalid.")
     if value <= 0:
         raise ValidationError(f"{field_label} is invalid.")
+    return value
+
+
+def parse_required_text(raw, field_label="Value", max_length=None):
+    """Parse a plain required text field — strips whitespace, rejects
+    blank, optionally caps length. Used for the partner-portal inquiry
+    form fields (contact person, phone, email, company/name) now that
+    they're all required rather than optional — see routes/portal.py.
+    """
+    value = str(raw or "").strip()
+    if not value:
+        raise ValidationError(f"{field_label} is required.")
+    if max_length and len(value) > max_length:
+        raise ValidationError(f"{field_label} must be under {max_length} characters.")
+    return value
+
+
+def parse_email(raw, field_label="Email"):
+    value = str(raw or "").strip()
+    if not value:
+        raise ValidationError(f"{field_label} is required.")
+    if len(value) > 120 or not _EMAIL_RE.match(value):
+        raise ValidationError(f"{field_label} doesn't look like a valid email address.")
+    return value
+
+
+def parse_phone(raw, field_label="Phone number"):
+    value = str(raw or "").strip()
+    if not value:
+        raise ValidationError(f"{field_label} is required.")
+    digit_count = sum(ch.isdigit() for ch in value)
+    if len(value) > 30 or digit_count < 7 or not _PHONE_RE.match(value):
+        raise ValidationError(
+            f"{field_label} doesn't look like a valid phone number (digits, spaces, +, -, and () only)."
+        )
     return value
 
 

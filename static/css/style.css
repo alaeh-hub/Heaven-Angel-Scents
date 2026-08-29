@@ -806,6 +806,16 @@ th.num {
   grid-template-columns: repeat(4, 1fr);
 }
 
+/* Prevents a wide table (real data = wide min-content, especially with
+   white-space:nowrap cells) from forcing the whole two-column grid to
+   overflow and squish/clip its sibling card (e.g. an "Add X" form next
+   to a data table). Classic grid/flex min-width:auto gotcha — grid
+   items default to a content-based automatic minimum size unless told
+   otherwise. */
+.grid[style*="grid-template-columns"] > * {
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
 
   .grid-2,

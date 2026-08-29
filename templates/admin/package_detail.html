@@ -42,7 +42,7 @@
             <td class="num mono" data-label="Line total">{{ (item.qty * item.price)|peso }}</td>
             <td data-label="">
               <form method="POST" action="{{ url_for('admin.remove_package_item', package_id=pkg.package_id) }}"
-                onsubmit="return confirm('Remove {{ item.item_name }} from this package?');">
+                onsubmit='return confirm({{ (("This is the last product in \"" ~ pkg.package_name ~ "\" — removing it will delete the whole package. Are you sure?") if items|length == 1 else ("Remove " ~ item.item_name ~ " from this package?"))|tojson }});'>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="package_item_id" value="{{ item.package_item_id }}">
                 <button type="submit" class="btn btn-ghost btn-sm">Remove</button>

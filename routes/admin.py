@@ -119,24 +119,73 @@ def dashboard():
            ORDER BY total_units DESC LIMIT 3"""
     )
 
-    # Business-level financials: total capital ever put in (see
-    # capital_contributions — a running ledger, not a single value),
-    # total revenue across every sale, and total spent on raw
-    # materials, so a simple gross profit can be shown at a glance.
-    # See reports_data() below for the same figures broken out into
-    # charts on the Reports page.
-    total_capital = query(
-        "SELECT COALESCE(SUM(amount), 0) AS v FROM capital_contributions", fetchone=True
+    # Best-selling packages — same "only Closed counts as a real sale"
+    # rule as everywhere else package revenue is computed (see
+    # partners()'s docstring and schema.sql's note on
+    # partner_inquiries.order_amount). Joined through packages so a
+    # package that's since been deleted (package_id set NULL on the
+    # inquiry) drops out here rather than showing as a nameless row —
+    # its revenue still counts in the totals below, just not in this
+    # per-package breakdown.
+    top_packages = query(
+        """SELECT pkg.package_id, pkg.package_name,
+                  COUNT(pinq.inquiry_id) AS order_count,
+                  COALESCE(SUM(pinq.order_amount), 0) AS total_revenue
+           FROM partner_inquiries pinq
+           JOIN packages pkg ON pkg.package_id = pinq.package_id
+           WHERE pinq.status = 'Closed'
+           GROUP BY pkg.package_id, pkg.package_name
+           ORDER BY total_revenue DESC LIMIT 3"""
+    )
+
+    # Top partners by package sales — same Closed-only rule. Joined
+    # through partners for the same reason as above (a since-deleted
+    # partner drops out of this breakdown, not out of the totals).
+    top_partners = query(
+        """SELECT p.partner_id, p.partner_name, p.partner_type,
+                  COUNT(pinq.inquiry_id) AS order_count,
+                  COALESCE(SUM(pinq.order_amount), 0) AS total_spent
+           FROM partner_inquiries pinq
+           JOIN partners p ON p.partner_id = pinq.partner_id
+           WHERE pinq.status = 'Closed'
+           GROUP BY p.partner_id, p.partner_name, p.partner_type
+           ORDER BY total_spent DESC LIMIT 3"""
+    )
+
+    # Business-level financials: total revenue across branch sales AND
+    # closed package orders, and total spent on raw materials, so a
+    # simple gross profit can be shown at a glance. See reports_data()
+    # below for the same figures broken out into charts on the Reports
+    # page.
+    #
+    # package_sales is only ever Closed inquiries' order_amount — see
+    # the note above top_packages. It's folded into total_revenue (and
+    # therefore profit) the same way branch sales are, since a closed
+    # package order is real money in exactly the same sense.
+    #
+    # "Capital" is no longer its own ledger (see schema.sql's note on
+    # capital_contributions being removed) — it's now just how much has
+    # been spent buying raw material packages, SUM(package_cost) over
+    # raw_materials. That's the same number as materials_cost below; the
+    # dashboard keeps the "Total Capital" label (financials.capital) for
+    # that stat tile, it just now shows this figure instead of a
+    # manually-logged one.
+    total_materials_cost = query(
+        "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials", fetchone=True
     )["v"]
-    total_revenue = query(
+    branch_sales_revenue = query(
         "SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales", fetchone=True
     )["v"]
-    total_materials_cost = query(
-        "SELECT COALESCE(SUM(line_cost), 0) AS v FROM material_usage_logs", fetchone=True
+    package_sales_revenue = query(
+        "SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries WHERE status = 'Closed'",
+        fetchone=True,
     )["v"]
+    total_revenue = branch_sales_revenue + package_sales_revenue
     financials = {
-        "capital": total_capital,
+        "capital": total_materials_cost,
         "revenue": total_revenue,
+        "branch_sales_revenue": branch_sales_revenue,
+        "package_sales_revenue": package_sales_revenue,
         "materials_cost": total_materials_cost,
         "profit": total_revenue - total_materials_cost,
     }
@@ -145,7 +194,8 @@ def dashboard():
         "admin/dashboard.html",
         stats=stats, low_stock=low_stock,
         recent_requests=recent_requests, recent_activity=recent_activity,
-        top_sellers=top_sellers, financials=financials,
+        top_sellers=top_sellers, top_packages=top_packages, top_partners=top_partners,
+        financials=financials,
     )
 
 
@@ -1121,40 +1171,81 @@ def reports_data():
     # Combined totals across every branch, regardless of each branch's price.
     # All-time — feeds the top stat tiles and the Revenue vs. Capital chart,
     # neither of which are windowed by the granularity switch.
-    totals = query(
+    #
+    # Revenue here is branch sales AND closed package orders combined —
+    # same "Closed only counts as a sale" rule used everywhere else
+    # package revenue is computed (see admin.partners()'s docstring and
+    # schema.sql's note on partner_inquiries.order_amount). units/
+    # package_order_count are kept as separate figures rather than added
+    # together, since "a unit sold at a branch" and "a package order" are
+    # not the same kind of count.
+    branch_totals = query(
         """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
            FROM sales""",
         fetchone=True,
     )
+    package_totals = query(
+        """SELECT COUNT(*) AS order_count, COALESCE(SUM(order_amount), 0) AS revenue
+           FROM partner_inquiries WHERE status = 'Closed'""",
+        fetchone=True,
+    )
+    totals = {
+        "units": branch_totals["units"],
+        "revenue": branch_totals["revenue"] + package_totals["revenue"],
+        "branch_revenue": branch_totals["revenue"],
+        "package_revenue": package_totals["revenue"],
+        "package_order_count": package_totals["order_count"],
+    }
 
     # Business-level financials.
-    # - capital: a running ledger (see capital_contributions — an admin
-    #   can log a new contribution any time, not just once); always
-    #   all-time, paired with all-time revenue on the Revenue vs.
-    #   Capital chart.
+    # - capital: no longer a logged ledger (see schema.sql's note on
+    #   capital_contributions being removed) — it's SUM(package_cost)
+    #   over raw_materials, i.e. everything ever spent buying material
+    #   packages. Always all-time, paired with all-time revenue on the
+    #   Revenue vs. Capital chart, same as before.
     # - revenue_windowed / materials_cost / profit: scoped to the same
     #   window as the granularity switch, for the Revenue, Materials &
-    #   Profit chart. Profit is a simple gross figure — revenue minus
-    #   what's been spent on raw materials in that window — it doesn't
-    #   subtract other costs (rent, payroll, etc.), which the app
-    #   doesn't currently track.
+    #   Profit chart. Profit is a simple gross figure — revenue (branch
+    #   sales + closed package orders) minus what's been spent on raw
+    #   materials in that window — it doesn't subtract other costs
+    #   (rent, payroll, etc.), which the app doesn't currently track.
+    #   materials_cost here is windowed by raw_materials.created_at (when
+    #   a material package was logged/added), not by usage — usage no
+    #   longer carries a cost at all, see material_usage_logs.
+    #
+    #   Package orders are windowed by partner_inquiries.created_at,
+    #   same as everything else windowed here — the moment of inquiry,
+    #   not the (untracked) moment an admin later marks it Closed. A
+    #   package inquired within the window but closed after it falls
+    #   outside; one inquired earlier but closed inside the window still
+    #   counts, same limitation the rest of this window-based reporting
+    #   already has for anything without its own "completed_at" column.
     capital_total = query(
-        "SELECT COALESCE(SUM(amount), 0) AS v FROM capital_contributions", fetchone=True
+        "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials", fetchone=True
     )["v"]
-    windowed_revenue = query(
+    windowed_branch_revenue = query(
         f"SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales WHERE sold_at >= NOW() - {window_sql}",
         fetchone=True,
     )["v"]
+    windowed_package_revenue = query(
+        f"""SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries
+            WHERE status = 'Closed' AND created_at >= NOW() - {window_sql}""",
+        fetchone=True,
+    )["v"]
+    windowed_revenue = windowed_branch_revenue + windowed_package_revenue
     windowed_materials_cost = query(
-        f"SELECT COALESCE(SUM(line_cost), 0) AS v FROM material_usage_logs WHERE created_at >= NOW() - {window_sql}",
+        f"SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials WHERE created_at >= NOW() - {window_sql}",
         fetchone=True,
     )["v"]
     financials = {
         "capital": capital_total,
         "revenue_windowed": windowed_revenue,
+        "branch_revenue_windowed": windowed_branch_revenue,
+        "package_revenue_windowed": windowed_package_revenue,
         "materials_cost": windowed_materials_cost,
         "profit": float(windowed_revenue) - float(windowed_materials_cost),
     }
+
 
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
@@ -1200,10 +1291,11 @@ def materials():
 
         try:
             execute(
-                """INSERT INTO raw_materials (material_name, unit, package_qty, package_cost, cost_per_unit, supplier_id)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                """INSERT INTO raw_materials
+                       (material_name, unit, package_qty, package_cost, cost_per_unit, stock_qty, supplier_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                 (material_name, unit, package_qty,
-                 package_cost, cost_per_unit, supplier_id),
+                 package_cost, cost_per_unit, package_qty, supplier_id),
             )
             notify_all(["materials"])
             log_action("add_material", target=material_name,
@@ -1240,8 +1332,11 @@ def materials():
            LEFT JOIN products p ON pl.sku = p.sku
            ORDER BY mul.created_at DESC LIMIT 40"""
     )
+    # Total spent on materials is now purely what's been paid for material
+    # packages — SUM(package_cost) over raw_materials — not anything
+    # derived from usage. See schema.sql's note on raw_materials for why.
     totals = query(
-        "SELECT COALESCE(SUM(line_cost), 0) AS total_spent FROM material_usage_logs",
+        "SELECT COALESCE(SUM(package_cost), 0) AS total_spent FROM raw_materials",
         fetchone=True,
     )
     return render_template(
@@ -1284,9 +1379,12 @@ def edit_material():
             flash("Select a valid supplier.", "error")
             return redirect(url_for("admin.materials"))
 
-    # cost_per_unit is recomputed from the new package figures, but this
-    # only affects usage entries logged from now on — past entries keep
-    # the unit_cost_snapshot they were logged with (see log_material_usage()).
+    # cost_per_unit is recomputed from the new package figures purely as
+    # a reference figure shown on the page — usage entries no longer
+    # carry any cost of their own (see log_material_usage()), so this
+    # recompute has no effect on past usage history the way it used to.
+    # stock_qty is deliberately left untouched here: editing a material's
+    # purchase details isn't the same as restocking it.
     cost_per_unit = package_cost / package_qty
 
     try:
@@ -1311,12 +1409,19 @@ def edit_material():
 @bp.route("/materials/log-usage", methods=["POST"])
 @admin_required
 def log_material_usage():
+    """Log that some quantity of a material was used — a plain
+    quantity record, nothing else. No cost is computed or stored here;
+    "total materials spent" is tracked purely at purchase time now (see
+    raw_materials.package_cost), not re-derived every time material is
+    withdrawn. The only side effect on raw_materials is stock_qty going
+    down by qty_used, same as a sale deducting branch_inventory.stock_qty.
+    """
     material_id = request.form.get("material_id")
     production_log_id = request.form.get("production_log_id") or None
     notes = request.form.get("notes", "").strip() or None
 
     material = query(
-        "SELECT material_name, unit, cost_per_unit FROM raw_materials WHERE material_id = %s",
+        "SELECT material_name, unit FROM raw_materials WHERE material_id = %s",
         (material_id,), fetchone=True,
     )
     if not material:
@@ -1330,21 +1435,44 @@ def log_material_usage():
         flash(str(err), "error")
         return redirect(url_for("admin.materials"))
 
-    unit_cost_snapshot = material["cost_per_unit"]
-    line_cost = round(float(qty_used) * float(unit_cost_snapshot), 2)
+    # Lock the material row for the check-then-deduct below, same
+    # pattern as stock deductions elsewhere in this file (e.g.
+    # dispatch_request) — so two usage entries logged for the same
+    # material at the same moment can't jointly push stock_qty negative.
+    with transaction() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "SELECT stock_qty FROM raw_materials WHERE material_id = %s FOR UPDATE",
+            (material_id,),
+        )
+        row = cur.fetchone()
+        if not row or qty_used > float(row["stock_qty"]):
+            cur.close()
+            on_hand = row["stock_qty"] if row else 0
+            flash(
+                f"Only {on_hand:g} {material['unit'].lower()} of "
+                f"{material['material_name']} is on hand — can't log more than that as used.",
+                "error",
+            )
+            return redirect(url_for("admin.materials"))
 
-    execute(
-        """INSERT INTO material_usage_logs
-           (material_id, production_log_id, qty_used, unit_cost_snapshot, line_cost, notes, created_by_user_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-        (material_id, production_log_id, qty_used, unit_cost_snapshot,
-         line_cost, notes, session.get("user_id")),
-    )
+        cur.execute(
+            """INSERT INTO material_usage_logs
+               (material_id, production_log_id, qty_used, notes, created_by_user_id)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (material_id, production_log_id, qty_used, notes, session.get("user_id")),
+        )
+        cur.execute(
+            "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
+            (qty_used, material_id),
+        )
+        cur.close()
+
     notify_all(["materials"])
     log_action("log_material_usage", target=material["material_name"],
-               details=f"{qty_used:g} {material['unit'].lower()} — ₱{line_cost:,.2f}")
+               details=f"{qty_used:g} {material['unit'].lower()}")
     flash(
-        f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} — ₱{line_cost:,.2f}.", "success")
+        f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} used.", "success")
     return redirect(url_for("admin.materials"))
 
 
@@ -1417,51 +1545,12 @@ def edit_supplier():
 
 
 # ---------------------------------------------------------------- capital
-@bp.route("/capital", methods=["GET", "POST"])
-@admin_required
-def capital():
-    """Business capital, as a running ledger rather than a single value.
-
-    An admin can log a new contribution any time — an initial injection,
-    then later top-ups — and the business's "total capital" is always
-    just the sum of every row here. Nothing is edited or deleted after
-    the fact; see the note on capital_contributions in schema.sql.
-    """
-    if request.method == "POST":
-        note = request.form.get("note", "").strip() or None
-        try:
-            amount = parse_positive_decimal(
-                request.form.get("amount"), "Amount")
-        except ValidationError as err:
-            flash(str(err), "error")
-            return redirect(url_for("admin.capital"))
-
-        execute(
-            """INSERT INTO capital_contributions (amount, note, contributed_by_user_id)
-               VALUES (%s, %s, %s)""",
-            (amount, note, session.get("user_id")),
-        )
-        notify_all(["capital"])
-        log_action(
-            "add_capital", target=session.get("username"),
-            details=f"₱{amount:,.2f}" + (f" — {note}" if note else ""),
-        )
-        flash(f"Logged ₱{amount:,.2f} in capital.", "success")
-        return redirect(url_for("admin.capital"))
-
-    contributions = query(
-        """SELECT cc.*, u.username
-           FROM capital_contributions cc
-           LEFT JOIN users u ON cc.contributed_by_user_id = u.user_id
-           ORDER BY cc.created_at DESC"""
-    )
-    totals = query(
-        "SELECT COALESCE(SUM(amount), 0) AS total_capital FROM capital_contributions",
-        fetchone=True,
-    )
-    return render_template(
-        "admin/capital.html", contributions=contributions, totals=totals,
-    )
+# The /capital route and admin/capital.html are removed — "Total Capital"
+# is no longer a manually-logged ledger. It's now derived as
+# SUM(package_cost) over raw_materials (see the dashboard() and
+# reports_data() routes above), i.e. it always equals what's been spent
+# on material packages. There's nothing left to log here; manage that
+# spend from the Materials page instead.
 
 
 # ---------------------------------------------------------------- partners (distributors & resellers)
@@ -1472,12 +1561,18 @@ def partners():
     branch network. This page is the partner directory — who they are
     and how to reach them.
 
-    Partners don't "invest" — any money they put in comes from the
-    packages they order (see the Packages tab), not a manually logged
-    contribution — so there's no way to log a new entry here anymore.
-    Any investment total shown below is purely historical, from
-    partner_investments rows logged before this changed; it will
-    never grow for a partner going forward.
+    Partners don't "invest" in the old sense — there's no way to log a
+    manual contribution here anymore. What used to be "Total invested"
+    is now "Total package sales": the sum of order_amount across every
+    inquiry this partner has made that's marked Closed (i.e. an admin
+    has confirmed the order actually went through and was received —
+    see partner_inquiries.status and its migration note in schema.sql).
+    New/Contacted inquiries are leads, not sales, so they're excluded.
+
+    partner_investments is no longer read here at all — nothing has
+    written to it since packages/inquiries replaced manual investment
+    logging, so it would only ever show stale, frozen figures alongside
+    numbers that are actually still growing.
     """
     if request.method == "POST":
         return_type = request.form.get("return_type", "all")
@@ -1512,13 +1607,19 @@ def partners():
         where_sql = "WHERE p.partner_type = %s"
         params = (type_filter,)
 
+    # order_amount is only ever counted once an inquiry is Closed — see
+    # the docstring above and schema.sql's note on
+    # partner_inquiries.order_amount. The AND sits inside the LEFT JOIN
+    # (not a WHERE) so a partner with zero Closed orders still appears
+    # in the list with 0 sales, rather than disappearing entirely.
     partner_list = query(
         f"""SELECT p.*,
-                   COALESCE(SUM(pi.amount), 0) AS total_invested,
-                   COUNT(pi.investment_id) AS investment_count,
-                   MAX(pi.created_at) AS last_investment_at
+                   COALESCE(SUM(pinq.order_amount), 0) AS total_invested,
+                   COUNT(pinq.inquiry_id) AS investment_count,
+                   MAX(pinq.created_at) AS last_investment_at
             FROM partners p
-            LEFT JOIN partner_investments pi ON pi.partner_id = p.partner_id
+            LEFT JOIN partner_inquiries pinq
+                ON pinq.partner_id = p.partner_id AND pinq.status = 'Closed'
             {where_sql}
             GROUP BY p.partner_id
             ORDER BY p.partner_name""",
@@ -1527,12 +1628,14 @@ def partners():
 
     totals = query(
         """SELECT
-               COALESCE(SUM(pi.amount), 0) AS total_all,
-               COALESCE(SUM(CASE WHEN p.partner_type = 'Distributor' THEN pi.amount ELSE 0 END), 0)
+               COALESCE(SUM(pinq.order_amount), 0) AS total_all,
+               COALESCE(SUM(CASE WHEN p.partner_type = 'Distributor' THEN pinq.order_amount ELSE 0 END), 0)
                    AS total_distributor,
-               COALESCE(SUM(CASE WHEN p.partner_type = 'Reseller' THEN pi.amount ELSE 0 END), 0)
+               COALESCE(SUM(CASE WHEN p.partner_type = 'Reseller' THEN pinq.order_amount ELSE 0 END), 0)
                    AS total_reseller
-           FROM partner_investments pi JOIN partners p ON pi.partner_id = p.partner_id""",
+           FROM partner_inquiries pinq
+           JOIN partners p ON pinq.partner_id = p.partner_id
+           WHERE pinq.status = 'Closed'""",
         fetchone=True,
     )
     counts = query(
@@ -1545,20 +1648,54 @@ def partners():
         fetchone=True,
     )
 
+    portal_link = url_for(
+        "portal.packages", slug=current_app.config.get("PARTNER_PORTAL_SLUG", ""), _external=True,
+    )
+
     return render_template(
         "admin/partners.html",
         partner_list=partner_list, type_filter=type_filter,
         totals=totals, counts=counts, partner_types=PARTNER_TYPES,
+        portal_link=portal_link,
+    )
+
+
+@bp.route("/partners/<int:partner_id>")
+@admin_required
+def partner_detail(partner_id):
+    """One partner's full inquiry history — every package inquiry they've
+    ever submitted through the public portal, in the exact form they
+    submitted it in. This is the permanent record referenced in
+    portal.py's _find_or_create_partner(): a repeat inquiry from a
+    known email/phone no longer overwrites the partner's name/contact/
+    address above (see partners.html), so this page is where the full
+    story — including whatever changed between visits — actually lives.
+    partners.last_inquiry_at/inquiry_count are just a rollup of what's
+    queried here, kept in sync on every new inquiry.
+    """
+    partner = query("SELECT * FROM partners WHERE partner_id = %s", (partner_id,), fetchone=True)
+    if not partner:
+        abort(404)
+
+    inquiries = query(
+        """SELECT * FROM partner_inquiries
+           WHERE partner_id = %s ORDER BY created_at DESC""",
+        (partner_id,),
+    )
+
+    return render_template(
+        "admin/partner_detail.html", partner=partner, inquiries=inquiries,
     )
 
 
 # NOTE: partners no longer "invest" — a distributor/reseller's money comes
-# from the packages they order (see the Packages tab + the upcoming
-# order/inquiry flow), not from a manually logged investment. The old
-# POST /admin/partners/investment route has been removed. The
-# partner_investments table and its historical totals are still shown
-# below (read-only) so any past entries aren't lost, but nothing writes
-# to that table anymore.
+# from the packages they order and Close (see the Packages tab and
+# partners()'s "Total invested" query above, which sums order_amount on
+# Closed partner_inquiries rows). The old POST /admin/partners/investment
+# route has been removed, and partner_investments is no longer read
+# anywhere in this file — the table itself is left in place purely so any
+# pre-existing rows in it aren't destructively dropped, but nothing
+# reads or writes it anymore.
 
 
 # ---------------------------------------------------------------- packages (distributor/reseller bundles)
@@ -1742,11 +1879,31 @@ def add_package_item(package_id):
 @bp.route("/packages/<int:package_id>/items/remove", methods=["POST"])
 @admin_required
 def remove_package_item(package_id):
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    if not pkg:
+        abort(404)
+
     item_id = request.form.get("package_item_id")
     execute(
         "DELETE FROM package_items WHERE package_item_id = %s AND package_id = %s",
         (item_id, package_id),
     )
+
+    remaining = query(
+        "SELECT COUNT(*) c FROM package_items WHERE package_id = %s", (package_id,), fetchone=True
+    )
+    if remaining["c"] == 0:
+        # An empty package can't be ordered/inquired about anyway — the
+        # confirm dialog on package_detail.html already warned the admin
+        # this exact removal would empty it out, so deleting it here
+        # (rather than leaving a dangling zero-product shell around) is
+        # the outcome they already agreed to.
+        execute("DELETE FROM packages WHERE package_id = %s", (package_id,))
+        notify_all(["packages"])
+        log_action("edit_package", target=pkg["package_name"], details="Deleted — last product removed")
+        flash(f"\"{pkg['package_name']}\" had no products left, so it was deleted.", "success")
+        return redirect(url_for("admin.packages"))
+
     notify_all(["packages"])
     flash("Product removed from package.", "success")
     return redirect(url_for("admin.package_detail", package_id=package_id))
@@ -1756,12 +1913,15 @@ def remove_package_item(package_id):
 # History of every inquiry a distributor/reseller has submitted through
 # the public partner portal (see routes/portal.py + partner_inquiries in
 # schema.sql). This is the "Partner Inquiries" page referenced in
-# portal.py's module docstring — read-only except for `status`, a simple
-# triage field (New -> Contacted -> Closed) an admin can advance while
-# following up. Nothing else about a submitted inquiry is ever edited;
-# see the note on partner_inquiries in schema.sql for why (it's a
-# permanent record, same philosophy as capital_contributions).
-INQUIRY_STATUSES = ("New", "Contacted", "Closed")
+# portal.py's module docstring — read-only except for two admin-only
+# fields layered on top of the permanent record: `status`, a triage
+# pipeline an admin can move through while following up, and `remarks`,
+# a free-text internal note (e.g. "on hold, still deciding" or "follow
+# up next week") that's independent of status and never shown to the
+# partner. Nothing about what was actually *submitted* is ever edited;
+# see the note on partner_inquiries in schema.sql for why — it's a
+# permanent record.
+INQUIRY_STATUSES = ("New", "Contacted", "Follow-up", "On Hold", "Closed", "Declined")
 
 
 @bp.route("/partners/inquiries")
@@ -1776,20 +1936,31 @@ def partner_inquiries():
     sql += " ORDER BY created_at DESC LIMIT 300"
     inquiries = query(sql, params)
 
+    # in_progress_count groups Follow-up and On Hold together for the
+    # stat tile — both mean "not new, not decided yet", just for a
+    # different reason (needs a nudge vs. the partner asked to wait).
+    # declined_count doesn't get its own tile; it's called out in the
+    # Closed tile's footer instead so the row of tiles stays at four.
     counts = query(
         """SELECT
                COUNT(*) AS total_count,
                COALESCE(SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END), 0) AS new_count,
                COALESCE(SUM(CASE WHEN status = 'Contacted' THEN 1 ELSE 0 END), 0) AS contacted_count,
-               COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed_count
+               COALESCE(SUM(CASE WHEN status IN ('Follow-up', 'On Hold') THEN 1 ELSE 0 END), 0) AS in_progress_count,
+               COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed_count,
+               COALESCE(SUM(CASE WHEN status = 'Declined' THEN 1 ELSE 0 END), 0) AS declined_count
            FROM partner_inquiries""",
         fetchone=True,
+    )
+
+    portal_link = url_for(
+        "portal.packages", slug=current_app.config.get("PARTNER_PORTAL_SLUG", ""), _external=True,
     )
 
     return render_template(
         "admin/partner_inquiries.html",
         inquiries=inquiries, status_filter=status_filter, counts=counts,
-        inquiry_statuses=INQUIRY_STATUSES,
+        inquiry_statuses=INQUIRY_STATUSES, portal_link=portal_link,
     )
 
 
@@ -1818,4 +1989,43 @@ def update_inquiry_status(inquiry_id):
     notify_admin(["partner_inquiries"])
     log_action("update_inquiry_status", target=inquiry["company_name"], details=new_status)
     flash(f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
+    return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+
+@bp.route("/partners/inquiries/<int:inquiry_id>/remarks", methods=["POST"])
+@admin_required
+def update_inquiry_remarks(inquiry_id):
+    """Save (or clear) an admin's internal note on one inquiry.
+
+    Independent of `status` — a note like "on hold, still comparing
+    packages" can sit alongside any status and gets edited in place
+    (no history of past remarks is kept, unlike the inquiry's own
+    submitted fields). Never shown to the partner; this only ever
+    appears inside the signed-in admin app.
+    """
+    return_status = request.form.get("return_status", "all")
+    remarks = request.form.get("remarks", "").strip()
+
+    if len(remarks) > 1000:
+        flash("Remarks must be under 1000 characters.", "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+    inquiry = query(
+        "SELECT company_name FROM partner_inquiries WHERE inquiry_id = %s",
+        (inquiry_id,), fetchone=True,
+    )
+    if not inquiry:
+        flash("That inquiry no longer exists.", "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+    execute(
+        "UPDATE partner_inquiries SET remarks = %s WHERE inquiry_id = %s",
+        (remarks or None, inquiry_id),
+    )
+    notify_admin(["partner_inquiries"])
+    log_action(
+        "update_inquiry_remarks", target=inquiry["company_name"],
+        details=(remarks[:100] if remarks else "Remarks cleared"),
+    )
+    flash(f"Remarks saved for {inquiry['company_name']}'s inquiry.", "success")
     return redirect(url_for("admin.partner_inquiries", status=return_status))

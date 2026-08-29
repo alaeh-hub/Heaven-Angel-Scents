@@ -428,9 +428,33 @@ function initRealtime(notifBell) {
   let pendingRefresh = false;
   let suppressUntil = 0;
 
+  // Whether the user has typed/selected anything, anywhere in .content,
+  // that a soft-refresh would silently discard. activeFieldInsideContent()
+  // alone isn't enough: it only reflects the field focused at the exact
+  // instant a refresh is attempted, and there's a brief window while
+  // focus is moving between two fields (e.g. Tab from one input to the
+  // next) where neither the old nor the new field reads as "focused"
+  // yet. A refresh landing in that gap replaces the whole .content DOM
+  // with a fresh server render, wiping every field the user had already
+  // filled in and visibly jumping the page under them. Tracking "has
+  // anything changed" independently of focus closes that gap.
+  let contentDirty = false;
+
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.content')) {
+      contentDirty = true;
+    }
+  }, true);
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.content')) {
+      contentDirty = true;
+    }
+  }, true);
+
   document.addEventListener('submit', (e) => {
     if (e.target && e.target.closest && e.target.closest('.content')) {
       suppressUntil = Date.now() + 2500;
+      contentDirty = false;
     }
   }, true);
 
@@ -453,7 +477,7 @@ function initRealtime(notifBell) {
 
   function softRefresh() {
     if (Date.now() < suppressUntil) return;
-    if (activeFieldInsideContent()) {
+    if (activeFieldInsideContent() || contentDirty) {
       pendingRefresh = true;
       return;
     }
@@ -467,6 +491,7 @@ function initRealtime(notifBell) {
         const liveContent = document.querySelector('.content');
         if (freshContent && liveContent) liveContent.replaceWith(freshContent);
 
+        contentDirty = false;
         patchSidebarBadges(fresh);
 
         document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
@@ -495,10 +520,17 @@ function initRealtime(notifBell) {
   }
 
   document.addEventListener('focusout', () => {
-    if (pendingRefresh && !activeFieldInsideContent()) {
-      pendingRefresh = false;
-      softRefresh();
-    }
+    // Deferred to the next tick: at the instant focusout fires, the
+    // browser hasn't necessarily settled document.activeElement onto
+    // wherever focus is actually landing next (e.g. Tab to the next
+    // field in the same form) — checking synchronously here risks
+    // treating an in-form focus move as "left the form entirely."
+    setTimeout(() => {
+      if (pendingRefresh && !activeFieldInsideContent() && !contentDirty) {
+        pendingRefresh = false;
+        softRefresh();
+      }
+    }, 0);
   }, true);
 
   const socket = io();

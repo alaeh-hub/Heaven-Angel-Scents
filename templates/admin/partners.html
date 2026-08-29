@@ -5,6 +5,21 @@
 {% block heading %}Partners{% endblock %}
 
 {% block content %}
+<div class="card card-pad stack" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+  <div style="flex:1; min-width:240px;">
+    <h2 style="font-size:14.5px; margin-bottom:4px;">Partner Portal link</h2>
+    <p class="text-faint" style="font-size:12px; margin:0;">
+      Share this privately with a distributor or reseller — it's the only way to reach the portal
+      (it isn't linked from the sign-in page or anywhere else). They'll browse packages, open one, and
+      send an inquiry straight from there.
+    </p>
+  </div>
+  <div style="display:flex; gap:8px; align-items:center; flex:1 1 320px; min-width:260px;">
+    <code id="portalLinkValue" class="mono" style="flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); font-size:12.5px; word-break:break-all;">{{ portal_link }}</code>
+    <button type="button" class="btn btn-ghost btn-sm" id="portalLinkCopyBtn">Copy</button>
+  </div>
+</div>
+
 <div class="bento-grid stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
@@ -12,7 +27,7 @@
     </div>
     <div class="stat-label">Distributors</div>
     <div class="stat-value">{{ counts.distributor_count }}</div>
-    <div class="stat-foot">{{ totals.total_distributor|peso }} invested</div>
+    <div class="stat-foot">{{ totals.total_distributor|peso }} in package sales</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-blue">
@@ -20,106 +35,30 @@
     </div>
     <div class="stat-label">Resellers</div>
     <div class="stat-value">{{ counts.reseller_count }}</div>
-    <div class="stat-foot">{{ totals.total_reseller|peso }} invested</div>
+    <div class="stat-foot">{{ totals.total_reseller|peso }} in package sales</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-blue">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
     </div>
-    <div class="stat-label">Total invested</div>
+    <div class="stat-label">Total package sales</div>
     <div class="stat-value accent">{{ totals.total_all|peso }}</div>
-    <div class="stat-foot">across every partner</div>
+    <div class="stat-foot">across every partner &middot; closed orders only</div>
   </div>
 </div>
 
-<div class="tabs">
-  <a class="tab {{ 'active' if type_filter == 'all' }}" href="{{ url_for('admin.partners') }}">All</a>
-  <a class="tab {{ 'active' if type_filter == 'Distributor' }}" href="{{ url_for('admin.partners', type='Distributor') }}">Distributors</a>
-  <a class="tab {{ 'active' if type_filter == 'Reseller' }}" href="{{ url_for('admin.partners', type='Reseller') }}">Resellers</a>
-</div>
-
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
-    <div class="card-header">
-      <h2>{{ 'Distributors' if type_filter == 'Distributor' else ('Resellers' if type_filter == 'Reseller' else 'All partners') }}</h2>
-      <span class="hint" id="partnersCount">{{ partner_list|length }} total</span>
-    </div>
-    {% if partner_list %}
-    <div data-smart-table data-page-size="10" data-count-target="partnersCount" data-count-label="partner">
-      <div class="table-toolbar">
-        <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" class="smart-search-input" placeholder="Search by name or contact…" autocomplete="off">
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table class="smart-table">
-          <thead>
-            <tr>
-              <th>Partner</th>
-              <th>Type</th>
-              <th>Contact</th>
-              <th class="num">Total invested</th>
-              <th>Added</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in partner_list %}
-            <tr data-search="{{ (p.partner_name ~ ' ' ~ (p.contact_person or '') ~ ' ' ~ (p.phone or '') ~ ' ' ~ (p.email or ''))|lower }}">
-              <td data-label="Partner">
-                <div class="item-name">{{ p.partner_name }}</div>
-                {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
-              </td>
-              <td data-label="Type">
-                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
-              </td>
-              <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
-                {% if p.contact_person %}{{ p.contact_person }}<br>{% endif %}
-                {% if p.phone %}<span class="mono">{{ p.phone }}</span>{% endif %}
-                {% if p.email %}{{ ' · ' if p.phone }}{{ p.email }}{% endif %}
-                {% if not p.contact_person and not p.phone and not p.email %}—{% endif %}
-              </td>
-              <td class="num mono" data-label="Total invested">
-                {{ p.total_invested|peso }}
-                {% if p.investment_count %}<div class="item-sub" style="text-align:right;">{{ p.investment_count }} entr{{ 'y' if p.investment_count == 1 else 'ies' }}</div>{% endif %}
-              </td>
-              <td class="mono text-soft" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <div class="empty-state smart-no-match" style="display:none;">
-          <div class="glyph">—</div>
-          <p>No partners match your search.</p>
-        </div>
-      </div>
-      <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
-        <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
-      </div>
-    </div>
-    {% if totals.total_all %}
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Investment totals shown here are historical only — partners no longer invest directly. A partner's money now comes through the packages they order.</p>
-    </div>
-    {% endif %}
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">✦</div>
-      <p>No {{ 'distributors' if type_filter == 'Distributor' else ('resellers' if type_filter == 'Reseller' else 'partners') }} yet — add the first one.</p>
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a partner</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Distributors resell further down a chain of their own; resellers sell directly to end customers. Either way, they're a bulk buyer outside the branch network.
-    </p>
-    <form method="POST" action="{{ url_for('admin.partners') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="return_type" value="{{ type_filter }}">
+<!-- Add-a-partner form now sits full width, on top of the table — same
+     fix as Packages: a side-by-side 1.6fr/1fr grid next to a table
+     would squish/clip once the table had real rows. -->
+<div class="card card-pad">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a partner</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Distributors resell further down a chain of their own; resellers sell directly to end customers. Either way, they're a bulk buyer outside the branch network.
+  </p>
+  <form method="POST" action="{{ url_for('admin.partners') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="return_type" value="{{ type_filter }}">
+    <div class="form-row">
       <div class="field">
         <label for="partner_type">Type</label>
         <select id="partner_type" name="partner_type" required>
@@ -133,30 +72,148 @@
         <label for="partner_name">Partner name</label>
         <input type="text" id="partner_name" name="partner_name" placeholder="e.g. Golden Scent Trading" required>
       </div>
+    </div>
+    <div class="form-row">
       <div class="field">
         <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
         <input type="text" id="contact_person" name="contact_person" placeholder="Who to reach out to">
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
-          <input type="text" id="phone" name="phone" placeholder="09xx xxx xxxx">
-        </div>
-        <div class="field">
-          <label for="email">Email <span class="text-faint">(optional)</span></label>
-          <input type="email" id="email" name="email" placeholder="name@example.com">
-        </div>
       </div>
       <div class="field">
         <label for="address">Address <span class="text-faint">(optional)</span></label>
         <input type="text" id="address" name="address" placeholder="City / area they operate from">
       </div>
+    </div>
+    <div class="form-row">
       <div class="field">
-        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
-        <input type="text" id="notes" name="notes" maxlength="255" placeholder="Anything worth remembering">
+        <label for="phone">Phone <span class="text-faint">(optional)</span></label>
+        <input type="text" id="phone" name="phone" placeholder="09xx xxx xxxx">
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add partner</button>
-    </form>
-  </div>
+      <div class="field">
+        <label for="email">Email <span class="text-faint">(optional)</span></label>
+        <input type="email" id="email" name="email" placeholder="name@example.com">
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+      <input type="text" id="notes" name="notes" maxlength="255" placeholder="Anything worth remembering">
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%; max-width:280px;">Add partner</button>
+  </form>
 </div>
+
+<div class="tabs">
+  <a class="tab {{ 'active' if type_filter == 'all' }}" href="{{ url_for('admin.partners') }}">All</a>
+  <a class="tab {{ 'active' if type_filter == 'Distributor' }}" href="{{ url_for('admin.partners', type='Distributor') }}">Distributors</a>
+  <a class="tab {{ 'active' if type_filter == 'Reseller' }}" href="{{ url_for('admin.partners', type='Reseller') }}">Resellers</a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>{{ 'Distributors' if type_filter == 'Distributor' else ('Resellers' if type_filter == 'Reseller' else 'All partners') }}</h2>
+    <span class="hint" id="partnersCount">{{ partner_list|length }} total</span>
+  </div>
+  {% if partner_list %}
+  <div data-smart-table data-page-size="10" data-count-target="partnersCount" data-count-label="partner">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by name or contact…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>Partner</th>
+            <th>Type</th>
+            <th>Contact</th>
+            <th class="num">Package sales</th>
+            <th>Last inquiry</th>
+            <th>Added</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in partner_list %}
+          <tr data-search="{{ (p.partner_name ~ ' ' ~ (p.contact_person or '') ~ ' ' ~ (p.phone or '') ~ ' ' ~ (p.email or ''))|lower }}">
+            <td data-label="Partner">
+              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a>
+              {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
+            </td>
+            <td data-label="Type">
+              <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
+            </td>
+            <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
+              {% if p.contact_person %}{{ p.contact_person }}<br>{% endif %}
+              {% if p.phone %}<span class="mono">{{ p.phone }}</span>{% endif %}
+              {% if p.email %}{{ ' · ' if p.phone }}{{ p.email }}{% endif %}
+              {% if not p.contact_person and not p.phone and not p.email %}—{% endif %}
+            </td>
+            <td class="num mono" data-label="Package sales">
+              {{ p.total_invested|peso }}
+              {% if p.investment_count %}<div class="item-sub" style="text-align:right;">{{ p.investment_count }} closed order{{ 's' if p.investment_count != 1 }}</div>{% endif %}
+            </td>
+            <td data-label="Last inquiry">
+              {% if p.last_inquiry_at %}
+              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="mono text-soft" style="font-size:12px;">{{ p.last_inquiry_at.strftime('%b %d, %Y') }}</a>
+              <div class="item-sub" style="text-align:left;">{{ p.inquiry_count }} inquir{{ 'y' if p.inquiry_count == 1 else 'ies' }}</div>
+              {% else %}
+              <span class="text-faint">—</span>
+              {% endif %}
+            </td>
+            <td class="mono text-soft" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No partners match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% if totals.total_all %}
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Package sales counts only inquiries an admin has marked Closed — see <a href="{{ url_for('admin.partner_inquiries') }}">Partner Inquiries</a>. A New or Contacted lead hasn't converted into a sale yet, so it isn't counted here.</p>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">✦</div>
+    <p>No {{ 'distributors' if type_filter == 'Distributor' else ('resellers' if type_filter == 'Reseller' else 'partners') }} yet — add the first one.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var copyBtn = document.getElementById('portalLinkCopyBtn');
+    var valueEl = document.getElementById('portalLinkValue');
+    if (!copyBtn || !valueEl) return;
+    copyBtn.addEventListener('click', function () {
+      var text = valueEl.textContent;
+      var done = function () {
+        copyBtn.textContent = 'Copied';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {});
+      } else {
+        var range = document.createRange();
+        range.selectNode(valueEl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+        done();
+      }
+    });
+  })();
+</script>
 {% endblock %}

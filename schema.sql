@@ -102,6 +102,28 @@ CREATE TABLE IF NOT EXISTS suppliers (
 --    migration block below for the DROP COLUMN that removes it from an
 --    existing database.
 --
+--    package_cost is now also the ONLY figure "money spent on materials"
+--    is ever computed from — see routes/admin.py's materials()/
+--    dashboard()/reports_data(), which all do SUM(package_cost) over this
+--    table. Usage (material_usage_logs below) no longer carries its own
+--    cost at all; logging usage only records a quantity and reduces
+--    stock_qty here. This intentionally replaces the old model where
+--    "total materials spent" was derived from SUM(line_cost) over every
+--    usage entry — that double-counted the same peso value on every
+--    withdrawal instead of once, at purchase.
+--
+--    stock_qty is the remaining quantity on hand, in `unit`. It starts
+--    at package_qty the moment a material is added (i.e. "I just bought
+--    this package") and is decremented by qty_used every time usage is
+--    logged (see material_usage_logs below) — the same
+--    reduce-on-withdrawal pattern branch_inventory.stock_qty already
+--    uses for finished products, just applied to raw materials instead.
+--    It is NOT recomputed from package_qty on every edit — editing a
+--    material's purchase details (e.g. a new price for the next batch)
+--    does not restock it; use Log material usage in reverse (or a
+--    future restock action) for that. See the migration block below for
+--    the ADD COLUMN + backfill that adds this to an existing database.
+--
 --    supplier_id is nullable — a material can exist before its supplier
 --    is on record — and set to NULL (not cascaded) if its supplier is
 --    ever removed, so a material never disappears because of that.
@@ -113,6 +135,7 @@ CREATE TABLE IF NOT EXISTS raw_materials (
     package_qty    DECIMAL(10, 3) NOT NULL DEFAULT 1.000,
     package_cost   DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     cost_per_unit  DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    stock_qty      DECIMAL(10, 3) NOT NULL DEFAULT 0.000,   -- remaining on hand, in `unit`; reduced as usage is logged
     supplier_id    INT NULL,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL
@@ -152,21 +175,23 @@ CREATE TABLE IF NOT EXISTS production_logs (
 -- ----------------------------------------------------------------------------
 -- 5b. Material Usage Logs
 --
---    unit_cost_snapshot is copied from raw_materials.cost_per_unit the
---    moment usage is logged and line_cost = qty_used * unit_cost_snapshot
---    is stored alongside it — same philosophy as
---    stock_request_items.unit_price: fixed permanently at log time, so a
---    later edit to a material's cost never rewrites the cost of a past
---    entry. production_log_id is optional — usage doesn't have to be
---    tied to a specific run.
+--    A plain quantity log, nothing else — no cost is computed or stored
+--    here anymore (see raw_materials above for why: money spent on
+--    materials is now purely SUM(package_cost) at purchase time, so a
+--    per-usage cost would just double-count it). Logging usage does two
+--    things: inserts this row, and decrements the matching
+--    raw_materials.stock_qty by qty_used — the same "log an event, move
+--    the stock" pattern stock_movement_logs uses for products.
+--    production_log_id is optional — usage doesn't have to be tied to a
+--    specific run. See the migration block below for the DROP COLUMN
+--    that removes unit_cost_snapshot/line_cost from an existing
+--    database.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS material_usage_logs (
     usage_id            INT AUTO_INCREMENT PRIMARY KEY,
     material_id         INT NOT NULL,
     production_log_id   INT NULL,
     qty_used            DECIMAL(10, 3) NOT NULL,
-    unit_cost_snapshot  DECIMAL(10, 4) NOT NULL,
-    line_cost           DECIMAL(10, 2) NOT NULL,
     notes               VARCHAR(255),
     created_by_user_id  INT NULL,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -314,26 +339,18 @@ CREATE TABLE IF NOT EXISTS admin_actions (
 );
 
 -- ----------------------------------------------------------------------------
--- 10. Capital Contributions
+-- 10. Capital — no longer its own table.
 --
---     Tracks money the owner(s) put into the business. This is a running
---     ledger, not a single editable value — an admin can log a new
---     contribution any time (e.g. an initial capital injection, then
---     later top-ups), and the business's "total capital" is always just
---     SUM(amount) over every row here. Nothing here is ever edited or
---     deleted after the fact; a correction should be logged as its own
---     entry so the ledger stays an honest history, same philosophy as
---     stock_movement_logs above.
+--     There used to be a capital_contributions ledger here that an admin
+--     logged entries into by hand. "Total Capital" is now a derived
+--     number instead: SUM(package_cost) over raw_materials — i.e. capital
+--     equals what has been spent buying material packages, computed on
+--     the fly wherever it's shown (dashboard, reports), same as any
+--     other rollup in this schema. See the migration block below for the
+--     DROP TABLE that removes capital_contributions from an existing
+--     database, and raw_materials above for where the figure now comes
+--     from.
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS capital_contributions (
-    capital_id             INT AUTO_INCREMENT PRIMARY KEY,
-    amount                 DECIMAL(12, 2) NOT NULL,
-    note                   VARCHAR(255) NULL,
-    contributed_by_user_id INT NULL,
-    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (contributed_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    INDEX idx_capital_created_at (created_at)
-);
 
 -- ----------------------------------------------------------------------------
 -- 10b. Partners (Distributors &amp; Resellers)
@@ -353,6 +370,18 @@ CREATE TABLE IF NOT EXISTS partners (
     email           VARCHAR(120) NULL,
     address         VARCHAR(255) NULL,
     notes           VARCHAR(255) NULL,
+    -- Denormalized rollup of partner_inquiries, NOT a separate source of
+    -- truth — both are recomputed/maintained by routes/portal.py every
+    -- time a new inquiry comes in (see _find_or_create_partner()), purely
+    -- so the Partners list can show "last heard from" / "X inquiries"
+    -- without a join+GROUP BY on every page load. The real, permanent,
+    -- never-overwritten history of what was submitted each time lives in
+    -- partner_inquiries itself (see 10f below) — on a repeat inquiry from
+    -- an already-known email/phone, THESE columns above (partner_name,
+    -- contact_person, phone, email, address) are deliberately left
+    -- alone; only last_inquiry_at/inquiry_count move.
+    last_inquiry_at TIMESTAMP NULL,
+    inquiry_count   INT NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_partners_type (partner_type)
 );
@@ -360,9 +389,9 @@ CREATE TABLE IF NOT EXISTS partners (
 -- ----------------------------------------------------------------------------
 -- 10c. Partner Investments
 --
---      What a distributor/reseller has put in — same running-ledger
---      philosophy as capital_contributions: an admin logs a new entry
---      any time (an initial buy-in, a later top-up), a partner's
+--      What a distributor/reseller has put in — a running ledger: an
+--      admin logs a new entry any time (an initial buy-in, a later
+--      top-up), a partner's
 --      "total invested" is always SUM(amount) over their own rows, and
 --      nothing here is ever edited or deleted — a correction is logged
 --      as its own entry so the ledger stays an honest history.
@@ -448,6 +477,21 @@ CREATE TABLE IF NOT EXISTS package_items (
 --      went out (mail can be unconfigured or fail) — the inquiry
 --      itself is always saved either way, so a broken mailer never
 --      loses a lead, just the immediate notification.
+--
+--      order_amount snapshots what the partner would actually pay for
+--      this package — reference price minus the package's discount at
+--      the moment of inquiry (same "freeze it, don't recompute later"
+--      philosophy as package_name_snapshot and
+--      stock_request_items.unit_price). This is what package-sales
+--      figures (top package, top partner, partner "total invested",
+--      and the revenue/profit totals on the dashboard) are computed
+--      from — but ONLY once status = 'Closed', since that's the point
+--      an inquiry represents money actually received rather than just
+--      a lead. New/Contacted inquiries are not counted as sales.
+--      Nullable so older rows created before this column existed don't
+--      silently read as ₱0 — see the migration block below, which
+--      backfills what it safely can and leaves the rest NULL (treated
+--      as "unknown", not "zero", everywhere this is summed).
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS partner_inquiries (
     inquiry_id             INT AUTO_INCREMENT PRIMARY KEY,
@@ -460,8 +504,11 @@ CREATE TABLE IF NOT EXISTS partner_inquiries (
     email                     VARCHAR(120) NULL,
     address                   VARCHAR(255) NULL,
     message                   VARCHAR(500) NULL,
+    remarks                   TEXT NULL,
     package_name_snapshot     VARCHAR(180) NOT NULL,
-    status                    ENUM('New', 'Contacted', 'Closed') NOT NULL DEFAULT 'New',
+    order_amount              DECIMAL(12, 2) NULL,
+    status                    ENUM('New', 'Contacted', 'Follow-up', 'On Hold', 'Closed', 'Declined')
+                                  NOT NULL DEFAULT 'New',
     email_sent                BOOLEAN NOT NULL DEFAULT FALSE,
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE SET NULL,
@@ -681,3 +728,219 @@ DELIMITER ;
 
 CALL _migrate_stock_requests_to_multi_item();
 DROP PROCEDURE _migrate_stock_requests_to_multi_item;
+
+-- ----------------------------------------------------------------------------
+-- 13. Migration — partners: inquiry history rollup columns
+--
+--     Adds last_inquiry_at / inquiry_count to an existing `partners`
+--     table that predates them (a fresh install already has both, from
+--     the CREATE TABLE above). Guarded the same way as every other step
+--     in this file — safe to re-run, no-op once applied.
+--
+--     Also backfills both columns from partner_inquiries for partners
+--     that already have inquiries on file, so existing data shows
+--     correct values immediately instead of sitting at 0/NULL until
+--     their next new inquiry. This is a plain recompute (COUNT/MAX
+--     grouped by partner_id), safe to re-run any time.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_partner_inquiry_rollup()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partners' AND column_name = 'last_inquiry_at'
+    ) THEN
+        ALTER TABLE partners ADD COLUMN last_inquiry_at TIMESTAMP NULL AFTER notes;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partners' AND column_name = 'inquiry_count'
+    ) THEN
+        ALTER TABLE partners ADD COLUMN inquiry_count INT NOT NULL DEFAULT 0 AFTER last_inquiry_at;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_partner_inquiry_rollup();
+DROP PROCEDURE _migrate_partner_inquiry_rollup;
+
+UPDATE partners p
+LEFT JOIN (
+    SELECT partner_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
+    FROM partner_inquiries
+    WHERE partner_id IS NOT NULL
+    GROUP BY partner_id
+) agg ON agg.partner_id = p.partner_id
+SET p.inquiry_count = COALESCE(agg.cnt, 0),
+    p.last_inquiry_at = agg.last_at;
+
+-- ----------------------------------------------------------------------------
+-- 14. Migration — partner_inquiries.order_amount
+--
+--     Adds the column to an existing database that predates it (a fresh
+--     install already has it from the CREATE TABLE above). Guarded and
+--     re-run-safe like every other step in this file.
+--
+--     Backfill for rows that already exist: their order_amount is
+--     computed from package_items joined through package_id at CURRENT
+--     product prices/discount — the closest available stand-in for
+--     "what it was worth then", same limitation the stock_requests
+--     migration above already documents (the old schema never recorded
+--     this separately, so this is a best-effort reconstruction, not a
+--     true historical value). Only rows whose package still exists (and
+--     still has products in it) can be backfilled this way; anything
+--     else — package_id IS NULL, or the package/its items were deleted
+--     since — is left NULL rather than guessed at, so it's excluded
+--     from sums instead of silently contributing ₱0 or a wrong figure.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_partner_inquiry_order_amount()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries' AND column_name = 'order_amount'
+    ) THEN
+        ALTER TABLE partner_inquiries
+            ADD COLUMN order_amount DECIMAL(12, 2) NULL AFTER package_name_snapshot;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_partner_inquiry_order_amount();
+DROP PROCEDURE _migrate_partner_inquiry_order_amount;
+
+UPDATE partner_inquiries pinq
+JOIN packages pkg ON pkg.package_id = pinq.package_id
+JOIN (
+    SELECT pi.package_id, COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
+    FROM package_items pi JOIN products p ON p.sku = pi.sku
+    GROUP BY pi.package_id
+) ref ON ref.package_id = pkg.package_id
+SET pinq.order_amount = ref.reference_total * (1 - (pkg.discount_percent / 100))
+WHERE pinq.order_amount IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 15. Migration — raw_materials.stock_qty
+--
+--     Adds the column to an existing database that predates it (a fresh
+--     install already has it from the CREATE TABLE above). Guarded and
+--     re-run-safe like every other step in this file.
+--
+--     Backfill: stock_qty starts at package_qty (what's on hand at the
+--     package's current definition) minus whatever has already been
+--     logged as used against that material in material_usage_logs, i.e.
+--     "however much of the package is left after existing usage
+--     history", floored at 0 so a material that was over-logged in the
+--     old cost-only model doesn't backfill to a negative number.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_raw_materials_stock_qty()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'stock_qty'
+    ) THEN
+        ALTER TABLE raw_materials
+            ADD COLUMN stock_qty DECIMAL(10, 3) NOT NULL DEFAULT 0.000 AFTER cost_per_unit;
+
+        UPDATE raw_materials rm
+        LEFT JOIN (
+            SELECT material_id, COALESCE(SUM(qty_used), 0) AS used
+            FROM material_usage_logs GROUP BY material_id
+        ) u ON u.material_id = rm.material_id
+        SET rm.stock_qty = GREATEST(rm.package_qty - COALESCE(u.used, 0), 0);
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_raw_materials_stock_qty();
+DROP PROCEDURE _migrate_raw_materials_stock_qty;
+
+-- ----------------------------------------------------------------------------
+-- 16. Migration — material_usage_logs: drop cost columns
+--
+--     Removes unit_cost_snapshot/line_cost from an existing database —
+--     usage is now a plain quantity log (see the table's comment above).
+--     Guarded and re-run-safe like every other step in this file.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_drop_material_usage_cost_columns()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'material_usage_logs' AND column_name = 'line_cost'
+    ) THEN
+        ALTER TABLE material_usage_logs
+            DROP COLUMN unit_cost_snapshot,
+            DROP COLUMN line_cost;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_drop_material_usage_cost_columns();
+DROP PROCEDURE _migrate_drop_material_usage_cost_columns;
+
+-- ----------------------------------------------------------------------------
+-- 17. Migration — drop capital_contributions
+--
+--     Removes the old manual capital ledger from an existing database.
+--     "Total Capital" is now derived from raw_materials.package_cost
+--     instead — see section 10's comment above. This intentionally
+--     drops the table (and its logged history) rather than leaving it
+--     around unused, since nothing in the app reads from it anymore.
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS capital_contributions;
+
+-- ----------------------------------------------------------------------------
+-- 18. Migration — partner_inquiries: remarks + expanded status pipeline
+--
+--     Adds a free-text `remarks` column an admin can use to leave an
+--     internal note on an inquiry independent of its status (e.g. "on
+--     hold, distributor still deciding" or "call back next week"), and
+--     widens the `status` ENUM past the original New/Contacted/Closed
+--     triage into a fuller pipeline: New -> Contacted -> Follow-up /
+--     On Hold -> Closed / Declined. Existing rows keep whatever status
+--     they already have — this only adds new allowed values, it never
+--     changes a stored one. Nothing here touches the "Closed only"
+--     revenue rule used elsewhere (see order_amount's note above and
+--     routes/admin.py's dashboard/partners queries) since 'Closed'
+--     itself is untouched. Guarded and re-run-safe like every other
+--     step in this file.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_partner_inquiries_remarks_and_status()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries' AND column_name = 'remarks'
+    ) THEN
+        ALTER TABLE partner_inquiries
+            ADD COLUMN remarks TEXT NULL AFTER message;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries'
+              AND column_name = 'status' AND column_type LIKE '%Declined%'
+    ) THEN
+        ALTER TABLE partner_inquiries
+            MODIFY COLUMN status
+            ENUM('New', 'Contacted', 'Follow-up', 'On Hold', 'Closed', 'Declined')
+            NOT NULL DEFAULT 'New';
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_partner_inquiries_remarks_and_status();
+DROP PROCEDURE _migrate_partner_inquiries_remarks_and_status;

@@ -4,71 +4,66 @@
 {% block eyebrow %}Partners &amp; Distribution{% endblock %}
 {% block heading %}Packages{% endblock %}
 
-{% block content %}
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
-    <div class="card-header">
-      <h2>All packages</h2>
-      <span class="hint">{{ package_list|length }} total</span>
-    </div>
-    {% if package_list %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Package</th>
-            <th>For</th>
-            <th class="num">Items</th>
-            <th class="num">Reference value</th>
-            <th class="num">Discount</th>
-            <th class="num">Order price</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for pkg in package_list %}
-          <tr>
-            <td data-label="Package">
-              <div class="item-name">{{ pkg.package_name }}</div>
-              {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
-            </td>
-            <td data-label="For">
-              <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
-            </td>
-            <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
-            <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
-            <td class="num mono" data-label="Discount">{{ pkg.discount_percent|round(2) }}%</td>
-            <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
-            <td data-label="Status">
-              <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
-            </td>
-            <td data-label="">
-              <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount — this is what shows up when they order.</p>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">✦</div>
-      <p>No packages yet — create one, then add products to it.</p>
-    </div>
-    {% endif %}
-  </div>
+{% block head %}
+<style>
+  .pk-discount-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 14%, transparent);
+    padding: 3px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
 
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create a package</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Give it a name and a discount now — you'll add the actual products on the next screen.
-    </p>
-    <form method="POST" action="{{ url_for('admin.packages') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% block content %}
+{% set active_count = package_list|selectattr('is_active')|list|length %}
+{% set avg_discount = (package_list|sum(attribute='discount_percent') / package_list|length) if package_list else 0 %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+    </div>
+    <div class="stat-label">Total packages</div>
+    <div class="stat-value">{{ package_list|length }}</div>
+    <div class="stat-foot">for distributors &amp; resellers</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <div class="stat-label">Active</div>
+    <div class="stat-value accent">{{ active_count }}</div>
+    <div class="stat-foot">visible on the partner portal</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-neutral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+    </div>
+    <div class="stat-label">Average discount</div>
+    <div class="stat-value">{{ avg_discount|round(1) }}%</div>
+    <div class="stat-foot">across every package</div>
+  </div>
+</div>
+
+<!-- Create-a-package form now sits full width, on top of the table —
+     previously this lived in a side-by-side 1.6fr/1fr grid next to the
+     table, which would visually squish/clip once the table had real
+     rows (see style.css's .grid[style*="grid-template-columns"] fix
+     too, kept as a safety net for the other pages still using that
+     two-column pattern). -->
+<div class="card card-pad">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Create a package</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Give it a name and a discount now — you'll add the actual products on the next screen.
+  </p>
+  <form method="POST" action="{{ url_for('admin.packages') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
       <div class="field">
         <label for="package_name">Package name</label>
         <input type="text" id="package_name" name="package_name" placeholder="e.g. Starter Bundle" required>
@@ -77,6 +72,8 @@
         <label for="description">Description <span class="text-faint">(optional)</span></label>
         <input type="text" id="description" name="description" maxlength="255" placeholder="What's this bundle for?">
       </div>
+    </div>
+    <div class="form-row">
       <div class="field">
         <label for="partner_scope">Available to</label>
         <select id="partner_scope" name="partner_scope" required>
@@ -91,8 +88,64 @@
         <input type="number" id="discount_percent" name="discount_percent" step="0.01" min="0" max="100" placeholder="15.00" required>
         <div class="help">Applied to the combined price of everything in the bundle. Editable any time from the package's page.</div>
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Create package</button>
-    </form>
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%; max-width:280px;">Create package</button>
+  </form>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>All packages</h2>
+    <span class="hint">{{ package_list|length }} total</span>
   </div>
+  {% if package_list %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Package</th>
+          <th>For</th>
+          <th class="num">Items</th>
+          <th class="num">Reference value</th>
+          <th class="num">Discount</th>
+          <th class="num">Order price</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pkg in package_list %}
+        <tr>
+          <td data-label="Package">
+            <div class="item-name">{{ pkg.package_name }}</div>
+            {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
+          </td>
+          <td data-label="For">
+            <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+          </td>
+          <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
+          <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
+          <td class="num" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
+          <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
+          <td data-label="Status">
+            <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
+          </td>
+          <td data-label="">
+            <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount — this is what shows up when they order.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">✦</div>
+    <p>No packages yet — create one, then add products to it.</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

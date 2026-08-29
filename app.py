@@ -1,5 +1,6 @@
 import decimal
 import os
+import secrets
 
 from flask import Flask, render_template, session
 from flask_talisman import Talisman
@@ -47,6 +48,20 @@ def create_app():
             "\"import secrets; print(secrets.token_hex(32))\"`), or set FLASK_DEBUG=1 "
             "if this really is local development."
         )
+
+    if not app.config.get("PARTNER_PORTAL_SLUG"):
+        # See config.py's PARTNER_PORTAL_SLUG comment: this keeps local
+        # dev usable out of the box, but a real deployment should set
+        # PARTNER_PORTAL_SLUG explicitly so the shared link is stable.
+        app.config["PARTNER_PORTAL_SLUG"] = secrets.token_urlsafe(12)
+        if not app.config["DEBUG"]:
+            app.logger.warning(
+                "PARTNER_PORTAL_SLUG is unset, so a random slug was generated for this process "
+                "only — it will change on every restart and differ across worker processes. Set "
+                "PARTNER_PORTAL_SLUG in your environment so the partner portal link you hand to "
+                "distributors/resellers stays stable. Generated link for this process: "
+                f"/partner-portal/{app.config['PARTNER_PORTAL_SLUG']}/packages"
+            )
 
     db.init_app(app)
     CSRFProtect(app)

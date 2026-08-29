@@ -66,8 +66,16 @@
   {% endif %}
   {% endmacro %}
 
+  {# Pipeline: New -> Contacted -> Follow-up / On Hold -> Closed / Declined.
+  Colors are reused from the existing badge palette rather than adding new
+  CSS: Follow-up borrows the "unisex" plum (needs a nudge, distinct from
+  New's amber), On Hold borrows "inactive" gray (paused, not urgent),
+  Declined borrows "rejected" red (didn't convert, distinct from New). #}
   {% macro inquiry_status_badge(status) %}
-{% set map = {'New': 'pending', 'Contacted': 'transit', 'Closed': 'fulfilled'} %}
+{% set map = {
+  'New': 'pending', 'Contacted': 'transit', 'Follow-up': 'unisex',
+  'On Hold': 'inactive', 'Closed': 'fulfilled', 'Declined': 'rejected'
+} %}
 <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
 {% endmacro %}
 
@@ -91,7 +99,8 @@
   'add_partner_investment': 'Partner investment logged',
   'add_package': 'Package created',
   'edit_package': 'Package edited',
-  'update_inquiry_status': 'Partner inquiry status changed'
+  'update_inquiry_status': 'Partner inquiry status changed',
+  'update_inquiry_remarks': 'Partner inquiry remarks updated'
   } %}
   {{ map.get(action, action|replace('_', ' ')|capitalize) }}
   {% endmacro %}
@@ -102,7 +111,8 @@
   'add_supplier': 'fulfilled', 'add_partner': 'fulfilled', 'add_partner_investment': 'fulfilled',
   'add_package': 'fulfilled',
   'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit', 'edit_supplier': 'transit',
-  'reset_password': 'transit', 'edit_package': 'transit', 'update_inquiry_status': 'transit'
+  'reset_password': 'transit', 'edit_package': 'transit', 'update_inquiry_status': 'transit',
+  'update_inquiry_remarks': 'transit'
   } %}
   <span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
   {% endmacro %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ partner.partner_name }}{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}{{ partner.partner_name }}{% endblock %}
+
+{% block head %}
+<style>
+  .ph-meta { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 22px; border-bottom: 1px solid var(--border); }
+  .ph-meta-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); flex: 1 1 180px; min-width: 0; }
+  .ph-meta-item .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
+  .ph-meta-item .value { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.3; }
+  .ph-entry { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; }
+  .ph-entry:last-child { margin-bottom: 0; }
+  .ph-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 11px 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .ph-entry-body { padding: 13px 16px; font-size: 12.5px; color: var(--ink-soft); display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 16px; }
+  .ph-field-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); font-weight: 700; margin-bottom: 2px; }
+  .ph-message { grid-column: 1 / -1; }
+  .ph-message-box { margin-top: 4px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; line-height: 1.5; }
+  .ph-remarks-box { margin-top: 4px; padding: 10px 12px; background: var(--accent-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; line-height: 1.5; color: var(--ink); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 0 0 4px;">
+  <a href="{{ url_for('admin.partners') }}" class="hint">← back to Partners</a>
+</div>
+
+<div class="card">
+  <div class="ph-meta">
+    <div class="ph-meta-item">
+      <div><div class="label">Type</div><div class="value"><span class="badge badge-{{ 'transit' if partner.partner_type == 'Distributor' else 'unisex' }}">{{ partner.partner_type }}</span></div></div>
+    </div>
+    <div class="ph-meta-item">
+      <div><div class="label">On file since</div><div class="value">{{ partner.created_at.strftime('%b %d, %Y') }}</div></div>
+    </div>
+    <div class="ph-meta-item">
+      <div><div class="label">Total inquiries</div><div class="value">{{ partner.inquiry_count }}</div></div>
+    </div>
+    <div class="ph-meta-item">
+      <div><div class="label">Last inquiry</div><div class="value">{{ partner.last_inquiry_at.strftime('%b %d, %Y %I:%M %p') if partner.last_inquiry_at else '—' }}</div></div>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Name, type, and contact info on file (shown on the <a href="{{ url_for('admin.partners') }}">Partners</a> list) come from
+      this partner's <em>first</em> inquiry and are never overwritten by later ones — even if a later inquiry used a
+      different name or contact person. Every inquiry below shows exactly what was submitted at the time, unedited.
+    </p>
+  </div>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Inquiry history</h2>
+    <span class="hint">{{ inquiries|length }} total</span>
+  </div>
+  {% if inquiries %}
+  <div style="padding: 14px 22px 18px;">
+    {% for inq in inquiries %}
+    <div class="ph-entry">
+      <div class="ph-entry-head">
+        <span class="mono text-soft" style="font-size:12px;">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
+          {{ m.inquiry_status_badge(inq.status) }}
+        </div>
+      </div>
+      <div class="ph-entry-body">
+        <div><div class="ph-field-label">Name / company</div>{{ inq.company_name }}</div>
+        <div><div class="ph-field-label">Contact person</div>{{ inq.contact_person or '—' }}</div>
+        <div><div class="ph-field-label">Phone</div>{{ inq.phone or '—' }}</div>
+        <div><div class="ph-field-label">Email</div>{{ inq.email or '—' }}</div>
+        <div><div class="ph-field-label">Address</div>{{ inq.address or '—' }}</div>
+        <div><div class="ph-field-label">Package</div>{{ inq.package_name_snapshot }}</div>
+        {% if inq.message %}
+        <div class="ph-message">
+          <div class="ph-field-label">Message</div>
+          <div class="ph-message-box">{{ inq.message }}</div>
+        </div>
+        {% endif %}
+        {% if inq.remarks %}
+        <div class="ph-message">
+          <div class="ph-field-label">Remarks (internal)</div>
+          <div class="ph-remarks-box">{{ inq.remarks }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No inquiries on file for this partner yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}
