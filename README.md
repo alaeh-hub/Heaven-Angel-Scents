@@ -1,348 +1,438 @@
-# Heaven & Angel Scents Inventory System
+# Heaven & Angel Scents — Inventory & Distribution Platform
 
-Heaven & Angel Scents is a Flask web application for managing perfume production, HQ warehouse stock, retail branches, stock transfers, sales, reporting, and operational audit trails. It provides separate Admin/HQ and Branch workspaces backed by MySQL or MariaDB.
+Internal operations system for a perfume brand: one HQ warehouse, multiple
+retail branches, a distributor/reseller partner program, and a read-only
+AI assistant — all built on Flask, MySQL, and Socket.IO.
 
-> **Development status:** This project is not yet complete. The current build includes the core inventory system and an in-progress partner distribution portal. Additional testing, fixes, and production hardening are still planned, so behavior and interfaces may change.
+This document describes **system architecture and application flow only**.
+It intentionally excludes installation/setup instructions.
 
-## Local Setup
+---
 
-### Requirements
+## 1. Overview
 
-- Python 3.10 or newer
-- MySQL or MariaDB with permission to create the application database
-- The MySQL command-line client, MySQL Workbench, or another way to run `schema.sql`
+The platform coordinates four cooperating roles around a single source of
+truth (MySQL):
 
-### Install And Initialize
+| Role | Access surface | Core concern |
+|---|---|---|
+| **HQ Admin** | `/admin/*` | Catalog, warehouse production, dispatch, partners, packages, accounts, reporting |
+| **Branch Staff** | `/branch/*` | Local inventory, sales/refills, stock requests, receiving shipments |
+| **Distributor / Reseller** | `/partner-portal/<slug>/*` | Browses bundled packages, submits inquiries — public, unauthenticated |
+| **Any signed-in user** | `/ai/*` | Role-scoped, read-only conversational assistant over their own data |
 
-From the repository root, create a virtual environment and install the pinned dependencies:
+Every write in the system is designed to leave a trail: a stock movement
+row, an audit-log row, or both — so **Inventory Log** and **Admin Log**
+together form a complete, append-only history of "what changed and who
+changed it."
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
+---
+
+## 2. High-Level Architecture
+
+```
+                                   ┌─────────────────────────────┐
+                                   │        Browser Clients       │
+                                   │  Admin UI · Branch UI ·      │
+                                   │  Public Partner Portal ·     │
+                                   │  AI Chat Widget              │
+                                   └───────────────┬──────────────┘
+                                                    │ HTTPS (Talisman/CSP, CSRF)
+                          ┌─────────────────────────┼─────────────────────────┐
+                          │                          │                         │
+                 WSGI request/response      WebSocket / long-poll     REST-style POST
+                          │                          │                         │
+┌─────────────────────────▼──────────────────────────▼─────────────────────────▼─────┐
+│                                   Flask Application (app.py)                        │
+│                                                                                       │
+│   Security middleware:  Flask-Talisman (CSP/HSTS) · Flask-WTF (CSRF)                │
+│                         Flask-Limiter (rate limiting) · session-based auth            │
+│                                                                                       │
+│   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐          │
+│   │  auth bp      │ │  admin bp     │ │  branch bp    │ │  portal bp    │  ai bp    │
+│   │  /            │ │  /admin/*     │ │  /branch/*    │ │  /partner-    │  /ai/*    │
+│   │  /login       │ │  admin_       │ │  branch_      │ │   portal/*    │  login_   │
+│   │  /logout      │ │  required     │ │  required     │ │  (public,     │  required │
+│   │  /change-pw   │ │               │ │               │ │   slug-gated) │           │
+│   └───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └───────┬───────┘           │
+│           │                 │                 │                 │                    │
+│           └────────────┬────┴────────┬────────┴────────┬────────┘                    │
+│                         │             │                 │                             │
+│                 decorators.py    audit.py          mailer.py                          │
+│              (RBAC + session   (admin_actions   (SMTP, best-effort,                   │
+│               revalidation)     audit trail)     never blocks a write)                │
+│                         │             │                 │                             │
+│                         └──────┬──────┴────────┬────────┘                             │
+│                                │                │                                       │
+│                            db.py (connection, query/execute, transaction())            │
+│                                │                                                        │
+└────────────────────────────────┼────────────────────────────────────────────────────────┘
+                                  │
+                          ┌───────▼────────┐        ┌──────────────────────────┐
+                          │     MySQL       │        │   sockets.py (Socket.IO)  │
+                          │  (schema.sql)   │        │  rooms: "admin",           │
+                          │  transactional  │        │  "branch:<id>"             │
+                          │  writes         │        │  events: data_changed,     │
+                          └─────────────────┘        │  bell_notification         │
+                                                       └──────────────┬─────────────┘
+                                                                      │
+                                                       ┌──────────────▼─────────────┐
+                                                       │  Frontend (main.js) listens │
+                                                       │  for scope changes, silently│
+                                                       │  re-fetches affected views  │
+                                                       └────────────────────────────┘
+
+                          ┌──────────────────────────┐
+                          │   External integration    │
+                          │   Gemini API (ai.py)       │
+                          │   — read-only JSON snapshot│
+                          │     of role-scoped data     │
+                          └──────────────────────────┘
 ```
 
-Copy `.env.example` to `.env`, then set the database values and replace the development `SECRET_KEY` with a private random value. Import `schema.sql` into the database configured by `MYSQL_DB`; for example, with the MySQL client:
+### 2.1 Application layers
 
-```powershell
-mysql -u root -p < schema.sql
+| Layer | Modules | Responsibility |
+|---|---|---|
+| **Entry points** | `app.py` (dev server + factory), `wsgi.py` (production WSGI) | App factory, config selection, CSP, blueprint registration, Socket.IO init |
+| **Configuration** | `config.py` | Environment-driven `Config` / `ProductionConfig`, mail, AI, rate-limit, partner-portal secret |
+| **Routing / controllers** | `routes/auth.py`, `routes/admin.py`, `routes/branch.py`, `routes/portal.py`, `routes/ai.py` | Request handling, form validation, orchestration of business rules |
+| **Cross-cutting concerns** | `decorators.py`, `audit.py`, `sockets.py`, `mailer.py`, `utils.py` | Access control, audit trail, realtime push, outbound email, shared validation/formatting helpers |
+| **Data access** | `db.py` | Request-scoped MySQL connection, `query()`/`execute()`, atomic `transaction()` context manager |
+| **Persistence** | `schema.sql` (MySQL/InnoDB) | Normalized relational schema — the single source of truth |
+| **Presentation** | Jinja templates (`base.html`, `_macros.html`, admin/branch/public template sets), `static/js/main.js`, `motion.js`, vendored `chart_umd_min.js`, `style.css` | Server-rendered HTML with progressive enhancement (smart tables, live charts, realtime badges) |
+| **External services** | Gemini (`ai.py`), SMTP (`mailer.py`) | AI assistant completions; best-effort partner-inquiry email notifications |
+
+### 2.2 Why this shape
+
+- **Server-rendered + realtime, not an SPA.** Every page is rendered by
+  Flask/Jinja on load; `main.js` then opens a single Socket.IO connection
+  per tab and silently re-fetches a page's own data when a relevant
+  **scope** (`requests`, `inventory`, `sales`, `products`, …) changes
+  elsewhere — no client-side data layer to keep in sync.
+- **One request, one connection, one transaction.** `db.py` hands each
+  request a single connection (`flask.g`); `transaction()` nests safely so
+  a multi-table write (e.g. dispatch a delivery → decrement HQ stock →
+  insert a movement log) either fully commits or fully rolls back.
+- **Decorators as the single authorization chokepoint.** `login_required`
+  / `admin_required` / `branch_required` all funnel through
+  `_require_session()`, which **re-reads the account's live status from
+  the database on every request** — a deactivation or forced password
+  reset takes effect on the very next click, not on next login.
+- **Audit and movement history are structurally separate.** `admin_actions`
+  (via `audit.py`) records *who changed configuration* (accounts,
+  products, branches, packages, partner records). `stock_movement_logs`
+  records *what happened to stock* (production, dispatch, receipt, sale,
+  refill, adjustment, damage). Both are append-only and both fail soft —
+  a broken audit write never blocks the underlying action.
+- **The partner portal is a separate trust boundary.** `routes/portal.py`
+  requires no login; a random per-deployment `PARTNER_PORTAL_SLUG` string
+  in the URL stands in for authentication (checked with
+  `secrets.compare_digest` to avoid timing leaks), and it is intentionally
+  never linked from any signed-in page.
+- **The AI assistant is read-only by construction.** `routes/ai.py`
+  builds a JSON snapshot already scoped to the caller's role/branch,
+  hands it to Gemini inside a system prompt that explicitly forbids
+  inventing data or performing actions, and returns plain text only.
+
+---
+
+## 3. Core Domain Model
+
+```
+branches (is_hq flag marks the Main/Warehouse branch)
+   └─ branch_inventory (per-branch stock_qty, reorder_level, price)
+   └─ users (role: Admin | Branch; Branch users are pinned to one branch)
+
+products (sku = base_code + unit suffix, e.g. A1-85ML)
+   └─ branch_inventory (one row per branch × sku)
+   └─ package_items (many-to-many: packages ⇄ products, with qty per set)
+   └─ stock_request_items / production_logs / sales (line-level activity)
+
+stock_requests ("deliveries" — header)            production_logs
+   └─ stock_request_items (line items: sku,        (adds finished units
+      requested/dispatched/received/damaged qty,    straight into HQ
+      unit_price snapshot)                          warehouse stock)
+   status: Pending → In Transit → Fulfilled
+                  ↘ Rejected
+
+sales (Sale | Refill; Cash | Salary Deduction)
+   └─ decrements branch_inventory.stock_qty (Refill: cost only, no stock impact)
+
+stock_movement_logs (append-only ledger)
+   movement_type: PRODUCTION · DISPATCH · RECEIPT · SALE · REFILL ·
+                  ADJUSTMENT · DAMAGE
+
+packages (bundle of products, partner_scope: Distributor | Reseller | Both,
+          discount_percent off the reference total)
+   └─ package_items
+
+partners (Distributor | Reseller; first inquiry "wins" the record —
+          name/contact are never overwritten by later inquiries)
+   └─ partner_inquiries (pipeline: New → Contacted → Follow-up / On Hold
+                          → Closed / Declined; order_amount snapshot;
+                          package_name_snapshot frozen at submit time)
+
+admin_actions (audit trail: actor, action, target, details, timestamp)
 ```
 
-The schema creates the database, HQ and starter branches, all application tables, and the `admin_actions` audit table. After the schema has been imported, run the development seed utility once:
+Key modeling decisions worth calling out:
 
-```powershell
-py seed.py
+- **SKU = base code + unit.** `utils.build_sku()` derives the real primary
+  key (e.g. `A1-85ML`) from an admin-entered base code and a fixed unit
+  list, so the same fragrance can exist at several sizes without manual
+  SKU invention, and each size still carries its own price and stock.
+- **Deliveries, not single-item requests.** A `stock_requests` row is a
+  *shipment header*; any number of SKUs travel under it via
+  `stock_request_items`, each with its own requested/dispatched/received/
+  damaged quantity and a frozen unit price.
+- **Package pricing is always recomputed, never trusted from the client.**
+  Both the admin package pages and the public portal compute
+  `reference_total` (sum of current product prices × qty) and apply
+  `discount_percent` server-side; `partner_inquiries.order_amount` freezes
+  that computed number at submit time so historical "Closed" revenue
+  never drifts if prices change later.
+- **A partner's canonical name/contact comes from their *first* inquiry
+  only.** Every individual inquiry keeps its own submitted details
+  unedited forever, so the partner list stays stable while the full,
+  literal history remains inspectable per partner.
+
+---
+
+## 4. End-to-End Flows
+
+### 4.1 Authentication & session flow
+
+1. `GET /login` renders a tabbed form (Admin / Branch login type).
+2. `POST /login` — rate-limited (10/min) — validates credentials against
+   `users.password_hash` (Werkzeug hash), confirms the account's `role`
+   matches the selected tab, and confirms `is_active`.
+3. On success, `session` is populated (`user_id`, `role`, `branch_id`,
+   `must_change_password`, …) and the user is routed to the matching
+   dashboard.
+4. If `must_change_password` is set (fresh account or post-reset), every
+   subsequent request is redirected to `/change-password` until cleared —
+   enforced centrally in `decorators._require_session()`, not per-route.
+5. Every authenticated request re-validates the account against the
+   database (not just the session cookie), so admin-side deactivation or
+   a forced reset takes effect immediately, network-wide.
+
+### 4.2 Warehouse → branch replenishment flow ("Stock Requests")
+
+```
+Branch                      HQ Admin                          System
+  │                             │                                 │
+  │  Request Stock (multi-SKU)  │                                 │
+  ├────────────────────────────►│  stock_requests: Pending        │
+  │                             │  + stock_request_items rows      │
+  │                             │◄── notify_admin(["requests"]) ───┤ (realtime)
+  │                             │                                 │
+  │                             │  Review & Dispatch               │
+  │                             │  (adjust qty per line, 0 = skip) │
+  │                             ├──────────────► status: In Transit│
+  │                             │                 HQ stock decremented,
+  │                             │                 DISPATCH movement logged
+  │◄── notify_admin_and_branch(["requests","inventory","movement_logs"])
+  │                             │                                 │
+  │  Receive Shipment            │                                 │
+  │  (enter received + damaged   │                                 │
+  │   per line, per delivery)    │                                 │
+  ├───────────────────────────────────────────────► status: Fulfilled
+  │                                                  branch stock incremented,
+  │                                                  RECEIPT (+ DAMAGE) movement logged
+  │◄── notify_admin_and_branch(["requests","inventory","movement_logs"])
+  │                             │                                 │
+  │                             │  Reject (Pending only) ──────────► status: Rejected
 ```
 
-`seed.py` creates `admin`, `manila`, and `cebu` accounts with randomly generated temporary passwords unless `SEED_ADMIN_PASSWORD`, `SEED_MANILA_PASSWORD`, and `SEED_CEBU_PASSWORD` are set. It prints generated passwords once, requires a password change at first login, skips accounts that already exist, and refuses to run when `APP_ENV=production`.
+- A delivery can also be **Rejected** directly from Pending, with a
+  confirmation prompt, and no stock movement is created.
+- Once **Fulfilled**, the delivery becomes read-only and its receipt
+  (`request_receipt`) is downloadable, mirroring exactly what shipped,
+  arrived, and was damaged, per line.
 
-### Run Locally
+### 4.3 Production flow (warehouse only)
 
-```powershell
-py app.py
+`Admin → Production Log` selects a product, its unit/SKU, a quantity, and
+an optional batch code → inserts a `production_logs` row and increments
+HQ's own `branch_inventory` row (HQ is just `branch_id` for the warehouse,
+flagged `is_hq = TRUE`) → a `PRODUCTION` movement is logged → realtime
+`production`/`inventory` scopes notify every open Admin tab.
+
+### 4.4 Sales / refill flow (per branch, including HQ's own counter)
+
+1. Cashier selects a product → unit (SKU) cascades in; the reference price
+   pre-fills but can be overridden per sale.
+2. **Type**: `Sale` (customer takes a bottle, stock decrements) or
+   `Refill` (customer's own bottle, product cost only, **no stock
+   change**).
+3. **Payment**: `Cash` (normal register total) or `Salary Deduction`
+   (free-text employee name, flagged distinctly for payroll
+   reconciliation — not tied to a login account).
+4. A `sales` row is inserted; for `Sale` type, branch stock is
+   decremented and a `SALE`/`REFILL` movement is logged; realtime
+   `sales`/`inventory` scopes fire.
+
+### 4.5 Partner portal & inquiry flow (public, unauthenticated)
+
+```
+Distributor/Reseller (private slug link)
+        │
+        ▼
+GET /partner-portal/<slug>/packages         ── slug checked via secrets.compare_digest, else 404
+        │  browse active packages (optionally filtered by type)
+        ▼
+GET .../packages/<id>                       ── full detail: contents, reference vs. discounted price
+        │  clicks "Inquire About This Package" → in-page modal
+        ▼
+POST .../packages/<id>/inquire              ── rate-limited (5/min, 30/day per IP)
+        │
+        ├─ validate required fields (company/contact/phone/email; server-side, never trusted from client)
+        ├─ recompute order_amount server-side (never trust a hidden form field)
+        ├─ INSERT partner_inquiries (status defaults to "New", package_name_snapshot frozen)
+        ├─ _find_or_create_partner(): match by email, then phone
+        │      match  → bump last_inquiry_at / inquiry_count only (name/contact untouched)
+        │      no match → create new partners row from this submission
+        ├─ mailer.send_partner_inquiry_email() — best-effort, never blocks the save
+        └─ notify_admin(["partners","partner_inquiries"]) + notify_bell(...)  ── realtime
+        │
+        ▼
+Admin reviews the "New" lead on Partner Inquiries, works it through
+New → Contacted → Follow-up/On Hold → Closed/Declined.
+Only "Closed" inquiries count toward a partner's package-sales totals
+and the dashboard's "Top packages" / "Top partners" figures.
 ```
 
-Open <http://127.0.0.1:5000>. Local development uses Flask-SocketIO's built-in server; `simple-websocket` is included so WebSocket upgrades can be used instead of long-polling when available. Set `FLASK_DEBUG=1` only for local debugging.
-
-### Production Launch
-
-For a deployment, set `APP_ENV=production`, provide a real `SECRET_KEY`, configure `SOCKETIO_CORS_ALLOWED_ORIGINS`, and use a shared `RATELIMIT_STORAGE_URI` such as Redis when running more than one worker. The bundled async Gunicorn worker supports Socket.IO:
-
-```powershell
-gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app
-```
-
-Production configuration forces `DEBUG=False`, secure session cookies, HTTPS, and HSTS. The application refuses to start without a real secret key in any non-debug run.
-
-## System Lifecycle
-
-1. HQ records production, increasing warehouse stock.
-2. A branch requests stock from HQ.
-3. HQ dispatches all or part of the request, reducing HQ stock and marking it `In Transit`.
-4. The branch confirms the shipment, recording received and damaged quantities and increasing branch stock by the received quantity.
-5. Branch staff record customer sales, which atomically reduce branch stock and create sales records.
-6. Admin and branch reports read the resulting inventory, sales, request, production, and movement data.
-
-## Feature Delta From the Earlier README
-
-The codebase has moved far beyond the original inventory-tracking baseline. The current live system now includes:
-
-- Multi-item delivery requests, not one SKU per request, with `delivery_number`, line-item pricing, and branch-side receipt confirmation.
-- Shipment variance handling for `received_qty`, `damaged_qty`, and unaccounted shortfalls, with adjustment entries for HQ follow-up.
-- Sale and refill workflows with `sale_type`, `payment_method`, and free-text employee deduction names for salary deduction tracking.
-- Material usage costing and business capital ledgers, so production cost and funding are both auditable.
-- Operational audit logging for admin actions and browser bell notifications for human-readable status updates.
-- Real-time Socket.IO refresh events and per-role task badges for admin and branch UI updates.
-- AI assistant support using Gemini with role-scoped snapshots and Philippines-time business logic.
-- Advanced reporting with themed PDF/Excel exports, branch filters, salary deduction reporting, and live dashboard metrics.
-- Production hardening for secure sessions, runtime validation, audit-safe DB behavior, and timezone-aware recordkeeping.
-
-In short, the app now functions as a more complete HQ + branch operations platform rather than a simple stock register.
-
-## Recent Project Update
-
-This release completes the operational inventory lifecycle from HQ production through branch receiving, sales recording, and reporting. It also strengthens the operational audit trail and the user experience for both HQ and branch workflows.
-
-Key updates in the current codebase:
-
-- Modernized production and warehouse inventory tracking, including HQ stock updates and richer movement logging.
-- Fixed the HQ Production product/unit flow so each product's unit dropdown is populated from its distinct catalog SKUs without duplicate choices.
-- Completed branch-side request and receipt flows, including received, damaged, and unaccounted quantities during shipment confirmation.
-- Finalized the sales lifecycle by recording quantity, price, sale type, payment method, and free-text employee deduction names at the time of sale.
-- Added refill handling that records the sale and revenue while leaving countable inventory unchanged.
-- Added admin audit entries and human-readable bell notifications for operational status changes.
-- Improved dashboard and report views for branch-level and HQ-level analysis, including movement trends, stock reports, unit filtering, and themed PDF/Excel exports.
-- Added an Admin salary-deduction report with branch visibility and filtering, plus responsive salary-deduction badges for web tables.
-- Added a live Philippines-time dashboard clock and server-side `+08:00` database sessions so AI and dashboard "today" sales use Philippine time.
-- Added a read-only AI assistant with role-scoped summaries for admin and branch users.
-- Added supplier records with optional supplier details and material-to-supplier links for purchasing traceability.
-- Added optional product image upload, replacement, removal, and thumbnail display in product and branch inventory views.
-- Added an in-progress public partner portal for browsing active packages and submitting distributor or reseller inquiries without an account.
-- Added admin package management, partner records, inquiry tracking, dashboard inquiry badges, and optional SMTP notifications to HQ.
-- Hardened the application with production-ready settings, database safeguards, and security checks.
-
-### Requested Feature Verification
-
-The following requested features are implemented in the current codebase:
-
-| Feature | Status | Implementation |
-| --- | --- | --- |
-| HQ Production — duplicate unit in dropdown | Implemented | Product rows are grouped by item name and the unit dropdown is populated once per catalog SKU/unit. |
-| AI "today" sales — Philippines timezone | Implemented | Each MySQL connection sets `time_zone = '+08:00'`, so `CURDATE()` in the AI snapshot uses Philippine time. |
-| Refill should not decrease stock | Implemented | Refill sales keep inventory at its previous quantity and write a zero-change `REFILL` movement. |
-| Salary Deduction — free text instead of picker | Implemented | Admin and Branch sale forms accept a free-text employee name, stored in `sales.buyer_name`. |
-| Branch Stock — unit filter dropdown | Implemented | The Branch Stock table includes an `All units` filter backed by the shared product-unit choices. |
-| Salary Deduction badge styling and mobile responsiveness | Implemented | Salary badges have dedicated colors, employee-name truncation, and narrower mobile sizing. |
-| PDF/Excel report theming | Implemented | PDF exports use the branded two-color header, badges, DejaVu fonts, and peso formatting; Excel exports use branded fills, fonts, filters, frozen headers, and numeric/date formats. |
-| Admin visibility into branch salary deductions in reports | Implemented | Admin Reports includes `Employee Purchases (Salary Deduction)` with branch and date filters; Branch Reports remain scoped to the signed-in branch. |
-| Dashboard clock (PH time) | Implemented | The shared top bar displays a live `Asia/Manila` date and time. |
-
-## Roles And Access
-
-### Admin
-
-Admin accounts represent HQ or office staff. They can view cross-branch operations; manage products, branches, users, and branch pricing; record HQ production; dispatch or reject requests; review the movement ledger; download fulfilled-request receipts; and generate all Admin reports.
-
-### Branch
-
-Branch accounts are assigned to one retail branch. They can view their branch dashboard and inventory, submit stock requests, receive shipments, download their own fulfilled-request receipts, record sales, view sales history, and generate branch-scoped reports.
-
-### Authentication
-
-- Login requires selecting `Admin` or `Branch` account type.
-- Passwords are stored as Werkzeug hashes.
-- New and reset accounts must change their password on first use.
-- Password changes require the current password and a new password of at least eight characters.
-- Account status and forced-password state are rechecked from the database on protected requests.
-- Deactivated accounts are signed out on their next protected request.
-- Logout is available at `/logout`.
-
-## Admin Workflows
-
-| Area | Route | Function |
-| --- | --- | --- |
-| Dashboard | `/admin/` | Active SKU, branch, pending-request, and low-stock metrics; alerts; recent activity; top sellers. |
-| Products | `/admin/products` | Create products and view the catalog with total stock. |
-| Materials and suppliers | `/admin/materials` | Record material usage, manage supplier contact details, and link materials to suppliers. |
-| Product status | `/admin/products/<sku>/toggle` | Toggle active/discontinued status without deleting the product. |
-| Production | `/admin/production` | Record production, optional batch code, and HQ stock changes. |
-| Branches | `/admin/branches` | Create retail branches and initialize product inventory rows. |
-| Branch stock | `/admin/branch-stock` | View branch totals, stock, reorder levels, and prices. |
-| Branch pricing | `/admin/branch-stock/price` | Set a branch price override or clear it to use the HQ price. |
-| Users | `/admin/users` | Create accounts, toggle status, and reset passwords. |
-| Requests | `/admin/requests` | Filter requests, dispatch stock, reject pending requests, and download fulfilled receipts. |
-| Movement ledger | `/admin/movement-logs` | Review up to 200 recent movements and filter by branch. |
-| Admin audit log | `/admin/audit-log` | Review up to 300 recent non-inventory administrative actions. |
-| Reports | `/admin/reports` | Select and download Admin reports. |
-| Report data | `/admin/api/reports-data` | Return JSON metrics for Admin charts. |
-| Partners | `/admin/partners` | Manage distributor and reseller records and review historical investment totals. |
-| Packages | `/admin/packages` | Create, edit, activate, retire, and manage discounted product packages. |
-| Partner inquiries | `/admin/partners/inquiries` | Review and update inquiries submitted through the public partner portal. |
-
-Products use the variants `Male`, `Female`, or `Unisex`. Product images are optional and accept JPG, PNG, or WEBP uploads; admins can replace or remove an image while editing a product. Discontinuing a product is a soft status change; historical records remain available.
-
-## Branch Workflows
-
-| Area | Route | Function |
-| --- | --- | --- |
-| Dashboard | `/branch/` | Branch inventory, low-stock items, open requests, and today's sales totals. |
-| Inventory | `/branch/inventory` | Active products, stock, reorder level, HQ price, override price, and effective selling price. Discontinued products remain visible while the branch has stock, but cannot be requested or sold. |
-| Request stock | `/branch/request-stock` | Submit requests for active products and view request history. |
-| Receive stock | `/branch/receive-stock` | Confirm `In Transit` shipments and record received and damaged quantities. |
-| Goods-received receipt | `/branch/receive-stock/<request_id>/receipt` | Download a PDF for the branch's own fulfilled request. |
-| Record sale | `/branch/record-sale` | Record a sale when enough stock is available. |
-| Sales history | `/branch/sales-history` | View up to 200 sales and all-time branch totals. |
-| Reports | `/branch/reports` | Select and download branch-scoped reports. |
-
-A shipment must satisfy `received_qty + damaged_qty <= dispatched_qty`. Any remaining shortfall is recorded as an `ADJUSTMENT` ledger entry for HQ follow-up.
-
-## Partner Portal
-
-The public catalog is available at `/partner-portal/packages` without authentication. Distributors and resellers can filter active packages, review bundled products and discounted pricing, and submit an inquiry with their contact details. The portal matches repeat inquiries to an existing partner by email or phone when possible, otherwise creating a partner record automatically.
-
-Admin users manage packages, partners, and inquiries from the authenticated workspace. Inquiry records are saved even when email is not configured or an SMTP delivery attempt fails. When SMTP is configured, new inquiry notifications are sent to the HQ address in `PARTNER_INQUIRY_NOTIFY_EMAIL`.
-
-## Pricing And Revenue
-
-Each product has an HQ base price. A branch may optionally override that price. The effective selling price is `branch_price` when present, otherwise `products.price`.
-
-When a sale is recorded, the effective price is copied into `sales.unit_price` in the same transaction that inserts the sale, deducts inventory, and writes the `SALE` movement. Revenue is calculated as:
-
-```sql
-SUM(qty_sold * unit_price)
-```
-
-Historical revenue remains accurate when prices change because each sale stores its price at the time of sale.
-
-## Reports
-
-`reports.py` provides these report types:
-
-| Report | Admin | Branch | Time window |
-| --- | --- | --- | --- |
-| Product Catalog | Yes | No | No |
-| HQ Production | Yes | No | Yes |
-| Branch Stock / My Inventory | Yes | Yes | No |
-| Stock Requests | Yes | Yes | Yes |
-| Movement Ledger | Yes | Yes | Yes |
-| Sales History | Yes | Yes | Yes |
-| User Accounts | Yes | No | No |
-
-Reports download as PDF or Excel (`.xlsx`). Filters can include recent 20, 50, 100, or 200 rows; date range or all-time selection; branch; request status; movement type; product variant; text search; active/discontinued status; low-stock-only inventory; and account role/status.
-
-Results are capped at 1,000 rows and reports identify when they are capped. Branch reports always use the signed-in user's branch ID on the server, so a query-string branch override cannot expose another branch. PDF output uses bundled DejaVu fonts for Philippine peso values; Excel output preserves numeric/date values and includes filtering and frozen headers.
-
-## Goods-Received Receipts
-
-`receipts.py` generates fulfilled-request goods-received PDFs in memory. Receipts include request, dispatch, and receipt details; requested, dispatched, received, damaged, and unaccounted quantities; and available request and movement-ledger information.
-
-Admin users can access any fulfilled request. Branch users can access only fulfilled requests belonging to their branch.
-
-## AI Assistant
-
-The read-only assistant is available at `/ai/` and `/ai/chat` and uses Gemini through `requests`.
-
-- Admin snapshots contain summary data across retail branches.
-- Branch snapshots contain only that branch's inventory, open requests, today's sales, and recent sales.
-- A fresh role-scoped snapshot is built for every request.
-- The model receives no SQL access, database credentials, or tool-calling capability.
-- It cannot record sales, dispatch stock, change prices, create accounts, or edit application data.
-- Messages are limited to 1,000 characters; only the latest ten supplied history turns are used.
-- Requests are rate-limited per signed-in user.
-- Without `GEMINI_API_KEY`, the endpoint returns a configuration message instead of calling Gemini.
-
-Generated answers are model output and should be checked against the relevant application page when an operational decision depends on them.
-
-## Realtime Updates
-
-Flask-SocketIO sends authenticated browser notifications. Admin tabs join the `admin` room; Branch tabs join `branch:<branch_id>`.
-
-Write operations publish small `data_changed` messages containing scope names such as `requests`, `inventory`, `production`, `sales`, `movement_logs`, `products`, `branches`, or `users`. The payload contains no business data. The frontend uses the scope to refresh affected page content or task-count badges. Unauthenticated connections are rejected, and branch notifications are limited to the session's branch room.
-
-The shared top bar also provides a notification bell for human-readable alerts, such as product status changes. Notifications are scoped to the signed-in username, persist in browser local storage across tabs and restarts, show unread counts, and can be cleared from the bell panel. These alerts are separate from `data_changed` events: refresh events carry only scope names, while bell events carry the message displayed to the user.
-
-## Data Model
-
-The core schema is defined in `schema.sql`.
-
-| Table | Purpose |
-| --- | --- |
-| `branches` | HQ and retail branch identity, location, and HQ flag. |
-| `users` | Username, password hash, role, branch assignment, active status, and forced-password flag. |
-| `products` | SKU, item name, variant, HQ price, optional image path, and active status. |
-| `suppliers` | Supplier name, contact details, address, notes, and timestamps. |
-| `raw_materials` | Material usage, package costing, and optional supplier link. |
-| `branch_inventory` | One row per branch/SKU with stock, reorder threshold, and optional price override. |
-| `production_logs` | HQ production quantity, optional batch code, and timestamp. |
-| `stock_requests` | Requested, dispatched, received, and damaged quantities plus request status. |
-| `sales` | Branch, SKU, quantity sold, sale-time unit price, and timestamp. |
-| `stock_movement_logs` | Production, dispatch, receipt, sale, adjustment, and damage entries with actor, references, and stock levels. |
-| `admin_actions` | Administrative audit entries created at application startup by `audit.py`. |
-
-Stock request statuses are `Pending`, `In Transit`, `Fulfilled`, and `Rejected`. Stock movement types are `PRODUCTION`, `DISPATCH`, `RECEIPT`, `SALE`, `ADJUSTMENT`, and `DAMAGE`.
-
-Production `batch_code` is stored for traceability in `production_logs`. The current sales flow does not associate sales with batches and does not implement FIFO batch allocation.
-
-## Configuration Reference
-
-Configuration is loaded from environment variables by `config.py`. Development defaults and production behavior are intentionally different: production requires an explicit `SECRET_KEY`, uses secure session cookies, and enables HTTPS/HSTS behavior.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `APP_ENV` | `development` | Selects development or production configuration. |
-| `FLASK_DEBUG` | `0` | Enables Flask debug mode only when set to `1`. |
-| `SECRET_KEY` | Development fallback | Flask session signing key; required in production. |
-| `MYSQL_HOST` | `localhost` | MySQL/MariaDB host. |
-| `MYSQL_PORT` | `3306` | Database port. |
-| `MYSQL_USER` | `root` | Database user. |
-| `MYSQL_PASSWORD` | Empty | Database password. |
-| `MYSQL_DB` | `heaven_and_angel_scents` | Database name. |
-| `GEMINI_API_KEY` | Empty | Enables Gemini requests for the AI assistant. |
-| `GEMINI_MODEL` | `gemini-2.5-flash` in code; `gemini-3.5-flash` in `.env.example` | Gemini model name. |
-| `AI_CHAT_RATE_LIMIT` | `15 per minute;150 per day` | Per-user AI chat limit. |
-| `MAIL_SERVER` | Empty | SMTP server for partner inquiry notifications. |
-| `MAIL_PORT` | `587` | SMTP port. |
-| `MAIL_USE_TLS` | `1` | Enables SMTP TLS when set to `1`. |
-| `MAIL_USERNAME` | Empty | SMTP username. |
-| `MAIL_PASSWORD` | Empty | SMTP password. |
-| `MAIL_DEFAULT_SENDER` | Empty | Sender address for inquiry notifications. |
-| `PARTNER_INQUIRY_NOTIFY_EMAIL` | Empty | HQ recipient for new partner inquiry notifications. |
-| `RATELIMIT_STORAGE_URI` | Flask-Limiter default | Optional limiter storage backend setting. |
-| `SOCKETIO_CORS_ALLOWED_ORIGINS` | Extension default | Optional Socket.IO CORS setting. |
-
-## Security And Integrity
-
-- Admin and Branch decorators enforce authentication and role checks.
-- Branch queries are scoped from `session["branch_id"]` in the backend.
-- SQL uses parameterized database helpers.
-- State-changing form operations use Flask-WTF CSRF protection. Logout is a GET endpoint that clears the session.
-- Passwords are hashed and are not stored in plaintext.
-- Inventory-changing workflows use transactions and row locks to prevent concurrent over-dispatch or overselling.
-- Movement records retain the actor, reference, and before/after stock levels where applicable.
-- Talisman provides security headers, clickjacking protection, MIME-sniffing protection, and production HTTPS/HSTS behavior.
-- Session cookies are HTTP-only and use `SameSite=Lax`; production cookies are marked secure.
-- The AI assistant receives a prepared, role-scoped snapshot rather than database access.
-
-## Architecture
-
-```text
-app.py                 Application factory, extensions, security headers, errors
-config.py              Environment-backed configuration
-db.py                  MySQL connection, query, execute, and transaction helpers
-decorators.py          Authentication and role enforcement
-audit.py               Administrative audit table and action logging
-receipts.py            Goods-received PDF generation
-reports.py             Report filters, queries, PDF, and Excel rendering
-sockets.py             Authenticated Socket.IO rooms and update notifications
-utils.py               Input validation and temporary password generation
-routes/auth.py         Login, logout, and password changes
-routes/admin.py        HQ/Admin workflows and endpoints
-routes/branch.py       Branch workflows and endpoints
-routes/ai.py           Role-scoped read-only Gemini assistant
-routes/portal.py       Public partner package catalog and inquiry submission
-mailer.py              Best-effort SMTP notifications for partner inquiries
-templates/             Jinja pages and shared layout
-static/                CSS, frontend behavior, and bundled Chart.js
-schema.sql             Core MySQL/MariaDB schema and starter branches
-seed.py                Starter account/data seeding utility
-wsgi.py                WSGI entry point for server integration
-requirements.txt       Python runtime dependencies
-```
-
-The application starts through `create_app()` in `app.py`. Database connections are opened per request and closed through the Flask application context. `audit.py` still performs a best-effort `admin_actions` existence check at startup as a defensive fallback, but the table is defined in and should be imported from `schema.sql`.
-
-## Current Scope And Limitations
-
-The system covers the production-to-sale inventory lifecycle, branch transfers, sales history, operational reporting, receipts, realtime refresh notifications, read-only assistance, and an in-progress partner package portal. It does not currently provide:
-
-- Supplier purchase orders or procurement workflows.
-- Barcode scanning.
-- Refunds, returns, or sale reversals.
-- Customer profiles or customer relationship management.
-- Payment processing.
-- Multi-currency accounting.
-- Batch-linked sales or FIFO deduction.
-- Automated deployment orchestration.
-- Complete end-to-end validation of the partner portal, package ordering lifecycle, and SMTP delivery in production.
-
-The repository does not yet include automated end-to-end tests for the complete production-to-sale workflow or the partner portal. The project remains under active development and will require further fixes and testing before it should be treated as complete.
+### 4.6 Realtime propagation (Socket.IO)
+
+- On connect, `sockets.py` gates room membership behind the existing
+  Flask session: **Admin** joins room `"admin"`; **Branch** staff join
+  `"branch:<branch_id>"`. An unauthenticated socket connection is refused
+  outright.
+- Every mutating route calls one of `notify_admin()`, `notify_branch()`,
+  `notify_admin_and_branch()`, or `notify_all()` with a short list of
+  coarse **scopes** (`requests`, `inventory`, `movement_logs`,
+  `production`, `sales`, `products`, `branches`, `users`, `partners`,
+  `partner_inquiries`) — the payload never carries actual data, only
+  "something in this scope changed."
+- `main.js` maps the current page to the scope(s) it cares about and
+  silently re-fetches itself in the background — so two open tabs (e.g.
+  HQ dispatching a delivery while the branch's Receive Shipment page is
+  open) stay in sync without a manual refresh.
+- A separate, human-readable **bell notification** channel
+  (`notify_bell`) carries an actual message (e.g. "New reseller inquiry
+  from …") for the topbar notification dropdown — the only realtime
+  event meant to be read directly rather than acted on programmatically.
+
+### 4.7 AI assistant flow (`/ai`)
+
+1. `GET /ai/` renders the chat UI (`login_required` only — any signed-in
+   role).
+2. `POST /ai/chat` — rate-limited per user (`AI_CHAT_RATE_LIMIT`, default
+   15/min & 150/day):
+   - Builds a **role-scoped JSON snapshot** server-side:
+     - **Admin** → catalog stats, low stock across all branches, pending
+       deliveries with line items, per-branch and HQ revenue, today's
+       figures.
+     - **Branch** → that branch's own inventory, low stock, pending/
+       in-transit deliveries, today's sales, recent sales.
+   - Injects the snapshot plus a fixed `SYSTEM_PROMPT` (hard rules: use
+     only the snapshot, never invent SKUs/prices, cannot perform any
+     action — only names the sidebar page that can, plain-text replies
+     only) and up to 10 prior turns into a call to the Gemini API.
+   - Returns the model's plain-text reply, or a friendly error if Gemini
+     is unreachable/unconfigured — the assistant never silently
+     fabricates an answer.
+
+### 4.8 Audit trail flow
+
+Any admin-side configuration change (create/toggle a user, reset a
+password, add/edit a product, add a branch, add/edit a partner or
+package, update an inquiry's status or remarks, …) calls
+`audit.log_action(action, target, details)` immediately after the write.
+This is intentionally **separate** from `stock_movement_logs`:
+
+| Log | Captures | Viewed on |
+|---|---|---|
+| `admin_actions` | Configuration/administrative changes, by whom | **Admin Log** |
+| `stock_movement_logs` | Every quantity change to stock, by type | **Inventory Log** |
+
+Both are append-only, paginated, searchable tables in the UI; neither can
+be edited or deleted from the app itself.
+
+---
+
+## 5. Security Architecture
+
+- **Transport & headers** — Flask-Talisman applies a strict
+  Content-Security-Policy, forces HTTPS/HSTS in production, and sets
+  secure defaults for framing/MIME-sniffing protection.
+- **CSRF** — Flask-WTF issues and validates a token on every
+  state-changing form across admin, branch, and public portal routes.
+- **Session hardening** — `HttpOnly`, `SameSite=Lax` cookies, `Secure`
+  cookies in production.
+- **Rate limiting** — Flask-Limiter caps login attempts, the public
+  inquiry endpoint (by IP), and the AI chat endpoint (by user) — with an
+  explicit startup warning if the storage backend is left as in-memory
+  under a multi-worker deployment (limits would be multiplied per
+  worker).
+- **Role-based access control** — three decorators
+  (`login_required` / `admin_required` / `branch_required`) funnel
+  through one shared check that re-verifies `is_active` and role against
+  the database on every request, not just at login.
+- **Public surface isolation** — the partner portal has no session
+  dependency at all; its only gate is a constant-time comparison against
+  a long, per-deployment random slug that is never linked from the
+  authenticated app.
+- **Fail-soft side effects** — audit logging and outbound email are both
+  best-effort and independently wrapped so that a logging or SMTP failure
+  never rolls back or blocks the primary write it's attached to.
+- **Atomic multi-table writes** — anything that touches more than one
+  table as a unit (dispatch, receive, production, sale) runs inside
+  `db.transaction()`, so partial writes can't leave stock and its ledger
+  entry out of sync.
+
+---
+
+## 6. Module Reference
+
+| File | Purpose |
+|---|---|
+| `app.py` / `wsgi.py` | App factory, CSP, blueprint registration, dev vs. production entry points |
+| `config.py` | Environment-driven configuration (`Config` / `ProductionConfig`) |
+| `db.py` | Request-scoped MySQL connection; `query`, `execute`, `transaction()` |
+| `decorators.py` | `login_required`, `admin_required`, `branch_required` — live RBAC |
+| `audit.py` | `admin_actions` table bootstrap + `log_action()` |
+| `sockets.py` | Socket.IO room management and scoped realtime broadcasts |
+| `mailer.py` | Best-effort SMTP notification for new partner inquiries |
+| `utils.py` | Shared constants (units, sale types, partner types) and input validators |
+| `routes/auth.py` | Login, logout, forced/self-service password change |
+| `routes/admin.py` | HQ-side: dashboard, catalog, production, requests, branches, partners, packages, accounts, logs |
+| `routes/branch.py` | Branch-side: dashboard, inventory, sales, stock requests, receiving |
+| `routes/portal.py` | Public, unauthenticated partner package browsing + inquiry submission |
+| `routes/ai.py` | Role-scoped snapshot builder + Gemini chat proxy |
+| `schema.sql` | Relational schema (MySQL/InnoDB) — single source of truth |
+| `seed.py` | Dev-only starter accounts (refuses to run when `APP_ENV=production`) |
+| `static/js/main.js` | Realtime scope-to-page mapping, smart tables, notification bell |
+| `static/js/motion.js` | Vendored UI motion/animation helpers |
+| `static/js/chart_umd_min.js` | Vendored charting library for reports/dashboard visuals |
+| `static/css/style.css` | Shared design system (cards, badges, tables, forms, themes) |
+
+---
+
+## 7. Reporting & Aggregation Surfaces
+
+- **Admin Dashboard** — branch count, pending requests, low-stock alerts,
+  total capital (from raw materials), total revenue (branch sales +
+  package sales), net profit, low-stock table, recent requests, top
+  sellers, top packages, top partners, recent inventory activity.
+- **Branch Dashboard** — SKUs carried, own low-stock count, today's
+  sales/revenue, own low-stock table, own open requests.
+- **Reports** — deeper financial/inventory breakdowns built on the same
+  aggregation queries as the dashboard, exportable via the receipts
+  module for individual fulfilled deliveries.
+
+All monetary aggregates that feed "Top packages" / "Top partners" /
+partner "Package sales" figures count **only Closed** partner inquiries —
+a New, Contacted, Follow-up, or On Hold lead has not yet converted and is
+deliberately excluded, consistently, everywhere that figure appears.
