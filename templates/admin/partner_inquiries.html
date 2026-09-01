@@ -161,6 +161,18 @@
     flex-wrap: wrap;
   }
 
+  /* Hidden by default — the dot's title attribute is enough on desktop,
+     where a mouse can hover it. There's no hover on a touch screen, so
+     the mobile media query below turns this back on: without it, the
+     phone view was just an unlabeled colored dot with no way to tell
+     what status it actually meant. */
+  .pi-status-text {
+    display: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+
   /* The colored dot is a plain, non-interactive div; the real <select>
      sits invisibly on top of it so clicking still opens a normal native
      dropdown (with normal text and background) instead of the select
@@ -296,6 +308,86 @@
     min-height: 110px;
     font-family: inherit;
   }
+
+  .pi-intro {
+    padding: 4px 22px 14px;
+  }
+
+  @media (max-width: 680px) {
+    /* Same 22px side padding as desktop left very little room for the
+       description on a phone-width screen — tightened to match the
+       mobile card padding used elsewhere. */
+    .pi-intro {
+      padding: 4px 14px 14px;
+    }
+
+    .pi-status-text {
+      display: inline;
+    }
+
+    /* Same approach used to fix the Partners table on mobile: leave
+       the generic .table-wrap behavior in place (every <td> is its
+       own full-width "LABEL value" row), and only override the
+       columns whose content is more than one piece — When, Company,
+       Contact, Status, Remarks — switching those from a flex row to
+       a stacked block so their pieces read top-to-bottom instead of
+       being forced onto one line together. Type and Package are a
+       single value each, so the generic row already handles them. */
+    /* Tightened from the generic 10px/14px .table-wrap td padding —
+       with 7 stacked fields per card, that padding plus each label's
+       own margin added up to noticeably more breathing room between
+       fields here than on the Partners card. !important guards this
+       against the unrelated 12px/14px .pi-table td rule declared
+       above (outside this media query) and anything else in the
+       cascade that could otherwise still win on specificity. */
+    .pi-table td {
+      padding: 5px 14px !important;
+    }
+
+    .pi-table td[data-label="When"],
+    .pi-table td[data-label="Company"],
+    .pi-table td[data-label="Contact"],
+    .pi-table td[data-label="Status"],
+    .pi-table td[data-label="Remarks"] {
+      display: block;
+      text-align: left;
+    }
+
+    .pi-table td[data-label="When"]::before,
+    .pi-table td[data-label="Company"]::before,
+    .pi-table td[data-label="Contact"]::before,
+    .pi-table td[data-label="Status"]::before,
+    .pi-table td[data-label="Remarks"]::before {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .pi-table td[data-label="When"] .pi-when-time {
+      display: block;
+      margin-top: 0;
+    }
+
+    .pi-table td[data-label="Company"] .pi-company {
+      width: 100%;
+    }
+
+    .pi-table td[data-label="Status"] .pi-status-cell {
+      justify-content: flex-start;
+    }
+
+    .pi-remarks-cell {
+      max-width: none;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .pi-remarks-preview {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: 100%;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -358,16 +450,12 @@
     <h2>Package inquiries</h2>
     <span class="hint">from the public partner portal &middot; last 300</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
+  <div class="pi-intro">
     <p class="text-faint" style="font-size:12px;">
-      Every inquiry a distributor or reseller has submitted while browsing
-      <a href="{{ portal_link }}" target="_blank" rel="noopener">the partner portal</a> — a private link,
-      not a public page (see the Partners tab for the current link to share). Submitting one automatically
-      adds (or matches) them on the <a href="{{ url_for('admin.partners') }}">Partners</a> page — this is
-      just the history of the inquiry itself. Status and remarks are the only things an admin can change here
-      — status moves an inquiry through New &rarr; Contacted &rarr; Follow-up / On Hold &rarr; Closed / Declined,
-      and remarks is a private internal note (never shown to the partner) for things like "on hold, still
-      deciding" or "call back next week." Everything else on a row is a permanent record of what was submitted.
+      Every inquiry submitted through <a href="{{ portal_link }}" target="_blank" rel="noopener">the private
+        partner portal</a> lands here and is automatically added to <a href="{{ url_for('admin.partners') }}">Partners</a>
+      — an admin can only change its Status (New &rarr; Contacted &rarr; Follow-up/On Hold &rarr; Closed/Declined)
+      and internal Remarks; everything else stays a permanent record of what the partner actually submitted.
     </p>
   </div>
   {% if inquiries %}
@@ -399,8 +487,8 @@
           {% for inq in inquiries %}
           <tr
             data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or '') ~ ' ' ~ (inq.remarks or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ inq.created_at.strftime('%b %d, %Y') }}<br>{{
-              inq.created_at.strftime('%I:%M %p') }}</td>
+            <td class="mono text-soft" data-label="When"><span class="pi-when-date">{{ inq.created_at.strftime('%b %d, %Y') }}</span><br><span class="pi-when-time">{{
+              inq.created_at.strftime('%I:%M %p') }}</span></td>
             <td data-label="Company">
               <div class="pi-company">
                 <div class="pi-avatar">{{ inq.company_name[:2]|upper }}</div>
@@ -459,6 +547,7 @@
                     </select>
                   </form>
                 </div>
+                <span class="pi-status-text">{{ inq.status }}</span>
                 {% if inq.email_sent %}
                 <span class="pi-email-dot sent" title="HQ notification email was sent">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">

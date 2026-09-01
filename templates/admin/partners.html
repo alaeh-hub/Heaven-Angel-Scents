@@ -4,6 +4,59 @@
 {% block eyebrow %}Organization{% endblock %}
 {% block heading %}Partners{% endblock %}
 
+{% block head %}
+<style>
+  /* The generic .table-wrap mobile card (style.css) turns every <td>
+     into a single flex row with justify-content:space-between. That
+     works for one-value cells (Partner, Type, Added) but breaks any
+     cell holding more than one piece of content: Contact packs a
+     name + <br> + phone span + " · " + email into one unwrapped row,
+     so the email gets squeezed and clipped. Package sales and Last
+     inquiry each hold a main value plus a small .item-sub caption —
+     space-between flings those two to opposite ends of the row
+     instead of stacking them, which is what read as a value with a
+     line jammed through it. These three columns get switched from a
+     flex row to a plain stacked block so their content reads top to
+     bottom the way it does on desktop, instead of side to side. */
+  @media (max-width: 680px) {
+    .ptn-table td[data-label="Contact"],
+    .ptn-table td[data-label="Package sales"],
+    .ptn-table td[data-label="Last inquiry"] {
+      display: block;
+      text-align: left;
+    }
+
+    .ptn-table td[data-label="Contact"]::before,
+    .ptn-table td[data-label="Package sales"]::before,
+    .ptn-table td[data-label="Last inquiry"]::before {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .ptn-table td[data-label="Contact"] {
+      overflow-wrap: anywhere;
+    }
+
+    .ptn-table td[data-label="Package sales"] .item-sub,
+    .ptn-table td[data-label="Package sales"] {
+      text-align: left !important;
+    }
+
+    .ptn-table td[data-label="Package sales"] .item-sub {
+      margin-top: 2px;
+    }
+
+    .ptn-table td[data-label="Last inquiry"] a {
+      display: inline-block;
+    }
+
+    .ptn-table td[data-label="Last inquiry"] .item-sub {
+      margin-top: 2px;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card card-pad stack" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
   <div style="flex:1; min-width:240px;">
@@ -121,7 +174,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table ptn-table">
         <thead>
           <tr>
             <th>Partner</th>

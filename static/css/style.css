@@ -794,6 +794,24 @@ th.num {
   gap: 18px;
 }
 
+/* Every dashboard chart card sits in a grid cell, and every chart card
+   contains a <canvas>. Canvas is a "replaced element" — browsers give
+   grid/flex items an automatic minimum size (min-width: auto) based on
+   their content's intrinsic size unless told otherwise, and for a
+   canvas that intrinsic size comes from its width/height ATTRIBUTES,
+   which Chart.js sets to the container size multiplied by
+   devicePixelRatio (2x-3x on most phones) for crisp rendering. Without
+   this reset, that inflated intrinsic size can hold a grid column open
+   wider than its track, or (once the column can't grow further) can
+   quietly clamp the chart card to a stale, previously-measured width
+   instead of shrinking to fit the real one-column mobile layout —
+   exactly what was happening to the Ledger movement chart and its
+   siblings under Edge/Brave's mobile emulation. This mirrors the same
+   min-width fix already applied below to the inline-styled grid. */
+.grid > * {
+  min-width: 0;
+}
+
 .grid-2 {
   grid-template-columns: repeat(2, 1fr);
 }
@@ -1539,6 +1557,30 @@ input[type="file"]:hover::-webkit-file-upload-button {
   margin-bottom: 20px;
 }
 
+@media (max-width: 680px) {
+  /* Flex items shrink by default, and .tab has no white-space rule of
+     its own — on a narrow screen that squeezed every tab down until
+     multi-word labels ("Follow-up", "On Hold") broke mid-word onto a
+     second line and the whole bar looked jumbled. Scrolling the bar
+     horizontally instead keeps every label intact on one line; the
+     active tab stays reachable with a swipe. */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
 .table-toolbar {
   display: flex;
   align-items: center;
@@ -1988,8 +2030,43 @@ input[type="file"]:hover::-webkit-file-upload-button {
   padding: 22px 24px;
 }
 
-.chart-card canvas {
-  max-height: 280px;
+/* The old rule here was `.chart-card canvas { max-height: 280px; }`
+   — a max-height on the canvas itself, with no fixed-height parent
+   and no maintainAspectRatio:false on the chart options. Chart.js
+   sizes a responsive canvas to match its parent container, but with
+   no real height set anywhere, the parent's rendered height was
+   just "whatever the canvas last drew at" — so parent height
+   depended on canvas height, which depended on parent height. A
+   burst of resize events (e.g. toggling a browser's device
+   emulation) fed that loop and let the canvas grow a little more on
+   each pass, worst on the Ledger movement chart since its wrapping
+   bottom legend (up to 7 movement types) made its height the most
+   sensitive to width changes. Giving the wrapper a real, fixed
+   height breaks the circular dependency: the container's height no
+   longer comes from the canvas at all, so there's nothing for a
+   resize burst to compound. Chart.js needs `maintainAspectRatio:
+   false` in each chart's options for this to take effect (see
+   reports.html) — otherwise it ignores the container height and
+   keeps deriving height from width itself. */
+.chart-canvas-wrap {
+  position: relative;
+  height: 280px;
+  width: 100%;
+}
+
+/* Belt-and-braces alongside the min-width:0 fix above: pin the canvas's
+   own rendered box to its wrapper with CSS instead of relying solely on
+   Chart.js re-measuring and re-writing the canvas's inline style at the
+   right moment. Chart.js does this itself on load/resize, but on first
+   paint in a collapsing mobile grid there's a brief window where the
+   grid hasn't finished settling into its final one-column width yet —
+   these rules stop the canvas from ever visually exceeding (or getting
+   stuck below) the wrapper regardless of what Chart.js measured. */
+.chart-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  display: block;
 }
 
 @media (max-width: 760px) {

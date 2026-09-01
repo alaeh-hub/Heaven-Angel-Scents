@@ -88,8 +88,25 @@
           <option value="all">All types</option>
           <option value="RECEIPT">Receipt</option>
           <option value="SALE">Sale</option>
+          <option value="REFILL">Refill</option>
           <option value="ADJUSTMENT">Adjustment</option>
           <option value="DAMAGE">Damage</option>
+        </select>
+      </div>
+      <div class="field" data-filter="sale_type" style="display:none;">
+        <label for="rb_sale_type">Sale type</label>
+        <select id="rb_sale_type" name="sale_type">
+          <option value="all">Sale &amp; Refill</option>
+          <option value="Sale">Sale only</option>
+          <option value="Refill">Refill only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="payment_method" style="display:none;">
+        <label for="rb_payment_method">Payment method</label>
+        <select id="rb_payment_method" name="payment_method">
+          <option value="all">Cash &amp; Salary Deduction</option>
+          <option value="Cash">Cash only</option>
+          <option value="Salary Deduction">Salary Deduction only</option>
         </select>
       </div>
       <div class="field" data-filter="variant" style="display:none;">
@@ -176,14 +193,14 @@
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Units sold by variant</h2>
     </div>
-    <canvas id="variantChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="variantChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Sales trend</h2>
       <span class="hint">last 14 days</span>
     </div>
-    <canvas id="salesTrendChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="salesTrendChart"></canvas></div>
   </div>
 </div>
 
@@ -192,13 +209,13 @@
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Top selling products</h2>
     </div>
-    <canvas id="topProductsChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="topProductsChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Current stock by variant</h2>
     </div>
-    <canvas id="stockChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="stockChart"></canvas></div>
   </div>
 </div>
 
@@ -208,14 +225,14 @@
       <h2>Sale vs. Refill</h2>
       <span class="hint">by revenue</span>
     </div>
-    <canvas id="saleTypeChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="saleTypeChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Cash vs. Salary Deduction</h2>
       <span class="hint">by revenue</span>
     </div>
-    <canvas id="paymentChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="paymentChart"></canvas></div>
   </div>
 </div>
 
@@ -233,7 +250,7 @@
         <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
-    <canvas id="trendChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
   </div>
 </div>
 {% endblock %}
@@ -288,6 +305,12 @@
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = '#5B6272';
     Chart.defaults.borderColor = '#E5E8EF';
+    // Paired with .chart-canvas-wrap's fixed height in style.css — this
+    // stops Chart.js from deriving canvas height from the container's
+    // width (its default behavior), which is what let the Ledger
+    // chart's height and its wrapping bottom legend feed off each
+    // other during a burst of resize events and grow unbounded.
+    Chart.defaults.maintainAspectRatio = false;
 
     fetch("{{ url_for('branch.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
       .then(r => {
@@ -423,6 +446,23 @@
 
   loadReportsData();
 
+  // loadReportsData() above runs the instant this script executes,
+  // which can be before the page's layout has fully settled (webfonts
+  // swapping in, the sidebar's off-canvas transform applying, etc).
+  // Chart.js only measures each canvas's container once, at creation,
+  // so a chart built during that narrow window can end up sized to a
+  // layout that changes moments later — and since nothing re-measures
+  // it after, it stays wrong until something else (e.g. the
+  // granularity toggle) rebuilds it. Re-running resize() on every
+  // existing chart once things have actually settled fixes that first
+  // paint without re-fetching data or disturbing anything on screen.
+  document.fonts.ready.then(() => {
+    Object.values(charts).forEach((c) => c.resize());
+  });
+  window.addEventListener('load', () => {
+    Object.values(charts).forEach((c) => c.resize());
+  });
+
   const trendSwitch = document.getElementById('trendGranularitySwitch');
   if (trendSwitch) {
     trendSwitch.addEventListener('click', (e) => {
@@ -450,7 +490,8 @@
       branch_stock: ['variant', 'low_stock_only', 'search'],
       stock_requests: ['status', 'search', 'window'],
       inventory_log: ['movement_type', 'search', 'window'],
-      sales_history: ['variant', 'search', 'window'],
+      sales_history: ['variant', 'sale_type', 'payment_method', 'search', 'window'],
+      employee_purchases: ['sale_type', 'search', 'window'],
     };
 
     // "search" filters a different column depending on the report — the
@@ -458,6 +499,7 @@
     // changes to match what reports.py actually searches.
     const SEARCH_LABELS = {
       inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+      employee_purchases: { label: 'Search item / SKU / employee', placeholder: 'e.g. Golden Hour, HAS-001, or an employee name' },
     };
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 

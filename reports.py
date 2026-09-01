@@ -38,7 +38,7 @@ from reportlab.platypus import (
 )
 
 from db import query
-from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
+from utils import PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
 
 # Built-in PDF fonts (Helvetica etc.) only cover Latin-1 and have no glyph
 # for the ₱ (Philippine peso) sign — it silently renders as a black "tofu"
@@ -63,6 +63,18 @@ ROLE_CHOICES = ("Admin", "Branch")
 UNIT_CHOICES = PRODUCT_UNITS
 SALE_TYPE_CHOICES = SALE_TYPES
 PAYMENT_METHOD_CHOICES = PAYMENT_METHODS
+PARTNER_TYPE_CHOICES = PARTNER_TYPES
+# Mirrors packages.partner_scope's ENUM ('Both' plus each PARTNER_TYPES
+# value) — kept separate from PARTNER_TYPE_CHOICES since a package can
+# also be scoped to "Both", which a partner itself never is.
+PACKAGE_SCOPE_CHOICES = ("Both",) + PARTNER_TYPES
+# packages.is_active as it reads on screen (Packages page's Status
+# column) rather than the raw boolean.
+PACKAGE_STATUS_CHOICES = ("Active", "Retired")
+# Mirrors partner_inquiries.status's ENUM — same pipeline shown on the
+# Partner Inquiries page and _macros.html's inquiry_status_badge.
+INQUIRY_STATUS_CHOICES = ("New", "Contacted", "Follow-up",
+                          "On Hold", "Closed", "Declined")
 
 INK = colors.HexColor("#12141A")
 INK_FAINT = colors.HexColor("#5B6272")
@@ -113,6 +125,18 @@ BADGE_KIND_MAPS = {
     "variant": {"Male": "male", "Female": "female", "Unisex": "unisex"},
     "active_status": {"Active": "active", "Discontinued": "inactive", "Deactivated": "inactive"},
     "role": {"Admin": "unisex", "Branch": "transit"},
+    # Mirrors partners.html / partner_inquiries.html's inline badge:
+    # badge-transit for Distributor, badge-unisex for Reseller.
+    "partner_type": {"Distributor": "transit", "Reseller": "unisex"},
+    # Mirrors packages.html's "For" column.
+    "package_scope": {"Both": "pending", "Distributor": "transit", "Reseller": "unisex"},
+    # Mirrors packages.html's Status column (Active/Retired badge).
+    "package_status": {"Active": "active", "Retired": "inactive"},
+    # Mirrors _macros.html's inquiry_status_badge line for line.
+    "inquiry_status": {
+        "New": "pending", "Contacted": "transit", "Follow-up": "unisex",
+        "On Hold": "inactive", "Closed": "fulfilled", "Declined": "rejected",
+    },
 }
 
 
@@ -143,6 +167,14 @@ REPORT_TYPES = {
     "employee_purchases": {"label": "Employee Purchases (Salary Deduction)", "admin": True, "branch": True,
                            "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
     "accounts":        {"label": "Accounts",         "admin": True, "branch": False, "windowed": False},
+    # Partners & Distribution — admin-only (branch accounts never see
+    # this section of the app at all, same as Accounts above).
+    # Partners/Packages are catalog-style snapshots (not windowed),
+    # same reasoning as Products/Accounts. Partner Inquiries is a dated
+    # pipeline of leads, so it gets the Recent/Range/All time window.
+    "partners":        {"label": "Partners",         "admin": True, "branch": False, "windowed": False},
+    "packages":        {"label": "Packages",         "admin": True, "branch": False, "windowed": False},
+    "partner_inquiries": {"label": "Partner Inquiries", "admin": True, "branch": False, "windowed": True},
 }
 
 
@@ -193,6 +225,10 @@ def parse_report_filters(args):
         "role": _choice("role", ROLE_CHOICES, "all"),
         "account_status": _choice("account_status", ("active", "inactive"), "all"),
         "low_stock_only": args.get("low_stock_only") == "1",
+        "partner_type": _choice("partner_type", PARTNER_TYPE_CHOICES, "all"),
+        "package_scope": _choice("package_scope", PACKAGE_SCOPE_CHOICES, "all"),
+        "package_status": _choice("package_status", PACKAGE_STATUS_CHOICES, "all"),
+        "inquiry_status": _choice("inquiry_status", INQUIRY_STATUS_CHOICES, "all"),
         "search": (args.get("search") or "").strip()[:100],
     }
 
@@ -519,7 +555,7 @@ def _report_sales_history(filters, branch_scope):
                                   "Type", "badge:sale_type"), ("qty_sold", "Qty", "int"),
         ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
         ("payment_method", "Payment", "badge:payment_method"), ("buyer_username",
-                                               "Employee (if salary deduction)", "str"),
+                                                                "Employee (if salary deduction)", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -602,9 +638,186 @@ def _report_accounts(filters, branch_scope):
     columns = [
         ("username", "Username", "str"), ("role", "Role",
                                           "badge:role"), ("branch_name", "Branch", "str"),
-        ("is_active", "Status", "badge:active_status"), ("created_at", "Created", "datetime"),
+        ("is_active", "Status", "badge:active_status"), ("created_at",
+                                                         "Created", "datetime"),
     ]
     return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
+
+
+def _report_partners(filters, branch_scope):
+    """One row per partner. total_sales/closed_order_count are computed
+    the same way the Partners page computes "package sales" — only
+    inquiries an admin has marked Closed count, same rule the Partners
+    and Dashboard pages both follow (see partners.html's footnote).
+
+    Contact Person/Phone/Email collapse into one Contact column, and
+    Total/Closed Inquiries collapse into one Inquiries column — same
+    shape the Partners page itself already shows (see the "Contact" and
+    "Package sales" cells in partners.html), so the report isn't more
+    spread out than the screen it's summarizing. Address is dropped
+    entirely: it's an optional field on the partner-portal form and is
+    almost always blank in practice, so keeping its own column mostly
+    just added width for a column that read "—" on nearly every row.
+    """
+    where, params = "", []
+    if filters["partner_type"] != "all":
+        where += " AND p.partner_type = %s"
+        params.append(filters["partner_type"])
+    if filters["search"]:
+        where += " AND (p.partner_name LIKE %s OR p.contact_person LIKE %s OR p.phone LIKE %s OR p.email LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like, like]
+
+    rows = query(
+        f"""SELECT p.partner_name, p.partner_type, p.contact_person, p.phone, p.email,
+                   p.inquiry_count, p.last_inquiry_at, p.created_at,
+                   COALESCE(SUM(CASE WHEN pi.status = 'Closed' THEN pi.order_amount ELSE 0 END), 0) AS total_sales,
+                   COUNT(CASE WHEN pi.status = 'Closed' THEN 1 END) AS closed_order_count
+            FROM partners p
+            LEFT JOIN partner_inquiries pi ON pi.partner_id = p.partner_id
+            WHERE 1=1 {where}
+            GROUP BY p.partner_id
+            ORDER BY p.partner_name LIMIT {MAX_ROWS}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["total_sales"] = float(r["total_sales"])
+        r["contact"] = " · ".join(
+            p for p in (r.pop("contact_person"), r.pop("phone"), r.pop("email")) if p
+        ) or "—"
+        r["inquiries_summary"] = f"{r['inquiry_count']} total · {r['closed_order_count']} closed"
+
+    # 4th element = relative PDF column width (see render_report_pdf's
+    # width-weight comment). Contact now carries three merged fields so
+    # it gets the biggest share; Type/Inquiries are short so they shrink.
+    columns = [
+        ("partner_name", "Partner", "str", 1.2),
+        ("partner_type", "Type", "badge:partner_type", 0.7),
+        ("contact", "Contact", "str", 1.8),
+        ("inquiries_summary", "Inquiries", "str", 0.95),
+        ("total_sales", "Package Sales", "money", 1.0),
+        ("last_inquiry_at", "Last Inquiry", "datetime", 1.0),
+        ("created_at", "On File Since", "datetime", 1.0),
+    ]
+    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
+
+
+def _report_packages(filters, branch_scope):
+    """One row per package. Reference/order totals mirror package_detail's
+    footer math (sum of qty * products.price, then the package's own
+    discount_percent applied) — see packages.html / package_detail.html.
+    """
+    where, params = "", []
+    if filters["package_scope"] != "all":
+        where += " AND pk.partner_scope = %s"
+        params.append(filters["package_scope"])
+    if filters["package_status"] != "all":
+        where += " AND pk.is_active = %s"
+        params.append(filters["package_status"] == "Active")
+    if filters["search"]:
+        where += " AND (pk.package_name LIKE %s OR pk.description LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like]
+
+    rows = query(
+        f"""SELECT pk.package_name, pk.description, pk.partner_scope, pk.discount_percent,
+                   pk.is_active, pk.created_at,
+                   COUNT(pki.package_item_id) AS item_count,
+                   COALESCE(SUM(pki.qty * pr.price), 0) AS reference_total
+            FROM packages pk
+            LEFT JOIN package_items pki ON pki.package_id = pk.package_id
+            LEFT JOIN products pr ON pki.sku = pr.sku
+            WHERE 1=1 {where}
+            GROUP BY pk.package_id
+            ORDER BY pk.package_name LIMIT {MAX_ROWS}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["description"] = r["description"] or "—"
+        discount = float(r["discount_percent"])
+        r["discount_percent"] = f"{discount:.2f}%"
+        reference_total = float(r["reference_total"])
+        r["reference_total"] = reference_total
+        r["discounted_total"] = round(
+            reference_total * (1 - discount / 100), 2)
+        r["is_active"] = "Active" if r["is_active"] else "Retired"
+
+    columns = [
+        ("package_name", "Package", "str"), ("description", "Description", "str"),
+        ("partner_scope", "Available To",
+         "badge:package_scope"), ("item_count", "Items", "int"),
+        ("reference_total", "Reference Value",
+         "money"), ("discount_percent", "Discount", "str"),
+        ("discounted_total", "Order Price",
+         "money"), ("is_active", "Status", "badge:package_status"),
+        ("created_at", "Created", "datetime"),
+    ]
+    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
+
+
+def _report_partner_inquiries(filters, branch_scope):
+    """One row per inquiry — the same permanent, never-edited-except-
+    status/remarks history shown on the Partner Inquiries page. Only
+    Closed inquiries represent actual revenue (order_amount); everything
+    else is still a lead — see schema.sql's partner_inquiries comment
+    and partners.html/dashboard.html's matching footnotes.
+    """
+    where, params = "", []
+    if filters["partner_type"] != "all":
+        where += " AND pi.partner_type = %s"
+        params.append(filters["partner_type"])
+    if filters["inquiry_status"] != "all":
+        where += " AND pi.status = %s"
+        params.append(filters["inquiry_status"])
+    if filters["search"]:
+        where += (" AND (pi.company_name LIKE %s OR pi.contact_person LIKE %s "
+                  "OR pi.package_name_snapshot LIKE %s OR pi.remarks LIKE %s)")
+        like = f"%{filters['search']}%"
+        params += [like, like, like, like]
+    time_where, order, limit_n, truncated = _time_window(
+        "pi.created_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT pi.created_at, pi.company_name, pi.partner_type, pi.contact_person, pi.phone,
+                   pi.email, pi.package_name_snapshot, pi.order_amount, pi.status, pi.remarks
+            FROM partner_inquiries pi
+            WHERE 1=1 {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        contact_person = r.pop("contact_person")
+        r["company_name"] = (
+            f"{r['company_name']} — {contact_person}" if contact_person else r["company_name"]
+        )
+        r["contact"] = " · ".join(p for p in (
+            r.pop("phone"), r.pop("email")) if p) or "—"
+        # Nullable — see schema.sql's comment: NULL means "unknown"
+        # (older row predating this column), never coerced to 0.
+        r["order_amount"] = float(
+            r["order_amount"]) if r["order_amount"] is not None else None
+        r["remarks"] = r["remarks"] or "—"
+
+    # See _report_partners' comment above — same reasoning: Contact
+    # Person now rides along inside Company, and Phone/Email collapse
+    # into one Contact column, so both the column count and the short
+    # badge/status columns shrink; Remarks/Package/Contact (the ones
+    # that actually need room) grow. Address and HQ Notified (whether
+    # the notification email happened to send) are dropped outright —
+    # Address is almost always blank, and HQ Notified is an internal
+    # mailer-ops flag, not information about the partner or the sale.
+    columns = [
+        ("created_at", "When", "datetime", 0.9),
+        ("company_name", "Company", "str", 1.3),
+        ("partner_type", "Type", "badge:partner_type", 0.7),
+        ("contact", "Contact", "str", 1.5),
+        ("package_name_snapshot", "Package", "str", 1.15),
+        ("order_amount", "Order Amount (if Closed)", "money", 1.05),
+        ("status", "Status", "badge:inquiry_status", 0.8),
+        ("remarks", "Remarks (internal)", "str", 1.7),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
 
 
 _BUILDERS = {
@@ -616,6 +829,9 @@ _BUILDERS = {
     "sales_history": _report_sales_history,
     "employee_purchases": _report_employee_purchases,
     "accounts": _report_accounts,
+    "partners": _report_partners,
+    "packages": _report_packages,
+    "partner_inquiries": _report_partner_inquiries,
 }
 
 
@@ -708,10 +924,10 @@ def render_report_pdf(report):
     header = Table(
         [[
             Table([[Paragraph(
-                       "<font color='#2E5AF0'>Heaven</font> <font color='#5B6272'>&amp;</font> "
-                       "<font color='#E23A48'>Angel</font> Scents", s["brand"])],
-                   [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
-                  colWidths=[130 * mm]),
+                "<font color='#2E5AF0'>Heaven</font> <font color='#5B6272'>&amp;</font> "
+                "<font color='#E23A48'>Angel</font> Scents", s["brand"])],
+                [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
+                colWidths=[130 * mm]),
             Table([[Paragraph(report["title"].upper() + " REPORT", s["doc_title"])],
                    [Paragraph(report["subtitle"], s["doc_meta"])],
                    [Paragraph(
@@ -727,7 +943,12 @@ def render_report_pdf(report):
     story.append(HRFlowable(width="100%", thickness=1.2,
                  color=ACCENT, spaceAfter=10))
 
-    columns = report["columns"]
+    # Columns are (key, label, ctype) from most report builders, or
+    # (key, label, ctype, weight) from ones that specify custom relative
+    # widths (see the width-weight comment further down) — normalize to
+    # the 4-tuple shape once here so every loop below can unpack it the
+    # same way regardless of which builder produced it.
+    columns = [c if len(c) == 4 else (*c, 1) for c in report["columns"]]
     rows = report["rows"]
 
     if not rows:
@@ -736,7 +957,7 @@ def render_report_pdf(report):
             Paragraph("No data matches the selected filters.", s["footer"]))
     else:
         num_types = ("money", "int")
-        header_row = [Paragraph(label, s["th"]) for _, label, _ in columns]
+        header_row = [Paragraph(label, s["th"]) for _, label, _, _ in columns]
         data = [header_row]
         # Collect (row, col, bg_hex) for every badge-kind cell that
         # matched a known value, so the table style below can paint
@@ -745,7 +966,7 @@ def render_report_pdf(report):
         badge_cells = []
         for r_idx, row in enumerate(rows, start=1):
             cells = []
-            for c_idx, (key, _, ctype) in enumerate(columns):
+            for c_idx, (key, _, ctype, _) in enumerate(columns):
                 value = row.get(key)
                 if ctype.startswith("badge:"):
                     kind = ctype.split(":", 1)[1]
@@ -766,10 +987,20 @@ def render_report_pdf(report):
                         _fmt_cell(value, ctype), s["td_num"] if ctype in num_types else s["td"]))
             data.append(cells)
 
+        # Columns default to equal width (weight 1 each). A report can
+        # give a column a different weight (see e.g. _report_partners /
+        # _report_partner_inquiries) when an even split leaves some
+        # columns too narrow to hold their content without ugly
+        # mid-word wraps (a badge word breaking across two lines, a
+        # phone number splitting mid-digit) while others sit mostly
+        # empty — narrow columns shrink, columns that need the room
+        # (Email, Address, Remarks, ...) grow to take up the slack.
         available_width = doc.width
         n = len(columns)
-        base_w = available_width / n
-        table = Table(data, colWidths=[base_w] * n, repeatRows=1)
+        weights = [w for _, _, _, w in columns]
+        total_weight = sum(weights) or n
+        col_widths = [available_width * (w / total_weight) for w in weights]
+        table = Table(data, colWidths=col_widths, repeatRows=1)
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -816,7 +1047,11 @@ def render_report_excel(report):
     ws = wb.active
     ws.title = report["title"][:31] or "Report"
 
-    columns = report["columns"]
+    # Some reports' columns carry a 4th "PDF width weight" element (see
+    # render_report_pdf) — irrelevant here since Excel auto-sizes each
+    # column from its own content below, so only the first three fields
+    # are kept.
+    columns = [c[:3] for c in report["columns"]]
     rows = report["rows"]
     n_cols = len(columns)
 
@@ -828,9 +1063,12 @@ def render_report_excel(report):
     # colors as the sidebar, login page, and PDF report header,
     # instead of the whole title printing in one flat dark color.
     title_cell.value = CellRichText(
-        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="2E5AF0"), "Heaven "),
-        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="5B6272"), "& "),
-        TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="E23A48"), "Angel "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14,
+                  b=True, color="2E5AF0"), "Heaven "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14,
+                  b=True, color="5B6272"), "& "),
+        TextBlock(InlineFont(rFont="Calibri", sz=14,
+                  b=True, color="E23A48"), "Angel "),
         TextBlock(InlineFont(rFont="Calibri", sz=14, b=True, color="12141A"),
                   f"Scents — {report['title']} Report"),
     )

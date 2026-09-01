@@ -62,8 +62,25 @@
           <option value="DISPATCH">Dispatch</option>
           <option value="RECEIPT">Receipt</option>
           <option value="SALE">Sale</option>
+          <option value="REFILL">Refill</option>
           <option value="ADJUSTMENT">Adjustment</option>
           <option value="DAMAGE">Damage</option>
+        </select>
+      </div>
+      <div class="field" data-filter="sale_type" style="display:none;">
+        <label for="rb_sale_type">Sale type</label>
+        <select id="rb_sale_type" name="sale_type">
+          <option value="all">Sale &amp; Refill</option>
+          <option value="Sale">Sale only</option>
+          <option value="Refill">Refill only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="payment_method" style="display:none;">
+        <label for="rb_payment_method">Payment method</label>
+        <select id="rb_payment_method" name="payment_method">
+          <option value="all">Cash &amp; Salary Deduction</option>
+          <option value="Cash">Cash only</option>
+          <option value="Salary Deduction">Salary Deduction only</option>
         </select>
       </div>
       <div class="field" data-filter="variant" style="display:none;">
@@ -96,6 +113,43 @@
         <select id="rb_low_stock_only" name="low_stock_only">
           <option value="">All stock levels</option>
           <option value="1">Low stock only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="partner_type" style="display:none;">
+        <label for="rb_partner_type">Partner type</label>
+        <select id="rb_partner_type" name="partner_type">
+          <option value="all">Distributors &amp; resellers</option>
+          <option value="Distributor">Distributors only</option>
+          <option value="Reseller">Resellers only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="package_scope" style="display:none;">
+        <label for="rb_package_scope">Available to</label>
+        <select id="rb_package_scope" name="package_scope">
+          <option value="all">All scopes</option>
+          <option value="Both">Both distributors &amp; resellers</option>
+          <option value="Distributor">Distributors only</option>
+          <option value="Reseller">Resellers only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="package_status" style="display:none;">
+        <label for="rb_package_status">Package status</label>
+        <select id="rb_package_status" name="package_status">
+          <option value="all">Active &amp; retired</option>
+          <option value="Active">Active only</option>
+          <option value="Retired">Retired only</option>
+        </select>
+      </div>
+      <div class="field" data-filter="inquiry_status" style="display:none;">
+        <label for="rb_inquiry_status">Inquiry status</label>
+        <select id="rb_inquiry_status" name="inquiry_status">
+          <option value="all">All statuses</option>
+          <option value="New">New</option>
+          <option value="Contacted">Contacted</option>
+          <option value="Follow-up">Follow-up</option>
+          <option value="On Hold">On Hold</option>
+          <option value="Closed">Closed</option>
+          <option value="Declined">Declined</option>
         </select>
       </div>
       <div class="field" data-filter="search" style="display:none;">
@@ -176,13 +230,13 @@
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Units sold by variant</h2>
     </div>
-    <canvas id="variantChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="variantChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Units sold by branch</h2>
     </div>
-    <canvas id="branchSalesChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="branchSalesChart"></canvas></div>
   </div>
 </div>
 
@@ -200,14 +254,14 @@
         <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
-    <canvas id="branchRevenueChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="branchRevenueChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Revenue vs. Capital</h2>
       <span class="hint">capital invested vs. revenue earned, all-time</span>
     </div>
-    <canvas id="capitalChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
   </div>
 </div>
 
@@ -217,13 +271,13 @@
       <h2>Revenue, Materials &amp; Profit</h2>
       <span class="hint" id="profitWindowLabel">last 14 days</span>
     </div>
-    <canvas id="profitChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="profitChart"></canvas></div>
   </div>
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Current stock by branch</h2>
     </div>
-    <canvas id="stockChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="stockChart"></canvas></div>
   </div>
 </div>
 
@@ -235,7 +289,7 @@
         <span class="hint" id="trendWindowLabel">last 14 days</span>
       </div>
     </div>
-    <canvas id="trendChart"></canvas>
+    <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
   </div>
 </div>
 {% endblock %}
@@ -300,6 +354,12 @@
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = '#5B6272';
     Chart.defaults.borderColor = '#E5E8EF';
+    // Paired with .chart-canvas-wrap's fixed height in style.css — this
+    // stops Chart.js from deriving canvas height from the container's
+    // width (its default behavior), which is what let the Ledger
+    // chart's height and its wrapping bottom legend feed off each
+    // other during a burst of resize events and grow unbounded.
+    Chart.defaults.maintainAspectRatio = false;
 
     fetch("{{ url_for('admin.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
       .then(r => {
@@ -444,6 +504,23 @@
 
   loadReportsData();
 
+  // loadReportsData() above runs the instant this script executes,
+  // which can be before the page's layout has fully settled (webfonts
+  // swapping in, the sidebar's off-canvas transform applying, etc).
+  // Chart.js only measures each canvas's container once, at creation,
+  // so a chart built during that narrow window can end up sized to a
+  // layout that changes moments later — and since nothing re-measures
+  // it after, it stays wrong until something else (e.g. the
+  // granularity toggle) rebuilds it. Re-running resize() on every
+  // existing chart once things have actually settled fixes that first
+  // paint without re-fetching data or disturbing anything on screen.
+  document.fonts.ready.then(() => {
+    Object.values(charts).forEach((c) => c.resize());
+  });
+  window.addEventListener('load', () => {
+    Object.values(charts).forEach((c) => c.resize());
+  });
+
   // Granularity toggle for the Ledger movement chart. Re-fetches the
   // whole reports_data() payload rather than just the trend series —
   // that endpoint is already cheap and re-fetched wholesale on tab
@@ -493,8 +570,12 @@
       branch_stock: ['branch_id', 'variant', 'low_stock_only', 'search'],
       stock_requests: ['branch_id', 'status', 'search', 'window'],
       inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
-      sales_history: ['branch_id', 'variant', 'search', 'window'],
+      sales_history: ['branch_id', 'variant', 'sale_type', 'payment_method', 'search', 'window'],
+      employee_purchases: ['branch_id', 'sale_type', 'search', 'window'],
       accounts: ['role', 'account_status', 'search'],
+      partners: ['partner_type', 'search'],
+      packages: ['package_scope', 'package_status', 'search'],
+      partner_inquiries: ['partner_type', 'inquiry_status', 'search', 'window'],
     };
 
     // "search" filters a different column depending on the report — the
@@ -503,6 +584,10 @@
     const SEARCH_LABELS = {
       accounts: { label: 'Search username', placeholder: 'e.g. manila' },
       inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
+      employee_purchases: { label: 'Search item / SKU / employee', placeholder: 'e.g. Golden Hour, HAS-001, or an employee name' },
+      partners: { label: 'Search partner / contact', placeholder: 'e.g. Golden Scent Trading' },
+      packages: { label: 'Search package', placeholder: 'e.g. Starter Bundle' },
+      partner_inquiries: { label: 'Search company / contact', placeholder: 'e.g. Golden Scent Trading' },
     };
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 
