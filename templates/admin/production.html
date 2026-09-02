@@ -4,6 +4,60 @@
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Production Log{% endblock %}
 
+{% block head %}
+<style>
+  /* Searchable product combobox (Log a production run). Reuses the
+     same field/input styling as everything else — the input itself
+     picks up the global input[type="text"] rules automatically, this
+     just adds the floating suggestion menu underneath it. */
+  .ac-combo {
+    position: relative;
+  }
+
+  .ac-combo-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 60;
+    display: none;
+  }
+
+  .ac-combo-menu.open {
+    display: block;
+  }
+
+  .ac-combo-option {
+    padding: 9px 12px;
+    font-size: 13.5px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .ac-combo-option .ac-match {
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+
+  .ac-combo-option:hover,
+  .ac-combo-option.active {
+    background: var(--accent-soft);
+  }
+
+  .ac-combo-empty {
+    padding: 10px 12px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 {% set total_hq_units = hq_stock|sum(attribute='stock_qty') if hq_stock else 0 %}
 {% set total_produced = logs|sum(attribute='qty_produced') if logs else 0 %}
@@ -40,10 +94,13 @@
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
-        <label for="productName">Product</label>
-        <select id="productName" required data-products='{{ products | tojson }}'>
-          <option value="">Select…</option>
-        </select>
+        <label for="productNameInput">Product</label>
+        <div class="ac-combo" id="productCombo" data-products='{{ products | tojson }}'>
+          <input type="text" id="productNameInput" required autocomplete="off"
+            placeholder="Search by name or code…">
+          <input type="hidden" id="productName">
+          <div class="ac-combo-menu" id="productComboMenu" role="listbox"></div>
+        </div>
       </div>
       <div class="field">
         <label for="sku">Unit</label>
@@ -197,14 +254,17 @@
 {% block scripts %}
 <script>
   (function () {
-    var productSelect = document.getElementById('productName');
+    var combo = document.getElementById('productCombo');
+    var input = document.getElementById('productNameInput');
+    var hidden = document.getElementById('productName');
+    var menu = document.getElementById('productComboMenu');
     var skuSelect = document.getElementById('sku');
     var preview = document.getElementById('stockPreview');
-    if (!productSelect || !skuSelect || !preview) return;
+    if (!combo || !input || !hidden || !menu || !skuSelect || !preview) return;
 
     var products = [];
     try {
-      products = JSON.parse(productSelect.dataset.products || '[]');
+      products = JSON.parse(combo.dataset.products || '[]');
     } catch (e) {
       products = [];
     }
@@ -220,7 +280,10 @@
 
     // Group products (each row is one SKU/unit) by item_name so the
     // admin picks a product first, then only sees the sizes that
-    // product actually has in the catalog.
+    // product actually has in the catalog. This data already came
+    // straight from the database on page load — the combobox below
+    // just searches it locally instead of a fresh page for every
+    // keystroke.
     var byProduct = {};
     var productNames = [];
     products.forEach(function (row) {
@@ -230,13 +293,93 @@
       }
       byProduct[row.item_name].push(row);
     });
+    productNames.sort(function (a, b) { return a.localeCompare(b); });
 
-    productNames.forEach(function (name) {
-      var opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      productSelect.appendChild(opt);
-    });
+    var activeIndex = -1;
+    var currentMatches = [];
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Rank each product against the typed query so close matches (by
+    // name, or by one of its SKU codes) surface first — a name match
+    // beats a code match, and a match at the very start beats one
+    // buried in the middle.
+    function scoreProduct(name, query) {
+      var lowerName = name.toLowerCase();
+      var skus = (byProduct[name] || []).map(function (r) { return r.sku.toLowerCase(); });
+
+      if (lowerName === query) return 0;
+      if (lowerName.indexOf(query) === 0) return 1;
+      if (skus.some(function (s) { return s.indexOf(query) === 0; })) return 2;
+      if (lowerName.indexOf(query) !== -1) return 3;
+      if (skus.some(function (s) { return s.indexOf(query) !== -1; })) return 4;
+      return -1;
+    }
+
+    function highlight(name, query) {
+      if (!query) return escapeHtml(name);
+      var idx = name.toLowerCase().indexOf(query);
+      if (idx === -1) return escapeHtml(name);
+      return escapeHtml(name.slice(0, idx)) +
+        '<span class="ac-match">' + escapeHtml(name.slice(idx, idx + query.length)) + '</span>' +
+        escapeHtml(name.slice(idx + query.length));
+    }
+
+    function getMatches(rawQuery) {
+      var query = rawQuery.trim().toLowerCase();
+      if (!query) return productNames.slice(0, 8);
+      var scored = productNames
+        .map(function (name) { return { name: name, score: scoreProduct(name, query) }; })
+        .filter(function (r) { return r.score !== -1; });
+      scored.sort(function (a, b) {
+        return a.score - b.score || a.name.localeCompare(b.name);
+      });
+      return scored.slice(0, 8).map(function (r) { return r.name; });
+    }
+
+    function closeMenu() {
+      menu.classList.remove('open');
+      menu.innerHTML = '';
+      activeIndex = -1;
+    }
+
+    function renderMenu(query) {
+      currentMatches = getMatches(query);
+      if (!currentMatches.length) {
+        menu.innerHTML = '<div class="ac-combo-empty">No product matches “' + escapeHtml(query.trim()) + '”.</div>';
+        menu.classList.add('open');
+        activeIndex = -1;
+        return;
+      }
+      menu.innerHTML = currentMatches.map(function (name, i) {
+        return '<div class="ac-combo-option" role="option" data-index="' + i + '">' +
+          highlight(name, query.trim().toLowerCase()) + '</div>';
+      }).join('');
+      menu.classList.add('open');
+      setActive(0);
+    }
+
+    function setActive(index) {
+      var opts = menu.querySelectorAll('.ac-combo-option');
+      opts.forEach(function (el) { el.classList.remove('active'); });
+      if (opts[index]) {
+        opts[index].classList.add('active');
+        opts[index].scrollIntoView({ block: 'nearest' });
+      }
+      activeIndex = index;
+    }
+
+    function selectProduct(name) {
+      input.value = name;
+      hidden.value = name;
+      input.setCustomValidity('');
+      closeMenu();
+      populateUnits(name);
+    }
 
     function updatePreview() {
       var sku = skuSelect.value;
@@ -274,12 +417,65 @@
       updatePreview();
     }
 
-    productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
+    input.addEventListener('input', function () {
+      hidden.value = '';
+      renderMenu(input.value);
+    });
+
+    input.addEventListener('focus', function () { renderMenu(input.value); });
+
+    input.addEventListener('keydown', function (e) {
+      if (!menu.classList.contains('open')) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActive(Math.min(activeIndex + 1, currentMatches.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (currentMatches[activeIndex]) selectProduct(currentMatches[activeIndex]);
+      } else if (e.key === 'Escape') {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.ac-combo-option');
+      if (!opt) return;
+      e.preventDefault();
+      var name = currentMatches[parseInt(opt.dataset.index, 10)];
+      if (name) selectProduct(name);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!combo.contains(e.target)) closeMenu();
+    });
+
+    // If the field loses focus without a valid pick (typo, or the
+    // suggestion list was dismissed), snap back to whatever was last
+    // validly selected rather than silently submitting a mismatch.
+    input.addEventListener('blur', function () {
+      window.setTimeout(function () {
+        if (menu.classList.contains('open')) return;
+        var typed = input.value.trim();
+        var exact = productNames.filter(function (n) { return n.toLowerCase() === typed.toLowerCase(); })[0];
+        if (exact) {
+          if (exact !== hidden.value) selectProduct(exact);
+          return;
+        }
+        if (hidden.value) {
+          input.value = hidden.value;
+        } else if (productNames.length) {
+          selectProduct(productNames[0]);
+        }
+      }, 120);
+    });
+
     skuSelect.addEventListener('change', updatePreview);
 
     if (productNames.length) {
-      productSelect.value = productNames[0];
-      populateUnits(productNames[0]);
+      selectProduct(productNames[0]);
     }
   })();
 </script>

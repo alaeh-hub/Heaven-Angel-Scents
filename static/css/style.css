@@ -1100,6 +1100,21 @@ th.num {
   background: transparent;
 }
 
+/* Stable column widths regardless of cell content length. Pair with a
+   <colgroup> on the table (see branches.html, packages.html,
+   request_stock.html) giving each column a fixed percentage — plain
+   table layout lets one long value in a single cell stretch its whole
+   column (and therefore every other column, and the table itself)
+   wider; table-layout:fixed ignores content width and wraps text
+   inside the column's own fixed width instead. */
+.table-fixed {
+  table-layout: fixed;
+}
+
+.table-fixed td {
+  overflow-wrap: anywhere;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

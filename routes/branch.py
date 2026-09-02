@@ -3,7 +3,7 @@ import uuid
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
-from db import execute, query, transaction
+from db import TransactionAborted, execute, query, transaction
 from decorators import branch_required
 from receipts import build_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
@@ -261,8 +261,8 @@ def receive_stock():
                 req = cur.fetchone()
                 if not req:
                     cur.close()
-                    flash("That shipment isn't awaiting receipt.", "error")
-                    return redirect(url_for("branch.receive_stock"))
+                    raise TransactionAborted(
+                        "That shipment isn't awaiting receipt.")
                 delivery_number = req["delivery_number"]
 
                 cur.execute(
@@ -273,19 +273,24 @@ def receive_stock():
 
                 if set(item_ids) != set(item_rows.keys()):
                     cur.close()
-                    flash(
-                        "That shipment's items don't match — please refresh and try again.", "error")
-                    return redirect(url_for("branch.receive_stock"))
+                    raise TransactionAborted(
+                        "That shipment's items don't match — please refresh and try again.")
 
+                # Every per-item check below MUST raise rather than
+                # `return` — see TransactionAborted's docstring in db.py.
+                # A `return` here after an earlier item in this same loop
+                # has already had its cur.execute() writes run would still
+                # let transaction() commit those partial writes, since a
+                # bare return doesn't count as an exceptional exit from
+                # the `with` block.
                 for item_id, item in item_rows.items():
                     received_qty = received_by_item[item_id]
                     damaged_qty = damaged_by_item[item_id]
                     dispatched = item["dispatched_qty"] or 0
                     if received_qty + damaged_qty > dispatched:
                         cur.close()
-                        flash(
-                            "Received + damaged can't exceed dispatched for one of the items.", "error")
-                        return redirect(url_for("branch.receive_stock"))
+                        raise TransactionAborted(
+                            "Received + damaged can't exceed dispatched for one of the items.")
 
                     cur.execute(
                         "UPDATE stock_request_items SET received_qty = %s, damaged_qty = %s WHERE item_id = %s",
@@ -348,6 +353,9 @@ def receive_stock():
                     (request_id,),
                 )
                 cur.close()
+        except TransactionAborted as err:
+            flash(str(err), "error")
+            return redirect(url_for("branch.receive_stock"))
         except Exception:
             current_app.logger.exception(
                 "receive_stock failed for request_id=%s", request_id)

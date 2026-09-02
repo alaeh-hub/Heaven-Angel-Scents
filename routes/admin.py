@@ -10,7 +10,7 @@ from flask import (
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
-from db import execute, query, transaction
+from db import TransactionAborted, execute, query, transaction
 from decorators import admin_required
 from audit import log_action
 from receipts import build_receipt_pdf
@@ -646,6 +646,9 @@ def record_sale():
            WHERE bi.branch_id = %s AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
+    # s.* already carries sales.sku (the FK column) — no need to
+    # re-select p.sku separately; it's used below for the Item column's
+    # SKU + Name display.
     recent_sales = query(
         """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
@@ -885,6 +888,14 @@ def dispatch_request(request_id):
                 "SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
             req = cur.fetchone()
             if not req or req["status"] != "Pending":
+                # Safe as a plain return — this is the very first check
+                # after locking the header row, before any writes have
+                # happened in this transaction, so there's nothing partial
+                # for transaction()'s commit() to prematurely lock in.
+                # It also redirects somewhere different (the list, not
+                # this delivery's own review page) than every other abort
+                # below, so it doesn't fit the shared TransactionAborted
+                # handler anyway.
                 cur.close()
                 flash("This request can no longer be dispatched.", "error")
                 return redirect(url_for("admin.requests_list"))
@@ -895,19 +906,28 @@ def dispatch_request(request_id):
             )
             items_by_id = {row["item_id"]: row for row in cur.fetchall()}
 
+            # Pure validation, no writes yet — safe as plain returns, but
+            # raised for consistency with the write loop below.
             for item_id, qty in requested_dispatch.items():
                 item = items_by_id.get(item_id)
                 if item is None:
                     cur.close()
-                    flash("Invalid item in dispatch request.", "error")
-                    return redirect(url_for("admin.review_request", request_id=request_id))
+                    raise TransactionAborted(
+                        "Invalid item in dispatch request.")
                 if qty > item["requested_qty"]:
                     cur.close()
-                    flash(
-                        "Dispatched quantity can't exceed what was requested.", "error")
-                    return redirect(url_for("admin.review_request", request_id=request_id))
+                    raise TransactionAborted(
+                        "Dispatched quantity can't exceed what was requested.")
 
             dispatched_any = False
+            # Unlike the validation loop above, THIS loop writes as it
+            # goes (branch_inventory + stock_request_items + a movement
+            # log row per item). Aborting a later iteration with a plain
+            # `return` would still let transaction() commit() the earlier
+            # iterations' writes — a `return` isn't an exception, so it
+            # doesn't take the except/rollback path. Every abort in here
+            # must `raise TransactionAborted(...)` instead — see its
+            # docstring in db.py.
             for item_id, qty in requested_dispatch.items():
                 item = items_by_id[item_id]
                 if qty == 0:
@@ -924,9 +944,8 @@ def dispatch_request(request_id):
                 hq_row = cur.fetchone()
                 if not hq_row or hq_row["stock_qty"] < qty:
                     cur.close()
-                    flash(
-                        f"Not enough HQ warehouse stock to dispatch {item['sku']}.", "error")
-                    return redirect(url_for("admin.review_request", request_id=request_id))
+                    raise TransactionAborted(
+                        f"Not enough HQ warehouse stock to dispatch {item['sku']}.")
 
                 before_qty = hq_row["stock_qty"]
                 after_qty = before_qty - qty
@@ -950,8 +969,7 @@ def dispatch_request(request_id):
 
             if not dispatched_any:
                 cur.close()
-                flash("Dispatch at least one item.", "error")
-                return redirect(url_for("admin.review_request", request_id=request_id))
+                raise TransactionAborted("Dispatch at least one item.")
 
             cur.execute(
                 "UPDATE stock_requests SET status = 'In Transit' WHERE request_id = %s",
@@ -962,6 +980,9 @@ def dispatch_request(request_id):
             req["branch_id"], ["requests", "inventory", "movement_logs"])
         flash(
             f"{req['delivery_number']} dispatched — now in transit to the branch.", "success")
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.review_request", request_id=request_id))
     except Exception:
         current_app.logger.exception(
             "dispatch_request failed for request_id=%s", request_id)
@@ -990,15 +1011,29 @@ def request_receipt(request_id):
 def reject_request(request_id):
     req = query("SELECT branch_id, delivery_number FROM stock_requests WHERE request_id = %s",
                 (request_id,), fetchone=True)
-    execute(
+    if not req:
+        flash("That request no longer exists.", "error")
+        return redirect(url_for("admin.requests_list"))
+
+    # The WHERE clause only actually rejects a request that's still
+    # Pending — but execute()'s result was previously discarded, so a
+    # double-submit, a race with another admin, or a request that had
+    # already moved to In Transit/Fulfilled/Rejected would silently no-op
+    # while still flashing "rejected" as if it had worked. Checking
+    # rowcount tells the two cases apart.
+    _, rowcount = execute(
         "UPDATE stock_requests SET status = 'Rejected' WHERE request_id = %s AND status = 'Pending'",
         (request_id,),
     )
-    if req:
-        notify_admin_and_branch(req["branch_id"], "requests")
-        flash(f"{req['delivery_number']} rejected.", "success")
-    else:
-        flash("Request rejected.", "success")
+    if rowcount == 0:
+        flash(
+            f"{req['delivery_number']} could not be rejected — it's no longer Pending "
+            "(someone may have just dispatched or rejected it).", "error",
+        )
+        return redirect(url_for("admin.requests_list"))
+
+    notify_admin_and_branch(req["branch_id"], "requests")
+    flash(f"{req['delivery_number']} rejected.", "success")
     return redirect(url_for("admin.requests_list"))
 
 
@@ -1246,7 +1281,6 @@ def reports_data():
         "profit": float(windowed_revenue) - float(windowed_materials_cost),
     }
 
-
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
 
@@ -1264,15 +1298,25 @@ def materials():
     if request.method == "POST":
         material_name = request.form.get("material_name", "").strip()
         unit = request.form.get("unit")
+        purchase_mode = request.form.get("purchase_mode", "Package")
+        if purchase_mode not in ("Package", "Individual"):
+            purchase_mode = "Package"
+        receipt_number = request.form.get("receipt_number", "").strip() or None
+        if receipt_number and len(receipt_number) > 60:
+            flash("Receipt number must be under 60 characters.", "error")
+            return redirect(url_for("admin.materials"))
 
         try:
             if not material_name or unit not in MATERIAL_UNITS:
                 raise ValidationError(
                     "Please fill in every field with a valid value.")
+            # Package vs Individual is purely descriptive now — both modes
+            # require a real quantity (e.g. 5 individually-purchased
+            # pieces is package_qty=5, purchase_mode='Individual').
             package_qty = parse_positive_decimal(
-                request.form.get("package_qty"), "Package quantity")
+                request.form.get("package_qty"), "Quantity")
             package_cost = parse_non_negative_decimal(
-                request.form.get("package_cost"), "Package cost")
+                request.form.get("package_cost"), "Cost")
             supplier_id = parse_optional_id(
                 request.form.get("supplier_id"), "Supplier")
         except ValidationError as err:
@@ -1292,14 +1336,16 @@ def materials():
         try:
             execute(
                 """INSERT INTO raw_materials
-                       (material_name, unit, package_qty, package_cost, cost_per_unit, stock_qty, supplier_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (material_name, unit, package_qty,
-                 package_cost, cost_per_unit, package_qty, supplier_id),
+                       (material_name, unit, purchase_mode, package_qty, package_cost,
+                        receipt_number, cost_per_unit, stock_qty, supplier_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (material_name, unit, purchase_mode, package_qty, package_cost,
+                 receipt_number, cost_per_unit, package_qty, supplier_id),
             )
             notify_all(["materials"])
             log_action("add_material", target=material_name,
-                       details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
+                       details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}"
+                       + (f" — receipt {receipt_number}" if receipt_number else ""))
             flash(
                 f"{material_name} added at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
         except Exception:
@@ -1356,15 +1402,22 @@ def edit_material():
     material_id = request.form.get("material_id")
     material_name = request.form.get("material_name", "").strip()
     unit = request.form.get("unit")
+    purchase_mode = request.form.get("purchase_mode", "Package")
+    if purchase_mode not in ("Package", "Individual"):
+        purchase_mode = "Package"
+    receipt_number = request.form.get("receipt_number", "").strip() or None
+    if receipt_number and len(receipt_number) > 60:
+        flash("Receipt number must be under 60 characters.", "error")
+        return redirect(url_for("admin.materials"))
 
     try:
         if not material_name or unit not in MATERIAL_UNITS:
             raise ValidationError(
                 "Please fill in every field with a valid value.")
         package_qty = parse_positive_decimal(
-            request.form.get("package_qty"), "Package quantity")
+            request.form.get("package_qty"), "Quantity")
         package_cost = parse_non_negative_decimal(
-            request.form.get("package_cost"), "Package cost")
+            request.form.get("package_cost"), "Cost")
         supplier_id = parse_optional_id(
             request.form.get("supplier_id"), "Supplier")
     except ValidationError as err:
@@ -1390,15 +1443,16 @@ def edit_material():
     try:
         execute(
             """UPDATE raw_materials
-               SET material_name = %s, unit = %s, package_qty = %s, package_cost = %s,
-                   cost_per_unit = %s, supplier_id = %s
+               SET material_name = %s, unit = %s, purchase_mode = %s, package_qty = %s,
+                   package_cost = %s, receipt_number = %s, cost_per_unit = %s, supplier_id = %s
                WHERE material_id = %s""",
-            (material_name, unit, package_qty, package_cost,
-             cost_per_unit, supplier_id, material_id),
+            (material_name, unit, purchase_mode, package_qty, package_cost,
+             receipt_number, cost_per_unit, supplier_id, material_id),
         )
         notify_all(["materials"])
         log_action("edit_material", target=material_name,
-                   details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}")
+                   details=f"{package_qty:g} {unit} for ₱{package_cost:,.2f} — ₱{cost_per_unit:,.4f}/{unit.lower()}"
+                   + (f" — receipt {receipt_number}" if receipt_number else ""))
         flash(
             f"{material_name} updated at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
     except Exception:
@@ -1439,34 +1493,49 @@ def log_material_usage():
     # pattern as stock deductions elsewhere in this file (e.g.
     # dispatch_request) — so two usage entries logged for the same
     # material at the same moment can't jointly push stock_qty negative.
-    with transaction() as conn:
-        cur = conn.cursor(dictionary=True)
-        cur.execute(
-            "SELECT stock_qty FROM raw_materials WHERE material_id = %s FOR UPDATE",
-            (material_id,),
-        )
-        row = cur.fetchone()
-        if not row or qty_used > float(row["stock_qty"]):
-            cur.close()
-            on_hand = row["stock_qty"] if row else 0
-            flash(
-                f"Only {on_hand:g} {material['unit'].lower()} of "
-                f"{material['material_name']} is on hand — can't log more than that as used.",
-                "error",
+    #
+    # Wrapped in try/except like every other write transaction in this
+    # file (production(), record_sale(), dispatch_request(), ...) — this
+    # one was previously left unguarded, so any DB-level failure here
+    # (e.g. a stale/invalid production_log_id) would bubble up as a raw
+    # 500 instead of the same friendly flash+redirect every other route
+    # gives. transaction() itself still rolls back correctly either way;
+    # this only changes what the admin sees when it fails.
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                "SELECT stock_qty FROM raw_materials WHERE material_id = %s FOR UPDATE",
+                (material_id,),
             )
-            return redirect(url_for("admin.materials"))
+            row = cur.fetchone()
+            if not row or qty_used > float(row["stock_qty"]):
+                cur.close()
+                on_hand = row["stock_qty"] if row else 0
+                flash(
+                    f"Only {on_hand:g} {material['unit'].lower()} of "
+                    f"{material['material_name']} is on hand — can't log more than that as used.",
+                    "error",
+                )
+                return redirect(url_for("admin.materials"))
 
-        cur.execute(
-            """INSERT INTO material_usage_logs
-               (material_id, production_log_id, qty_used, notes, created_by_user_id)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (material_id, production_log_id, qty_used, notes, session.get("user_id")),
-        )
-        cur.execute(
-            "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
-            (qty_used, material_id),
-        )
-        cur.close()
+            cur.execute(
+                """INSERT INTO material_usage_logs
+                   (material_id, production_log_id, qty_used, notes, created_by_user_id)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (material_id, production_log_id,
+                 qty_used, notes, session.get("user_id")),
+            )
+            cur.execute(
+                "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
+                (qty_used, material_id),
+            )
+            cur.close()
+    except Exception:
+        current_app.logger.exception(
+            "log_material_usage failed for material_id=%s", material_id)
+        flash("Couldn't log this usage — please try again.", "error")
+        return redirect(url_for("admin.materials"))
 
     notify_all(["materials"])
     log_action("log_material_usage", target=material["material_name"],
@@ -1673,7 +1742,8 @@ def partner_detail(partner_id):
     partners.last_inquiry_at/inquiry_count are just a rollup of what's
     queried here, kept in sync on every new inquiry.
     """
-    partner = query("SELECT * FROM partners WHERE partner_id = %s", (partner_id,), fetchone=True)
+    partner = query("SELECT * FROM partners WHERE partner_id = %s",
+                    (partner_id,), fetchone=True)
     if not partner:
         abort(404)
 
@@ -1686,7 +1756,6 @@ def partner_detail(partner_id):
     return render_template(
         "admin/partner_detail.html", partner=partner, inquiries=inquiries,
     )
-
 
 # NOTE: partners no longer "invest" — a distributor/reseller's money comes
 # from the packages they order and Close (see the Packages tab and
@@ -1705,7 +1774,8 @@ def _package_value(discount_percent, reference_total):
     and detail views so the math can't drift between them."""
     reference_total = decimal.Decimal(reference_total)
     discount_percent = decimal.Decimal(discount_percent)
-    discounted_total = reference_total * (decimal.Decimal("1") - (discount_percent / decimal.Decimal("100")))
+    discounted_total = reference_total * \
+        (decimal.Decimal("1") - (discount_percent / decimal.Decimal("100")))
     return reference_total, discounted_total
 
 
@@ -1746,7 +1816,8 @@ def packages():
             (name, description, scope, discount),
         )
         notify_all(["packages"])
-        log_action("add_package", target=name, details=f"{discount}% off, {scope}")
+        log_action("add_package", target=name,
+                   details=f"{discount}% off, {scope}")
         flash(f"{name} created — add products to it below.", "success")
         return redirect(url_for("admin.package_detail", package_id=new_id))
 
@@ -1761,7 +1832,8 @@ def packages():
     )
     package_list = []
     for row in package_rows:
-        reference_total, discounted_total = _package_value(row["discount_percent"], row["reference_total"])
+        reference_total, discounted_total = _package_value(
+            row["discount_percent"], row["reference_total"])
         row["reference_total"] = reference_total
         row["discounted_total"] = discounted_total
         package_list.append(row)
@@ -1774,7 +1846,8 @@ def packages():
 @bp.route("/packages/<int:package_id>")
 @admin_required
 def package_detail(package_id):
-    pkg = query("SELECT * FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    pkg = query("SELECT * FROM packages WHERE package_id = %s",
+                (package_id,), fetchone=True)
     if not pkg:
         abort(404)
 
@@ -1785,12 +1858,15 @@ def package_detail(package_id):
         (package_id,),
     )
     reference_total = sum(
-        (decimal.Decimal(i["qty"]) * decimal.Decimal(i["price"]) for i in items), decimal.Decimal("0")
+        (decimal.Decimal(i["qty"]) * decimal.Decimal(i["price"])
+         for i in items), decimal.Decimal("0")
     )
-    reference_total, discounted_total = _package_value(pkg["discount_percent"], reference_total)
+    reference_total, discounted_total = _package_value(
+        pkg["discount_percent"], reference_total)
 
     existing_skus = {i["sku"] for i in items}
-    catalog = query("SELECT sku, item_name, variant, unit, price FROM products ORDER BY item_name")
+    catalog = query(
+        "SELECT sku, item_name, variant, unit, price FROM products ORDER BY item_name")
     available_products = [p for p in catalog if p["sku"] not in existing_skus]
 
     return render_template(
@@ -1803,7 +1879,8 @@ def package_detail(package_id):
 @bp.route("/packages/<int:package_id>/edit", methods=["POST"])
 @admin_required
 def edit_package(package_id):
-    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s",
+                (package_id,), fetchone=True)
     if not pkg:
         abort(404)
 
@@ -1834,7 +1911,8 @@ def edit_package(package_id):
         (name, description, scope, discount, is_active, package_id),
     )
     notify_all(["packages"])
-    log_action("edit_package", target=name, details=f"{discount}% off, {scope}")
+    log_action("edit_package", target=name,
+               details=f"{discount}% off, {scope}")
     flash("Package updated.", "success")
     return redirect(url_for("admin.package_detail", package_id=package_id))
 
@@ -1842,12 +1920,14 @@ def edit_package(package_id):
 @bp.route("/packages/<int:package_id>/items", methods=["POST"])
 @admin_required
 def add_package_item(package_id):
-    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s",
+                (package_id,), fetchone=True)
     if not pkg:
         abort(404)
 
     sku = request.form.get("sku", "").strip()
-    product = query("SELECT sku FROM products WHERE sku = %s", (sku,), fetchone=True)
+    product = query("SELECT sku FROM products WHERE sku = %s",
+                    (sku,), fetchone=True)
 
     try:
         qty = parse_positive_int(request.form.get("qty"), "Quantity")
@@ -1879,7 +1959,8 @@ def add_package_item(package_id):
 @bp.route("/packages/<int:package_id>/items/remove", methods=["POST"])
 @admin_required
 def remove_package_item(package_id):
-    pkg = query("SELECT package_name FROM packages WHERE package_id = %s", (package_id,), fetchone=True)
+    pkg = query("SELECT package_name FROM packages WHERE package_id = %s",
+                (package_id,), fetchone=True)
     if not pkg:
         abort(404)
 
@@ -1900,8 +1981,10 @@ def remove_package_item(package_id):
         # the outcome they already agreed to.
         execute("DELETE FROM packages WHERE package_id = %s", (package_id,))
         notify_all(["packages"])
-        log_action("edit_package", target=pkg["package_name"], details="Deleted — last product removed")
-        flash(f"\"{pkg['package_name']}\" had no products left, so it was deleted.", "success")
+        log_action(
+            "edit_package", target=pkg["package_name"], details="Deleted — last product removed")
+        flash(
+            f"\"{pkg['package_name']}\" had no products left, so it was deleted.", "success")
         return redirect(url_for("admin.packages"))
 
     notify_all(["packages"])
@@ -1921,7 +2004,8 @@ def remove_package_item(package_id):
 # partner. Nothing about what was actually *submitted* is ever edited;
 # see the note on partner_inquiries in schema.sql for why — it's a
 # permanent record.
-INQUIRY_STATUSES = ("New", "Contacted", "Follow-up", "On Hold", "Closed", "Declined")
+INQUIRY_STATUSES = ("New", "Contacted", "Follow-up",
+                    "On Hold", "Closed", "Declined")
 
 
 @bp.route("/partners/inquiries")
@@ -1987,8 +2071,10 @@ def update_inquiry_status(inquiry_id):
         (new_status, inquiry_id),
     )
     notify_admin(["partner_inquiries"])
-    log_action("update_inquiry_status", target=inquiry["company_name"], details=new_status)
-    flash(f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
+    log_action("update_inquiry_status",
+               target=inquiry["company_name"], details=new_status)
+    flash(
+        f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
     return redirect(url_for("admin.partner_inquiries", status=return_status))
 
 

@@ -96,54 +96,61 @@
     <h2>Shipments in transit</h2><span class="hint">confirm what actually arrived, per delivery</span>
   </div>
   {% if in_transit %}
-  <div style="padding: 14px 22px 6px;">
-    {% for d in in_transit %}
-    <div class="delivery-block">
-      <div class="delivery-block-header">
-        <div>
-          <span class="mono delivery-number">{{ d.delivery_number }}</span>
-          <span class="text-faint" style="font-size:12px;">· {{ d.line_items|length }} item{{ 's' if d.line_items|length != 1 }}</span>
+  <div data-smart-list data-list-item-selector=".delivery-block" data-page-size="3">
+    <div style="padding: 14px 22px 6px;">
+      {% for d in in_transit %}
+      <div class="delivery-block">
+        <div class="delivery-block-header">
+          <div>
+            <span class="mono delivery-number">{{ d.delivery_number }}</span>
+            <span class="text-faint" style="font-size:12px;">· {{ d.line_items|length }} item{{ 's' if d.line_items|length != 1 }}</span>
+          </div>
+          <span class="text-faint" style="font-size:12px;">requested {{ d.requested_at.strftime('%b %d, %Y') }}</span>
         </div>
-        <span class="text-faint" style="font-size:12px;">requested {{ d.requested_at.strftime('%b %d, %Y') }}</span>
+        <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ d.request_id }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="request_id" value="{{ d.request_id }}">
+          <table class="delivery-items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="num">Dispatched</th>
+                <th class="num">Received</th>
+                <th class="num">Damaged</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in d.line_items %}
+              <tr>
+                <td class="item-name" data-label="Item">{{ item.item_name }}
+                  <span class="text-soft mono" style="font-size:11.5px;">({{ item.unit }})</span>
+                </td>
+                <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty }}</td>
+                <td class="num" data-label="Received">
+                  <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
+                  <input type="number" name="received_qty[]" value="{{ item.dispatched_qty }}" min="0"
+                    max="{{ item.dispatched_qty }}" class="mono">
+                </td>
+                <td class="num" data-label="Damaged">
+                  <input type="number" name="damaged_qty[]" value="0" min="0" max="{{ item.dispatched_qty }}"
+                    class="mono">
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="delivery-footer">
+            <button type="submit" class="btn btn-accent btn-sm">Confirm receipt for {{ d.delivery_number }}</button>
+          </div>
+        </form>
       </div>
-      <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ d.request_id }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="request_id" value="{{ d.request_id }}">
-        <table class="delivery-items-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th class="num">Dispatched</th>
-              <th class="num">Received</th>
-              <th class="num">Damaged</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in d.line_items %}
-            <tr>
-              <td class="item-name" data-label="Item">{{ item.item_name }}
-                <span class="text-soft mono" style="font-size:11.5px;">({{ item.unit }})</span>
-              </td>
-              <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty }}</td>
-              <td class="num" data-label="Received">
-                <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
-                <input type="number" name="received_qty[]" value="{{ item.dispatched_qty }}" min="0"
-                  max="{{ item.dispatched_qty }}" class="mono">
-              </td>
-              <td class="num" data-label="Damaged">
-                <input type="number" name="damaged_qty[]" value="0" min="0" max="{{ item.dispatched_qty }}"
-                  class="mono">
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <div class="delivery-footer">
-          <button type="submit" class="btn btn-accent btn-sm">Confirm receipt for {{ d.delivery_number }}</button>
-        </div>
-      </form>
+      {% endfor %}
     </div>
-    {% endfor %}
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   <div style="padding: 4px 22px 18px;">
     <p class="text-faint" style="font-size:12px;">Received + damaged should add up to what was dispatched for each

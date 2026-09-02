@@ -419,12 +419,22 @@
             </svg>
             <span>Change password</span>
           </a>
-          <a class="footer-action footer-action-danger" href="{{ url_for('auth.logout') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-            </svg>
-            <span>Sign out</span>
-          </a>
+          <!-- POST, not a plain <a href>, so this goes through CSRFProtect
+               like every other state-changing form in the app — see
+               auth.py's logout() for why a GET here was the actual
+               hole. Reset to look identical to the .footer-action <a>
+               it replaces (buttons carry their own browser chrome by
+               default that a plain link doesn't). -->
+          <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="footer-action footer-action-danger"
+              style="width:100%; border:none; background:none; cursor:pointer; font:inherit; text-align:left;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+              <span>Sign out</span>
+            </button>
+          </form>
         </div>
       </div>
     </aside>

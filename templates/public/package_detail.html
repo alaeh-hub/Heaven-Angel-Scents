@@ -18,93 +18,648 @@
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
-    body { min-height: 100vh; }
+    body { min-height: 100vh; background: var(--bg); overflow-x: hidden; }
 
-    .pp-shell { min-height: 100vh; padding: 36px 20px 60px; }
-    .pp-inner { max-width: 960px; margin: 0 auto; }
+    /* ================= ambient backdrop ================= */
+    .pp-backdrop { position: fixed; inset: 0; z-index: -1; background: var(--bg); overflow: hidden; }
 
-    .pp-brand .mark { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
-    .pp-brand .sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
-
-    .pp-back { display: inline-block; margin: 18px 0 14px; font-size: 12.5px; color: var(--ink-faint); }
-    .pp-back:hover { color: var(--ink); }
-
-    .pp-head { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
-    .pp-head h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.01em; }
-    .pp-head p.desc { font-size: 13.5px; color: var(--ink-soft); max-width: 560px; line-height: 1.6; margin: 0; }
-
-    .pp-items-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-      margin: 22px 0;
+    .pp-backdrop::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+      background-size: 26px 26px;
+      opacity: 0.3;
+      mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 40%, transparent 85%);
     }
 
-    .pp-item-card {
+    .pp-glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.3; animation: pp-drift 18s ease-in-out infinite; }
+    .pp-glow-blue { width: 460px; height: 460px; background: var(--blue); top: -180px; left: -120px; }
+    .pp-glow-red { width: 420px; height: 420px; background: var(--red); top: -80px; right: -140px; animation-delay: -9s; }
+
+    @keyframes pp-drift {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(24px, -18px) scale(1.06); }
+    }
+
+    /* ================= header ================= */
+    .pp-header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pp-header-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 14px 20px;
       display: flex;
-      gap: 12px;
       align-items: center;
-      padding: 14px;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
-    .pp-item-card .item-name { font-size: 13.5px; }
-    .pp-item-card .item-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
-    .pp-item-qty { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
-    .pp-item-qty strong { display: block; font-size: 14px; color: var(--ink); }
+    .pp-brand { display: flex; align-items: center; gap: 12px; }
 
-    .pp-summary {
+    .pp-crest {
+      position: relative;
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pp-crest::before {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, var(--blue), var(--red), var(--blue));
+      opacity: 0.55;
+      z-index: -1;
+      animation: pp-ring-spin 10s linear infinite;
+    }
+
+    .pp-crest::after { content: ""; position: absolute; inset: 1.5px; border-radius: 50%; background: var(--surface); }
+    .pp-crest svg { position: relative; z-index: 1; width: 17px; height: 17px; color: var(--accent-ink); }
+
+    @keyframes pp-ring-spin { to { transform: rotate(360deg); } }
+
+    .pp-brand .mark { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
+    .pp-brand .mark .bm-blue { color: var(--blue); }
+    .pp-brand .mark .bm-red { color: var(--red); }
+    .pp-brand .mark span:not(.bm-blue):not(.bm-red) { color: var(--ink-faint); font-style: italic; font-weight: 500; }
+    .pp-brand .sub { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+
+    .pp-header-actions { display: flex; align-items: center; gap: 10px; }
+    .pp-header-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-ink);
+      background: var(--accent-soft);
+      padding: 5px 11px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    /* ================= shell / layout ================= */
+    .pp-shell { padding: 0 20px 72px; }
+    .pp-inner { max-width: 1160px; margin: 0 auto; }
+
+    .pp-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 20px 0 18px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-faint);
+      transition: color 0.15s ease, gap 0.15s ease;
+    }
+    .pp-back svg { width: 14px; height: 14px; transition: transform 0.15s ease; }
+    .pp-back:hover { color: var(--ink); }
+    .pp-back:hover svg { transform: translateX(-3px); }
+
+    .pp-head {
       display: flex;
       flex-wrap: wrap;
       gap: 14px;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      padding: 18px 20px;
-      margin: 22px 0;
+      margin-bottom: 30px;
+    }
+    .pp-head h1 { font-size: 27px; margin: 0 0 8px; letter-spacing: -0.015em; }
+    .pp-head p.desc { font-size: 13.5px; color: var(--ink-soft); max-width: 600px; line-height: 1.65; margin: 0; }
+
+    /* ---- eyebrow ---- */
+    .pp-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--accent-ink);
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+    .pp-eyebrow svg { width: 12px; height: 12px; }
+
+    .pp-head-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-soft);
+    }
+    .pp-head-meta .dot-sep { color: var(--ink-faint); }
+    .pp-head-meta svg { width: 14px; height: 14px; color: var(--ink-faint); vertical-align: -2px; margin-right: 2px; }
+
+    /* ---- main two-column layout ---- */
+    .pp-layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 32px;
+      align-items: start;
     }
 
-    .pp-summary-line { font-size: 12.5px; color: var(--ink-faint); }
-    .pp-summary-price { font-size: 26px; font-weight: 800; color: var(--accent-ink); }
-    .pp-summary-ref { font-size: 13px; color: var(--ink-faint); text-decoration: line-through; margin-right: 6px; }
+    .pp-main { min-width: 0; }
 
-    .pp-inquire-cta { text-align: center; margin: 30px 0 10px; }
+    .pp-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--ink-faint);
+      margin: 0 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-    /* ---- Inquire modal ---- */
+    .pp-section-label::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ================= product gallery ================= */
+    .pp-gallery {
+      display: grid;
+      grid-template-columns: 76px 1fr;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .pp-gallery-thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 460px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .pp-gallery-thumb {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+      padding: 0;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+      overflow: hidden;
+      translate: 0 0;
+      transition: border-color 0.2s ease, translate 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pp-gallery-thumb:hover { border-color: var(--border-strong); translate: 0 -1px; }
+    .pp-gallery-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .pp-gallery-thumb .product-thumb,
+    .pp-gallery-thumb .product-thumb-empty {
+      width: 100% !important;
+      height: 100% !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+    }
+
+    .pp-gallery-main {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface-2);
+      overflow: hidden;
+      aspect-ratio: 4 / 3;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .pp-gallery-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 3;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-ink);
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+
+    .pp-gallery-slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.35s ease;
+    }
+    .pp-gallery-slide.active { opacity: 1; visibility: visible; z-index: 1; }
+    .pp-gallery-slide .product-thumb,
+    .pp-gallery-slide .product-thumb-empty {
+      width: 100% !important;
+      height: 100% !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+    }
+
+    .pp-gallery-caption {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2;
+      padding: 34px 16px 14px;
+      background: linear-gradient(to top, rgba(10, 12, 18, 0.72), transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pp-gallery-caption .cap-name { font-size: 13.5px; font-weight: 700; color: #fff; }
+    .pp-gallery-caption .cap-meta { font-size: 11.5px; color: rgba(255, 255, 255, 0.82); }
+
+    /* ================= package contents table ================= */
+    .pp-contents-table {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 30px;
+    }
+
+    .pp-contents-row {
+      display: grid;
+      grid-template-columns: 42px 1fr 120px 84px 60px;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      transition: background-color 0.15s ease;
+    }
+    .pp-contents-row:last-child { border-bottom: 0; }
+    .pp-contents-row[data-slide]:hover { background: var(--surface-2); cursor: pointer; }
+    .pp-contents-row[data-slide].active { background: var(--accent-soft); }
+
+    .pp-contents-head {
+      background: var(--surface-2);
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--ink-faint);
+      padding: 9px 14px;
+    }
+    .pp-contents-head span:first-child { grid-column: 1 / span 2; }
+
+    .pp-contents-row .c-name { font-size: 13px; font-weight: 600; }
+    .pp-contents-row .c-unit { font-size: 12px; color: var(--ink-faint); }
+    .pp-contents-row .c-qty {
+      justify-self: end;
+      font-size: 11.5px;
+      font-weight: 800;
+      color: var(--accent-ink);
+      background: var(--accent-soft);
+      padding: 3px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 560px) {
+      .pp-contents-row { grid-template-columns: 38px 1fr auto; }
+      .pp-contents-head span:nth-child(3),
+      .pp-contents-head span:nth-child(4),
+      .pp-contents-row .c-variant,
+      .pp-contents-row .c-unit { display: none; }
+    }
+
+    /* ================= reveal-on-scroll ================= */
+    .pp-reveal {
+      opacity: 0;
+      translate: 0 16px;
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), translate 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      transition-delay: var(--rd, 0s);
+    }
+    .pp-reveal.pp-in { opacity: 1; translate: 0 0; }
+
+    /* ================= sticky order summary sidebar ================= */
+    .pp-sidebar { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 16px; }
+
+    .pp-summary-card {
+      padding: 22px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pp-summary-card::before {
+      content: "";
+      display: block;
+      height: 4px;
+      margin: -22px -22px 18px;
+      background: linear-gradient(90deg, var(--blue), var(--red));
+    }
+
+    .pp-summary-scope {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .pp-summary-scope-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .pp-summary-scope-icon svg { width: 16px; height: 16px; }
+
+    .pp-summary-avail {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--success);
+      margin: -6px 0 14px;
+    }
+    .pp-summary-avail .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 3px var(--success-soft);
+      flex-shrink: 0;
+    }
+
+    .pp-summary-line { font-size: 11.5px; color: var(--ink-faint); margin-bottom: 3px; }
+    .pp-summary-ref { font-size: 13px; color: var(--ink-faint); text-decoration: line-through; }
+
+    .pp-summary-price-block { margin: 14px 0 18px; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .pp-summary-price { font-size: 30px; font-weight: 800; color: var(--accent-ink); letter-spacing: -0.02em; line-height: 1.1; }
+
+    .pp-summary-save {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 8px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--success);
+      background: color-mix(in srgb, var(--success) 14%, transparent);
+      padding: 4px 9px;
+      border-radius: 999px;
+    }
+    .pp-summary-save svg { width: 12px; height: 12px; }
+
+    .pp-summary-cta {
+      width: 100%;
+      justify-content: center;
+      padding: 13px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pp-summary-cta svg { width: 15px; height: 15px; transition: transform 0.2s ease; }
+    .pp-summary-cta:hover svg { transform: translateX(4px); }
+
+    .pp-summary-points { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .pp-summary-point { display: flex; align-items: flex-start; gap: 9px; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+    .pp-summary-point svg { width: 15px; height: 15px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
+
+    @media (max-width: 980px) {
+      .pp-layout { grid-template-columns: 1fr; }
+      .pp-sidebar { position: static; order: -1; margin-bottom: 8px; }
+    }
+
+    /* ================= why-partner strip ================= */
+    .pp-why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 44px 0; }
+    .pp-why-card {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      translate: 0 0;
+      transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .pp-why-card:hover { translate: 0 -3px; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+    .pp-why-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s ease;
+    }
+    .pp-why-card:hover .pp-why-icon { transform: scale(1.08) rotate(-4deg); }
+    .pp-why-icon svg { width: 16px; height: 16px; }
+    .pp-why-card h3 { font-size: 13.5px; margin: 0; }
+    .pp-why-card p { font-size: 12px; color: var(--ink-faint); line-height: 1.6; margin: 0; }
+
+    /* ================= how it works (compact) ================= */
+    .pp-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 6px 0 44px; }
+    .pp-step {
+      padding: 20px 18px;
+      translate: 0 0;
+      transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    }
+    .pp-step:hover { translate: 0 -3px; box-shadow: var(--shadow-md); }
+    .pp-step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    .pp-step h3 { font-size: 13.5px; margin: 0 0 6px; }
+    .pp-step p { font-size: 12px; color: var(--ink-faint); line-height: 1.55; margin: 0; }
+
+    /* ================= other packages ================= */
+    .pp-other-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+    .pp-other-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 18px;
+      translate: 0 0;
+      transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .pp-other-card:hover { translate: 0 -3px; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+    .pp-other-card h3 { font-size: 14.5px; margin: 0; }
+    .pp-other-meta { font-size: 11.5px; color: var(--ink-faint); }
+    .pp-other-price { display: flex; align-items: baseline; gap: 6px; }
+    .pp-other-price .order { font-size: 15.5px; font-weight: 800; color: var(--accent-ink); }
+    .pp-other-price .ref { font-size: 11.5px; color: var(--ink-faint); text-decoration: line-through; }
+    .pp-other-card .btn svg { width: 13px; height: 13px; margin-left: 5px; transition: transform 0.2s ease; vertical-align: -2px; }
+    .pp-other-card .btn:hover svg { transform: translateX(3px); }
+
+    /* ================= FAQ ================= */
+    .pp-faq { margin: 44px 0 10px; }
+    .pp-faq-item { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); margin-bottom: 10px; overflow: hidden; transition: border-color 0.2s ease; }
+    .pp-faq-item:hover { border-color: var(--border-strong); }
+    .pp-faq-item summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 15px 18px;
+      font-size: 13.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .pp-faq-item summary::-webkit-details-marker { display: none; }
+    .pp-faq-item summary .chev { flex-shrink: 0; width: 16px; height: 16px; color: var(--ink-faint); transition: transform 0.25s ease; }
+    .pp-faq-item[open] summary .chev { transform: rotate(180deg); color: var(--accent-ink); }
+
+    .pp-faq-body-wrap {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .pp-faq-item[open] .pp-faq-body-wrap { grid-template-rows: 1fr; }
+    .pp-faq-body-inner { overflow: hidden; }
+    .pp-faq-body { padding: 0 18px 18px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.65; }
+
+    /* ================= Inquire modal ================= */
     .pp-modal-overlay {
-      display: none;
+      display: flex;
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: rgba(28, 27, 25, 0.5);
+      background: rgba(10, 12, 18, 0);
       align-items: center;
       justify-content: center;
       padding: 20px;
       overflow-y: auto;
+      pointer-events: none;
+      transition: background-color 0.25s ease;
     }
 
-    .pp-modal-overlay.open { display: flex; }
+    .pp-modal-overlay.open { background: rgba(10, 12, 18, 0.55); pointer-events: auto; }
 
-    .pp-modal { max-width: 480px; width: 100%; padding: 26px; margin: auto; }
+    .pp-modal {
+      max-width: 480px;
+      width: 100%;
+      padding: 26px;
+      margin: auto;
+      opacity: 0;
+      translate: 0 14px;
+      scale: 0.97;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), scale 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pp-modal-overlay.open .pp-modal { opacity: 1; translate: 0 0; scale: 1; }
+
     .pp-modal h2 { font-size: 17px; margin: 0 0 4px; }
     .pp-modal p.sub { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 18px; }
 
-    .pp-footnote { margin-top: 40px; text-align: center; font-size: 12px; color: var(--ink-faint); }
+    /* ================= footer ================= */
+    .pp-footer {
+      margin-top: 54px;
+      border-top: 1px solid var(--border);
+      padding: 24px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .pp-footer .mark { font-size: 13px; font-weight: 800; }
+    .pp-footer-note { font-size: 11.5px; color: var(--ink-faint); line-height: 1.6; margin-top: 4px; max-width: 320px; }
+    .pp-footer p { margin: 0; font-size: 11.5px; color: var(--ink-faint); line-height: 1.6; text-align: right; max-width: 340px; }
+
+    @media (max-width: 900px) {
+      .pp-why-grid, .pp-steps { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .pp-header-tag { display: none; }
+      .pp-footer { flex-direction: column; align-items: flex-start; }
+      .pp-footer p { text-align: left; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-glow, .pp-crest::before { animation: none !important; }
+      .pp-reveal { transition: none !important; }
+    }
   </style>
 </head>
 
 <body>
-  <button type="button" class="theme-toggle theme-toggle-fixed" id="themeToggle" aria-label="Switch between light and dark theme">
-    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
-    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
-  </button>
+  <div class="pp-backdrop" aria-hidden="true">
+    <div class="pp-glow pp-glow-blue"></div>
+    <div class="pp-glow pp-glow-red"></div>
+  </div>
+
+  <header class="pp-header">
+    <div class="pp-header-inner">
+      <div class="pp-brand">
+        <div class="pp-crest" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M10 2h4" stroke-linecap="round"/>
+            <path d="M11 2v3.2" stroke-linecap="round"/>
+            <path d="M13 2v3.2" stroke-linecap="round"/>
+            <path d="M9 5.2h6l1.4 2.6c.4.7.6 1.5.6 2.3V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8.9c0-.8.2-1.6.6-2.3L9 5.2z"/>
+            <path d="M7.4 12.5h9.2" stroke-linecap="round"/>
+            <path d="M19.2 6.3l.6 1.4M20.6 5.7l-.6 1.4" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
+          <div class="sub">Scents · Partner Program</div>
+        </div>
+      </div>
+      <div class="pp-header-actions">
+        <span class="pp-header-tag">For Distributors &amp; Resellers</span>
+        <button type="button" class="btn btn-accent btn-sm" id="headerInquireBtn">Inquire</button>
+        <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
 
   <div class="pp-shell">
     <div class="pp-inner">
-      <div class="pp-brand">
-        <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
-        <div class="sub">Scents · Partner Program</div>
-      </div>
-
-      <a class="pp-back" href="{{ url_for('portal.packages', slug=slug) }}">← All packages</a>
+      <a class="pp-back" href="{{ url_for('portal.packages', slug=slug) }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        All packages
+      </a>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -118,46 +673,209 @@
 
       <div class="pp-head">
         <div>
+          <span class="pp-eyebrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 14.6 9h7.4l-6 4.4 2.3 7.1L12 16l-6.3 4.5 2.3-7.1L2 9h7.4z"/></svg>
+            Partner Package
+          </span>
           <h1>{{ pkg.package_name }}</h1>
           <p class="desc">{{ pkg.description or 'A curated set of our fragrances.' }}</p>
+          <div class="pp-head-meta">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>{{ pkg.item_count }} product{{ 's' if pkg.item_count != 1 }} in this bundle</span>
+            <span class="dot-sep">·</span>
+            <span>{{ pkg.discount_percent|round(2) }}% off list price</span>
+          </div>
         </div>
         <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
       </div>
 
-      {% if items %}
-      <div class="pp-items-grid">
-        {% for item in items %}
-        <div class="card pp-item-card">
-          {{ m.product_thumb(item.image_path, item.item_name, 48) }}
-          <div>
-            <div class="item-name">{{ item.item_name }}</div>
-            <div class="item-sub">{{ m.variant_badge(item.variant) }} · {{ item.unit }}</div>
+      <div class="pp-layout">
+        <div class="pp-main">
+          {% if items %}
+          <div class="pp-gallery pp-reveal">
+            <div class="pp-gallery-thumbs" id="galleryThumbs">
+              {% for item in items %}
+              <button type="button" class="pp-gallery-thumb {{ 'active' if loop.first }}" data-slide="{{ loop.index0 }}" aria-label="View {{ item.item_name }}">
+                {{ m.product_thumb(item.image_path, item.item_name, 64) }}
+              </button>
+              {% endfor %}
+            </div>
+            <div class="pp-gallery-main">
+              <span class="pp-gallery-badge">{{ pkg.item_count }} product{{ 's' if pkg.item_count != 1 }} in this bundle</span>
+              {% for item in items %}
+              <div class="pp-gallery-slide {{ 'active' if loop.first }}" data-slide="{{ loop.index0 }}">
+                {{ m.product_thumb(item.image_path, item.item_name, 480) }}
+                <div class="pp-gallery-caption">
+                  <span class="cap-name">{{ item.item_name }}</span>
+                  <span class="cap-meta">{{ m.variant_badge(item.variant) }} · {{ item.unit }} · x{{ item.qty }} per set</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
           </div>
-          <div class="pp-item-qty"><strong>x{{ item.qty }}</strong>per set</div>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="empty-state"><div class="glyph">—</div><p>This package doesn't list any products yet.</p></div>
-      {% endif %}
 
-      <div class="card pp-summary">
+          <div class="pp-section-label pp-reveal">Package contents</div>
+          <div class="pp-contents-table pp-reveal">
+            <div class="pp-contents-row pp-contents-head">
+              <span>Product</span><span>Variant</span><span>Unit</span><span>Qty</span>
+            </div>
+            {% for item in items %}
+            <div class="pp-contents-row {{ 'active' if loop.first }}" data-slide="{{ loop.index0 }}">
+              {{ m.product_thumb(item.image_path, item.item_name, 36) }}
+              <span class="c-name">{{ item.item_name }}</span>
+              <span class="c-variant">{{ m.variant_badge(item.variant) }}</span>
+              <span class="c-unit">{{ item.unit }}</span>
+              <span class="c-qty">x{{ item.qty }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="pp-section-label">Package contents</div>
+          <div class="empty-state"><div class="glyph">—</div><p>This package doesn't list any products yet.</p></div>
+          {% endif %}
+
+          <div class="pp-section-label pp-reveal">Why partner with us</div>
+          <div class="pp-why-grid pp-reveal">
+            <div class="card pp-why-card">
+              <div class="pp-why-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+              </div>
+              <h3>Wholesale pricing</h3>
+              <p>This bundle is discounted off our regular price list.</p>
+            </div>
+            <div class="card pp-why-card">
+              <div class="pp-why-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
+              </div>
+              <h3>Dedicated support</h3>
+              <p>Our team follows up directly once your inquiry comes in.</p>
+            </div>
+            <div class="card pp-why-card">
+              <div class="pp-why-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+              </div>
+              <h3>Built to resell</h3>
+              <p>Sized for distributors and resellers, not one-off retail buyers.</p>
+            </div>
+          </div>
+
+          <div class="pp-section-label pp-reveal">How it works</div>
+          <div class="pp-steps pp-reveal">
+            <div class="card pp-step">
+              <span class="pp-step-num">1</span>
+              <h3>Browse packages</h3>
+              <p>See exactly what's inside — photos, variants, and quantities.</p>
+            </div>
+            <div class="card pp-step">
+              <span class="pp-step-num">2</span>
+              <h3>Send an inquiry</h3>
+              <p>Tell us a bit about your business — takes under a minute.</p>
+            </div>
+            <div class="card pp-step">
+              <span class="pp-step-num">3</span>
+              <h3>We follow up</h3>
+              <p>Our team reaches out by phone or email to get things moving.</p>
+            </div>
+          </div>
+
+          {% if other_packages %}
+          <div class="pp-section-label pp-reveal">Other packages you might like</div>
+          <div class="pp-other-grid pp-reveal">
+            {% for op in other_packages %}
+            <div class="card pp-other-card">
+              <div>
+                <h3>{{ op.package_name }}</h3>
+                <span class="badge badge-{{ 'pending' if op.partner_scope == 'Both' else ('transit' if op.partner_scope == 'Distributor' else 'unisex') }}">{{ op.partner_scope }}</span>
+              </div>
+              <div class="pp-other-meta">{{ op.item_count }} product{{ 's' if op.item_count != 1 }}</div>
+              <div class="pp-other-price">
+                <span class="order">{{ op.discounted_total|peso }}</span>
+                <span class="ref">{{ op.reference_total|peso }}</span>
+              </div>
+              <a href="{{ url_for('portal.package_detail', slug=slug, package_id=op.package_id) }}" class="btn btn-ghost btn-sm" style="width:100%; text-align:center;">View Package
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="pp-faq pp-reveal">
+            <div class="pp-section-label" style="margin-top:0;">Frequently asked</div>
+            <details class="pp-faq-item">
+              <summary>Do I need an account to inquire?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></summary>
+              <div class="pp-faq-body-wrap"><div class="pp-faq-body-inner"><div class="pp-faq-body">No — fill out the inquiry form with your contact details. There's no login required; our team reaches out directly once we receive it.</div></div></div>
+            </details>
+            <details class="pp-faq-item">
+              <summary>How does the discount work?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></summary>
+              <div class="pp-faq-body-wrap"><div class="pp-faq-body-inner"><div class="pp-faq-body">The discount is applied to the combined reference price of everything in this package — the price shown above is exactly what you'd pay if the order goes through.</div></div></div>
+            </details>
+            <details class="pp-faq-item">
+              <summary>How long until someone follows up?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></summary>
+              <div class="pp-faq-body-wrap"><div class="pp-faq-body-inner"><div class="pp-faq-body">Our team is notified as soon as an inquiry comes in and follows up by phone or email using the details you provide.</div></div></div>
+            </details>
+          </div>
+        </div>
+
+        <aside class="pp-sidebar">
+          <div class="card pp-summary-card">
+            <div class="pp-summary-scope">
+              <div class="pp-summary-scope-icon">
+                {% if pkg.partner_scope == 'Distributor' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="9" width="14" height="9" rx="1.5"/><path d="M15 12h3.5L21 15v3h-6"/><circle cx="6" cy="19.5" r="1.7"/><circle cx="17.5" cy="19.5" r="1.7"/></svg>
+                {% elif pkg.partner_scope == 'Reseller' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9.5 4.5 4h15L21 9.5"/><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3-.5"/><path d="M5 9.8V20h14V9.8"/><path d="M10 20v-5.5h4V20"/></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12l2.5 2.5L15 9"/><path d="M3 7.5 8 5l4 2-4 2.3-5-1.8z"/><path d="M21 7.5 16 5l-4 2 4 2.3 5-1.8z"/><path d="M3 7.5v9L8 19l0-9"/><path d="M21 7.5v9L16 19l0-9"/></svg>
+                {% endif %}
+              </div>
+              <span class="pp-summary-line" style="margin:0;">{{ pkg.item_count }} product{{ 's' if pkg.item_count != 1 }} · {{ pkg.partner_scope }}</span>
+            </div>
+
+            <div class="pp-summary-line">Reference value at full price</div>
+            <span class="pp-summary-ref">{{ reference_total|peso }}</span>
+
+            <div class="pp-summary-price-block">
+              <div class="pp-summary-line">Your price</div>
+              <div class="pp-summary-price">{{ discounted_total|peso }}</div>
+              <span class="pp-summary-save">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg>
+                {{ pkg.discount_percent|round(2) }}% off list price
+              </span>
+            </div>
+
+            <div class="pp-summary-avail">
+              <span class="dot"></span> Accepting inquiries now
+            </div>
+
+            <button type="button" class="btn btn-accent pp-summary-cta" id="openInquireBtn">
+              Inquire About This Package
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+
+            <div class="pp-summary-points">
+              <div class="pp-summary-point">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>
+                No account needed to inquire
+              </div>
+              <div class="pp-summary-point">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>
+                Team follows up by phone or email
+              </div>
+              <div class="pp-summary-point">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>
+                Price shown is exactly what you'd pay
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="pp-footer">
         <div>
-          <div class="pp-summary-line">Reference value of everything above, at full price</div>
-          <div><span class="pp-summary-ref">{{ reference_total|peso }}</span></div>
+          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span> Scents</div>
+          <div class="pp-footer-note">Have a question? Send an inquiry above — that's the fastest way to reach our team.</div>
         </div>
-        <div style="text-align:right;">
-          <div class="pp-summary-line">Your price ({{ pkg.discount_percent|round(2) }}% off)</div>
-          <div class="pp-summary-price">{{ discounted_total|peso }}</div>
-        </div>
-      </div>
-
-      <div class="pp-inquire-cta">
-        <button type="button" class="btn btn-accent" id="openInquireBtn" style="padding:14px 32px; font-size:14.5px;">Inquire About This Package</button>
-      </div>
-
-      <div class="pp-footnote">
-        This link is shared privately with our distributors and resellers — please don't forward it publicly.
+        <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
       </div>
     </div>
   </div>
@@ -225,6 +943,7 @@
     </div>
   </div>
 
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
   <script>
     (function () {
       var toggle = document.getElementById('themeToggle');
@@ -240,10 +959,6 @@
       // ---- Relabel "company name" / show a hint on contact person,
       // depending on whether this inquiry is from a Distributor (has a
       // registered business) or a Reseller (may just be an individual).
-      // Runs once on load (covers a page fixed to one partner_scope,
-      // where #partner_type is a hidden input) and again on every
-      // change of the "You are a" select when the package is open to
-      // Both. ----
       var partnerTypeEl = document.getElementById('partner_type');
       var companyLabel = document.getElementById('companyNameLabel');
       var companyInput = document.getElementById('company_name');
@@ -269,15 +984,42 @@
         }
       }
 
+      // ---- product gallery: sync main slide, thumbnail strip, and the
+      // contents table so clicking any of the three updates the others ----
+      var gallerySlides = document.querySelectorAll('.pp-gallery-slide');
+      var galleryThumbs = document.querySelectorAll('.pp-gallery-thumb');
+      var contentsRows = document.querySelectorAll('.pp-contents-row[data-slide]');
+
+      function setActiveSlide(idx) {
+        gallerySlides.forEach(function (el) { el.classList.toggle('active', el.dataset.slide === idx); });
+        galleryThumbs.forEach(function (el) { el.classList.toggle('active', el.dataset.slide === idx); });
+        contentsRows.forEach(function (el) { el.classList.toggle('active', el.dataset.slide === idx); });
+      }
+
+      galleryThumbs.forEach(function (el) {
+        el.addEventListener('click', function () { setActiveSlide(el.dataset.slide); });
+      });
+      contentsRows.forEach(function (el) {
+        el.addEventListener('click', function () { setActiveSlide(el.dataset.slide); });
+      });
+
       var overlay = document.getElementById('inquireOverlay');
       var openBtn = document.getElementById('openInquireBtn');
+      var headerOpenBtn = document.getElementById('headerInquireBtn');
       var closeBtn = document.getElementById('closeInquireBtn');
-      if (!overlay || !openBtn) return;
+      if (!overlay) return;
 
-      function open() { overlay.classList.add('open'); }
-      function close() { overlay.classList.remove('open'); }
+      function open() {
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+      function close() {
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+      }
 
-      openBtn.addEventListener('click', open);
+      if (openBtn) openBtn.addEventListener('click', open);
+      if (headerOpenBtn) headerOpenBtn.addEventListener('click', open);
       if (closeBtn) closeBtn.addEventListener('click', close);
       overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
@@ -288,6 +1030,27 @@
       {% if get_flashed_messages(category_filter=['error'])|length %}
       open();
       {% endif %}
+
+      // ---- reveal-on-scroll for the landing sections below the fold ----
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var revealEls = document.querySelectorAll('.pp-reveal');
+      if (!revealEls.length) return;
+
+      if (reduceMotion || !('IntersectionObserver' in window)) {
+        revealEls.forEach(function (el) { el.classList.add('pp-in'); });
+        return;
+      }
+
+      var revealObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('pp-in');
+            revealObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+      revealEls.forEach(function (el) { revealObserver.observe(el); });
     })();
   </script>
 </body>

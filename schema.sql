@@ -132,8 +132,22 @@ CREATE TABLE IF NOT EXISTS raw_materials (
     material_id    INT AUTO_INCREMENT PRIMARY KEY,
     material_name  VARCHAR(100) NOT NULL UNIQUE,
     unit           ENUM('Gram', 'Milliliter', 'Liter', 'Gallon', 'Piece') NOT NULL DEFAULT 'Piece',
+    -- purchase_mode is purely how the purchase is described on the Materials
+    -- page ("Package (bulk)" vs "Individual unit") — it no longer implies
+    -- package_qty = 1. Buying 5 pieces one at a time (not as a bulk deal)
+    -- is Individual with package_qty = 5; buying a 140g bulk bag is Package.
+    -- Before this column existed, "Individual" was inferred purely from
+    -- package_qty == 1, which made it impossible to record "5 individually
+    -- purchased pieces" — see migration 19 below for the backfill that
+    -- preserves that old inference for existing rows.
+    purchase_mode  ENUM('Package', 'Individual') NOT NULL DEFAULT 'Package',
     package_qty    DECIMAL(10, 3) NOT NULL DEFAULT 1.000,
     package_cost   DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    -- Receipt / OR number for this purchase, so a material row can be
+    -- traced back to the physical receipt it came from. Free text (some
+    -- receipts are numeric, some are alphanumeric) and optional — older
+    -- purchases logged before this existed won't have one on file.
+    receipt_number VARCHAR(60) NULL,
     cost_per_unit  DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
     stock_qty      DECIMAL(10, 3) NOT NULL DEFAULT 0.000,   -- remaining on hand, in `unit`; reduced as usage is logged
     supplier_id    INT NULL,
@@ -944,3 +958,42 @@ DELIMITER ;
 
 CALL _migrate_partner_inquiries_remarks_and_status();
 DROP PROCEDURE _migrate_partner_inquiries_remarks_and_status;
+
+-- ----------------------------------------------------------------------------
+-- 19. Migration — raw_materials: purchase_mode + receipt_number
+--
+--     Adds an explicit purchase_mode column instead of the old "package_qty
+--     == 1 means Individual unit" inference (see raw_materials's comment
+--     above), and a free-text receipt_number for tracing a material row
+--     back to its physical receipt. Backfill preserves the exact same
+--     Package/Individual split existing rows already displayed as, so
+--     nothing on the Materials page changes for data logged before this
+--     migration — only new/edited rows can now have package_qty > 1 while
+--     still being marked Individual.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_raw_materials_purchase_mode_and_receipt()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'purchase_mode'
+    ) THEN
+        ALTER TABLE raw_materials
+            ADD COLUMN purchase_mode ENUM('Package', 'Individual') NOT NULL DEFAULT 'Package' AFTER unit;
+        UPDATE raw_materials SET purchase_mode = 'Individual' WHERE package_qty = 1;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'receipt_number'
+    ) THEN
+        ALTER TABLE raw_materials
+            ADD COLUMN receipt_number VARCHAR(60) NULL AFTER package_cost;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_raw_materials_purchase_mode_and_receipt();
+DROP PROCEDURE _migrate_raw_materials_purchase_mode_and_receipt;

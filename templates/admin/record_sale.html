@@ -45,8 +45,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
-  <div class="card card-pad">
+<div class="card card-pad" style="max-width:640px;">
     <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
     <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
       Deducts from warehouse stock immediately. Use Production to add stock.
@@ -113,40 +112,60 @@
 
       <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
     </form>
-  </div>
+</div>
 
-  <div class="card">
+<div class="card mt-24">
     <div class="card-header">
-      <h2>Recent sales</h2><span class="hint">at Main Branch</span>
+      <h2>Recent sales</h2><span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if recent_sales|length != 1 }} · at Main Branch</span>
     </div>
     {% if recent_sales %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Item</th>
-            <th>Type</th>
-            <th class="num">Qty</th>
-            <th class="num">Price</th>
-            <th class="num">Total</th>
-            <th>Payment</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in recent_sales %}
-          <tr>
-            <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
-            <td data-label="Item">{{ s.item_name }}</td>
-            <td data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
-            <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
-            <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
-            <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
-            <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div data-smart-table data-page-size="10" data-count-target="recentSalesCount" data-count-label="sale">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="smart-search-input" placeholder="Search by item or SKU…" autocomplete="off">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Item</th>
+              <th>Type</th>
+              <th class="num">Qty</th>
+              <th class="num">Price</th>
+              <th class="num">Total</th>
+              <th>Payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in recent_sales %}
+            <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
+              <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
+              <td data-label="Item">
+                <div class="item-name">{{ s.item_name }}</div>
+                <div class="item-sub mono">{{ s.sku }}</div>
+              </td>
+              <td data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
+              <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
+              <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
+              <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+              <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No sales match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
     </div>
     {% else %}
     <div class="empty-state">
@@ -154,7 +173,6 @@
       <p>No sales recorded yet.</p>
     </div>
     {% endif %}
-  </div>
 </div>
 {% endblock %}
 

@@ -17,6 +17,18 @@
     border-radius: 999px;
     white-space: nowrap;
   }
+
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     package name/description can't stretch this column — and
+     therefore the whole table — wider than the others. */
+  .pk-all-table th:nth-child(1), .pk-all-table td:nth-child(1) { width: 23%; }
+  .pk-all-table th:nth-child(2), .pk-all-table td:nth-child(2) { width: 10%; }
+  .pk-all-table th:nth-child(3), .pk-all-table td:nth-child(3) { width: 8%; }
+  .pk-all-table th:nth-child(4), .pk-all-table td:nth-child(4) { width: 13%; }
+  .pk-all-table th:nth-child(5), .pk-all-table td:nth-child(5) { width: 11%; }
+  .pk-all-table th:nth-child(6), .pk-all-table td:nth-child(6) { width: 13%; }
+  .pk-all-table th:nth-child(7), .pk-all-table td:nth-child(7) { width: 10%; }
+  .pk-all-table th:nth-child(8), .pk-all-table td:nth-child(8) { width: 12%; }
 </style>
 {% endblock %}
 
@@ -96,47 +108,68 @@
 <div class="card mt-24">
   <div class="card-header">
     <h2>All packages</h2>
-    <span class="hint">{{ package_list|length }} total</span>
+    <span class="hint" id="packagesCount">{{ package_list|length }} total</span>
   </div>
   {% if package_list %}
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Package</th>
-          <th>For</th>
-          <th class="num">Items</th>
-          <th class="num">Reference value</th>
-          <th class="num">Discount</th>
-          <th class="num">Order price</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for pkg in package_list %}
-        <tr>
-          <td data-label="Package">
-            <div class="item-name">{{ pkg.package_name }}</div>
-            {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
-          </td>
-          <td data-label="For">
-            <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
-          </td>
-          <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
-          <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
-          <td class="num" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
-          <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
-          <td data-label="Status">
-            <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
-          </td>
-          <td data-label="">
-            <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="10" data-count-target="packagesCount" data-count-label="package">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by package name…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed pk-all-table">
+        <colgroup>
+          <col style="width:23%"><col style="width:10%"><col style="width:8%"><col style="width:13%">
+          <col style="width:11%"><col style="width:13%"><col style="width:10%"><col style="width:12%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>For</th>
+            <th class="num">Items</th>
+            <th class="num">Reference value</th>
+            <th class="num">Discount</th>
+            <th class="num">Order price</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in package_list %}
+          <tr data-search="{{ (pkg.package_name ~ ' ' ~ (pkg.description or ''))|lower }}">
+            <td data-label="Package">
+              <div class="item-name">{{ pkg.package_name }}</div>
+              {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
+            </td>
+            <td data-label="For">
+              <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+            </td>
+            <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
+            <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
+            <td class="num" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
+            <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
+            <td data-label="Status">
+              <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
+            </td>
+            <td data-label="">
+              <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No packages match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   <div style="padding: 4px 22px 18px;">
     <p class="text-faint" style="font-size:12px;">Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount — this is what shows up when they order.</p>

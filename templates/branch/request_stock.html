@@ -148,6 +148,17 @@
     text-align: right;
   }
 
+  /* Fixed column widths (see .table-fixed in style.css) so nothing in
+     this row — the delivery number included — can stretch a column,
+     and therefore the whole table, wider than the others. */
+  .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 16%; }
+  .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 20%; }
+  .rh-table th:nth-child(3), .rh-table td:nth-child(3) { width: 10%; }
+  .rh-table th:nth-child(4), .rh-table td:nth-child(4) { width: 10%; }
+  .rh-table th:nth-child(5), .rh-table td:nth-child(5) { width: 14%; }
+  .rh-table th:nth-child(6), .rh-table td:nth-child(6) { width: 14%; }
+  .rh-table th:nth-child(7), .rh-table td:nth-child(7) { width: 16%; }
+
   @media (max-width: 680px) {
     .cart-table-wrap {
       overflow: visible;
@@ -368,39 +379,61 @@
   <div class="card">
     <div class="card-header">
       <h2>Request history</h2>
+      <span class="hint" id="requestHistoryCount">{{ history|length }} recent request{{ 's' if history|length != 1 }}</span>
     </div>
     {% if history %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Requested</th>
-            <th>Delivery #</th>
-            <th class="num">Items</th>
-            <th class="num">Qty</th>
-            <th class="num">Value</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in history %}
-          <tr>
-            <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-            <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
-            <td class="num mono" data-label="Items">{{ r.item_count }}</td>
-            <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
-            <td class="num mono" data-label="Value">{{ r.total_value|peso }}</td>
-            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
-            <td data-label="">
-              {% if r.status == 'Fulfilled' %}
-              <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div data-smart-table data-page-size="10" data-count-target="requestHistoryCount" data-count-label="recent request">
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" class="smart-search-input" placeholder="Search by delivery # or status…" autocomplete="off">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="smart-table table-fixed rh-table">
+          <colgroup>
+            <col style="width:16%"><col style="width:20%"><col style="width:10%"><col style="width:10%">
+            <col style="width:14%"><col style="width:14%"><col style="width:16%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Requested</th>
+              <th>Delivery #</th>
+              <th class="num">Items</th>
+              <th class="num">Qty</th>
+              <th class="num">Value</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in history %}
+            <tr data-search="{{ (r.delivery_number ~ ' ' ~ r.status)|lower }}">
+              <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+              <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
+              <td class="num mono" data-label="Items">{{ r.item_count }}</td>
+              <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
+              <td class="num mono" data-label="Value">{{ r.total_value|peso }}</td>
+              <td data-label="Status">{{ m.status_badge(r.status) }}</td>
+              <td data-label="">
+                {% if r.status == 'Fulfilled' %}
+                <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <div class="glyph">—</div>
+          <p>No requests match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      </div>
     </div>
     {% else %}
     <div class="empty-state"><div class="glyph">—</div><p>No requests submitted yet.</p></div>

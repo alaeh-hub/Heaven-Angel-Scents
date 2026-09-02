@@ -5,94 +5,17 @@
 {% block heading %}Products{% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
-    <div class="card-header">
-      <h2>All Products</h2>
-      <span class="hint" id="catalogCount">{{ catalog|length }} SKU{{ 's' if catalog|length != 1 }}</span>
-    </div>
-    {% if catalog %}
-    <!-- AFTER -->
-    <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU">
-      <div class="table-toolbar">
-        <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
-          <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
-        </div>
-        <div class="table-filter">
-          <select class="smart-filter-select" data-filter-key="unit">
-            <option value="">All units</option>
-            {% for u in unit_choices %}
-            <option value="{{ u }}">{{ u }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table class="smart-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Item</th>
-              <th>Variant</th>
-              <th>Unit</th>
-              <th class="num">Price</th>
-              <th class="num">Total stock</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in catalog %}
-            <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
-              data-unit="{{ p.unit }}">
-              <td data-label="">{{ m.product_thumb(p.image_path, p.item_name) }}</td>
-              <td data-label="Item">
-                <div class="item-name">{{ p.item_name }}</div>
-                <div class="item-sub mono">{{ p.sku }}</div>
-              </td>
-              <td data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
-              <td class="mono text-soft" data-label="Unit">{{ p.unit }}</td>
-              <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
-              <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
-              <td data-label="">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditProduct(this)"
-                  data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
-                  data-unit="{{ p.unit }}" data-price="{{ p.price }}"
-                  data-image-url="{{ url_for('static', filename=p.image_path) if p.image_path else '' }}">Edit</button>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <div class="empty-state smart-no-match" style="display:none;">
-          <div class="glyph">—</div>
-          <p>No products match your search.</p>
-        </div>
-      </div>
-      <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
-        <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
-      </div>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">✦</div>
-      <p>No products yet — add the first fragrance to the catalog.</p>
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Reuse the code for another size as a new row. Need to change an existing product's details? Use Edit on that row instead.
-    </p>
-    <form method="POST" id="addProductForm" enctype="multipart/form-data">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<!-- Add-a-product form now sits full width, on top of the table — same
+     fix as Packages and Partners: a side-by-side 1.6fr/1fr grid next to
+     a table would squish/clip once the table had real rows. -->
+<div class="card card-pad">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Reuse the code for another size as a new row. Need to change an existing product's details? Use Edit on that row instead.
+  </p>
+  <form method="POST" id="addProductForm" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
       <div class="field">
         <label for="base_code">Product code</label>
         <input type="text" id="base_code" name="base_code" placeholder="A1" required>
@@ -101,42 +24,122 @@
         <label for="item_name">Fragrance name</label>
         <input type="text" id="item_name" name="item_name" placeholder="Golden Hour" required>
       </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="variant">Variant</label>
-          <select id="variant" name="variant" required>
-            <option value="">Select…</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Unisex">Unisex</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="unit">Unit</label>
-          <select id="unit" name="unit" required>
-            <option value="">Select…</option>
-            {% for u in unit_choices %}
-            <option value="{{ u }}">{{ u }}</option>
-            {% endfor %}
-          </select>
-        </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="variant">Variant</label>
+        <select id="variant" name="variant" required>
+          <option value="">Select…</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="unit">Unit</label>
+        <select id="unit" name="unit" required>
+          <option value="">Select…</option>
+          {% for u in unit_choices %}
+          <option value="{{ u }}">{{ u }}</option>
+          {% endfor %}
+        </select>
       </div>
       <div class="field">
         <label for="price">Price for this unit (₱)</label>
         <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
-        <div class="help">Each unit has its own price. Branches can charge differently at checkout.</div>
       </div>
+    </div>
+    <div class="form-row">
       <div class="field">
         <label for="image">Product image <span class="text-faint">(optional)</span></label>
         <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp">
         <div class="help">JPG, PNG, or WEBP. This is per size — reusing the code for another size needs its own image too.</div>
       </div>
-      <div class="field" id="skuPreviewField" style="display:none;">
+      <div class="field" id="skuPreviewField" style="display:none; align-self:center;">
         <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add to catalog</button>
-    </form>
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%; max-width:280px;">Add to catalog</button>
+  </form>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>All Products</h2>
+    <span class="hint" id="catalogCount">{{ catalog|length }} SKU{{ 's' if catalog|length != 1 }}</span>
   </div>
+  {% if catalog %}
+  <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
+      </div>
+      <div class="table-filter">
+        <select class="smart-filter-select" data-filter-key="unit">
+          <option value="">All units</option>
+          {% for u in unit_choices %}
+          <option value="{{ u }}">{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Item</th>
+            <th>Variant</th>
+            <th>Unit</th>
+            <th class="num">Price</th>
+            <th class="num">Total stock</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in catalog %}
+          <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
+            data-unit="{{ p.unit }}">
+            <td data-label="">{{ m.product_thumb(p.image_path, p.item_name) }}</td>
+            <td data-label="Item">
+              <div class="item-name">{{ p.item_name }}</div>
+              <div class="item-sub mono">{{ p.sku }}</div>
+            </td>
+            <td data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ p.unit }}</td>
+            <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
+            <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
+            <td data-label="">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditProduct(this)"
+                data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
+                data-unit="{{ p.unit }}" data-price="{{ p.price }}"
+                data-image-url="{{ url_for('static', filename=p.image_path) if p.image_path else '' }}">Edit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No products match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">✦</div>
+    <p>No products yet — add the first fragrance to the catalog.</p>
+  </div>
+  {% endif %}
 </div>
 
 <div id="editProductOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">

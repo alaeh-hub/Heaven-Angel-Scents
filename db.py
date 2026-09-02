@@ -54,6 +54,33 @@ def execute(sql, params=None, commit=True):
     return lastrowid, rowcount
 
 
+class TransactionAborted(Exception):
+    """Raise this from inside a `with transaction():` block to abort it
+    with a specific, user-facing message — instead of `return`ing
+    directly out of the block.
+
+    A bare `return` inside a `with` block is NOT an exception as far as
+    the `with` statement is concerned: the block is considered to have
+    exited "normally", so transaction()'s `except Exception:` branch
+    below never runs, and the `conn.commit()` right after `yield` still
+    fires. Concretely: if a per-item loop writes rows for item 1, then
+    hits a validation failure on item 2 and does
+    `return redirect(...)` to bail out, item 1's writes get committed
+    anyway — a partial, half-applied transaction — even though the
+    whole operation was meant to be rejected.
+
+    Raising TransactionAborted (or any Exception subclass) instead
+    forces transaction()'s except branch, which rolls back before
+    re-raising, so nothing partial is ever committed. Catch this
+    specific type at the call site, outside the `with` block, to show
+    the message it carries; a plain `except Exception:` around the same
+    call still catches it too (it IS an Exception), so existing generic
+    error handling doesn't need to change — just add a more specific
+    `except TransactionAborted as err: flash(str(err), ...)` before it
+    if you want the precise message surfaced instead of a generic one.
+    """
+
+
 @contextlib.contextmanager
 def transaction():
     """Group several writes into one atomic unit on the request's connection.

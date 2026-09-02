@@ -4,8 +4,41 @@
 {% block heading %}Accounts{% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
-  <div class="card">
+<div class="card card-pad" style="max-width:640px;">
+    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
+    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts only see their own branch. Users set their password at first login.</p>
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Temporary password</label>
+        <input type="password" id="password" name="password" minlength="8" required>
+        <div class="help">At least 8 characters. Share securely — they'll set their own at login.</div>
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <select id="role" name="role" required onchange="document.getElementById('branch_id_field').style.display = this.value === 'Branch' ? 'block' : 'none';">
+          <option value="Branch">Branch</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+      <div class="field" id="branch_id_field">
+        <label for="branch_id">Branch</label>
+        <select id="branch_id" name="branch_id">
+          <option value="">Select…</option>
+          {% for b in branch_list %}
+          <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-accent" style="width:100%;">Create account</button>
+    </form>
+</div>
+
+<div class="card mt-24">
     <div class="card-header"><h2>Login accounts</h2><span class="hint" id="accountsCount">{{ accounts|length }} total</span></div>
     <div data-smart-table data-page-size="10" data-count-target="accountsCount" data-count-label="account">
       <div class="table-toolbar">
@@ -52,41 +85,6 @@
         <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
       </div>
     </div>
-  </div>
-
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts only see their own branch. Users set their password at first login.</p>
-    <form method="POST">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required>
-      </div>
-      <div class="field">
-        <label for="password">Temporary password</label>
-        <input type="password" id="password" name="password" minlength="8" required>
-        <div class="help">At least 8 characters. Share securely — they'll set their own at login.</div>
-      </div>
-      <div class="field">
-        <label for="role">Role</label>
-        <select id="role" name="role" required onchange="document.getElementById('branch_id_field').style.display = this.value === 'Branch' ? 'block' : 'none';">
-          <option value="Branch">Branch</option>
-          <option value="Admin">Admin</option>
-        </select>
-      </div>
-      <div class="field" id="branch_id_field">
-        <label for="branch_id">Branch</label>
-        <select id="branch_id" name="branch_id">
-          <option value="">Select…</option>
-          {% for b in branch_list %}
-          <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Create account</button>
-    </form>
-  </div>
 </div>
 
 {% if temp_password_reveal %}

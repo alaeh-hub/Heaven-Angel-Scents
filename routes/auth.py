@@ -11,7 +11,9 @@ bp = Blueprint("auth", __name__)
 @bp.route("/", methods=["GET"])
 def index():
     if "user_id" in session:
-        return redirect(url_for("admin.dashboard" if session["role"] == "Admin" else "branch.dashboard"))
+        return redirect(url_for("admin.dashboard"
+                                if session["role"] == "Admin"
+                                else "branch.dashboard"))
     return redirect(url_for("auth.login"))
 
 
@@ -19,8 +21,9 @@ def index():
 @limiter.limit("10 per minute")
 def login():
     if "user_id" in session:
-        return redirect(url_for("admin.dashboard" if session["role"] == "Admin" else "branch.dashboard"))
-
+        return redirect(url_for("admin.dashboard"
+                                if session["role"] == "Admin"
+                                else "branch.dashboard"))
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -32,15 +35,11 @@ def login():
             flash("Please enter both your username and password.", "error")
             return render_template("login.html", login_type=login_type), 400
 
-        if len(username) > 80 or len(password) > 200:
-            flash("Incorrect username or password.", "error")
-            return render_template("login.html", login_type=login_type), 400
-
         user = query(
             """SELECT u.user_id, u.username, u.password_hash, u.role, u.branch_id,
-                      u.is_active, u.must_change_password, b.branch_name
-               FROM users u LEFT JOIN branches b ON u.branch_id = b.branch_id
-               WHERE u.username = %s""",
+            u.is_active, u.must_change_password, b.branch_name
+            FROM users u LEFT JOIN  branches b ON u.branch_id = b.branch_id
+            WHERE u.username = %s""",
             (username,), fetchone=True,
         )
 
@@ -51,10 +50,6 @@ def login():
         if user["role"] != login_type:
             flash(
                 f"That account is a {user['role']} account. Switch tabs above and try again.", "error")
-            return render_template("login.html", login_type=login_type), 401
-
-        if not user["is_active"]:
-            flash("This account has been deactivated. Contact HQ.", "error")
             return render_template("login.html", login_type=login_type), 403
 
         session.clear()
@@ -66,16 +61,28 @@ def login():
         session["must_change_password"] = bool(user["must_change_password"])
 
         if session["must_change_password"]:
-            flash(f"Welcome back, {user['username']}. Please set a new password to continue.", "warning")
+            flash(
+                f"Welcome back, {user['username']}. Please set a new password to continue.", "warning")
             return redirect(url_for("auth.change_password"))
 
         flash(f"Welcome back, {user['username']}.", "success")
-        return redirect(url_for("admin.dashboard" if user["role"] == "Admin" else "branch.dashboard"))
-
+        return redirect(url_for("admin.dashboard"
+                                if user["role"] == "Admin"
+                                else "branch.dashboard"))
     return render_template("login.html")
 
 
-@bp.route("/logout")
+# POST-only, not GET. A GET route with a side effect (clearing the
+# session) can be triggered by any other site the signed-in user's
+# browser visits — e.g. <img src="https://this-app/logout"> — since the
+# browser will happily follow that request with the user's session
+# cookie attached, no interaction required. CSRFProtect(app) in app.py
+# already exempts GET/HEAD/OPTIONS by design (that's normal — GET isn't
+# supposed to have side effects), so GET was the actual hole here, not
+# a missing CSRF token; switching to POST is what puts this behind
+# CSRFProtect's real protection, and the hidden csrf_token field on the
+# sign-out form in base.html is what satisfies it.
+@bp.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     flash("You've been signed out.", "success")
@@ -90,9 +97,8 @@ def change_password():
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
 
-        user = query(
-            "SELECT password_hash FROM users WHERE user_id = %s", (session["user_id"],), fetchone=True
-        )
+        user = query("SELECT password_hash FROM users WHERE user_id = %s",
+                     (session["user_id"],), fetchone=True)
 
         if not user or not check_password_hash(user["password_hash"], current_password):
             flash("Current password is incorrect.", "error")
@@ -109,6 +115,8 @@ def change_password():
             )
             session["must_change_password"] = False
             flash("Password updated.", "success")
-            return redirect(url_for("admin.dashboard" if session["role"] == "Admin" else "branch.dashboard"))
+            return redirect(url_for("admin.dashboard"
+                                    if session["role"] == "Admin"
+                                    else "branch.dashboard"))
 
     return render_template("change_password.html")

@@ -23,9 +23,11 @@ Flow, on purpose kept to a single page per package:
        b. Matches an existing partners row by email/phone, or creates a
           new one, and links it to the inquiry — see
           _find_or_create_partner().
-       c. Emails HQ a notification (best-effort — see mailer.py). A
+       c. Emails HQ a notification, off the request thread (best-effort —
+          see mailer.py and _send_inquiry_notification_async() below). A
           failed or unconfigured mailer never loses the inquiry itself,
-          since the save in step (a) already happened.
+          since the save in step (a) already happened, and a slow SMTP
+          server never holds up the visitor's response either.
        d. Pushes a realtime event so every open HQ Admin tab's "Partner
           Inquiries" sidebar badge updates immediately, and a bell
           notification for the new lead — see sockets.py.
@@ -33,14 +35,19 @@ Flow, on purpose kept to a single page per package:
 Nothing here requires @login_required/@admin_required — nothing under
 this blueprint should, since the whole point is that a prospect
 doesn't have (and shouldn't need) an account to reach it. The slug
-check below is what stands in for authentication instead.
+check below is what stands in for authentication instead. That also
+means this blueprint is reachable by anyone who has (or guesses) the
+slug, with no login to throttle via the usual account-lockout path —
+see the rate limit on inquire() below.
 """
 import decimal
 import secrets
+import threading
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 
 from db import execute, query
+from extensions import limiter
 from mailer import send_partner_inquiry_email
 from sockets import notify_admin, notify_bell
 from utils import (
@@ -131,6 +138,41 @@ def _active_package_or_none(package_id):
     )
 
 
+def _send_inquiry_notification_async(app, inquiry_id, mail_kwargs):
+    """Send the HQ notification email (and record email_sent) on a
+    background thread, off the request/response path.
+
+    inquire() below is public, unauthenticated, and — even rate-limited —
+    can still be hit repeatedly by anyone who has the portal slug.
+    mailer.py's own smtplib call has a 10s timeout; running that inline,
+    on the same thread/worker that's handling the HTTP request, meant a
+    burst of submissions (malicious or just a flaky mail server) could
+    tie up every worker for up to 10s apiece before any of them could
+    respond — a self-inflicted denial of service on top of the extra
+    DB writes. The inquiry row is already saved by inquire() before this
+    is spawned, so a slow, failed, or unconfigured mailer here can never
+    lose the inquiry itself — same contract mailer.py already documents,
+    just moved off the request thread too.
+
+    Needs its own Flask app context: mailer.py reads current_app.config/
+    current_app.logger, and db.get_db()'s cached connection lives on
+    Flask's `g`, which is per app-context (i.e. per thread here) rather
+    than shared — so this thread transparently gets its own DB
+    connection the first time execute() is called inside it.
+    """
+    with app.app_context():
+        try:
+            email_sent = send_partner_inquiry_email(**mail_kwargs)
+            if email_sent:
+                execute(
+                    "UPDATE partner_inquiries SET email_sent = TRUE WHERE inquiry_id = %s",
+                    (inquiry_id,),
+                )
+        except Exception:
+            app.logger.exception(
+                "Background partner-inquiry notification failed for inquiry_id=%s", inquiry_id)
+
+
 @bp.route("/<slug>/packages")
 def packages(slug):
     """Public catalog of active packages, optionally filtered to just
@@ -207,14 +249,49 @@ def package_detail(slug, package_id):
     reference_total, discounted_total = _package_value(
         pkg["discount_percent"], reference_total)
 
+    # A handful of other active packages (same visibility rule as the
+    # main list — scoped to this package's own partner_scope, or 'Both'
+    # packages, so a Distributor-only visitor never sees a Reseller-only
+    # suggestion and vice versa) so a visitor who lands directly on this
+    # page via a shared link isn't stuck with nowhere else to look.
+    other_rows = query(
+        """SELECT pkg2.*, COUNT(pi.package_item_id) AS item_count,
+                  COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
+           FROM packages pkg2
+           LEFT JOIN package_items pi ON pi.package_id = pkg2.package_id
+           LEFT JOIN products p ON p.sku = pi.sku
+           WHERE pkg2.is_active = TRUE AND pkg2.package_id != %s
+             AND (pkg2.partner_scope = 'Both' OR pkg2.partner_scope = %s OR %s = 'Both')
+           GROUP BY pkg2.package_id
+           ORDER BY pkg2.created_at DESC
+           LIMIT 3""",
+        (package_id, pkg["partner_scope"], pkg["partner_scope"]),
+    )
+    other_packages = []
+    for row in other_rows:
+        row_ref_total, row_discounted_total = _package_value(
+            row["discount_percent"], row["reference_total"])
+        row["reference_total"] = row_ref_total
+        row["discounted_total"] = row_discounted_total
+        other_packages.append(row)
+
     return render_template(
         "public/package_detail.html",
         pkg=pkg, items=items, reference_total=reference_total, discounted_total=discounted_total,
-        partner_types=PARTNER_TYPES, slug=slug,
+        partner_types=PARTNER_TYPES, slug=slug, other_packages=other_packages,
     )
 
 
 @bp.route("/<slug>/packages/<int:package_id>/inquire", methods=["POST"])
+# This is the only write (and the only endpoint that fans out to email +
+# a DB row per hit) anywhere in the unauthenticated portal blueprint —
+# there's no login to throttle abuse through the way auth.login() does
+# ("10 per minute"), so it gets its own limit here instead. Two windows,
+# same style as AI_CHAT_RATE_LIMIT in config.py: tight enough to blunt a
+# scripted flood of fake inquiries, loose enough that a real distributor
+# fumbling the form a few times in a row (or several people behind the
+# same office/shared IP) never gets blocked.
+@limiter.limit("5 per minute;30 per day")
 def inquire(slug, package_id):
     _verify_slug(slug)
     detail_redirect = redirect(
@@ -289,15 +366,22 @@ def inquire(slug, package_id):
          phone, email, address, message, package_snapshot, order_amount),
     )
 
-    email_sent = send_partner_inquiry_email(
-        package_name=pkg["package_name"], partner_type=partner_type, company_name=company_name,
-        contact_person=contact_person, phone=phone, email=email, address=address, message=message,
-    )
-    if email_sent:
-        execute(
-            "UPDATE partner_inquiries SET email_sent = TRUE WHERE inquiry_id = %s",
-            (inquiry_id,),
-        )
+    # Off the request thread — see _send_inquiry_notification_async()'s
+    # docstring above. The inquiry row is already committed at this
+    # point, so the visitor's own response below no longer waits on
+    # mailer.py's smtplib call (up to a 10s timeout) at all.
+    threading.Thread(
+        target=_send_inquiry_notification_async,
+        args=(
+            current_app._get_current_object(),
+            inquiry_id,
+            dict(
+                package_name=pkg["package_name"], partner_type=partner_type, company_name=company_name,
+                contact_person=contact_person, phone=phone, email=email, address=address, message=message,
+            ),
+        ),
+        daemon=True,
+    ).start()
 
     # Realtime: every open HQ Admin tab's "Partner Inquiries" sidebar
     # badge (and the Partners page, since a new partner may have just

@@ -56,38 +56,45 @@
     <span class="hint">{{ inquiries|length }} total</span>
   </div>
   {% if inquiries %}
-  <div style="padding: 14px 22px 18px;">
-    {% for inq in inquiries %}
-    <div class="ph-entry">
-      <div class="ph-entry-head">
-        <span class="mono text-soft" style="font-size:12px;">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</span>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
-          {{ m.inquiry_status_badge(inq.status) }}
+  <div data-smart-list data-list-item-selector=".ph-entry" data-page-size="5">
+    <div style="padding: 14px 22px 6px;">
+      {% for inq in inquiries %}
+      <div class="ph-entry">
+        <div class="ph-entry-head">
+          <span class="mono text-soft" style="font-size:12px;">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
+            {{ m.inquiry_status_badge(inq.status) }}
+          </div>
+        </div>
+        <div class="ph-entry-body">
+          <div><div class="ph-field-label">Name / company</div>{{ inq.company_name }}</div>
+          <div><div class="ph-field-label">Contact person</div>{{ inq.contact_person or '—' }}</div>
+          <div><div class="ph-field-label">Phone</div>{{ inq.phone or '—' }}</div>
+          <div><div class="ph-field-label">Email</div>{{ inq.email or '—' }}</div>
+          <div><div class="ph-field-label">Address</div>{{ inq.address or '—' }}</div>
+          <div><div class="ph-field-label">Package</div>{{ inq.package_name_snapshot }}</div>
+          {% if inq.message %}
+          <div class="ph-message">
+            <div class="ph-field-label">Message</div>
+            <div class="ph-message-box">{{ inq.message }}</div>
+          </div>
+          {% endif %}
+          {% if inq.remarks %}
+          <div class="ph-message">
+            <div class="ph-field-label">Remarks (internal)</div>
+            <div class="ph-remarks-box">{{ inq.remarks }}</div>
+          </div>
+          {% endif %}
         </div>
       </div>
-      <div class="ph-entry-body">
-        <div><div class="ph-field-label">Name / company</div>{{ inq.company_name }}</div>
-        <div><div class="ph-field-label">Contact person</div>{{ inq.contact_person or '—' }}</div>
-        <div><div class="ph-field-label">Phone</div>{{ inq.phone or '—' }}</div>
-        <div><div class="ph-field-label">Email</div>{{ inq.email or '—' }}</div>
-        <div><div class="ph-field-label">Address</div>{{ inq.address or '—' }}</div>
-        <div><div class="ph-field-label">Package</div>{{ inq.package_name_snapshot }}</div>
-        {% if inq.message %}
-        <div class="ph-message">
-          <div class="ph-field-label">Message</div>
-          <div class="ph-message-box">{{ inq.message }}</div>
-        </div>
-        {% endif %}
-        {% if inq.remarks %}
-        <div class="ph-message">
-          <div class="ph-field-label">Remarks (internal)</div>
-          <div class="ph-remarks-box">{{ inq.remarks }}</div>
-        </div>
-        {% endif %}
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No inquiries on file for this partner yet.</p></div>

@@ -4,11 +4,53 @@
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Materials{% endblock %}
 
+{% block head %}
+<style>
+  /* "Purchased as" toggle in the Add/Edit material modals — same
+     segmented-control look as the Sale/Refill and Cash/Salary
+     switches on Record Sale, reused here under a generic class name
+     so both modals (add + edit) can share one stylesheet block. */
+  .rb-mode {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 3px;
+    width: 100%;
+  }
+
+  .rb-mode-opt {
+    flex: 1;
+    padding: 8px 13px;
+    border: none;
+    background: transparent;
+    border-radius: 99px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    cursor: pointer;
+    transition: color 0.12s ease;
+  }
+
+  .rb-mode-opt.active {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--accent-ink);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="bento-grid stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6l1 4H8l1-4z" /><path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" /><path d="M9 13h6" /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M9 3h6l1 4H8l1-4z" />
+        <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
+        <path d="M9 13h6" />
+      </svg>
     </div>
     <div class="stat-label">Materials tracked</div>
     <div class="stat-value">{{ materials|length }}</div>
@@ -16,7 +58,10 @@
   </div>
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2" /><path d="M3 10h18M8 15h3" /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="3" y="6" width="18" height="14" rx="2" />
+        <path d="M3 10h18M8 15h3" />
+      </svg>
     </div>
     <div class="stat-label">Total material spend</div>
     <div class="stat-value accent">{{ totals.total_spent|peso }}</div>
@@ -34,44 +79,69 @@
     </div>
   </div>
   {% if suppliers %}
-  <div class="table-wrap table-airy">
-    <table>
-      <thead>
-        <tr>
-          <th>Supplier</th>
-          <th>Contact</th>
-          <th>Reach</th>
-          <th class="num">Materials</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for s in suppliers %}
-        <tr>
-          <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
-          <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
-          <td data-label="Reach">
-            <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
-            <div class="item-sub">{{ s.email or '—' }}</div>
-          </td>
-          <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
-          <td data-label="">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
-              data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
-              data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
-              data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
-              data-notes="{{ s.notes or '' }}">Edit</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="10" data-count-target="suppliersCount" data-count-label="supplier">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by supplier or contact…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap table-airy">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Contact</th>
+            <th>Reach</th>
+            <th class="num">Materials</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in suppliers %}
+          <tr
+            data-search="{{ (s.supplier_name ~ ' ' ~ (s.contact_person or '') ~ ' ' ~ (s.phone or '') ~ ' ' ~ (s.email or ''))|lower }}">
+            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+            <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
+            <td data-label="Reach">
+              <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
+              <div class="item-sub">{{ s.email or '—' }}</div>
+            </td>
+            <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
+            <td data-label="">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
+                data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
+                data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
+                data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
+                data-notes="{{ s.notes or '' }}">Edit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No suppliers match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
+    <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just
+      leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No suppliers added yet.</p></div>
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No suppliers added yet.</p>
+  </div>
   {% endif %}
 </div>
 
@@ -84,63 +154,172 @@
     </div>
   </div>
   {% if materials %}
-  <div class="table-wrap table-airy">
-    <table>
-      <thead>
-        <tr>
-          <th>Material</th>
-          <th>Purchased as</th>
-          <th>Supplier</th>
-          <th class="num">Cost per unit</th>
-          <th style="min-width:170px;">On hand</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for mat in materials %}
-        <tr>
-          <td class="item-name" data-label="Material">{{ mat.material_name }}</td>
-          <td data-label="Purchased as">
-            <div class="item-name">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</div>
-            <div class="item-sub">for {{ mat.package_cost|peso }}</div>
-          </td>
-          <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
-          <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{ mat.unit.lower() }}</td>
-          <td data-label="On hand">
-            <div class="fill-row">
-              <div class="fill-track">
-                <div class="fill-bar {{ 'low' if mat.stock_qty <= (mat.package_qty / 4) }}"
-                  data-pct="{{ [(mat.stock_qty / mat.package_qty * 100) if mat.package_qty else 0, 100]|min }}"></div>
+  <div data-smart-table data-page-size="10" data-count-target="materialsCount" data-count-label="item">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by material or supplier…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap table-airy">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th>Purchased as</th>
+            <th>Supplier</th>
+            <th class="num">Cost per unit</th>
+            <th style="min-width:170px;">On hand</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mat in materials %}
+          <tr data-search="{{ (mat.material_name ~ ' ' ~ (mat.supplier_name or ''))|lower }}">
+            <td class="item-name" data-label="Material">
+              {{ mat.material_name }}
+              {% if mat.receipt_number %}<div class="item-sub mono">OR# {{ mat.receipt_number }}</div>{% endif %}
+            </td>
+            <td data-label="Purchased as">
+              {% if mat.purchase_mode == 'Individual' %}
+              <div class="item-name">Individual{{ ' × ' ~ mat.package_qty|round(3)|string|replace('.000','') if
+                mat.package_qty != 1 }}</div>
+              <div class="item-sub">{{ mat.package_cost|peso }} total</div>
+              {% else %}
+              <div class="item-name">{{ mat.package_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}
               </div>
-              <span class="fill-qty num">{{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</span>
-            </div>
-          </td>
-          <td data-label="">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
-              data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
-              data-package-qty="{{ mat.package_qty }}" data-unit="{{ mat.unit }}"
-              data-package-cost="{{ mat.package_cost }}" data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+              <div class="item-sub">for {{ mat.package_cost|peso }}</div>
+              {% endif %}
+            </td>
+            <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
+            <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{
+              mat.unit.lower() }}</td>
+            <td data-label="On hand">
+              <div class="fill-row">
+                <div class="fill-track">
+                  <div class="fill-bar {{ 'low' if mat.stock_qty <= (mat.package_qty / 4) }}"
+                    data-pct="{{ [(mat.stock_qty / mat.package_qty * 100) if mat.package_qty else 0, 100]|min }}"></div>
+                </div>
+                <span class="fill-qty num">{{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower()
+                  }}</span>
+              </div>
+            </td>
+            <td data-label="">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
+                data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
+                data-purchase-mode="{{ mat.purchase_mode }}" data-package-qty="{{ mat.package_qty }}"
+                data-unit="{{ mat.unit }}" data-package-cost="{{ mat.package_cost }}"
+                data-receipt-number="{{ mat.receipt_number or '' }}"
+                data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No products match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">On hand starts at the package quantity the moment a material is added, and goes down as usage is logged below — it isn't restocked automatically by editing a material's purchase details. Total material spend (above) is what's been paid for packages, not what's been used.</p>
+    <p class="text-faint" style="font-size:12px;">On hand starts at the package quantity the moment a material is added,
+      and goes down as usage is logged below — it isn't restocked automatically by editing a material's purchase
+      details. Total material spend (above) is what's been paid for packages, not what's been used.</p>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No materials added yet.</p></div>
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No materials added yet.</p>
+  </div>
   {% endif %}
 </div>
 
-<div class="grid mt-24" style="grid-template-columns: 1fr 1.5fr; gap: 18px; align-items: start;">
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Log material usage</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-      Log how much of a material was used — this just records the quantity and reduces what's on hand; it doesn't compute a cost. Linking it to a production run is optional.
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Usage history</h2>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="hint" id="usageCount">{{ usage_logs|length }} entr{{ 'y' if usage_logs|length == 1 else 'ies'
+        }}</span>
+      <button type="button" class="btn btn-accent btn-sm" id="openLogUsageBtn">+ Log usage</button>
+    </div>
+  </div>
+  {% if usage_logs %}
+  <div data-smart-table data-page-size="12" data-count-target="usageCount" data-count-label="entry">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by material or notes…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Material</th>
+            <th class="num">Qty used</th>
+            <th>Linked run</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in usage_logs %}
+          <tr data-search="{{ (u.material_name ~ ' ' ~ (u.notes or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name" data-label="Material">{{ u.material_name }}</td>
+            <td class="num mono qty-down" data-label="Qty used">-{{ u.qty_used|round(3)|string|replace('.000','') }} {{
+              u.unit.lower() }}</td>
+            <td class="text-soft" data-label="Linked run">{% if u.production_item_name %}{{ u.production_item_name }}{%
+              if u.batch_code %} · {{ u.batch_code }}{% endif %}{% else %}—{% endif %}</td>
+            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ u.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No usage entries match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Showing the latest 40 entries. Logging usage just records the quantity
+      and reduces what's on hand; it doesn't compute a cost.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No usage entries logged yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div id="logUsageOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:440px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Log material usage</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      This just records the quantity and reduces what's on hand — it doesn't compute a cost. Linking it to a production
+      run is optional.
     </p>
-    <form method="POST" action="{{ url_for('admin.log_material_usage') }}">
+    <form method="POST" action="{{ url_for('admin.log_material_usage') }}" id="logUsageForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="material_id">Material</label>
@@ -148,7 +327,8 @@
           <option value="">Select…</option>
           {% for mat in materials %}
           <option value="{{ mat.material_id }}" data-unit="{{ mat.unit }}"
-            data-stock="{{ mat.stock_qty|round(3)|string|replace('.000','') }}">{{ mat.material_name }} ({{ mat.unit }})</option>
+            data-stock="{{ mat.stock_qty|round(3)|string|replace('.000','') }}">{{ mat.material_name }} ({{ mat.unit }})
+          </option>
           {% endfor %}
         </select>
       </div>
@@ -162,7 +342,8 @@
         <select id="production_log_id" name="production_log_id">
           <option value="">Not linked</option>
           {% for p in recent_production %}
-          <option value="{{ p.log_id }}">{{ p.produced_at.strftime('%b %d') }} — {{ p.item_name }} ({{ p.unit }}){% if p.batch_code %} · {{ p.batch_code }}{% endif %}</option>
+          <option value="{{ p.log_id }}">{{ p.produced_at.strftime('%b %d') }} — {{ p.item_name }} ({{ p.unit }}){% if
+            p.batch_code %} · {{ p.batch_code }}{% endif %}</option>
           {% endfor %}
         </select>
       </div>
@@ -170,63 +351,16 @@
         <label for="notes">Notes <span class="text-faint">(optional)</span></label>
         <input type="text" id="notes" name="notes" maxlength="255" placeholder="e.g. mixing batch for A1 85ML run">
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Log usage</button>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="logUsageCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Log usage</button>
+      </div>
     </form>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <h2>Usage history</h2><span class="hint">last 40 entries</span>
-    </div>
-    {% if usage_logs %}
-    <div data-smart-table data-page-size="12">
-      <div class="table-toolbar">
-        <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" class="smart-search-input" placeholder="Search by material or notes…" autocomplete="off">
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table class="smart-table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Material</th>
-              <th class="num">Qty used</th>
-              <th>Linked run</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in usage_logs %}
-            <tr data-search="{{ (u.material_name ~ ' ' ~ (u.notes or ''))|lower }}">
-              <td class="mono text-soft" data-label="When">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-              <td class="item-name" data-label="Material">{{ u.material_name }}</td>
-              <td class="num mono qty-down" data-label="Qty used">-{{ u.qty_used|round(3)|string|replace('.000','') }} {{ u.unit.lower() }}</td>
-              <td class="text-soft" data-label="Linked run">{% if u.production_item_name %}{{ u.production_item_name }}{% if u.batch_code %} · {{ u.batch_code }}{% endif %}{% else %}—{% endif %}</td>
-              <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ u.notes or '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <div class="empty-state smart-no-match" style="display:none;">
-          <div class="glyph">—</div>
-          <p>No usage entries match your search.</p>
-        </div>
-      </div>
-      <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
-        <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
-      </div>
-    </div>
-    {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No usage entries logged yet.</p></div>
-    {% endif %}
   </div>
 </div>
 
-<div id="addMaterialOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+<div id="addMaterialOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Add a material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
@@ -238,9 +372,18 @@
         <label for="material_name">Material name</label>
         <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
       </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="package_qty">Package quantity</label>
+      <div class="field">
+        <label>Purchased as</label>
+        <div class="rb-mode" id="matModeSwitch">
+          <button type="button" class="rb-mode-opt active" data-value="package">Package (bulk)</button>
+          <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+        </div>
+        <div class="help" id="matModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140 grams
+          for ₱490.</div>
+      </div>
+      <div class="form-row" id="packageQtyRow">
+        <div class="field" id="packageQtyField">
+          <label for="package_qty" id="packageQtyLabel">Package quantity</label>
           <input type="number" id="package_qty" name="package_qty" step="0.001" min="0.001" placeholder="140" required>
         </div>
         <div class="field">
@@ -253,10 +396,15 @@
           </select>
         </div>
       </div>
+      <input type="hidden" name="purchase_mode" id="purchase_mode" value="Package">
       <div class="field">
-        <label for="package_cost">Cost for that package (₱)</label>
+        <label for="package_cost" id="packageCostLabel">Cost for that package (₱)</label>
         <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
         <div class="help" id="costPreview" style="display:none;"></div>
+      </div>
+      <div class="field">
+        <label for="receipt_number">Receipt / OR number <span class="text-faint">(optional)</span></label>
+        <input type="text" id="receipt_number" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
       </div>
       <div class="field">
         <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
@@ -275,7 +423,8 @@
   </div>
 </div>
 
-<div id="addSupplierOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+<div id="addSupplierOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
@@ -285,7 +434,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label for="supplier_name">Supplier name</label>
-        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100" required>
+        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100"
+          required>
       </div>
       <div class="field">
         <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
@@ -317,11 +467,13 @@
   </div>
 </div>
 
-<div id="editMaterialOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+<div id="editMaterialOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Changing this updates the reference cost per unit. It doesn't restock the material — on-hand quantity only moves via Log material usage.
+      Changing this updates the reference cost per unit. It doesn't restock the material — on-hand quantity only moves
+      via Log material usage.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -330,9 +482,18 @@
         <label for="editMaterialName">Material name</label>
         <input type="text" id="editMaterialName" name="material_name" required>
       </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="editPackageQty">Package quantity</label>
+      <div class="field">
+        <label>Purchased as</label>
+        <div class="rb-mode" id="editMatModeSwitch">
+          <button type="button" class="rb-mode-opt" data-value="package">Package (bulk)</button>
+          <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+        </div>
+        <div class="help" id="editMatModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140
+          grams for ₱490.</div>
+      </div>
+      <div class="form-row" id="editPackageQtyRow">
+        <div class="field" id="editPackageQtyField">
+          <label for="editPackageQty" id="editPackageQtyLabel">Package quantity</label>
           <input type="number" id="editPackageQty" name="package_qty" step="0.001" min="0.001" required>
         </div>
         <div class="field">
@@ -344,10 +505,15 @@
           </select>
         </div>
       </div>
+      <input type="hidden" name="purchase_mode" id="editPurchaseMode" value="Package">
       <div class="field">
-        <label for="editPackageCost">Cost for that package (₱)</label>
+        <label for="editPackageCost" id="editPackageCostLabel">Cost for that package (₱)</label>
         <input type="number" id="editPackageCost" name="package_cost" step="0.01" min="0" required>
         <div class="help" id="editCostPreview" style="display:none;"></div>
+      </div>
+      <div class="field">
+        <label for="editReceiptNumber">Receipt / OR number <span class="text-faint">(optional)</span></label>
+        <input type="text" id="editReceiptNumber" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
       </div>
       <div class="field">
         <label for="editMaterialSupplierId">Supplier <span class="text-faint">(optional)</span></label>
@@ -366,7 +532,8 @@
   </div>
 </div>
 
-<div id="editSupplierOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+<div id="editSupplierOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit supplier</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
@@ -415,8 +582,13 @@
   (function () {
     var packageQty = document.getElementById('package_qty');
     var packageCost = document.getElementById('package_cost');
+    var packageCostLabel = document.getElementById('packageCostLabel');
+    var packageQtyLabel = document.getElementById('packageQtyLabel');
     var unitSelect = document.getElementById('unit');
     var costPreview = document.getElementById('costPreview');
+    var modeSwitch = document.getElementById('matModeSwitch');
+    var modeHelp = document.getElementById('matModeHelp');
+    var purchaseModeInput = document.getElementById('purchase_mode');
 
     function updateCostPreview() {
       var qty = parseFloat(packageQty.value);
@@ -433,6 +605,36 @@
     [packageQty, packageCost, unitSelect].forEach(function (el) {
       el.addEventListener('input', updateCostPreview);
       el.addEventListener('change', updateCostPreview);
+    });
+
+    // ---- Purchased as: Package (bulk) vs Individual unit ----
+    // Purely descriptive now (stored in purchase_mode) — both modes keep
+    // the quantity field visible and required, so "Individual" can still
+    // record e.g. 5 pieces bought one at a time, not just a single piece.
+    function setMode(value) {
+      modeSwitch.querySelectorAll('.rb-mode-opt').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.value === value);
+      });
+      purchaseModeInput.value = (value === 'individual') ? 'Individual' : 'Package';
+      if (value === 'individual') {
+        packageQtyLabel.textContent = 'Quantity (pieces)';
+        packageQty.placeholder = '5';
+        packageCostLabel.textContent = 'Total cost for this purchase (₱)';
+        packageCost.placeholder = '175.00';
+        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package — enter how many pieces and the total you paid for them.';
+      } else {
+        packageQtyLabel.textContent = 'Package quantity';
+        packageQty.placeholder = '140';
+        packageCostLabel.textContent = 'Cost for that package (₱)';
+        packageCost.placeholder = '490.00';
+        modeHelp.textContent = 'Package (bulk): one purchase covering several units at once, e.g. 140 grams for ₱490.';
+      }
+      updateCostPreview();
+    }
+    modeSwitch.addEventListener('click', function (e) {
+      var btn = e.target.closest('.rb-mode-opt');
+      if (!btn) return;
+      setMode(btn.dataset.value);
     });
 
     var materialSelect = document.getElementById('material_id');
@@ -454,37 +656,25 @@
     updateUsageUnitHint();
   })();
 
-  (function () {
-    var overlay = document.getElementById('addMaterialOverlay');
-    var openBtn = document.getElementById('openAddMaterialBtn');
-    var cancelBtn = document.getElementById('addMaterialCancelBtn');
+  function wireOverlay(overlayId, openBtnId, cancelBtnId) {
+    var overlay = document.getElementById(overlayId);
+    var openBtn = document.getElementById(openBtnId);
+    var cancelBtn = document.getElementById(cancelBtnId);
     if (!overlay || !openBtn) return;
 
     openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    if (cancelBtn) cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) overlay.style.display = 'none';
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') overlay.style.display = 'none';
     });
-  })();
+  }
 
-  (function () {
-    var overlay = document.getElementById('addSupplierOverlay');
-    var openBtn = document.getElementById('openAddSupplierBtn');
-    var cancelBtn = document.getElementById('addSupplierCancelBtn');
-    if (!overlay || !openBtn) return;
-
-    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
-    });
-  })();
+  wireOverlay('addMaterialOverlay', 'openAddMaterialBtn', 'addMaterialCancelBtn');
+  wireOverlay('addSupplierOverlay', 'openAddSupplierBtn', 'addSupplierCancelBtn');
+  wireOverlay('logUsageOverlay', 'openLogUsageBtn', 'logUsageCancelBtn');
 
   (function () {
     var overlay = document.getElementById('editMaterialOverlay');
@@ -492,11 +682,17 @@
     var idInput = document.getElementById('editMaterialId');
     var nameInput = document.getElementById('editMaterialName');
     var qtyInput = document.getElementById('editPackageQty');
+    var qtyLabel = document.getElementById('editPackageQtyLabel');
     var unitSelect = document.getElementById('editUnit');
     var costInput = document.getElementById('editPackageCost');
+    var costLabel = document.getElementById('editPackageCostLabel');
     var costPreview = document.getElementById('editCostPreview');
+    var receiptInput = document.getElementById('editReceiptNumber');
     var supplierSelect = document.getElementById('editMaterialSupplierId');
     var cancelBtn = document.getElementById('editMaterialCancelBtn');
+    var modeSwitch = document.getElementById('editMatModeSwitch');
+    var modeHelp = document.getElementById('editMatModeHelp');
+    var purchaseModeInput = document.getElementById('editPurchaseMode');
 
     function updateEditCostPreview() {
       var qty = parseFloat(qtyInput.value);
@@ -514,13 +710,41 @@
       el.addEventListener('change', updateEditCostPreview);
     });
 
+    // Purely descriptive, like the Add-material form — the quantity
+    // field always stays visible/required so Individual can hold any
+    // quantity (e.g. 5 pieces bought one at a time), not just 1.
+    function setEditMode(value) {
+      modeSwitch.querySelectorAll('.rb-mode-opt').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.value === value);
+      });
+      purchaseModeInput.value = (value === 'individual') ? 'Individual' : 'Package';
+      if (value === 'individual') {
+        qtyLabel.textContent = 'Quantity (pieces)';
+        costLabel.textContent = 'Total cost for this purchase (₱)';
+        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package — enter how many pieces and the total you paid for them.';
+      } else {
+        qtyLabel.textContent = 'Package quantity';
+        costLabel.textContent = 'Cost for that package (₱)';
+        modeHelp.textContent = 'Package (bulk): one purchase covering several units at once, e.g. 140 grams for ₱490.';
+      }
+      updateEditCostPreview();
+    }
+    modeSwitch.addEventListener('click', function (e) {
+      var btn = e.target.closest('.rb-mode-opt');
+      if (!btn) return;
+      setEditMode(btn.dataset.value);
+    });
+
     window.openEditMaterial = function (btn) {
       idInput.value = btn.dataset.materialId;
       nameInput.value = btn.dataset.materialName;
       qtyInput.value = btn.dataset.packageQty;
       unitSelect.value = btn.dataset.unit;
       costInput.value = btn.dataset.packageCost;
+      receiptInput.value = btn.dataset.receiptNumber || '';
       supplierSelect.value = btn.dataset.supplierId || '';
+      var mode = (btn.dataset.purchaseMode === 'Individual') ? 'individual' : 'package';
+      setEditMode(mode);
       updateEditCostPreview();
       overlay.style.display = 'flex';
     };

@@ -134,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initToggleConfirmations();
 
   initSmartTables();
+  initSmartLists();
   initDispatchQtyWarnings();
   const notifBell = initNotificationBell();
   initRealtime(notifBell);
@@ -263,6 +264,55 @@ function initSmartTables() {
         const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
         if (page < totalPages) { page++; render(); }
       });
+    }
+
+    render();
+  });
+}
+
+// Pagination-only counterpart to initSmartTables() for pages that show a
+// paginated list of cards/blocks rather than a <table> — e.g. a partner's
+// inquiry history, or the shipment blocks on Receive Stock. There's no
+// search here on purpose (see the two call sites): each item's content
+// isn't a flat row of short cell text, so a text search box would be
+// awkward to use, and pagination alone already caps how much renders at
+// once. Container needs data-smart-list, data-page-size, and
+// data-list-item-selector (the CSS selector for one "item" inside it);
+// pagination controls follow the same .smart-pagination markup used by
+// initSmartTables() so the two share styling.
+function initSmartLists() {
+  document.querySelectorAll('[data-smart-list]').forEach((container) => {
+    const itemSelector = container.dataset.listItemSelector || '.smart-list-item';
+    const items = Array.prototype.slice.call(container.querySelectorAll(itemSelector));
+    const pagination = container.querySelector('.smart-pagination');
+    if (!items.length) {
+      if (pagination) pagination.style.display = 'none';
+      return;
+    }
+
+    const pageSize = parseInt(container.dataset.pageSize, 10) || 10;
+    const pageInfo = container.querySelector('.smart-page-info');
+    const prevBtn = container.querySelector('[data-page-prev]');
+    const nextBtn = container.querySelector('[data-page-next]');
+    const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+    let page = 1;
+
+    function render() {
+      const start = (page - 1) * pageSize;
+      items.forEach((el, i) => {
+        el.style.display = (i >= start && i < start + pageSize) ? '' : 'none';
+      });
+      if (pagination) {
+        pagination.style.display = items.length > pageSize ? 'flex' : 'none';
+        if (pageInfo) pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;
+        if (prevBtn) prevBtn.disabled = page <= 1;
+        if (nextBtn) nextBtn.disabled = page >= totalPages;
+      }
+    }
+
+    if (prevBtn) prevBtn.addEventListener('click', () => { if (page > 1) { page--; render(); } });
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => { if (page < totalPages) { page++; render(); } });
     }
 
     render();
@@ -499,6 +549,7 @@ function initRealtime(notifBell) {
           el.style.width = pct + '%';
         });
         initSmartTables();
+        initSmartLists();
         initDispatchQtyWarnings();
         initToggleConfirmations();
         revealContent();
