@@ -10,6 +10,7 @@ import db
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
 from extensions import limiter, ratelimit_storage_is_memory, socketio, socketio_cors_is_wildcard
 
+
 # Content-Security-Policy for Talisman below. 'unsafe-inline' is kept for
 # script-src/style-src because several templates (login.html, chat.html,
 # production.html, reports.html) use inline <script>/<style> blocks —
@@ -103,12 +104,13 @@ def create_app():
     from routes.branch import bp as branch_bp
     from routes.ai import bp as ai_bp
     from routes.portal import bp as portal_bp
+    from routes.scan import bp as scan_bp
 
+    app.register_blueprint(scan_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(branch_bp)
     app.register_blueprint(ai_bp)
-    # Public, unauthenticated — see routes/portal.py's module docstring.
     app.register_blueprint(portal_bp)
 
     import sockets

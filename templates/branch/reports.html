@@ -118,6 +118,18 @@
           <option value="Unisex">Unisex</option>
         </select>
       </div>
+      <div class="field" data-filter="unit" style="display:none;">
+        <label for="rb_unit">Unit</label>
+        <select id="rb_unit" name="unit">
+          <option value="all">All units</option>
+          <option value="85ML">85ML</option>
+          <option value="50ML">50ML</option>
+          <option value="1L">1L</option>
+          <option value="100ML">100ML</option>
+          <option value="10ML">10ML</option>
+          <option value="3ML Tester">3ML Tester</option>
+        </select>
+      </div>
       <div class="field" data-filter="low_stock_only" style="display:none;">
         <label for="rb_low_stock_only">Stock level</label>
         <select id="rb_low_stock_only" name="low_stock_only">
@@ -487,10 +499,10 @@
 <script>
   (function () {
     const REPORT_FIELDS = {
-      branch_stock: ['variant', 'low_stock_only', 'search'],
+      branch_stock: ['variant', 'unit', 'low_stock_only', 'search'],
       stock_requests: ['status', 'search', 'window'],
       inventory_log: ['movement_type', 'search', 'window'],
-      sales_history: ['variant', 'sale_type', 'payment_method', 'search', 'window'],
+      sales_history: ['variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
       employee_purchases: ['sale_type', 'search', 'window'],
     };
 

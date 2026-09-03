@@ -272,6 +272,112 @@
       transform: translateY(0);
     }
 
+    /* ================= full-screen sections ================= */
+    /* Each top-level part of the page (Partner Program hero, How it
+       works, Packages, FAQ) occupies its own full viewport-height
+       "screen" and snaps into place as the visitor scrolls, similar to
+       a slide deck. --pp-header-h matches the header's real height so
+       each screen fills exactly what's left below the sticky header. */
+    :root {
+      --pp-header-h: 108px;
+    }
+
+    html {
+      scroll-snap-type: y proximity;
+    }
+
+    .pp-fullsection {
+      position: relative;
+      min-height: calc(100vh - var(--pp-header-h));
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding: 32px 0 36px;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      scroll-margin-top: var(--pp-header-h);
+      opacity: 0.45;
+      transition: opacity 0.5s ease;
+    }
+
+    .pp-fullsection.pp-section-active {
+      opacity: 1;
+    }
+
+    /* Hero and Packages read better vertically centered on their
+       screen; How it works and FAQ have more content so they start
+       right at the top instead. */
+    .pp-fullsection--center {
+      justify-content: center;
+    }
+
+    /* ---- side "screen" indicator dots ---- */
+    .pp-dot-nav {
+      position: fixed;
+      right: 22px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 35;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .pp-dot-nav a {
+      position: relative;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      transition: background-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .pp-dot-nav a:hover {
+      transform: scale(1.25);
+    }
+
+    .pp-dot-nav a.active {
+      background: var(--accent);
+      transform: scale(1.35);
+    }
+
+    .pp-dot-nav a .pp-dot-label {
+      position: absolute;
+      right: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink-soft);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .pp-dot-nav a:hover .pp-dot-label,
+    .pp-dot-nav a.active .pp-dot-label {
+      opacity: 1;
+    }
+
+    @media (max-width: 900px) {
+      .pp-dot-nav {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      :root {
+        --pp-header-h: 72px;
+      }
+    }
+
     /* ================= hero ================= */
     .pp-hero {
       display: grid;
@@ -568,6 +674,12 @@
     @media (min-width: 761px) {
       .pp-step:not(:last-child) .pp-step-arrow {
         display: block;
+      }
+
+      /* with 5 steps in a 3-column grid, the 3rd card ends a row —
+         its arrow would point at nothing above the next row, so hide it */
+      .pp-step:nth-child(3n) .pp-step-arrow {
+        display: none;
       }
     }
 
@@ -951,6 +1063,16 @@
       .pp-reveal {
         transition: none !important;
       }
+
+      html {
+        scroll-snap-type: none;
+      }
+
+      .pp-fullsection {
+        opacity: 1 !important;
+        transition: none !important;
+        min-height: 0;
+      }
     }
   </style>
 </head>
@@ -960,6 +1082,13 @@
     <div class="pp-glow pp-glow-blue"></div>
     <div class="pp-glow pp-glow-red"></div>
   </div>
+
+  <nav class="pp-dot-nav" aria-label="Jump to section">
+    <a href="#hero" data-target="hero"><span class="pp-dot-label">Partner Program</span></a>
+    <a href="#packages" data-target="packages"><span class="pp-dot-label">Packages</span></a>
+    <a href="#how-it-works" data-target="how-it-works"><span class="pp-dot-label">How it works</span></a>
+    <a href="#faq" data-target="faq"><span class="pp-dot-label">FAQ</span></a>
+  </nav>
 
   <header class="pp-header">
     <div class="pp-header-inner">
@@ -1014,7 +1143,8 @@
       {% endif %}
       {% endwith %}
 
-      <div class="pp-hero" id="hero">
+      <section class="pp-fullsection pp-fullsection--center" id="hero">
+      <div class="pp-hero">
         <div>
           <span class="pp-eyebrow">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -1111,40 +1241,12 @@
             customers.</p>
         </div>
       </div>
+      </section>
 
-      <div class="pp-section-head pp-reveal" id="how-it-works">
-        <h2>How it works</h2>
-      </div>
-      <div class="pp-steps">
-        <div class="card pp-step pp-reveal" style="--rd:0s;">
-          <span class="pp-step-num">1</span>
-          <h3>Browse packages</h3>
-          <p>Look through the bundles below — each one lists exactly what's inside, with photos, variants, and
-            quantities.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </div>
-        <div class="card pp-step pp-reveal" style="--rd:.08s;">
-          <span class="pp-step-num">2</span>
-          <h3>Send an inquiry</h3>
-          <p>Open a package and tell us a bit about your business — takes under a minute, no account needed.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </div>
-        <div class="card pp-step pp-reveal" style="--rd:.16s;">
-          <span class="pp-step-num">3</span>
-          <h3>We follow up</h3>
-          <p>Our team reaches out by phone or email to confirm details and get your order moving.</p>
-        </div>
-      </div>
-
+      <section class="pp-fullsection pp-fullsection--center" id="packages">
       {% set active_count = package_list|length %}
       {% set max_discount = (package_list|map(attribute='discount_percent')|list)|max if package_list else 0 %}
-      <div class="pp-section-head pp-reveal" id="packages">
+      <div class="pp-section-head pp-reveal">
         <h2>Browse packages</h2>
         <div class="pp-filter-bar">
           <a class="{{ 'active' if scope_filter == 'all' }}" href="{{ url_for('portal.packages', slug=slug) }}?anchor=packages">All
@@ -1232,8 +1334,60 @@
         <p>No packages are available in this view right now — check back soon.</p>
       </div>
       {% endif %}
+      </section>
 
-      <div class="pp-faq pp-reveal" id="faq">
+      <section class="pp-fullsection" id="how-it-works">
+      <div class="pp-section-head pp-reveal">
+        <h2>How it works</h2>
+      </div>
+      <div class="pp-steps">
+        <div class="card pp-step pp-reveal" style="--rd:0s;">
+          <span class="pp-step-num">1</span>
+          <h3>Browse packages</h3>
+          <p>Look through the bundles below — each one lists exactly what's inside, with photos, variants, and
+            quantities.</p>
+          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </div>
+        <div class="card pp-step pp-reveal" style="--rd:.08s;">
+          <span class="pp-step-num">2</span>
+          <h3>Send an inquiry</h3>
+          <p>Open a package and tell us a bit about your business — takes under a minute, no account needed.</p>
+          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </div>
+        <div class="card pp-step pp-reveal" style="--rd:.16s;">
+          <span class="pp-step-num">3</span>
+          <h3>We follow up</h3>
+          <p>Our team reaches out by phone or email to confirm details and get your order moving.</p>
+          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </div>
+        <div class="card pp-step pp-reveal" style="--rd:.24s;">
+          <span class="pp-step-num">4</span>
+          <h3>We confirm your account</h3>
+          <p>Once details check out, we set you up as a Distributor or Reseller so future orders move even faster.</p>
+          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </div>
+        <div class="card pp-step pp-reveal" style="--rd:.32s;">
+          <span class="pp-step-num">5</span>
+          <h3>Reorder anytime</h3>
+          <p>Come back and browse whenever you're ready to restock — no need to start the conversation from scratch.</p>
+        </div>
+      </div>
+      </section>
+
+      <section class="pp-fullsection" id="faq">
+      <div class="pp-faq pp-reveal">
         <div class="pp-section-head" style="margin-bottom:16px;">
           <h2>Frequently asked</h2>
         </div>
@@ -1290,6 +1444,30 @@
             </div>
           </div>
         </details>
+        <details class="pp-faq-item">
+          <summary>Is there a minimum order for a package?<svg class="chev" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></summary>
+          <div class="pp-faq-body-wrap">
+            <div class="pp-faq-body-inner">
+              <div class="pp-faq-body">Each package is already sized as a bundle, so there's no separate minimum on top
+                of it — the quantities and item count shown on the card are exactly what you'd receive.</div>
+            </div>
+          </div>
+        </details>
+        <details class="pp-faq-item">
+          <summary>Can I ask for a custom mix of products?<svg class="chev" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg></summary>
+          <div class="pp-faq-body-wrap">
+            <div class="pp-faq-body-inner">
+              <div class="pp-faq-body">Start by sending an inquiry on the package closest to what you have in mind —
+                mention what you'd like adjusted, and our team will let you know what's possible.</div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="pp-footer">
@@ -1301,6 +1479,7 @@
         </div>
         <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
       </div>
+      </section>
     </div>
   </div>
 
@@ -1363,6 +1542,32 @@
       }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
       revealEls.forEach(function (el) { observer.observe(el); });
+
+      // ---- full-screen sections: whichever one is most in view is
+      // "active" (full opacity, active dot); the rest dim slightly so
+      // the transition between screens reads clearly ----
+      var sections = document.querySelectorAll('.pp-fullsection');
+      var dots = document.querySelectorAll('.pp-dot-nav a');
+
+      function setActiveDot(id) {
+        dots.forEach(function (dot) {
+          dot.classList.toggle('active', dot.getAttribute('data-target') === id);
+        });
+      }
+
+      if (sections.length && !reduceMotion && 'IntersectionObserver' in window) {
+        var sectionObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            entry.target.classList.toggle('pp-section-active', entry.isIntersecting);
+            if (entry.isIntersecting) setActiveDot(entry.target.id);
+          });
+        }, { threshold: 0.5 });
+
+        sections.forEach(function (el) { sectionObserver.observe(el); });
+      } else {
+        sections.forEach(function (el) { el.classList.add('pp-section-active'); });
+        if (sections[0]) setActiveDot(sections[0].id);
+      }
     })();
   </script>
 </body>

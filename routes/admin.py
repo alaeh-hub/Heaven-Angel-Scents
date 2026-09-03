@@ -13,13 +13,13 @@ from werkzeug.utils import secure_filename
 from db import TransactionAborted, execute, query, transaction
 from decorators import admin_required
 from audit import log_action
-from receipts import build_receipt_pdf
+from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
     MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
     build_sku, generate_temp_password, parse_base_code, parse_non_negative_decimal,
-    parse_non_negative_int, parse_optional_id, parse_positive_decimal, parse_positive_int,
+    parse_non_negative_int, parse_optional_id, parse_optional_text, parse_positive_decimal, parse_positive_int,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -533,6 +533,24 @@ def branch_stock():
 
 
 # ---------------------------------------------------------------- record sale (HQ direct)
+@bp.route("/record-sale/<int:sale_id>/receipt")
+@admin_required
+def sale_receipt(sale_id):
+    """Downloadable PDF receipt for a single sale/refill — see receipts.py.
+
+    No branch_id scoping here since HQ Admin can see every branch (in
+    practice this is only ever called for HQ/Main Branch's own sales,
+    recorded on this same page).
+    """
+    pdf_buffer, sale = build_sale_receipt_pdf(sale_id)
+    if pdf_buffer is None:
+        abort(404)
+    return send_file(
+        pdf_buffer, mimetype="application/pdf",
+        as_attachment=True, download_name=f"SR-{sale_id:06d}.pdf",
+    )
+
+
 @bp.route("/record-sale", methods=["GET", "POST"])
 @admin_required
 def record_sale():
@@ -556,6 +574,10 @@ def record_sale():
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")
             unit_price = parse_non_negative_decimal(
                 request.form.get("unit_price"), "Price charged")
+            customer_name = parse_optional_text(
+                request.form.get("customer_name"), "Customer name", 120)
+            customer_address = parse_optional_text(
+                request.form.get("customer_address"), "Customer address", 255)
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.record_sale"))
@@ -609,10 +631,11 @@ def record_sale():
                 after_qty = before_qty if is_refill else before_qty - qty
 
                 cur.execute(
-                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_name)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
+                                          buyer_name, customer_name, customer_address)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (HQ_BRANCH_ID, sku, qty, unit_price,
-                     sale_type, payment_method, buyer_name),
+                     sale_type, payment_method, buyer_name, customer_name, customer_address),
                 )
                 if not is_refill:
                     cur.execute(
@@ -659,8 +682,27 @@ def record_sale():
     employees = query(
         "SELECT user_id, username, role FROM users WHERE is_active = TRUE ORDER BY username"
     )
+    # Every distinct customer name logged at HQ/Main Branch, each paired
+    # with the address from that name's *first* sale (see schema.sql's
+    # comment on sales.customer_address) — feeds the Customer name
+    # autocomplete/autofill on the form below. Mirrors branch.record_sale().
+    customers = query(
+        """SELECT s.customer_name AS name, s.customer_address AS address
+           FROM sales s
+           JOIN (
+               SELECT customer_name, MIN(sold_at) AS first_sold_at
+               FROM sales
+               WHERE branch_id = %s AND customer_name IS NOT NULL AND customer_name <> ''
+               GROUP BY customer_name
+           ) first_seen
+             ON first_seen.customer_name = s.customer_name AND first_seen.first_sold_at = s.sold_at
+           WHERE s.branch_id = %s
+           ORDER BY s.customer_name""",
+        (HQ_BRANCH_ID, HQ_BRANCH_ID),
+    )
     return render_template(
         "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
+        customers=customers,
     )
 
 

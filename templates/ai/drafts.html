@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}AI Drafts{% endblock %}
+{% block eyebrow %}{{ 'Organization' if session.role == 'Admin' else session.branch_name }}{% endblock %}
+{% block heading %}AI-Proposed Stock Requests{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <p class="text-faint" style="font-size:12.5px; margin:0;">
+    The AI assistant can draft a stock request when you ask it to, or when it spots low stock —
+    but nothing here is real until you approve it. Approving turns a draft into a normal
+    Pending delivery on the <a href="{{ url_for('admin.requests_list') if session.role == 'Admin' else url_for('branch.request_stock') }}">Stock Requests</a> page, exactly as if it had been requested by hand.
+  </p>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Drafts</h2>
+    <span class="hint">{{ drafts|length }} total &middot; most recent first</span>
+  </div>
+  {% if drafts %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          {% if session.role == 'Admin' %}<th>Branch</th>{% endif %}
+          <th>Proposed by</th>
+          <th>Items</th>
+          <th>Reasoning</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in drafts %}
+        <tr>
+          <td class="mono text-soft" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+          {% if session.role == 'Admin' %}<td data-label="Branch">{{ d.branch_name }}</td>{% endif %}
+          <td data-label="Proposed by">{{ d.created_by_username or 'AI Assistant' }}</td>
+          <td data-label="Items">
+            {% for item in d.items %}
+            <div class="item-sub">{{ item.suggested_qty }}&times; {{ item.item_name }} <span class="mono text-faint">({{ item.unit }})</span></div>
+            {% endfor %}
+          </td>
+          <td class="text-soft" style="font-size:12px; max-width:260px;" data-label="Reasoning">{{ d.reasoning or d.note or '—' }}</td>
+          <td data-label="Status">
+            <span class="badge badge-{{ 'pending' if d.status == 'Pending Review' else ('fulfilled' if d.status == 'Approved' else 'rejected') }}">{{ d.status }}</span>
+            {% if d.resulting_request_id %}<div class="item-sub">→ delivery on file</div>{% endif %}
+          </td>
+          <td data-label="">
+            {% if d.status == 'Pending Review' %}
+            <div class="inline-form">
+              <form method="POST" action="{{ url_for('ai.approve_draft', draft_id=d.draft_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-accent btn-sm">Approve</button>
+              </form>
+              <form method="POST" action="{{ url_for('ai.reject_draft', draft_id=d.draft_id) }}"
+                onsubmit="return confirm('Reject this draft? This can\'t be undone.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+              </form>
+            </div>
+            {% else %}
+            <span class="text-faint" style="font-size:12.5px;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No AI-proposed drafts yet — ask the assistant to put together a reorder.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

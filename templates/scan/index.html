@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Scan Receipt{% endblock %}
+{% block eyebrow %}{{ 'Organization' if session.role == 'Admin' else session.branch_name }}{% endblock %}
+{% block heading %}Scan Receipt{% endblock %}
+
+{% block head %}
+<style>
+  .scan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  @media (max-width: 780px) {
+    .scan-grid { grid-template-columns: 1fr; }
+  }
+
+  .scan-video-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .scan-video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .scan-reticle {
+    position: absolute;
+    inset: 14%;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28);
+  }
+
+  .scan-status {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 8px;
+    min-height: 16px;
+  }
+
+  .scan-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    padding: 22px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .12s ease, background .12s ease;
+  }
+
+  .scan-drop.is-dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .scan-manual {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .scan-manual input {
+    flex: 1;
+    font-family: inherit;
+  }
+
+  .scan-result-empty {
+    font-size: 12.5px;
+  }
+
+  .scan-result-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-wrap: wrap;
+  }
+
+  .scan-result-body {
+    padding: 14px 18px 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px 16px;
+    font-size: 12.5px;
+  }
+
+  .scan-field-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--ink-faint);
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .scan-field-full {
+    grid-column: 1 / -1;
+  }
+
+  .scan-badge-ok, .scan-badge-bad {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .scan-badge-ok { color: var(--success); }
+  .scan-badge-bad { color: var(--danger); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <p class="text-faint" style="font-size:12.5px; margin:0;">
+    Point a camera at the QR code on a printed sale receipt, upload a photo or screenshot of one, or type its
+    code by hand — this confirms it's genuinely on file
+    {{ 'for ' ~ session.branch_name if session.role != 'Admin' else '' }}
+    and shows exactly what was recorded, straight from the database.
+  </p>
+</div>
+
+<div class="scan-grid mt-24">
+  <div class="card card-pad">
+    <h2 style="font-size:16.5px; margin-bottom:12px;">Scan with camera</h2>
+    <div class="scan-video-wrap">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scan-reticle"></div>
+    </div>
+    <div class="scan-status" id="scanCameraStatus">Starting camera&hellip;</div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button type="button" class="btn btn-ghost btn-sm" id="scanCameraToggle">Pause</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="scanCameraSwitch" style="display:none;">Switch camera</button>
+    </div>
+
+    <h2 style="font-size:16.5px; margin:22px 0 10px;">Or upload a photo</h2>
+    <div class="scan-drop" id="scanDrop">
+      <p style="margin:0 0 6px; font-weight:600; font-size:13.5px;">Drop an image here, or click to choose one</p>
+      <p class="text-faint" style="font-size:12px; margin:0;">JPG, PNG, or WEBP &mdash; a clear photo or screenshot showing the receipt's QR code.</p>
+    </div>
+    <input type="file" id="scanFileInput" accept="image/png,image/jpeg,image/webp" style="display:none;">
+    <canvas id="scanCanvas" style="display:none;"></canvas>
+
+    <h2 style="font-size:16.5px; margin:22px 0 10px;">Or type the code</h2>
+    <div class="scan-manual">
+      <input type="text" id="scanManualInput" class="mono" placeholder="HAS-000128-XXXXXXXXXX" autocomplete="off">
+      <button type="button" class="btn btn-accent btn-sm" id="scanManualBtn">Verify</button>
+    </div>
+    <div class="help">Printed under the QR code on every receipt &mdash; useful if a camera or clear photo isn't handy.</div>
+  </div>
+
+  <div>
+    <div class="card" id="scanResultCard" style="display:none;">
+      <div class="scan-result-head" id="scanResultHead"></div>
+      <div class="scan-result-body" id="scanResultBody"></div>
+    </div>
+    <div class="card card-pad text-faint scan-result-empty" id="scanResultEmpty">
+      Results will show up here once a QR code is scanned, uploaded, or typed in.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/vendor/jsqr.js') }}"></script>
+<script src="{{ url_for('static', filename='js/scan.js') }}"></script>
+{% endblock %}

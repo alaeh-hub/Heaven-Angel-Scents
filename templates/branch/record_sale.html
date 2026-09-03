@@ -111,6 +111,36 @@
         </div>
       </div>
 
+      <!-- Customer name/address only apply to a normal cash sale to an
+           outside customer. A Salary Deduction sale is an employee taking
+           product for themselves — pairing that with a separate "customer
+           name" field invited mixing up two different people on the same
+           sale (whose name is this, the employee's or the customer's?).
+           This whole block is hidden and cleared whenever Salary
+           Deduction is selected — see the paymentSwitch wiring below. -->
+      <div id="customerFieldsWrap">
+        <div class="form-row">
+          <div class="field">
+            <label for="customer_name">Customer name <span class="text-faint">(optional)</span></label>
+            <input type="text" id="customer_name" name="customer_name" maxlength="120" autocomplete="off"
+              list="customerNameList" placeholder="Walk-in, or type a name…"
+              data-customers='{{ customers | tojson }}'>
+            <datalist id="customerNameList">
+              {% for c in customers %}
+              <option value="{{ c.name }}"></option>
+              {% endfor %}
+            </datalist>
+          </div>
+          <div class="field">
+            <label for="customer_address">Customer address <span class="text-faint">(optional)</span></label>
+            <input type="text" id="customer_address" name="customer_address" maxlength="255" autocomplete="off"
+              placeholder="Fills in automatically for a repeat customer">
+          </div>
+        </div>
+        <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Picking a name already on file fills in
+          their address from the first sale it was recorded on — edit it if it's changed.</div>
+      </div>
+
       <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
     </form>
   </div>
@@ -131,6 +161,7 @@
             <th class="num">Price</th>
             <th class="num">Total</th>
             <th>Payment</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -143,6 +174,9 @@
             <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
+            <td data-label="">
+              <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -177,6 +211,9 @@
 
     var buyerField = document.getElementById('buyerField');
     var buyerSelect = document.getElementById('buyer_user_id');
+    var customerFieldsWrap = document.getElementById('customerFieldsWrap');
+    var customerNameInput = document.getElementById('customer_name');
+    var customerAddressInput = document.getElementById('customer_address');
 
     wireSwitch('saleTypeSwitch', 'sale_type');
     wireSwitch('paymentSwitch', 'payment_method', function (value) {
@@ -184,7 +221,43 @@
       buyerField.style.display = isSalary ? '' : 'none';
       buyerSelect.required = isSalary;
       if (!isSalary) buyerSelect.value = '';
+
+      // Salary Deduction is one person (the employee) taking product for
+      // themselves — showing a separate "customer name" field alongside
+      // the employee field invites confusion over whose name is whose.
+      // Hide it, and clear whatever was typed, so nothing stale gets
+      // submitted with a Salary Deduction sale.
+      customerFieldsWrap.style.display = isSalary ? 'none' : '';
+      if (isSalary) {
+        customerNameInput.value = '';
+        customerAddressInput.value = '';
+      }
     });
+
+    // ---- Customer name autocomplete -> autofill address ----
+    // data-customers is [{name, address}] for every distinct customer
+    // name on file at this branch, address taken from that name's
+    // *first* recorded sale (see schema.sql's comment on
+    // sales.customer_address). Matching is case-insensitive so
+    // "Juan Dela Cruz" and "juan dela cruz" resolve to the same entry.
+    (function () {
+      var nameInput = customerNameInput;
+      var addressInput = customerAddressInput;
+      if (!nameInput || !addressInput) return;
+      var byName = {};
+      try {
+        JSON.parse(nameInput.dataset.customers || '[]').forEach(function (c) {
+          if (c && c.name) byName[c.name.trim().toLowerCase()] = c.address || '';
+        });
+      } catch (e) { /* no known customers yet */ }
+
+      function autofillAddress() {
+        var match = byName[nameInput.value.trim().toLowerCase()];
+        if (match !== undefined) addressInput.value = match;
+      }
+      nameInput.addEventListener('input', autofillAddress);
+      nameInput.addEventListener('change', autofillAddress);
+    })();
 
     // ---- Product -> Unit cascade: pick a product name first, then only
     // the units that product actually has show up in the second dropdown.

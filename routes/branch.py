@@ -5,10 +5,10 @@ from flask import Blueprint, abort, current_app, flash, jsonify, redirect, rende
 
 from db import TransactionAborted, execute, query, transaction
 from decorators import branch_required
-from receipts import build_receipt_pdf
+from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin_and_branch
-from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, parse_non_negative_decimal, parse_non_negative_int, parse_positive_int
+from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, parse_non_negative_decimal, parse_non_negative_int, parse_optional_text, parse_positive_int
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
 
@@ -431,6 +431,22 @@ def receipt(request_id):
 
 
 # ---------------------------------------------------------------- record sale
+@bp.route("/record-sale/<int:sale_id>/receipt")
+@branch_required
+def sale_receipt(sale_id):
+    """Downloadable PDF receipt for a single sale/refill this branch
+    recorded — see receipts.py. Scoped to this branch's own sale_id,
+    same convention as the goods-received receipt() above.
+    """
+    pdf_buffer, sale = build_sale_receipt_pdf(sale_id, branch_id=_branch_id())
+    if pdf_buffer is None:
+        abort(404)
+    return send_file(
+        pdf_buffer, mimetype="application/pdf",
+        as_attachment=True, download_name=f"SR-{sale_id:06d}.pdf",
+    )
+
+
 @bp.route("/record-sale", methods=["GET", "POST"])
 @branch_required
 def record_sale():
@@ -458,6 +474,10 @@ def record_sale():
                 request.form.get("qty_sold"), "Quantity sold")
             unit_price = parse_non_negative_decimal(
                 request.form.get("unit_price"), "Price charged")
+            customer_name = parse_optional_text(
+                request.form.get("customer_name"), "Customer name", 120)
+            customer_address = parse_optional_text(
+                request.form.get("customer_address"), "Customer address", 255)
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.record_sale"))
@@ -519,10 +539,11 @@ def record_sale():
                 after_qty = before_qty if is_refill else before_qty - qty
 
                 cur.execute(
-                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method, buyer_name)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
+                                          buyer_name, customer_name, customer_address)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (bid, sku, qty, unit_price, sale_type,
-                     payment_method, buyer_name),
+                     payment_method, buyer_name, customer_name, customer_address),
                 )
                 if not is_refill:
                     cur.execute(
@@ -567,8 +588,27 @@ def record_sale():
     employees = query(
         "SELECT user_id, username, role FROM users WHERE is_active = TRUE ORDER BY username"
     )
+    # Every distinct customer name logged at this branch, each paired
+    # with the address from that name's *first* sale (see schema.sql's
+    # comment on sales.customer_address) — feeds the Customer name
+    # autocomplete/autofill on the form below.
+    customers = query(
+        """SELECT s.customer_name AS name, s.customer_address AS address
+           FROM sales s
+           JOIN (
+               SELECT customer_name, MIN(sold_at) AS first_sold_at
+               FROM sales
+               WHERE branch_id = %s AND customer_name IS NOT NULL AND customer_name <> ''
+               GROUP BY customer_name
+           ) first_seen
+             ON first_seen.customer_name = s.customer_name AND first_seen.first_sold_at = s.sold_at
+           WHERE s.branch_id = %s
+           ORDER BY s.customer_name""",
+        (bid, bid),
+    )
     return render_template(
         "branch/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
+        customers=customers,
     )
 
 

@@ -29,18 +29,24 @@ request; admin callers omit it since HQ can see every branch.
 import io
 import os
 
+from reportlab.graphics import renderPDF
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import simpleSplit
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
     HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 from db import query
+from utils import make_receipt_code
 
 INK = colors.HexColor("#12141A")
 INK_FAINT = colors.HexColor("#5B6272")
@@ -195,6 +201,24 @@ def _styles():
         "row_cell_num_bold": ParagraphStyle("row_cell_num_bold", parent=base["Normal"], fontName=FONT_BOLD,
                                             fontSize=8.3, textColor=INK, leading=10.5, alignment=TA_RIGHT),
     }
+
+
+def _fetch_sale(sale_id, branch_id=None):
+    """A single recorded sale/refill, with the product, branch, and
+    (if it was a Salary Deduction) the employee name already joined in.
+    """
+    sql = """SELECT s.*, p.item_name, p.variant, p.unit, b.branch_name, b.location,
+                    COALESCE(s.buyer_name, bu.username) AS buyer_username
+             FROM sales s
+             JOIN products p ON s.sku = p.sku
+             JOIN branches b ON s.branch_id = b.branch_id
+             LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
+             WHERE s.sale_id = %s"""
+    params = [sale_id]
+    if branch_id is not None:
+        sql += " AND s.branch_id = %s"
+        params.append(branch_id)
+    return query(sql, tuple(params), fetchone=True)
 
 
 def build_receipt_pdf(request_id, branch_id=None):
@@ -460,3 +484,229 @@ def build_receipt_pdf(request_id, branch_id=None):
     doc.build(story)
     buf.seek(0)
     return buf, req
+
+
+# ---------------------------------------------------------------------------
+# Sales receipt — a single Sale or Refill, printable right after Record
+# Sale saves it. Unlike the goods-received receipt above, a sale has no
+# multi-step lifecycle to wait on (dispatch -> receive): it's complete
+# the instant it's inserted, so this can be generated immediately, same
+# request-response cycle as the redirect back to Record Sale.
+#
+# This is deliberately shaped like a small thermal-printer slip (80mm
+# roll width) instead of a full letter-size page — one item per sale
+# means there's rarely more than a dozen lines to show, and a receipt
+# this size is what a customer actually expects to be handed. Height
+# isn't fixed up front and can't just be trimmed after the fact either
+# (shrinking a PDF's page size after drawing on it would clip content
+# near the old top right off the new, shorter page instead of moving it
+# down). Instead this renders in two passes: a "dry" pass runs the exact
+# same layout with a no-op canvas purely to measure how much vertical
+# space the content needs, then a real pass draws it for real onto a
+# canvas already sized to fit — so a Refill note or a long customer
+# address grows the receipt instead of leaving blank space or clipping.
+#
+# Every receipt carries a QR code encoding a short signed verification
+# code (see utils.make_receipt_code()) — not the sale's data itself,
+# just a code that /scan/verify (routes/scan.py) can turn back into
+# this exact sale. That's what lets Scan Receipt confirm a printed
+# receipt is genuinely on file and pull up what was recorded, without
+# ever trusting raw QR content on its own.
+#
+# Access control is the caller's job, same convention as
+# build_receipt_pdf(): pass branch_id from the branch side so a branch
+# can only ever pull a receipt for a sale recorded at its own branch;
+# admin callers omit it since HQ can see every branch (including its
+# own HQ/Main Branch sales, and — if ever needed — any branch's).
+# ---------------------------------------------------------------------------
+RECEIPT_WIDTH = 80 * mm
+RECEIPT_MARGIN = 4.5 * mm
+RECEIPT_CONTENT_WIDTH = RECEIPT_WIDTH - (2 * RECEIPT_MARGIN)
+RECEIPT_TOP_MARGIN = 7 * mm
+RECEIPT_BOTTOM_MARGIN = 7 * mm
+
+
+def _qr_drawing(data, size):
+    """A reportlab Drawing containing a QR code encoding `data`, scaled
+    to exactly `size` x `size` points so it can be placed like any other
+    flowable/graphic regardless of how many modules the code itself has.
+    """
+    widget = QrCodeWidget(data)
+    x0, y0, x1, y1 = widget.getBounds()
+    native_w, native_h = (x1 - x0), (y1 - y0)
+    drawing = Drawing(size, size, transform=[size / native_w, 0, 0, size / native_h, 0, 0])
+    drawing.add(widget)
+    return drawing
+
+
+def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
+    """Draw the receipt body top-down starting at `top_y`, and return the
+    total vertical space it used. When dry=True, `c` is ignored (pass
+    None) and nothing is actually drawn — only the layout's height is
+    computed, by running every line through the exact same advance()
+    calls a real draw would make.
+    """
+    line_total = sale["qty_sold"] * sale["unit_price"]
+    is_refill = sale["sale_type"] == "Refill"
+
+    x_left = RECEIPT_MARGIN
+    x_right = RECEIPT_WIDTH - RECEIPT_MARGIN
+    x_center = RECEIPT_WIDTH / 2
+    state = {"y": top_y}
+
+    def advance(pt):
+        state["y"] -= pt
+
+    def center(text, font=FONT_BOLD, size=10.5, color=INK, gap=None):
+        if not dry:
+            c.setFont(font, size)
+            c.setFillColor(color)
+            c.drawCentredString(x_center, state["y"], text)
+        advance(gap if gap is not None else size + 4.5)
+
+    def rule(char="*", size=7.5, gap=None):
+        if not dry:
+            c.setFont(FONT_REGULAR, size)
+            c.setFillColor(INK_FAINT)
+            cell = size * 0.62
+            n = max(3, int(RECEIPT_CONTENT_WIDTH / (cell * 2)))
+            c.drawCentredString(x_center, state["y"], (char + " ") * n)
+        advance(gap if gap is not None else size + 5)
+
+    def kv(label, value, size=7.8, gap=None):
+        if not dry:
+            c.setFont(FONT_REGULAR, size)
+            c.setFillColor(INK_FAINT)
+            c.drawString(x_left, state["y"], label)
+            c.setFont(FONT_BOLD, size)
+            c.setFillColor(INK)
+            c.drawRightString(x_right, state["y"], value)
+        advance(gap if gap is not None else size + 6.5)
+
+    def note(text, font=FONT_REGULAR, size=7.2, color=INK_FAINT, gap=None):
+        if not dry:
+            c.setFont(font, size)
+            c.setFillColor(color)
+            c.drawCentredString(x_center, state["y"], text)
+        advance(gap if gap is not None else size + 4)
+
+    def wrapped_left(label, text, size=7.2, gap=None):
+        if not dry:
+            c.setFont(FONT_BOLD, size)
+            c.setFillColor(INK_FAINT)
+            c.drawString(x_left, state["y"], label)
+        advance(size + 3.5)
+        for wrapped_line in simpleSplit(text, FONT_REGULAR, size, RECEIPT_CONTENT_WIDTH):
+            if not dry:
+                c.setFont(FONT_REGULAR, size)
+                c.setFillColor(INK)
+                c.drawString(x_left, state["y"], wrapped_line)
+            advance(size + 3)
+        advance(gap if gap is not None else 2)
+
+    # ---- Letterhead ----
+    center("HEAVEN & ANGEL SCENTS", font=FONT_BOLD, size=12, gap=15)
+    center("Perfume Manufacturing & Retail", size=7.2, gap=9)
+    if sale.get("location"):
+        center(sale["location"], size=7.2, gap=9)
+    advance(5)
+    rule(gap=13)
+    center("REFILL RECEIPT" if is_refill else "SALES RECEIPT", size=10, gap=13)
+    rule(gap=13)
+
+    # ---- Sale meta ----
+    kv("Receipt No.", f"SR-{sale['sale_id']:06d}")
+    kv("Date", _fmt_dt(sale["sold_at"]))
+    kv("Branch", sale["branch_name"])
+    kv("Sale type", sale["sale_type"])
+    payment_value = sale["payment_method"]
+    if sale["payment_method"] == "Salary Deduction" and sale["buyer_username"]:
+        payment_value += f" ({sale['buyer_username']})"
+    kv("Payment", payment_value)
+    kv("Customer", sale["customer_name"] or "Walk-in", gap=10)
+    rule(char="-", gap=12)
+
+    # ---- Line item ----
+    if not dry:
+        c.setFont(FONT_BOLD, 8.4)
+        c.setFillColor(INK)
+        c.drawString(x_left, state["y"], sale["item_name"])
+    advance(10.5)
+    if not dry:
+        c.setFont(FONT_REGULAR, 7)
+        c.setFillColor(INK_FAINT)
+        c.drawString(x_left, state["y"], f"{sale['sku']} \u00b7 {sale['variant']} \u00b7 {sale['unit']}")
+    advance(11.5)
+    if not dry:
+        c.setFont(FONT_REGULAR, 8.2)
+        c.setFillColor(INK)
+        c.drawString(x_left, state["y"], f"{sale['qty_sold']} x \u20b1{sale['unit_price']:,.2f}")
+        c.setFont(FONT_BOLD, 8.4)
+        c.drawRightString(x_right, state["y"], f"\u20b1{line_total:,.2f}")
+    advance(13)
+
+    if sale["customer_address"]:
+        wrapped_left("ADDRESS", sale["customer_address"], gap=4)
+
+    rule(char="-", gap=12)
+    if not dry:
+        c.setFont(FONT_BOLD, 11)
+        c.setFillColor(INK)
+        c.drawString(x_left, state["y"], "TOTAL")
+        c.drawRightString(x_right, state["y"], f"\u20b1{line_total:,.2f}")
+    advance(16)
+    rule(gap=14)
+
+    if is_refill:
+        note("Refill \u2014 customer's own bottle;", gap=9)
+        note("product cost only, no stock unit deducted.", gap=13)
+
+    # ---- QR verification ----
+    qr_size = 30 * mm
+    advance(4)
+    if not dry:
+        qr_drawing = _qr_drawing(receipt_code, qr_size)
+        renderPDF.draw(qr_drawing, c, x_center - (qr_size / 2), state["y"] - qr_size)
+    advance(qr_size + 8)
+    note("Scan to verify this receipt", size=6.8, gap=10)
+    if not dry:
+        c.setFont(FONT_REGULAR, 6.8)
+        c.setFillColor(INK_FAINT)
+        c.drawCentredString(x_center, state["y"], receipt_code)
+    advance(14)
+
+    rule(gap=12)
+    note("Thank you for your purchase!", font=FONT_BOLD, size=8.2, color=INK, gap=11)
+    note("Generated by the Heaven & Angel Scents", size=6.5, gap=8.5)
+    note("inventory system.", size=6.5, gap=10)
+
+    return top_y - state["y"]
+
+
+def build_sale_receipt_pdf(sale_id, branch_id=None):
+    """Return (BytesIO, sale_row) for a single recorded sale/refill.
+
+    Returns (None, None) if the sale doesn't exist, or — when branch_id
+    is given — didn't happen at that branch.
+    """
+    sale = _fetch_sale(sale_id, branch_id)
+    if not sale:
+        return None, None
+
+    receipt_code = make_receipt_code(sale_id)
+
+    # Pass 1 (dry): run the identical layout with no canvas, purely to
+    # find out how tall this particular receipt needs to be.
+    content_height = _render_sale_receipt(None, sale, receipt_code, top_y=0, dry=True)
+    page_height = content_height + RECEIPT_TOP_MARGIN + RECEIPT_BOTTOM_MARGIN
+
+    # Pass 2 (real): draw for real onto a canvas already sized to fit —
+    # nothing clipped, nothing left blank underneath.
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=(RECEIPT_WIDTH, page_height))
+    c.setTitle(f"Sales Receipt SR-{sale_id:06d}")
+    _render_sale_receipt(c, sale, receipt_code, top_y=page_height - RECEIPT_TOP_MARGIN, dry=False)
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf, sale

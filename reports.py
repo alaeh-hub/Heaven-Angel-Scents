@@ -273,6 +273,49 @@ def _window_note(filters, truncated):
     return note
 
 
+# Column keys that are money/int but shouldn't be summed into a
+# report's totals row — a per-unit price summed across rows produces a
+# meaningless number (e.g. three ₱85 sales don't total to "₱255 of
+# unit price"), unlike qty/line-total columns where a sum is a genuine
+# total. Kept as a small denylist rather than an opt-in flag on every
+# column definition, since every other money/int column across every
+# report *is* meant to total.
+NO_TOTAL_COLUMNS = {"unit_price"}
+
+
+def _compute_totals(columns, rows):
+    """Sum every money/int column across all rows of a report.
+
+    Returns a {column_key: summed_value} dict, or None when there's
+    nothing summable (e.g. a report made entirely of text/date/badge
+    columns, like Accounts or Partners) — a totals row would just be
+    a row of dashes there, so it's skipped rather than shown.
+
+    Columns listed in NO_TOTAL_COLUMNS (e.g. a per-unit price) are
+    skipped even though they're typed money/int — summing a per-unit
+    figure across rows doesn't produce a meaningful total the way
+    summing a quantity or a line total does.
+    """
+    if not rows:
+        return None
+    totals = {}
+    for col in columns:
+        key, _, ctype = col[0], col[1], col[2]
+        if ctype not in ("money", "int") or key in NO_TOTAL_COLUMNS:
+            continue
+        total = 0
+        has_value = False
+        for row in rows:
+            value = row.get(key)
+            if value is None:
+                continue
+            total += value
+            has_value = True
+        if has_value:
+            totals[key] = total
+    return totals or None
+
+
 def _branch_name(branch_id):
     if branch_id in (None, "all"):
         return None
@@ -872,6 +915,10 @@ def get_report(report_type, filters, branch_scope=None, actor_label=""):
         "rows": rows,
         "row_count": len(rows),
         "truncated": truncated,
+        # {column_key: summed_value} for every money/int column, or None
+        # — see _compute_totals(). Both render_report_pdf() and
+        # render_report_excel() add a bold TOTAL row from this when present.
+        "totals": _compute_totals(columns, rows),
     }
 
 
@@ -987,6 +1034,30 @@ def render_report_pdf(report):
                         _fmt_cell(value, ctype), s["td_num"] if ctype in num_types else s["td"]))
             data.append(cells)
 
+        # ---- totals row ----
+        # Bold, right-aligned sums under every money/int column, with a
+        # "TOTAL" label in the first column. Tracked separately (rather
+        # than reusing s["td"]/s["td_num"]) so it can be bolded without
+        # touching the styles ordinary cells use.
+        total_row_idx = None
+        if report.get("totals"):
+            totals = report["totals"]
+            total_label_style = ParagraphStyle(
+                "total_label", parent=s["td"], fontName="DejaVuSans-Bold", textColor=ACCENT_INK)
+            total_num_style = ParagraphStyle(
+                "total_num", parent=s["td_num"], fontName="DejaVuSans-Bold", textColor=ACCENT_INK)
+            total_row = []
+            for c_idx, (key, _, ctype, _) in enumerate(columns):
+                if c_idx == 0:
+                    total_row.append(Paragraph("TOTAL", total_label_style))
+                elif key in totals:
+                    total_row.append(
+                        Paragraph(_fmt_cell(totals[key], ctype), total_num_style))
+                else:
+                    total_row.append(Paragraph("", s["td"]))
+            data.append(total_row)
+            total_row_idx = len(data) - 1
+
         # Columns default to equal width (weight 1 each). A report can
         # give a column a different weight (see e.g. _report_partners /
         # _report_partner_inquiries) when an even split leaves some
@@ -1017,6 +1088,11 @@ def render_report_pdf(report):
         for r_idx, c_idx, bg_hex in badge_cells:
             style.append(
                 ("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor(bg_hex)))
+        if total_row_idx is not None:
+            style.append(("BACKGROUND", (0, total_row_idx),
+                         (-1, total_row_idx), ACCENT_SOFT))
+            style.append(("LINEABOVE", (0, total_row_idx),
+                         (-1, total_row_idx), 1, ACCENT))
         table.setStyle(TableStyle(style))
         story.append(table)
 
@@ -1149,11 +1225,39 @@ def render_report_excel(report):
     ws.auto_filter.ref = f"A{header_row_idx}:{last_col_letter}{header_row_idx + len(rows)}"
     ws.freeze_panes = f"A{header_row_idx + 1}"
 
+    # ---- totals row ----
+    # Sits right below the data (outside the auto-filter range, since
+    # it isn't a data row) — bold, right-aligned sums under every
+    # money/int column, with a "TOTAL" label in the first column.
+    totals = report.get("totals")
+    total_row_idx = None
+    if totals:
+        total_row_idx = header_row_idx + 1 + len(rows)
+        for c, (key, _, ctype) in enumerate(columns, start=1):
+            cell = ws.cell(row=total_row_idx, column=c)
+            cell.border = XL_BORDER
+            cell.font = Font(name="Calibri", size=10,
+                             bold=True, color="1D3BC4")
+            cell.fill = XL_TITLE_FILL
+            if c == 1:
+                cell.value = "TOTAL"
+                cell.alignment = Alignment(horizontal="left")
+            elif key in totals:
+                if ctype == "money":
+                    cell.value = float(totals[key])
+                    cell.number_format = XL_MONEY_FMT
+                else:
+                    cell.value = int(totals[key])
+                cell.alignment = Alignment(horizontal="right")
+            else:
+                cell.value = ""
+        ws.row_dimensions[total_row_idx].height = 20
+
     for c, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(
             c)].width = min(max(width + 3, 10), 42)
 
-    footer_row = header_row_idx + len(rows) + 2
+    footer_row = (total_row_idx or header_row_idx + len(rows)) + 2
     note = f"{report['row_count']:,} row(s) shown."
     if report["truncated"]:
         note += f" Results were capped at {MAX_ROWS:,} rows — narrow the filters for a complete report."

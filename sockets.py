@@ -97,4 +97,5 @@ def notify_bell(message, room=None, level="info"):
     free-form hint the frontend uses to color the item's dot —
     "info" | "success" | "warning".
     """
-    socketio.emit("bell_notification", {"message": message, "level": level}, room=room)
+    socketio.emit("bell_notification", {
+                  "message": message, "level": level}, room=room)

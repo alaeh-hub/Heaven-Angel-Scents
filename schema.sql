@@ -284,22 +284,37 @@ CREATE TABLE IF NOT EXISTS stock_request_items (
 --    account, so it does not have to match any real username.
 --    buyer_user_id is legacy: kept only so sales recorded before this
 --    change still show who the deduction was against.
+--
+--    customer_name / customer_address: the walk-in customer a sale is
+--    for — both optional (a lot of cash sales are anonymous), free
+--    text, and unrelated to buyer_user_id/buyer_name above (which are
+--    only ever about an *employee* being charged via payroll, not a
+--    paying customer). customer_name is what the Record Sale page's
+--    autocomplete suggests from and groups by; customer_address is
+--    what gets auto-filled when a suggested name is picked, sourced
+--    from that customer's earliest sale row (see routes' customer
+--    lookup query — ORDER BY sold_at ASC LIMIT 1 per name), so a
+--    customer's address on file always reflects the first time it was
+--    entered rather than whatever the most recent typo left behind.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sales (
-    sale_id        INT AUTO_INCREMENT PRIMARY KEY,
-    branch_id      INT NOT NULL,
-    sku            VARCHAR(50) NOT NULL,
-    qty_sold       INT NOT NULL,
-    unit_price     DECIMAL(10, 2) NOT NULL,
-    sale_type      ENUM('Sale', 'Refill') NOT NULL DEFAULT 'Sale',
-    payment_method ENUM('Cash', 'Salary Deduction') NOT NULL DEFAULT 'Cash',
-    buyer_user_id  INT NULL,                 -- the employee being charged, only set for Salary Deduction
-    sold_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sale_id          INT AUTO_INCREMENT PRIMARY KEY,
+    branch_id        INT NOT NULL,
+    sku              VARCHAR(50) NOT NULL,
+    qty_sold         INT NOT NULL,
+    unit_price       DECIMAL(10, 2) NOT NULL,
+    sale_type        ENUM('Sale', 'Refill') NOT NULL DEFAULT 'Sale',
+    payment_method   ENUM('Cash', 'Salary Deduction') NOT NULL DEFAULT 'Cash',
+    buyer_user_id    INT NULL,                 -- the employee being charged, only set for Salary Deduction
+    customer_name    VARCHAR(120) NULL,
+    customer_address VARCHAR(255) NULL,
+    sold_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
     FOREIGN KEY (buyer_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_sales_branch_sold_at (branch_id, sold_at),
-    INDEX idx_sales_payment_method (payment_method)
+    INDEX idx_sales_payment_method (payment_method),
+    INDEX idx_sales_customer_name (customer_name)
 );
 
 -- ----------------------------------------------------------------------------
@@ -644,6 +659,20 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'buyer_name'
     ) THEN
         ALTER TABLE sales ADD COLUMN buyer_name VARCHAR(120) NULL AFTER buyer_user_id;
+    END IF;
+
+    -- sales.customer_name / customer_address -------------------------------
+    -- The walk-in customer a sale is for — see the CREATE TABLE comment
+    -- above. Added together since neither is useful without the other
+    -- (a name with no address just means the autofill has nothing to
+    -- offer next time).
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'customer_name'
+    ) THEN
+        ALTER TABLE sales ADD COLUMN customer_name VARCHAR(120) NULL AFTER buyer_name;
+        ALTER TABLE sales ADD COLUMN customer_address VARCHAR(255) NULL AFTER customer_name;
+        ALTER TABLE sales ADD INDEX idx_sales_customer_name (customer_name);
     END IF;
 
     -- stock_movement_logs.movement_type gains 'REFILL' -------------------
@@ -997,3 +1026,72 @@ DELIMITER ;
 
 CALL _migrate_raw_materials_purchase_mode_and_receipt();
 DROP PROCEDURE _migrate_raw_materials_purchase_mode_and_receipt;
+
+-- ----------------------------------------------------------------------------
+-- 20. AI Stock Drafts — human-in-the-loop proposals from the AI assistant
+--
+--     A draft is inert until an admin (or branch staff, for their own
+--     branch) approves it on the /ai/drafts page — approval is what
+--     actually inserts into stock_requests / stock_request_items,
+--     using the same DR-<request_id zero-padded to 6> numbering as any
+--     other delivery (see section 6's comment above and the migration
+--     in section 12), so an AI-originated delivery is indistinguishable
+--     from one requested by hand once approved.
+--
+--     Both created_by_user_id and reviewed_by_user_id follow the same
+--     "kept for traceability, set NULL if the account is later removed"
+--     pattern as every other actor column in this schema (see
+--     material_usage_logs.created_by_user_id, admin_actions.actor_user_id).
+--     created_by_username is denormalized alongside created_by_user_id
+--     for the same reason admin_actions.actor_username is: the log still
+--     reads clearly if the account is later deleted.
+--
+--     resulting_request_id is nullable and ON DELETE SET NULL rather
+--     than CASCADE — a draft's own history (what was proposed, by
+--     whom, why) should survive even if the delivery it produced is
+--     ever removed from stock_requests.
+--
+--     Being a brand-new table (not an ALTER on an existing one), a
+--     plain guarded CREATE TABLE IF NOT EXISTS is sufficient and
+--     idempotent on its own — unlike the ALTER-based migrations above,
+--     it doesn't need the DELIMITER/PROCEDURE guard pattern.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_stock_drafts (
+    draft_id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    branch_id             INT NOT NULL,
+    created_by_user_id    INT NULL,
+    created_by_username   VARCHAR(80) NULL,
+    status                ENUM('Pending Review', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending Review',
+    note                  VARCHAR(255) NULL,
+    reasoning              VARCHAR(500) NULL,
+    resulting_request_id  INT NULL,
+    reviewed_by_user_id   INT NULL,
+    reviewed_at           DATETIME NULL,
+    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (reviewed_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (resulting_request_id) REFERENCES stock_requests(request_id) ON DELETE SET NULL,
+    INDEX idx_ai_stock_drafts_branch (branch_id),
+    INDEX idx_ai_stock_drafts_status (status)
+);
+
+-- ----------------------------------------------------------------------------
+-- 20b. AI Stock Draft Items — one row per proposed SKU on a draft
+--
+--      Deliberately thin (sku, suggested_qty only) — unlike
+--      stock_request_items, a draft has no unit_price of its own; the
+--      price is snapshotted from products.price at the moment a draft
+--      is *approved* (see routes/ai.py's approve_draft()), not at the
+--      moment the AI proposes it, so a draft that sits unreviewed for a
+--      while doesn't lock in a stale price.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_stock_draft_items (
+    draft_item_id  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    draft_id       BIGINT NOT NULL,
+    sku            VARCHAR(50) NOT NULL,
+    suggested_qty  INT NOT NULL,
+    FOREIGN KEY (draft_id) REFERENCES ai_stock_drafts(draft_id) ON DELETE CASCADE,
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    INDEX idx_ai_stock_draft_items_draft (draft_id)
+);

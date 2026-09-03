@@ -11,8 +11,4 @@ reportlab
 openpyxl
 flask-talisman
 
-gunicorn==23.0.0
-gevent==24.2.1
-gevent-websocket==0.10.1
-
 simple-websocket==1.0.0

@@ -5,15 +5,51 @@
 
 {% block head %}
 <style>
-  .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 16px; }
-  .rb-mode { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px; }
-  .rb-mode-opt {
-    padding: 6px 13px; border: none; background: transparent; border-radius: 99px;
-    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); cursor: pointer;
+  .rb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px 16px;
   }
-  .rb-mode-opt.active { background: var(--surface); border: 1px solid var(--border-strong); color: var(--accent-ink); }
-  .rb-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-  .rb-note { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+
+  .rb-mode {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 3px;
+  }
+
+  .rb-mode-opt {
+    padding: 6px 13px;
+    border: none;
+    background: transparent;
+    border-radius: 99px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+
+  .rb-mode-opt.active {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--accent-ink);
+  }
+
+  .rb-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .rb-note {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 10px;
+  }
 </style>
 {% endblock %}
 
@@ -39,6 +75,16 @@
         <label for="rb_branch_id">Branch</label>
         <select id="rb_branch_id" name="branch_id">
           <option value="all">All branches</option>
+          <!-- Main Branch is HQ Main Warehouse (branch_id 1) — it's
+               deliberately left out of branch_list (see Branches page,
+               which only lists retail branches), but it has its own
+               sales, inventory, and movement history just like any
+               other branch, so reports need to be able to filter down
+               to it specifically. Listed here explicitly rather than
+               changing branch_list itself, so nothing else that reuses
+               branch_list (Branches page, per-branch stock tabs, etc.)
+               is affected. -->
+          <option value="1">Main Branch (HQ Warehouse)</option>
           {% for b in branch_list %}
           <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
           {% endfor %}
@@ -90,6 +136,18 @@
           <option value="Male">Male</option>
           <option value="Female">Female</option>
           <option value="Unisex">Unisex</option>
+        </select>
+      </div>
+      <div class="field" data-filter="unit" style="display:none;">
+        <label for="rb_unit">Unit</label>
+        <select id="rb_unit" name="unit">
+          <option value="all">All units</option>
+          <option value="85ML">85ML</option>
+          <option value="50ML">50ML</option>
+          <option value="1L">1L</option>
+          <option value="100ML">100ML</option>
+          <option value="10ML">10ML</option>
+          <option value="3ML Tester">3ML Tester</option>
         </select>
       </div>
       <div class="field" data-filter="role" style="display:none;">
@@ -565,12 +623,12 @@
   // nothing extra needed server-side to "ignore" them.
   (function () {
     const REPORT_FIELDS = {
-      products: ['variant', 'search'],
-      production_log: ['search', 'window'],
-      branch_stock: ['branch_id', 'variant', 'low_stock_only', 'search'],
+      products: ['variant', 'unit', 'search'],
+      production_log: ['unit', 'search', 'window'],
+      branch_stock: ['branch_id', 'variant', 'unit', 'low_stock_only', 'search'],
       stock_requests: ['branch_id', 'status', 'search', 'window'],
       inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
-      sales_history: ['branch_id', 'variant', 'sale_type', 'payment_method', 'search', 'window'],
+      sales_history: ['branch_id', 'variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
       employee_purchases: ['branch_id', 'sale_type', 'search', 'window'],
       accounts: ['role', 'account_status', 'search'],
       partners: ['partner_type', 'search'],

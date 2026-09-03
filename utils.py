@@ -4,9 +4,13 @@ Centralizing form-value parsing here means every route gets the same
 "bad input -> friendly flash message" behavior instead of a raw
 ValueError bubbling up into an unhandled 500.
 """
+import hashlib
+import hmac
 import re
 import secrets
 import string
+
+from flask import current_app
 
 # Packaging sizes a product SKU can be. Kept here (rather than duplicated
 # in admin.py/branch.py/reports.py) so the one allow-list is what every
@@ -179,6 +183,20 @@ def parse_required_text(raw, field_label="Value", max_length=None):
     return value
 
 
+def parse_optional_text(raw, field_label="Value", max_length=None):
+    """Like parse_required_text, but blank is valid — returns None
+    instead of raising. Used for optional free-text fields such as
+    Record Sale's customer name/address, where most cash sales don't
+    bother naming a customer at all.
+    """
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    if max_length and len(value) > max_length:
+        raise ValidationError(f"{field_label} must be under {max_length} characters.")
+    return value
+
+
 def parse_email(raw, field_label="Email"):
     value = str(raw or "").strip()
     if not value:
@@ -204,3 +222,74 @@ def generate_temp_password(length=12):
     """Generate a random temporary password for admin-triggered resets."""
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+# ---------------------------------------------------------------------------
+# Sale receipt verification codes.
+#
+# The QR code printed on every sale receipt (see receipts.py) encodes one
+# of these — never the sale's actual data. It's a short, human-typeable
+# string of the shape HAS-<sale_id>-<signature>, where the signature is
+# an HMAC-SHA256 of the sale_id keyed on the app's SECRET_KEY, truncated
+# to 10 hex characters. That makes the code:
+#   - Stateless to verify — no separate "receipt codes" table or column
+#     to keep in sync; parse_receipt_code() just recomputes the expected
+#     signature and compares. If it doesn't match, the code is rejected,
+#     whether that's from a garbled scan, a QR from something else
+#     entirely, or someone guessing at sale_ids in sequence.
+#   - Safe to trust once verified — since only someone with SECRET_KEY
+#     (this app) could have produced a signature that checks out, a
+#     valid code couldn't have been forged by a customer or a partner
+#     tampering with a printed slip.
+#   - Still readable/typeable by hand as a fallback if a camera or photo
+#     upload isn't available (see routes/scan.py's manual-entry path).
+#
+# Deliberately NOT itsdangerous's URLSafeSerializer here even though
+# that's already a dependency (via Flask-WTF) and would do something
+# similar: its tokens are base64, longer, and carry a dot-separated
+# payload+signature shape that's harder to read off a slip or type by
+# hand than HAS-000128-CEFCE5776C. A plain HMAC gives full control over
+# that shape for the same security property (can't be forged without
+# SECRET_KEY) at the cost of one extra small function.
+# ---------------------------------------------------------------------------
+_RECEIPT_CODE_PREFIX = "HAS"
+_RECEIPT_CODE_SALT = b"sale-receipt-v1"  # bump if the code format ever changes
+
+
+def make_receipt_code(sale_id):
+    """Build the signed verification code for a given sale_id. Always
+    returns the same code for the same sale_id (and the same
+    SECRET_KEY) — this never touches the database or generates anything
+    random, so it's safe to call as many times as needed (once when the
+    receipt PDF is built, again later whenever that receipt is
+    verified) without anything to keep in sync.
+    """
+    secret = current_app.config["SECRET_KEY"].encode("utf-8")
+    signature = hmac.new(
+        secret, _RECEIPT_CODE_SALT + str(sale_id).encode("utf-8"), hashlib.sha256
+    ).hexdigest()[:10].upper()
+    return f"{_RECEIPT_CODE_PREFIX}-{sale_id:06d}-{signature}"
+
+
+def parse_receipt_code(raw):
+    """Return the sale_id a receipt code points to if it's validly
+    signed, or None otherwise. Never raises — garbled input, a QR from
+    an unrelated app, or a hand-typed guess all just fail to verify
+    rather than blowing up the caller.
+    """
+    if not raw:
+        return None
+    raw = raw.strip().upper()
+    parts = raw.split("-")
+    if len(parts) != 3 or parts[0] != _RECEIPT_CODE_PREFIX:
+        return None
+    try:
+        sale_id = int(parts[1])
+    except ValueError:
+        return None
+    if sale_id <= 0:
+        return None
+    expected = make_receipt_code(sale_id)
+    if not hmac.compare_digest(expected, raw):
+        return None
+    return sale_id

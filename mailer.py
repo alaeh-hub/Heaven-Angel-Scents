@@ -37,7 +37,7 @@ def _esc(value):
 
 
 def _build_html_body(*, package_name, partner_type, company_name, contact_person,
-                      phone, email, address, message):
+                     phone, email, address, message):
     """A small, self-contained HTML email — no external stylesheet or
     images (some mail clients strip both), just inline styles so it
     renders consistently in Gmail, Outlook, and everything between.

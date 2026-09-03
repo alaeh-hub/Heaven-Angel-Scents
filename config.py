@@ -90,18 +90,18 @@ class Config:
     # The full, current link (built from whichever value is active) is
     # always shown to admins on the Partners page so it's easy to copy
     # and send to a distributor or reseller.
-    PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
-
+PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
 
 class ProductionConfig(Config):
-    """Settings for deployment behind HTTPS and a production WSGI server."""
+    """Settings for deployment behind 
+    HTTPS and a production WSGI server.
+    """
 
     DEBUG = False
     TESTING = False
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SESSION_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = "https"
-
 
 CONFIG_BY_ENV = {
     "development": Config,
