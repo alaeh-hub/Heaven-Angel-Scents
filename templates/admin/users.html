@@ -48,7 +48,11 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="smart-table">
+        <table class="smart-table table-fixed">
+          <colgroup>
+            <col style="width:22%"><col style="width:14%"><col style="width:20%">
+            <col style="width:14%"><col style="width:30%">
+          </colgroup>
           <thead><tr><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {% for a in accounts %}
@@ -59,8 +63,12 @@
               <td data-label="Status"><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
               <td data-label="">
                 <div class="inline-form">
+                  <!-- Unified confirm pattern: form[data-confirm] is
+                       picked up by main.js's delegated submit handler —
+                       see requests.html / request_detail.html /
+                       package_detail.html for the same pattern. -->
                   <form method="POST" action="{{ url_for('admin.reset_user_password', user_id=a.user_id) }}"
-                        onsubmit="return confirm('Reset this account\'s password? A new temporary password will be generated and shown once.');">
+                        data-confirm="Reset this account's password? A new temporary password will be generated and shown once.">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="btn btn-ghost btn-sm" type="submit">Reset password</button>
                   </form>

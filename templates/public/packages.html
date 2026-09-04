@@ -5,6 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Business Partners · Heaven &amp; Angel Scents</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
   <script>
     (function () {
       try {
@@ -150,25 +152,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    .pp-crest::before {
-      content: "";
-      position: absolute;
-      inset: -3px;
-      border-radius: 50%;
-      background: conic-gradient(from 0deg, var(--blue), var(--red), var(--blue));
-      opacity: 0.55;
-      z-index: -1;
-      animation: pp-ring-spin 10s linear infinite;
-    }
-
-    .pp-crest::after {
-      content: "";
-      position: absolute;
-      inset: 1.5px;
-      border-radius: 50%;
-      background: var(--surface);
+      overflow: hidden;
     }
 
     .pp-crest svg {
@@ -179,10 +163,12 @@
       color: var(--accent-ink);
     }
 
-    @keyframes pp-ring-spin {
-      to {
-        transform: rotate(360deg);
-      }
+    .pp-crest img {
+      position: relative;
+      z-index: 1;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
     }
 
     .pp-brand .mark {
@@ -416,10 +402,7 @@
     }
 
     .pp-hero h1 .grad-text {
-      background: linear-gradient(100deg, var(--blue) 10%, var(--red) 90%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      color: var(--red);
     }
 
     .pp-hero p {
@@ -474,7 +457,7 @@
       content: "";
       position: absolute;
       inset: 0;
-      background: linear-gradient(150deg, color-mix(in srgb, var(--blue) 7%, transparent), transparent 55%, color-mix(in srgb, var(--red) 7%, transparent));
+      background: color-mix(in srgb, var(--brand-navy) 5%, transparent);
       pointer-events: none;
     }
 
@@ -738,7 +721,7 @@
       display: block;
       height: 5px;
       margin: 0 -22px 18px;
-      background: linear-gradient(90deg, var(--blue), var(--red));
+      background: var(--brand-navy);
       opacity: 0.9;
     }
 
@@ -760,7 +743,7 @@
       text-transform: uppercase;
       letter-spacing: .04em;
       color: #fff;
-      background: linear-gradient(100deg, var(--blue), var(--red));
+      background: var(--red);
       padding: 5px 10px 5px 8px;
       border-radius: 999px;
       z-index: 2;
@@ -1055,7 +1038,6 @@
       }
 
       .pp-glow,
-      .pp-crest::before,
       .pp-best-value::after {
         animation: none !important;
       }
@@ -1094,14 +1076,7 @@
     <div class="pp-header-inner">
       <div class="pp-brand">
         <div class="pp-crest" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M10 2h4" stroke-linecap="round" />
-            <path d="M11 2v3.2" stroke-linecap="round" />
-            <path d="M13 2v3.2" stroke-linecap="round" />
-            <path d="M9 5.2h6l1.4 2.6c.4.7.6 1.5.6 2.3V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8.9c0-.8.2-1.6.6-2.3L9 5.2z" />
-            <path d="M7.4 12.5h9.2" stroke-linecap="round" />
-            <path d="M19.2 6.3l.6 1.4M20.6 5.7l-.6 1.4" stroke-linecap="round" />
-          </svg>
+          <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
         </div>
         <div>
           <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span>

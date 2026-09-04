@@ -41,7 +41,10 @@
     <div class="card-header"><h2>Low stock</h2><span class="hint">reorder level reached</span></div>
     {% if low_stock %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:36%"><col style="width:64%">
+        </colgroup>
         <thead><tr><th>Item</th><th class="num">On hand</th></tr></thead>
         <tbody>
           {% for row in low_stock %}
@@ -62,7 +65,10 @@
     <div class="card-header"><h2>Open requests</h2><a href="{{ url_for('branch.request_stock') }}" class="hint">new request →</a></div>
     {% if pending_requests %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:30%"><col style="width:20%"><col style="width:20%"><col style="width:30%">
+        </colgroup>
         <thead><tr><th>Delivery #</th><th class="num">Items</th><th class="num">Qty</th><th>Status</th></tr></thead>
         <tbody>
           {% for r in pending_requests %}

@@ -4,7 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Heaven &amp; Angel Scents</title>
+  <title>Sign in · Heaven &amp; Angel Scents</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
   <script>
     (function () {
       try {
@@ -17,221 +19,68 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
     /* ---------------------------------------------------------------
-       Login — boutique single-card approach.
-       Replaces the old two-pane (visual panel + form) layout with one
-       centered card floating over an ambient, scent-themed backdrop.
-       All existing IDs/classes that main.js / the inline scripts below
-       hook into are preserved (.auth-card, .role-switch, .field, the
-       field-error / has-error contract, #page-loading, #themeToggle),
-       so no behavior changes — only the look.
+       Login — professional split-screen layout.
+       .auth-shell / .auth-visual / .auth-form-col / .auth-card are
+       already defined in style.css (grid: dark brand panel on the
+       left, form on the right, collapsing to a single column under
+       860px) — this just fills that skeleton in and adds the
+       page-specific bits style.css doesn't already cover: the role
+       switch, input icons/reveal button, and validation states.
+       All IDs/classes main.js and the inline scripts below hook into
+       are preserved (.auth-card, .role-switch, .field, the
+       field-error / has-error contract, #themeToggle).
        ------------------------------------------------------------- */
 
     body {
       min-height: 100vh;
-      overflow-x: hidden;
     }
 
-    .auth-shell {
+    .auth-visual-points svg {
+      color: #fff;
+    }
+
+    .auth-form-col {
       position: relative;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 40px 20px;
-      isolation: isolate;
-    }
-
-    /* Ambient backdrop: soft twin glows + a faint dot grid, sitting
-       behind everything. Reduced-motion users get the static version
-       automatically via style.css's global animation-duration override. */
-    .auth-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      background: var(--bg);
-      overflow: hidden;
-    }
-
-    .auth-backdrop::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
-      background-size: 26px 26px;
-      opacity: 0.35;
-      mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 40%, transparent 85%);
-    }
-
-    .auth-glow {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(90px);
-      opacity: 0.35;
-      animation: auth-drift 18s ease-in-out infinite;
-    }
-
-    .auth-glow-blue {
-      width: 460px;
-      height: 460px;
-      background: var(--blue);
-      top: -160px;
-      left: -120px;
-    }
-
-    .auth-glow-red {
-      width: 420px;
-      height: 420px;
-      background: var(--red);
-      bottom: -170px;
-      right: -110px;
-      animation-delay: -9s;
-    }
-
-    @keyframes auth-drift {
-
-      0%,
-      100% {
-        transform: translate(0, 0) scale(1);
-      }
-
-      50% {
-        transform: translate(30px, -22px) scale(1.08);
-      }
-    }
-
-    /* ---- crest: little perfume-bottle mark above the card ---- */
-    .auth-crest-wrap {
-      display: flex;
-      justify-content: center;
-      margin-bottom: -30px;
-      position: relative;
-      z-index: 2;
-    }
-
-    .auth-crest {
-      position: relative;
-      width: 76px;
-      height: 76px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-md);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .auth-crest::before {
-      content: "";
-      position: absolute;
-      inset: -5px;
-      border-radius: 50%;
-      background: conic-gradient(from 0deg, var(--blue), var(--red), var(--blue));
-      opacity: 0.55;
-      z-index: -1;
-      animation: auth-ring-spin 10s linear infinite;
-    }
-
-    .auth-crest::after {
-      content: "";
-      position: absolute;
-      inset: 2px;
-      border-radius: 50%;
-      background: var(--surface);
-    }
-
-    .auth-crest svg {
-      position: relative;
-      z-index: 1;
-      width: 30px;
-      height: 30px;
-      color: var(--accent-ink);
-    }
-
-    @keyframes auth-ring-spin {
-      to {
-        transform: rotate(360deg);
-      }
     }
 
     .auth-card {
-      width: 100%;
-      max-width: 402px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-lg);
-      padding: 46px 34px 32px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .auth-brand {
-      text-align: center;
-      margin-bottom: 6px;
-    }
-
-    .auth-brand .mark {
-      font-family: 'Inter', sans-serif;
-      font-size: 23px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-    }
-
-    .auth-brand .mark .bm-blue {
-      color: var(--blue);
-    }
-
-    .auth-brand .mark .bm-red {
-      color: var(--red);
-    }
-
-    .auth-brand .mark span:not(.bm-blue):not(.bm-red) {
-      color: var(--ink-faint);
-      font-style: italic;
-      font-weight: 500;
-    }
-
-    .auth-brand .sub {
-      font-size: 11.5px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--ink-faint);
-      margin-top: 5px;
-      font-weight: 600;
+      max-width: 380px;
     }
 
     /* style.css styles .flashes as a fixed top-right (or, on narrow
-       viewports, fixed full-width top) toast stack — meant for the
-       dashboard topbar. This page has no topbar and the card is tall
-       enough to fill most of the viewport, so a floating/fixed toast
-       here always risks overlapping the crest or brand on shorter
-       screens. Render it as a normal inline banner in the card flow
-       instead — it just pushes the rest of the form down a bit.
-       Animations are left alone: main.js waits for the flash-exit
-       animation's `animationend` event to actually remove the element
-       after 5s, so animation must stay on. */
+       viewports, fixed full-width top) toast stack, meant for the
+       dashboard topbar. Rendered inline in the card flow here instead
+       so it can't overlap anything on a short viewport — it just
+       pushes the rest of the form down a bit. Animations are left
+       alone: main.js waits for the flash-exit animation's
+       `animationend` event to actually remove the element after 5s. */
     .auth-card .flashes {
       position: static;
       width: auto;
       z-index: auto;
-      margin: 0 0 20px;
+      margin: 0 0 18px;
     }
 
     .auth-card .flash {
       box-shadow: none;
     }
 
-    .auth-tagline {
-      text-align: center;
-      font-size: 12.5px;
-      color: var(--ink-soft);
-      line-height: 1.55;
-      margin: 14px 0 26px;
-      padding-bottom: 22px;
-      border-bottom: 1px dashed var(--border);
+    .auth-card-head {
+      margin-bottom: 22px;
     }
 
+    .auth-card-head h1 {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .auth-card-head p {
+      font-size: 12.5px;
+      color: var(--ink-faint);
+      margin: 0;
+    }
+
+    /* ---- role switch (Branch / HQ Admin pill toggle) ---- */
     .role-switch {
       position: relative;
       display: flex;
@@ -242,8 +91,7 @@
       border: 1px solid var(--border);
       border-radius: 99px;
       padding: 3px;
-      margin: 0 auto 24px;
-      max-width: 300px;
+      margin: 0 0 22px;
     }
 
     .role-option {
@@ -338,14 +186,12 @@
       padding-right: 40px;
     }
 
-    /* Several mobile/desktop browsers (Edge, Chrome, Samsung Internet)
-       now inject their own built-in "reveal password" eye icon inside
-       type="password" fields. Left alone, it sits right next to our
-       own reveal-btn and looks like a doubled icon — most visible on
-       mobile, where that native control is more common. These
-       vendor-specific pseudo-elements suppress it so ours is the only
-       one shown; selectors a given engine doesn't recognize are
-       simply ignored, so this is safe across browsers. */
+    /* Several browsers now inject their own built-in "reveal password"
+       eye icon inside type="password" fields. Left alone, it sits
+       right next to our own reveal-btn and looks like a doubled icon.
+       These vendor-specific pseudo-elements suppress it so ours is
+       the only one shown; a selector a given engine doesn't recognize
+       is simply ignored, so this is safe across browsers. */
     .input-shell input[type="password"]::-ms-reveal,
     .input-shell input[type="password"]::-ms-clear,
     .input-shell input[type="password"]::-webkit-reveal,
@@ -438,155 +284,46 @@
       animation: auth-shake 0.4s;
     }
 
-    .auth-card .btn {
-      width: 100%;
-      margin-top: 6px;
-      padding: 11px;
+    /* ---- inline button spinner shown while the sign-in request is
+       submitting, instead of a full-page takeover screen ---- */
+    .btn-spinner {
+      display: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-top-color: #fff;
+      animation: btn-spin 0.7s linear infinite;
+      margin-right: 8px;
+      vertical-align: -2px;
     }
 
-    .btn-primary[disabled] {
-      opacity: 0.7;
+    .btn-accent[disabled] {
+      opacity: 0.85;
       cursor: not-allowed;
+    }
+
+    .btn-accent[disabled] .btn-spinner {
+      display: inline-block;
+    }
+
+    @keyframes btn-spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .auth-hint {
       text-align: center;
       font-size: 12px;
       color: var(--ink-faint);
-      margin-top: 22px;
+      margin-top: 20px;
       line-height: 1.6;
-    }
-
-    .page-loading {
-      position: fixed;
-      inset: 0;
-      z-index: 10000;
-      background: var(--bg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.35s ease;
-      overflow: hidden;
-    }
-
-    .page-loading.visible {
-      opacity: 1;
-      pointer-events: all;
-    }
-
-    /* Same twin-glow + dot-grid backdrop as the sign-in screen, so the
-       hand-off from card to loading state doesn't feel like a jump cut. */
-    .page-loading::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
-      background-size: 26px 26px;
-      opacity: 0.35;
-      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 40%, transparent 85%);
-    }
-
-    .page-loading .auth-glow {
-      animation-duration: 12s;
-    }
-
-    .page-loading-inner {
-      position: relative;
-      z-index: 1;
-      text-align: center;
-    }
-
-    .page-loading-crest {
-      position: relative;
-      width: 68px;
-      height: 68px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-md);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 22px;
-    }
-
-    .page-loading-crest::before {
-      content: "";
-      position: absolute;
-      inset: -5px;
-      border-radius: 50%;
-      background: conic-gradient(from 0deg, var(--blue), var(--red), var(--blue));
-      z-index: -1;
-      animation: auth-ring-spin 1.4s linear infinite;
-    }
-
-    .page-loading-crest::after {
-      content: "";
-      position: absolute;
-      inset: 2px;
-      border-radius: 50%;
-      background: var(--surface);
-    }
-
-    .page-loading-crest svg {
-      position: relative;
-      z-index: 1;
-      width: 26px;
-      height: 26px;
-      color: var(--accent-ink);
-    }
-
-    .page-loading .mark {
-      font-family: 'Inter', sans-serif;
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 10px;
-      color: var(--ink);
-    }
-
-    .page-loading .mark .bm-blue { color: var(--blue); }
-    .page-loading .mark .bm-red { color: var(--red); }
-    .page-loading .mark span:not(.bm-blue):not(.bm-red) {
-      color: var(--ink-faint);
-      font-style: italic;
-      font-weight: 500;
-    }
-
-    .page-loading-text {
-      font-size: 12.5px;
-      color: var(--ink-faint);
-      letter-spacing: 0.02em;
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-    }
-
-    .page-loading-text .dot {
-      animation: page-loading-dot 1.3s infinite;
-      opacity: 0.25;
-    }
-
-    .page-loading-text .dot:nth-child(2) { animation-delay: 0.15s; }
-    .page-loading-text .dot:nth-child(3) { animation-delay: 0.3s; }
-
-    @keyframes page-loading-dot {
-
-      0%,
-      100% {
-        opacity: 0.25;
-      }
-
-      40% {
-        opacity: 1;
-      }
     }
 
     @media (max-width: 460px) {
       .auth-card {
-        padding: 42px 22px 26px;
+        padding: 30px 22px 26px;
       }
     }
   </style>
@@ -599,31 +336,41 @@
   </button>
 
   <div class="auth-shell">
-    <div class="auth-backdrop" aria-hidden="true">
-      <div class="auth-glow auth-glow-blue"></div>
-      <div class="auth-glow auth-glow-red"></div>
+    <div class="auth-visual">
+      <div class="auth-blob auth-blob-blue"></div>
+      <div class="auth-blob auth-blob-red"></div>
+      <div class="auth-visual-inner">
+        <div class="brand-top" style="margin-bottom: 6px;">
+          <div class="brand-logo brand-logo-lg" aria-hidden="true">
+            <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
+          </div>
+          <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
+        </div>
+        <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
+        <div class="auth-visual-tagline">One system for HQ and every branch — stock, requests, and sales, all in sync.</div>
+        <ul class="auth-visual-points">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Live stock levels across HQ and every branch</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Review and dispatch stock requests with full traceability</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Every sale, delivery, and admin action logged for audit</span>
+          </li>
+        </ul>
+      </div>
     </div>
 
-    <div style="width:100%; max-width:402px;">
-      <div class="auth-crest-wrap">
-        <div class="auth-crest" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M10 2h4" stroke-linecap="round"/>
-            <path d="M11 2v3.2" stroke-linecap="round"/>
-            <path d="M13 2v3.2" stroke-linecap="round"/>
-            <path d="M9 5.2h6l1.4 2.6c.4.7.6 1.5.6 2.3V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8.9c0-.8.2-1.6.6-2.3L9 5.2z"/>
-            <path d="M7.4 12.5h9.2" stroke-linecap="round"/>
-            <path d="M19.2 6.3l.6 1.4M20.6 5.7l-.6 1.4" stroke-linecap="round"/>
-          </svg>
+    <div class="auth-form-col">
+      <div class="auth-card" id="authCard">
+        <div class="auth-card-head">
+          <h1>Sign in</h1>
+          <p>Use your HQ Admin or branch account to continue.</p>
         </div>
-      </div>
-
-      <div class="auth-card">
-        <div class="auth-brand">
-          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
-          <div class="sub">Scents · Inventory System</div>
-        </div>
-        <p class="auth-tagline">Sign in to track stock, requests, and sales across HQ and every branch.</p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -694,8 +441,10 @@
               <span>Enter your password.</span>
             </div>
           </div>
-          <button type="submit" class="btn btn-accent" id="submit-btn">Sign in as <span
-              id="submit-role-label">Branch</span></button>
+          <button type="submit" class="btn btn-accent" id="submit-btn">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span id="submit-btn-label">Sign in as <span id="submit-role-label">Branch</span></span>
+          </button>
         </form>
 
         <div class="auth-hint" id="auth-hint">
@@ -705,61 +454,25 @@
     </div>
   </div>
 
-  <div class="page-loading" id="page-loading" aria-hidden="true">
-    <div class="auth-glow auth-glow-blue"></div>
-    <div class="auth-glow auth-glow-red"></div>
-    <div class="page-loading-inner">
-      <div class="page-loading-crest">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-          <path d="M10 2h4" stroke-linecap="round"/>
-          <path d="M11 2v3.2" stroke-linecap="round"/>
-          <path d="M13 2v3.2" stroke-linecap="round"/>
-          <path d="M9 5.2h6l1.4 2.6c.4.7.6 1.5.6 2.3V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8.9c0-.8.2-1.6.6-2.3L9 5.2z"/>
-          <path d="M7.4 12.5h9.2" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
-      <div class="page-loading-text">Signing you in<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
-    </div>
-  </div>
-
   <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   <script>
     (function () {
       var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (window.Motion && !reduceMotion) {
-        var card = document.querySelector('.auth-card');
-        var crest = document.querySelector('.auth-crest-wrap');
-        var toggle = document.querySelector('.theme-toggle-fixed');
+        var card = document.getElementById('authCard');
         var cardAnim = window.Motion.animate(
           card,
-          { opacity: [0, 1], transform: ['translateY(14px) scale(0.98)', 'translateY(0px) scale(1)'] },
-          { duration: 0.5, easing: [0.16, 1, 0.3, 1] }
+          { opacity: [0, 1], transform: ['translateY(10px)', 'translateY(0px)'] },
+          { duration: 0.4, easing: [0.16, 1, 0.3, 1] }
         );
         // Submitting the form navigates the page away, which can cancel
-        // these animations mid-flight and reject Motion's (thenable)
+        // this animation mid-flight and reject Motion's (thenable)
         // controls with an AbortError. Swallow it — it's expected here,
         // not a real failure — rather than leave an unhandled promise
         // rejection in the console.
         if (cardAnim && typeof cardAnim.then === 'function') {
           cardAnim.then(null, function () {});
-        }
-        if (crest) {
-          var crestAnim = window.Motion.animate(
-            crest,
-            { opacity: [0, 1], transform: ['translateY(-8px) scale(0.85)', 'translateY(0px) scale(1)'] },
-            { duration: 0.5, delay: 0.1, easing: [0.16, 1, 0.3, 1] }
-          );
-          if (crestAnim && typeof crestAnim.then === 'function') {
-            crestAnim.then(null, function () {});
-          }
-        }
-        if (toggle) {
-          var toggleAnim = window.Motion.animate(toggle, { opacity: [0, 1] }, { duration: 0.4, delay: 0.15 });
-          if (toggleAnim && typeof toggleAnim.then === 'function') {
-            toggleAnim.then(null, function () {});
-          }
         }
       }
     })();
@@ -809,8 +522,9 @@
 
       // ---- Validation ----
       var form = document.getElementById('login-form');
-      var card = document.querySelector('.auth-card');
+      var card = document.getElementById('authCard');
       var submitBtn = document.getElementById('submit-btn');
+      var submitLabel = document.getElementById('submit-btn-label');
       var usernameInput = document.getElementById('username');
 
       var fields = [
@@ -879,11 +593,11 @@
         if (form.dataset.pendingSubmit === 'true') return;
         e.preventDefault();
 
-        // Prevent double submission while the request is in flight.
+        // Prevent double submission while the request is in flight —
+        // an inline spinner in the button itself, rather than a
+        // full-page takeover, keeps the transition understated.
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Signing in…';
-
-        document.getElementById('page-loading').classList.add('visible');
+        submitLabel.textContent = 'Signing in…';
 
         form.dataset.pendingSubmit = 'true';
         form.submit();

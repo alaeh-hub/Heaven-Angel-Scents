@@ -72,36 +72,40 @@
   New's amber), On Hold borrows "inactive" gray (paused, not urgent),
   Declined borrows "rejected" red (didn't convert, distinct from New). #}
   {% macro inquiry_status_badge(status) %}
-{% set map = {
+  {% set map = {
   'New': 'pending', 'Contacted': 'transit', 'Follow-up': 'unisex',
   'On Hold': 'inactive', 'Closed': 'fulfilled', 'Declined': 'rejected'
-} %}
-<span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
-{% endmacro %}
+  } %}
+  <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
+  {% endmacro %}
 
-{% macro discontinued_badge() %}
+  {% macro discontinued_badge() %}
   <span class="badge badge-inactive" title="No longer available to request or sell">Discontinued</span>
   {% endmacro %}
 
+
   {% macro action_label(action) %}
   {% set map = {
-  'create_account': 'Account created',
-  'toggle_user': 'Account status changed',
-  'reset_password': 'Password reset',
-  'add_product': 'Product added',
-  'edit_product': 'Product edited',
-  'add_branch': 'Branch added',
-  'add_material': 'Material added',
-  'edit_material': 'Material edited',
-  'add_supplier': 'Supplier added',
-  'edit_supplier': 'Supplier edited',
-  'add_partner': 'Partner added',
-  'add_partner_investment': 'Partner investment logged',
-  'add_package': 'Package created',
-  'edit_package': 'Package edited',
-  'update_inquiry_status': 'Partner inquiry status changed',
-  'update_inquiry_remarks': 'Partner inquiry remarks updated'
+  'create_account': 'Account Created',
+  'toggle_user': 'Status Changed',
+  'reset_password': 'Password Reset',
+  'add_product': 'Product Added',
+  'edit_product': 'Product Edited',
+  'add_branch': 'Branch Added',
+  'add_material': 'Material Added',
+  'edit_material': 'Material Edited',
+  'add_supplier': 'Supplier Added',
+  'edit_supplier': 'Supplier Edited',
+  'add_partner': 'Partner Added',
+  'add_partner_investment': 'Investment Logged',
+  'add_package': 'Package Created',
+  'edit_package': 'Package Edited',
+  'update_inquiry_status': 'Inquiry Updated',
+  'update_inquiry_remarks': 'Remarks Updated',
+  'approve_ai_stock_request': 'AI Draft Approved',
+  'reject_ai_stock_request': 'AI Draft Rejected'
   } %}
+
   {{ map.get(action, action|replace('_', ' ')|capitalize) }}
   {% endmacro %}
 
@@ -112,7 +116,8 @@
   'add_package': 'fulfilled',
   'toggle_user': 'pending', 'edit_product': 'transit', 'edit_material': 'transit', 'edit_supplier': 'transit',
   'reset_password': 'transit', 'edit_package': 'transit', 'update_inquiry_status': 'transit',
-  'update_inquiry_remarks': 'transit'
+  'update_inquiry_remarks': 'transit', 'approve_ai_stock_request': 'fulfilled',
+  'reject_ai_stock_request': 'rejected'
   } %}
   <span class="badge badge-{{ map.get(action, 'pending') }}">{{ action_label(action) }}</span>
   {% endmacro %}

@@ -2,512 +2,540 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
-  <script>
-    // Set the theme attribute before the stylesheet even loads, so
-    // there's no flash of the light theme on a person who's chosen
-    // dark. Kept intentionally tiny and inline (not in main.js, which
-    // loads at the end of body) — this has to run before first paint.
-    (function () {
-      try {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch (e) { }
-    })();
-  </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <style>
-    .notif-wrap {
-      position: relative;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+    <script>
+        // Set the theme attribute before the stylesheet even loads, so
+        // there's no flash of the light theme on a person who's chosen
+        // dark. Kept intentionally tiny and inline (not in main.js, which
+        // loads at the end of body) — this has to run before first paint.
+        (function () {
+            try {
+                var stored = localStorage.getItem('theme');
+                var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) { }
+        })();
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .notif-wrap {
+            position: relative;
+        }
 
-    .notif-toggle {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 38px;
-      height: 38px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      border-radius: 999px;
-      cursor: pointer;
-      color: var(--ink-faint);
-    }
+        .notif-toggle {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border: 1px solid var(--border-strong);
+            background: var(--surface);
+            border-radius: 999px;
+            cursor: pointer;
+            color: var(--ink-faint);
+            box-shadow: var(--shadow-sm);
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
 
-    .notif-toggle svg {
-      width: 18px;
-      height: 18px;
-    }
+        .notif-toggle svg {
+            width: 17px;
+            height: 17px;
+        }
 
-    .notif-toggle:hover {
-      color: var(--ink);
-    }
+        .notif-toggle:hover {
+            color: var(--accent-ink);
+            border-color: var(--accent);
+        }
 
-    .notif-badge {
-      position: absolute;
-      top: -4px;
-      right: -4px;
-      min-width: 16px;
-      height: 16px;
-      padding: 0 4px;
-      background: var(--danger);
-      color: #fff;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-      align-items: center;
-      justify-content: center;
-      display: none;
-    }
+        .notif-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
+            background: var(--danger);
+            color: #fff;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
+            align-items: center;
+            justify-content: center;
+            display: none;
+            box-shadow: 0 0 0 2px var(--surface);
+        }
 
-    .notif-panel {
-      position: absolute;
-      top: calc(100% + 8px);
-      right: 0;
-      width: 320px;
-      max-height: 380px;
-      overflow-y: auto;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm, 10px);
-      box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
-      z-index: 60;
-      display: none;
-    }
+        .notif-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 320px;
+            max-height: 380px;
+            overflow-y: auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 10px);
+            box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
+            z-index: 60;
+            display: none;
+        }
 
-    .notif-panel.open {
-      display: block;
-    }
+        .notif-panel.open {
+            display: block;
+        }
 
-    .notif-panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-      font-size: 12.5px;
-      font-weight: 700;
-      color: var(--ink);
-    }
+        .notif-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--ink);
+        }
 
-    .notif-clear {
-      background: none;
-      border: none;
-      color: var(--ink-faint);
-      font-size: 11.5px;
-      cursor: pointer;
-    }
+        .notif-clear {
+            background: none;
+            border: none;
+            color: var(--ink-faint);
+            font-size: 11.5px;
+            cursor: pointer;
+        }
 
-    .notif-clear:hover {
-      color: var(--ink);
-    }
+        .notif-clear:hover {
+            color: var(--ink);
+        }
 
-    .notif-list {
-      padding: 6px;
-    }
+        .notif-list {
+            padding: 6px;
+        }
 
-    .notif-empty {
-      padding: 22px 12px;
-      text-align: center;
-      font-size: 12.5px;
-      color: var(--ink-faint);
-    }
+        .notif-empty {
+            padding: 22px 12px;
+            text-align: center;
+            font-size: 12.5px;
+            color: var(--ink-faint);
+        }
 
-    .notif-item {
-      display: flex;
-      gap: 8px;
-      padding: 9px 8px;
-      border-radius: 8px;
-      font-size: 12.5px;
-      color: var(--ink);
-    }
+        .notif-item {
+            display: flex;
+            gap: 8px;
+            padding: 9px 8px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            color: var(--ink);
+        }
 
-    .notif-item.unread {
-      background: var(--accent-soft, rgba(161, 122, 58, 0.08));
-    }
+        .notif-item.unread {
+            background: var(--accent-soft, rgba(161, 122, 58, 0.08));
+        }
 
-    .notif-dot {
-      flex-shrink: 0;
-      width: 7px;
-      height: 7px;
-      margin-top: 5px;
-      border-radius: 999px;
-      background: var(--ink-faint);
-    }
+        .notif-dot {
+            flex-shrink: 0;
+            width: 7px;
+            height: 7px;
+            margin-top: 5px;
+            border-radius: 999px;
+            background: var(--ink-faint);
+        }
 
-    .notif-dot.warning {
-      background: var(--danger);
-    }
+        .notif-dot.warning {
+            background: var(--danger);
+        }
 
-    .notif-dot.success {
-      background: var(--good, #4F7A5C);
-    }
+        .notif-dot.success {
+            background: var(--good, #4F7A5C);
+        }
 
-    .notif-body {
-      flex: 1;
-    }
+        .notif-body {
+            flex: 1;
+        }
 
-    .notif-time {
-      display: block;
-      font-size: 10.5px;
-      color: var(--ink-faint);
-      margin-top: 2px;
-    }
-  </style>
-  {% block head %}{% endblock %}
+        .notif-time {
+            display: block;
+            font-size: 10.5px;
+            color: var(--ink-faint);
+            margin-top: 2px;
+        }
+    </style>
+    {% block head %}{% endblock %}
 </head>
 
 <body>
-  <div class="app-shell">
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Close menu">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-        <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span>
-        </div>
-        <div class="brand-sub">Scents · Inventory System</div>
-      </div>
+    <div class="app-shell">
+        <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Close menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+                <div class="brand-top">
+                    <div class="brand-logo" aria-hidden="true">
+                        <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
+                    </div>
+                    <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span
+                            class="bm-red">Angel</span>
+                    </div>
+                </div>
+                <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
+            </div>
 
-      {% if session.role == 'Admin' %}
-      <nav class="nav-group">
-        <div class="nav-label">Overview</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.dashboard' }}"
-          href="{{ url_for('admin.dashboard') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="3" width="7" height="9" rx="1.5" />
-            <rect x="14" y="3" width="7" height="5" rx="1.5" />
-            <rect x="14" y="12" width="7" height="9" rx="1.5" />
-            <rect x="3" y="16" width="7" height="5" rx="1.5" />
-          </svg>
-          Dashboard
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Catalog &amp; Supply</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.products' }}"
-          href="{{ url_for('admin.products') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
-          </svg>
-          Products
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.production' }}"
-          href="{{ url_for('admin.production') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
-            <path d="M9 21h6" />
-          </svg>
-          Production Log
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
-          href="{{ url_for('admin.materials') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M9 3h6l1 4H8l1-4z" />
-            <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
-            <path d="M9 13h6" />
-          </svg>
-          Materials
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.branch_stock' }}"
-          href="{{ url_for('admin.branch_stock') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="3" width="7" height="7" rx="1.2" />
-            <rect x="14" y="3" width="7" height="7" rx="1.2" />
-            <rect x="3" y="14" width="7" height="7" rx="1.2" />
-            <rect x="14" y="14" width="7" height="7" rx="1.2" />
-          </svg>
-          Branch Stock
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.requests_list' }}"
-          href="{{ url_for('admin.requests_list') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
-          </svg>
-          Stock Requests
-          {% if pending_requests_count %}
-          <span class="nav-badge">{{ pending_requests_count }}</span>
-          {% endif %}
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.movement_logs' }}"
-          href="{{ url_for('admin.movement_logs') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 6h16M4 12h16M4 18h10" />
-          </svg>
-          Inventory Log
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Point of Sale</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.record_sale' }}"
-          href="{{ url_for('admin.record_sale') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="6" width="18" height="14" rx="2" />
-            <path d="M3 10h18M8 15h3" />
-          </svg>
-          Record Sale
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Organization</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.branches' }}"
-          href="{{ url_for('admin.branches') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
-          </svg>
-          Branches
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.users' }}" href="{{ url_for('admin.users') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="8" r="3.2" />
-            <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
-          </svg>
-          Accounts
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.reports' }}" href="{{ url_for('admin.reports') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 19V9M11 19V4M18 19v-7" />
-          </svg>
-          Reports
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.audit_log' }}"
-          href="{{ url_for('admin.audit_log') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M9 4h6M9 4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 10h6M9 14h4" />
-          </svg>
-          Admin Log
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Partners &amp; Distribution</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.partners' }}"
-          href="{{ url_for('admin.partners') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M8.5 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
-            <path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6" />
-            <path d="M16.5 12a3 3 0 1 0 0-6" />
-            <path d="M15 14.2c2.7.4 4.5 2.6 4.5 5.8" />
-          </svg>
-          Partners
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint in ('admin.packages', 'admin.package_detail') }}"
-          href="{{ url_for('admin.packages') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M21 8 12 3 3 8l9 5 9-5z" />
-            <path d="M3 8v8l9 5 9-5V8" />
-            <path d="M12 13v8" />
-          </svg>
-          Packages
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'admin.partner_inquiries' }}"
-          href="{{ url_for('admin.partner_inquiries') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 4h16v13H7l-3 3V4z" />
-            <path d="M8 9h8M8 12.5h5" />
-          </svg>
-          Partner Inquiries
-          {% if new_inquiries_count %}
-          <span class="nav-badge">{{ new_inquiries_count }}</span>
-          {% endif %}
-        </a>
-      </nav>
-      {% else %}
-      <nav class="nav-group">
-        <div class="nav-label">Overview</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.dashboard' }}"
-          href="{{ url_for('branch.dashboard') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="3" width="7" height="9" rx="1.5" />
-            <rect x="14" y="3" width="7" height="5" rx="1.5" />
-            <rect x="14" y="12" width="7" height="9" rx="1.5" />
-            <rect x="3" y="16" width="7" height="5" rx="1.5" />
-          </svg>
-          Dashboard
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.inventory' }}"
-          href="{{ url_for('branch.inventory') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
-          </svg>
-          My Inventory
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Supply Chain</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.request_stock' }}"
-          href="{{ url_for('branch.request_stock') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
-          </svg>
-          Request Stock
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.receive_stock' }}"
-          href="{{ url_for('branch.receive_stock') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
-          </svg>
-          Receive Shipment
-          {% if in_transit_count %}
-          <span class="nav-badge nav-badge-transit">{{ in_transit_count }}</span>
-          {% endif %}
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Point of Sale</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.record_sale' }}"
-          href="{{ url_for('branch.record_sale') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="6" width="18" height="14" rx="2" />
-            <path d="M3 10h18M8 15h3" />
-          </svg>
-          Record Sale
-        </a>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.sales_history' }}"
-          href="{{ url_for('branch.sales_history') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 19V9M11 19V4M18 19v-7" />
-          </svg>
-          Sales History
-        </a>
-      </nav>
-      <nav class="nav-group">
-        <div class="nav-label">Organization</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'branch.reports' }}"
-          href="{{ url_for('branch.reports') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 19V9M11 19V4M18 19v-7" />
-          </svg>
-          Reports
-        </a>
-      </nav>
-      {% endif %}
+            {% if session.role == 'Admin' %}
+            <nav class="nav-group">
+                <div class="nav-label">Overview</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.dashboard' }}"
+                    href="{{ url_for('admin.dashboard') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                    </svg>
+                    Dashboard
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Catalog &amp; Supply</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.products' }}"
+                    href="{{ url_for('admin.products') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
+                    </svg>
+                    Products
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.production' }}"
+                    href="{{ url_for('admin.production') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
+                        <path d="M9 21h6" />
+                    </svg>
+                    Production Log
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
+                    href="{{ url_for('admin.materials') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M9 3h6l1 4H8l1-4z" />
+                        <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
+                        <path d="M9 13h6" />
+                    </svg>
+                    Materials
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.branch_stock' }}"
+                    href="{{ url_for('admin.branch_stock') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="3" width="7" height="7" rx="1.2" />
+                        <rect x="14" y="3" width="7" height="7" rx="1.2" />
+                        <rect x="3" y="14" width="7" height="7" rx="1.2" />
+                        <rect x="14" y="14" width="7" height="7" rx="1.2" />
+                    </svg>
+                    Branch Stock
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.requests_list' }}"
+                    href="{{ url_for('admin.requests_list') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
+                    </svg>
+                    Stock Requests
+                    {% if pending_requests_count %}
+                    <span class="nav-badge">{{ pending_requests_count }}</span>
+                    {% endif %}
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.movement_logs' }}"
+                    href="{{ url_for('admin.movement_logs') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 6h16M4 12h16M4 18h10" />
+                    </svg>
+                    Inventory Log
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Point of Sale</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.record_sale' }}"
+                    href="{{ url_for('admin.record_sale') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="6" width="18" height="14" rx="2" />
+                        <path d="M3 10h18M8 15h3" />
+                    </svg>
+                    Record Sale
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Organization</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.branches' }}"
+                    href="{{ url_for('admin.branches') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
+                    </svg>
+                    Branches
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.users' }}"
+                    href="{{ url_for('admin.users') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="8" r="3.2" />
+                        <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
+                    </svg>
+                    Accounts
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.reports' }}"
+                    href="{{ url_for('admin.reports') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 19V9M11 19V4M18 19v-7" />
+                    </svg>
+                    Reports
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.audit_log' }}"
+                    href="{{ url_for('admin.audit_log') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path
+                            d="M9 4h6M9 4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 10h6M9 14h4" />
+                    </svg>
+                    Admin Log
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Partners &amp; Distribution</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.partners' }}"
+                    href="{{ url_for('admin.partners') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M8.5 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
+                        <path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6" />
+                        <path d="M16.5 12a3 3 0 1 0 0-6" />
+                        <path d="M15 14.2c2.7.4 4.5 2.6 4.5 5.8" />
+                    </svg>
+                    Partners
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint in ('admin.packages', 'admin.package_detail') }}"
+                    href="{{ url_for('admin.packages') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M21 8 12 3 3 8l9 5 9-5z" />
+                        <path d="M3 8v8l9 5 9-5V8" />
+                        <path d="M12 13v8" />
+                    </svg>
+                    Packages
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.partner_inquiries' }}"
+                    href="{{ url_for('admin.partner_inquiries') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 4h16v13H7l-3 3V4z" />
+                        <path d="M8 9h8M8 12.5h5" />
+                    </svg>
+                    Partner Inquiries
+                    {% if new_inquiries_count %}
+                    <span class="nav-badge">{{ new_inquiries_count }}</span>
+                    {% endif %}
+                </a>
+            </nav>
+            {% else %}
+            <nav class="nav-group">
+                <div class="nav-label">Overview</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.dashboard' }}"
+                    href="{{ url_for('branch.dashboard') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                    </svg>
+                    Dashboard
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.inventory' }}"
+                    href="{{ url_for('branch.inventory') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
+                    </svg>
+                    My Inventory
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Supply Chain</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.request_stock' }}"
+                    href="{{ url_for('branch.request_stock') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
+                    </svg>
+                    Request Stock
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.receive_stock' }}"
+                    href="{{ url_for('branch.receive_stock') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+                    </svg>
+                    Receive Shipment
+                    {% if in_transit_count %}
+                    <span class="nav-badge nav-badge-transit">{{ in_transit_count }}</span>
+                    {% endif %}
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Point of Sale</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.record_sale' }}"
+                    href="{{ url_for('branch.record_sale') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="6" width="18" height="14" rx="2" />
+                        <path d="M3 10h18M8 15h3" />
+                    </svg>
+                    Record Sale
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.sales_history' }}"
+                    href="{{ url_for('branch.sales_history') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 19V9M11 19V4M18 19v-7" />
+                    </svg>
+                    Sales History
+                </a>
+            </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Organization</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.reports' }}"
+                    href="{{ url_for('branch.reports') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 19V9M11 19V4M18 19v-7" />
+                    </svg>
+                    Reports
+                </a>
+            </nav>
+            {% endif %}
 
-      <nav class="nav-group">
-        <div class="nav-label">Assistant</div>
-        <a class="nav-link {{ 'active' if request.endpoint == 'ai.chat_page' }}" href="{{ url_for('ai.chat_page') }}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path
-              d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
-            <path d="M10 21h4" />
-          </svg>
-          AI Assistant
-        </a>
-      </nav>
+            <nav class="nav-group">
+                <div class="nav-label">Assistant</div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'ai.chat_page' }}"
+                    href="{{ url_for('ai.chat_page') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path
+                            d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
+                        <path d="M10 21h4" />
+                    </svg>
+                    AI Assistant
+                </a>
+            </nav>
 
-      <div class="sidebar-footer">
-        <div class="user-chip">
-          <div class="avatar">{{ session.username[0]|upper if session.username else '?' }}</div>
-          <div>
-            <div class="user-name">{{ session.username }}</div>
-            <div class="user-role">{{ session.branch_name if session.role == 'Branch' else 'Main Branch Administrator' }}</div>
-          </div>
-        </div>
-        <div class="footer-actions">
-          <a class="footer-action" href="{{ url_for('auth.change_password') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="3" y="11" width="18" height="10" rx="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            <span>Change password</span>
-          </a>
-          <!-- POST, not a plain <a href>, so this goes through CSRFProtect
+            <div class="sidebar-footer">
+                <div class="user-chip">
+                    <div class="avatar">{{ session.username[0]|upper if session.username else '?' }}</div>
+                    <div>
+                        <div class="user-name">{{ session.username }}</div>
+                        <div class="user-role">{{ session.branch_name if session.role == 'Branch' else 'Main Branch
+                            Administrator' }}</div>
+                    </div>
+                </div>
+                <div class="footer-actions">
+                    <a class="footer-action" href="{{ url_for('auth.change_password') }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <rect x="3" y="11" width="18" height="10" rx="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        <span>Change password</span>
+                    </a>
+                    <!-- POST, not a plain <a href>, so this goes through CSRFProtect
                like every other state-changing form in the app — see
                auth.py's logout() for why a GET here was the actual
                hole. Reset to look identical to the .footer-action <a>
                it replaces (buttons carry their own browser chrome by
                default that a plain link doesn't). -->
-          <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="footer-action footer-action-danger"
-              style="width:100%; border:none; background:none; cursor:pointer; font:inherit; text-align:left;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-              </svg>
-              <span>Sign out</span>
-            </button>
-          </form>
-        </div>
-      </div>
-    </aside>
-
-    <div class="main">
-      <div class="topbar">
-        <div class="topbar-left">
-          <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false"
-            aria-controls="sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          </button>
-          <div>
-            <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
-            <h1>{% block heading %}{% endblock %}</h1>
-          </div>
-        </div>
-        <div class="topbar-right">
-          <div class="ph-clock" id="phClock" aria-live="off"></div>
-          {% block topbar_actions %}{% endblock %}
-          <div class="notif-wrap" id="notifWrap" data-user="{{ session.username or '' }}">
-            <button type="button" class="notif-toggle" id="notifToggle" aria-label="Notifications" aria-haspopup="true"
-              aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path
-                  d="M12 3a6 6 0 0 0-6 6c0 2.5-1 4-1.8 5.1a1 1 0 0 0 .8 1.9h14a1 1 0 0 0 .8-1.9C18 13 17 11.5 17 9a6 6 0 0 0-6-6z" />
-                <path d="M9.5 19a2.5 2.5 0 0 0 5 0" />
-              </svg>
-              <span class="notif-badge" id="notifBadge">0</span>
-            </button>
-            <div class="notif-panel" id="notifPanel" aria-hidden="true">
-              <div class="notif-panel-header">
-                <span>Notifications</span>
-                <button type="button" class="notif-clear" id="notifClear">Clear all</button>
-              </div>
-              <div class="notif-list" id="notifList">
-                <div class="notif-empty">No notifications yet.</div>
-              </div>
+                    <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <!-- footer-action-btn (style.css) resets button chrome
+                 without the `font: inherit` bug that used to make this
+                 render much bigger than "Change password" above it —
+                 see style.css's comment on .footer-action-btn. -->
+                        <button type="submit" class="footer-action footer-action-danger footer-action-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                            </svg>
+                            <span>Sign out</span>
+                        </button>
+                    </form>
+                </div>
             </div>
-          </div>
-          <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme">
-            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="4.2" />
-              <path
-                d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
-            </svg>
-            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" />
-            </svg>
-          </button>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <div class="topbar-left">
+                    <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open menu"
+                        aria-expanded="false" aria-controls="sidebar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M4 7h16M4 12h16M4 17h16" />
+                        </svg>
+                    </button>
+                    <div>
+                        <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
+                        <h1>{% block heading %}{% endblock %}</h1>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div class="clock-chip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 7.5v4.7l3 1.8" />
+                        </svg>
+                        <span class="ph-clock" id="phClock" aria-live="off"></span>
+                    </div>
+                    <span class="topbar-divider" aria-hidden="true"></span>
+                    {% block topbar_actions %}{% endblock %}
+                    <div class="notif-wrap" id="notifWrap" data-user="{{ session.username or '' }}">
+                        <button type="button" class="notif-toggle" id="notifToggle" aria-label="Notifications"
+                            aria-haspopup="true" aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path
+                                    d="M12 3a6 6 0 0 0-6 6c0 2.5-1 4-1.8 5.1a1 1 0 0 0 .8 1.9h14a1 1 0 0 0 .8-1.9C18 13 17 11.5 17 9a6 6 0 0 0-6-6z" />
+                                <path d="M9.5 19a2.5 2.5 0 0 0 5 0" />
+                            </svg>
+                            <span class="notif-badge" id="notifBadge">0</span>
+                        </button>
+                        <div class="notif-panel" id="notifPanel" aria-hidden="true">
+                            <div class="notif-panel-header">
+                                <span>Notifications</span>
+                                <button type="button" class="notif-clear" id="notifClear">Clear all</button>
+                            </div>
+                            <div class="notif-list" id="notifList">
+                                <div class="notif-empty">No notifications yet.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="theme-toggle" id="themeToggle"
+                        aria-label="Switch between light and dark theme">
+                        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <circle cx="12" cy="12" r="4.2" />
+                            <path
+                                d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
+                        </svg>
+                        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flashes">
+                {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
         </div>
-      </div>
-
-      {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-      <div class="flashes">
-        {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
-      {% endwith %}
-
-      <div class="content">
-        {% block content %}{% endblock %}
-      </div>
     </div>
-  </div>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  {% block scripts %}{% endblock %}
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
 </body>
 
 </html>

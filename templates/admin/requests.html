@@ -31,7 +31,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table table-fixed">
+        <colgroup>
+          <col style="width:12%"><col style="width:16%"><col style="width:16%">
+          <col style="width:10%"><col style="width:14%"><col style="width:12%"><col style="width:20%">
+        </colgroup>
         <thead>
           <tr>
             <th>Requested</th>
@@ -59,9 +63,20 @@
               {% if r.status == 'Pending' %}
               <div class="inline-form">
                 <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}"
-                  class="btn btn-accent btn-sm">Review &amp; dispatch</a>
+                  class="btn btn-accent btn-sm">Review</a>
+                <!-- Deliberately just "Review", not "Review & dispatch":
+                     this button doesn't dispatch anything itself — it
+                     opens the delivery's own page where dispatch
+                     quantities are set and the actual "Dispatch this
+                     delivery" action happens (see request_detail.html).
+                     Shorter label, and a more accurate one. -->
+
+                <!-- Unified confirm pattern: main.js delegates to any
+                     form[data-confirm] on submit and shows this text —
+                     no per-page onsubmit/JS needed. See also
+                     request_detail.html, users.html, package_detail.html. -->
                 <form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}"
-                  onsubmit="return confirm('Reject {{ r.delivery_number }}? This can\'t be undone.');">
+                  data-confirm="Reject {{ r.delivery_number }}? This can't be undone.">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger btn-sm">Reject</button>
                 </form>

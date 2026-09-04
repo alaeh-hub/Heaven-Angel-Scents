@@ -10,9 +10,11 @@
   --border: #E5E8EF;
   --border-strong: #D2D7E2;
 
-  --blue: #2E5AF0;
-  --blue-ink: #1D3BC4;
-  --blue-soft: #E7ECFE;
+  --blue: #1B2A63;
+  --blue-ink: #101A45;
+  --blue-soft: #E4E6F0;
+
+  --brand-navy: #1B2A63;
 
   --red: #E23A48;
   --red-ink: #B31E30;
@@ -59,9 +61,9 @@
   --border: #232733;
   --border-strong: #323848;
 
-  --blue: #6E93FF;
-  --blue-ink: #B9CBFF;
-  --blue-soft: #1B2542;
+  --blue: #58A6FF;
+  --blue-ink: #8FC7FF;
+  --blue-soft: #17273F;
 
   --red: #FF7A86;
   --red-ink: #FFB4BB;
@@ -233,6 +235,21 @@ th.num {
   font-variant-numeric: tabular-nums;
 }
 
+/* .num is only ever a quantity, price, or percentage — a value that
+   should never wrap, since a broken number ("₱850.0" / "0") is
+   actively misleading, not just untidy. It shares the inherited
+   overflow-wrap: anywhere problem from .table-fixed td (see .badge
+   and .btn below): with no white-space of its own, a number in a
+   narrow fixed column gets split mid-digit. Scoped to .num rather
+   than added to .mono/code above, since .mono alone is also used for
+   things that legitimately need to wrap (e.g. the long partner-portal
+   URL, which sets its own word-break: break-all deliberately). */
+.num,
+td.num,
+th.num {
+  white-space: nowrap;
+}
+
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -243,6 +260,7 @@ th.num {
   flex-shrink: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
+  box-shadow: 3px 0 16px -10px rgba(15, 23, 42, 0.12);
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -284,8 +302,8 @@ th.num {
   right: 22px;
   bottom: 0;
   height: 1px;
-  background: linear-gradient(90deg, var(--blue) 0%, var(--border) 55%, var(--red) 100%);
-  opacity: 0.55;
+  background: var(--brand-navy);
+  opacity: 0.5;
 }
 
 .sidebar-close {
@@ -300,12 +318,59 @@ th.num {
   display: none;
 }
 
+.brand-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+.brand-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* Same mark as the sidebar, scaled up for the login screen's larger
+   hero panel (27px brand-mark text there vs. 17px in the sidebar) so
+   the icon-to-wordmark proportion matches instead of looking
+   undersized next to the bigger text. Identical shape and gradient —
+   only the box and stroke scale, so it still reads as the same logo. */
+.brand-logo-lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.brand-logo-lg img {
+  width: 100%;
+  height: 100%;
+}
+
+.brand-text {
+  min-width: 0;
+}
+
 .brand-mark {
   font-family: 'Inter', sans-serif;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
+  min-width: 0;
 }
 
 .brand-mark .bm-blue {
@@ -328,11 +393,19 @@ th.num {
   gap: 6px;
   font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   color: var(--ink-faint);
-  margin-top: 9px;
+  margin-top: 10px;
   line-height: 1.6;
   font-weight: 600;
+  min-width: 0;
+}
+
+.brand-sub-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .brand-sub::before {
@@ -378,8 +451,8 @@ th.num {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 8.5px 11px;
+  gap: 10px;
+  padding: 6.5px 10px;
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
   font-size: 13.5px;
@@ -389,11 +462,16 @@ th.num {
 }
 
 .nav-link svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
+  padding: 6px;
+  box-sizing: content-box;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 7px;
   flex-shrink: 0;
-  opacity: 0.75;
-  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.8;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .nav-link:hover {
@@ -403,6 +481,7 @@ th.num {
 
 .nav-link:hover svg {
   opacity: 1;
+  background: color-mix(in srgb, var(--ink) 11%, transparent);
   transform: translateX(1px);
 }
 
@@ -430,6 +509,9 @@ th.num {
 
 .nav-link.active svg {
   opacity: 1;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .nav-badge {
@@ -460,6 +542,7 @@ th.num {
   margin-top: auto;
   padding: 14px 14px 16px;
   border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 16px -14px rgba(15, 23, 42, 0.16);
   position: sticky;
   bottom: 0;
   background: var(--surface);
@@ -470,22 +553,25 @@ th.num {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
-  padding: 7px 8px;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s ease;
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .user-chip:hover {
   background: var(--bg);
+  border-color: var(--border-strong);
 }
 
 .avatar {
-  width: 33px;
-  height: 33px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--plum-soft) 0%, var(--blue-soft) 100%);
-  color: var(--plum);
+  background: var(--brand-navy);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -493,7 +579,7 @@ th.num {
   font-size: 13px;
   font-family: 'Inter', sans-serif;
   flex-shrink: 0;
-  box-shadow: 0 0 0 1px var(--border-strong);
+  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 3px var(--border-strong);
 }
 
 .user-name {
@@ -541,12 +627,35 @@ th.num {
   color: var(--ink-soft);
 }
 
+/* Resets browser button chrome for the Sign out <button> (see
+   base.html) so it looks identical to the .footer-action <a> next to
+   it, WITHOUT resetting font. The inline style this replaced used the
+   `font` shorthand set to `inherit`, which — because it's inline —
+   beat .footer-action's own font-size: 12.5px below, so the button
+   inherited the page's default (much larger) body font-size instead.
+   That's why "Sign out" rendered noticeably bigger than "Change
+   password" right above it. Omitting font here lets the button pick
+   up font-size/font-weight from .footer-action normally, same as the
+   <a>. */
+.footer-action-btn {
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
 .footer-action svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
+  padding: 5px;
+  box-sizing: content-box;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 6px;
   flex-shrink: 0;
-  opacity: 0.7;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .footer-action:hover {
@@ -556,6 +665,7 @@ th.num {
 
 .footer-action:hover svg {
   opacity: 1;
+  background: color-mix(in srgb, var(--ink) 11%, transparent);
   transform: translateX(1px);
 }
 
@@ -566,6 +676,7 @@ th.num {
 
 .footer-action-danger:hover svg {
   opacity: 1;
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .main {
@@ -577,9 +688,10 @@ th.num {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 32px;
+  padding: 17px 32px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface);
+  box-shadow: 0 2px 14px -10px rgba(15, 23, 42, 0.12);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -597,12 +709,38 @@ th.num {
   gap: 10px;
 }
 
+.clock-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+
+.clock-chip svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-faint);
+  flex-shrink: 0;
+}
+
 .ph-clock {
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   white-space: nowrap;
-  padding: 0 4px;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 1px;
 }
 
 .theme-toggle {
@@ -662,15 +800,28 @@ th.num {
 
 .topbar h1 {
   font-size: 22px;
+  font-weight: 800;
 }
 
 .topbar .eyebrow {
-  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--ink-faint);
-  margin-bottom: 3px;
+  margin-bottom: 4px;
   font-weight: 700;
+}
+
+.topbar .eyebrow::before {
+  content: "";
+  width: 3px;
+  height: 11px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--brand-navy);
 }
 
 .content {
@@ -876,7 +1027,7 @@ th.num {
 .bento-hero {
   grid-column: span 2;
   grid-row: span 2;
-  background: linear-gradient(135deg, var(--blue-soft) 0%, var(--surface) 45%, var(--red-soft) 100%);
+  background: var(--blue-soft);
   justify-content: space-between;
 }
 
@@ -1054,11 +1205,11 @@ th.num {
   inset: 0 auto 0 0;
   height: 100%;
   border-radius: 99px;
-  background: linear-gradient(90deg, var(--blue) 0%, #7C9BFF 100%);
+  background: var(--brand-navy);
 }
 
 .fill-bar.low {
-  background: linear-gradient(90deg, var(--red) 0%, #FF7E8A 100%);
+  background: var(--red);
 }
 
 .fill-row {
@@ -1113,6 +1264,24 @@ th.num {
 
 .table-fixed td {
   overflow-wrap: anywhere;
+}
+
+/* `td.mono.text-soft` below (used for "When"/date-time columns) forces
+   white-space: nowrap so a short standalone date never wraps oddly in a
+   normal, un-fixed table. But white-space: nowrap also cancels out
+   overflow-wrap: anywhere above — nowrap wins, so the date can no
+   longer break at all. Inside a .table-fixed column that's often
+   narrower than the full date-time string, and since table-fixed cells
+   have no overflow clipping, the un-wrapped text spills visibly out of
+   its cell and over the next column instead of wrapping in place
+   (this is the "Admin" column overlap bug on Admin Log). This
+   re-enables wrapping specifically inside .table-fixed tables, giving
+   these date columns the same fixed-width + wrap-in-place behavior
+   every other column already gets. Plain (non-fixed) tables keep the
+   original nowrap. See also: .badge below, the identical nowrap-vs-
+   anywhere conflict from the opposite direction. */
+.table-fixed td.mono.text-soft {
+  white-space: normal;
 }
 
 table {
@@ -1235,6 +1404,19 @@ th.num {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  /* overflow-wrap: anywhere is inherited from .table-fixed td (and from
+     the mobile stacked-row layout) down into whatever text sits inside
+     a cell — including a badge's own single-word label. With no
+     white-space of its own, a badge is free game for that inherited
+     rule to break mid-word the moment its column is narrower than the
+     label, which is what produced "PENDIN"/"G" split across two lines
+     on the dashboard. white-space: nowrap keeps a badge's label
+     unbreakable regardless of what its container asks of surrounding
+     text. .badge-payroll already carried this fix on its own — it's
+     just promoted to the base class so every badge gets it, not only
+     the one variant someone happened to hit this bug on before. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge::before {
@@ -1354,6 +1536,15 @@ th.num {
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s ease, border-color 0.12s ease;
+  /* Same inherited overflow-wrap: anywhere problem as .badge above:
+     a button's own label ("Reject", "Review & dispatch") has no
+     white-space of its own, so once it sits in a narrow .table-fixed
+     action column the inherited rule breaks it mid-word ("Reje"/"ct").
+     white-space: nowrap makes a button's label unbreakable the same
+     way a badge's label is — the column should give the button room
+     or let it overflow the row height, not fragment its text. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-primary {
@@ -1516,6 +1707,14 @@ input[type="file"]:hover::-webkit-file-upload-button {
   display: flex;
   gap: 8px;
   align-items: center;
+  /* Buttons here now refuse to shrink or break their own text (see
+     .btn's white-space: nowrap above) — a good thing for a single
+     button, but two of them side by side in a narrow .table-fixed
+     action column need somewhere to go once they no longer compress.
+     flex-wrap lets a button that doesn't fit drop to its own line,
+     whole and readable, instead of the row silently overflowing the
+     cell/table edge. */
+  flex-wrap: wrap;
 }
 
 .dispatch-qty-diff {
@@ -1855,7 +2054,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 .auth-visual {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(155deg, var(--blue) 0%, #1B2E7A 48%, var(--red) 100%);
+  background: var(--brand-navy);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2035,10 +2234,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   font-family: 'Inter', sans-serif;
   font-weight: 800;
   font-size: 64px;
-  background: linear-gradient(120deg, var(--blue), var(--red));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--red);
 }
 
 .chart-card {
@@ -2089,7 +2285,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
     flex-direction: column;
   }
 
-  .ph-clock {
+  .clock-chip,
+  .topbar-divider {
     display: none;
   }
 

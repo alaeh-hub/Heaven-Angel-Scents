@@ -71,7 +71,8 @@ class Config:
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "")
     # Where new-inquiry notifications are sent — the HQ inbox that should
     # follow up with the distributor/reseller.
-    PARTNER_INQUIRY_NOTIFY_EMAIL = os.environ.get("PARTNER_INQUIRY_NOTIFY_EMAIL", "")
+    PARTNER_INQUIRY_NOTIFY_EMAIL = os.environ.get(
+        "PARTNER_INQUIRY_NOTIFY_EMAIL", "")
 
     # Partner Portal (public, unauthenticated — see routes/portal.py).
     # The portal is never linked from the login page or anywhere else in
@@ -90,7 +91,8 @@ class Config:
     # The full, current link (built from whichever value is active) is
     # always shown to admins on the Partners page so it's easy to copy
     # and send to a distributor or reseller.
-PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
+    PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
+
 
 class ProductionConfig(Config):
     """Settings for deployment behind 
@@ -102,6 +104,7 @@ class ProductionConfig(Config):
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SESSION_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = "https"
+
 
 CONFIG_BY_ENV = {
     "development": Config,

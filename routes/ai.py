@@ -170,6 +170,31 @@ def _run_agent(system_instruction, contents, tools, ctx):
             response_parts.append({"functionResponse": fr})
         contents.append({"role": "user", "parts": response_parts})
 
+    # Exhausted MAX_TOOL_ROUNDS and the model was still calling tools on
+    # the last round — but every result it asked for is already sitting
+    # in `contents`. Rather than throwing that away, make one final call
+    # with tools omitted so the model can't ask for yet another round
+    # and has to answer from what it's already gathered.
+    final_payload = {
+        "system_instruction": {"parts": [{"text": system_instruction + (
+            "\n\nYou are out of tool calls for this turn. Do not request any "
+            "more — answer now using only the tool results already above, "
+            "and say plainly if something you'd still need wasn't fetched."
+        )}]},
+        "contents": contents,
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1200},
+    }
+    data, error = _call_gemini_raw(final_payload)
+    if error:
+        return None, error
+
+    candidates = data.get("candidates") or []
+    if candidates:
+        parts = candidates[0].get("content", {}).get("parts", []) or []
+        text = "".join(p.get("text", "") for p in parts).strip()
+        if text:
+            return text, None
+
     return None, "That took too many steps to answer — try asking something more specific."
 
 

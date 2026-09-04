@@ -205,7 +205,11 @@
   <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=req.request_id) }}" id="dispatchForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
-      <table class="rd-items-table">
+      <table class="rd-items-table table-fixed">
+        <colgroup>
+          <col style="width:24%"><col style="width:12%"><col style="width:10%">
+          <col style="width:12%"><col style="width:14%"><col style="width:14%"><col style="width:14%">
+        </colgroup>
         <thead>
           <tr>
             <th>Item</th>
@@ -248,18 +252,30 @@
     <div class="rd-actions">
       <span class="rd-actions-note">Dispatch quantities default to what was requested — lower any line if HQ can't fully cover it, or set it to 0 to leave that item off this shipment.</span>
       <div class="rd-actions-buttons">
-        <button type="button" class="btn btn-danger" id="rejectBtn">Reject delivery</button>
+        <!-- Reject delivery submits rejectForm (below, outside this
+             <form>) via the button's `form` attribute — no custom JS
+             needed. rejectForm carries data-confirm, so main.js's
+             delegated form[data-confirm] handler shows the confirm()
+             prompt on submit, same pattern as requests.html /
+             users.html / package_detail.html. -->
+        <button type="submit" form="rejectForm" class="btn btn-danger">Reject delivery</button>
         <button type="submit" class="btn btn-accent">Dispatch this delivery</button>
       </div>
     </div>
   </form>
-  <form method="POST" action="{{ url_for('admin.reject_request', request_id=req.request_id) }}" id="rejectForm" style="display:none;">
+  <form method="POST" action="{{ url_for('admin.reject_request', request_id=req.request_id) }}" id="rejectForm"
+    data-confirm="Reject this delivery? This can't be undone." style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
 
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:20%"><col style="width:10%"><col style="width:8%">
+        <col style="width:9%"><col style="width:9%"><col style="width:9%">
+        <col style="width:9%"><col style="width:12%"><col style="width:14%">
+      </colgroup>
       <thead>
         <tr>
           <th>Item</th>
@@ -309,19 +325,4 @@
   </div>
   {% endif %}
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  (function () {
-    var rejectBtn = document.getElementById('rejectBtn');
-    var rejectForm = document.getElementById('rejectForm');
-    if (!rejectBtn || !rejectForm) return;
-    rejectBtn.addEventListener('click', function () {
-      if (confirm('Reject this delivery? This can\'t be undone.')) {
-        rejectForm.submit();
-      }
-    });
-  })();
-</script>
 {% endblock %}

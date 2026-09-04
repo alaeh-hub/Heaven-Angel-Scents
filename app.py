@@ -1,6 +1,8 @@
 import decimal
+import logging
 import os
 import secrets
+import sys
 
 from flask import Flask, render_template, session
 from flask_talisman import Talisman
@@ -8,7 +10,8 @@ from flask_wtf import CSRFProtect
 
 import db
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
-from extensions import limiter, ratelimit_storage_is_memory, socketio, socketio_cors_is_wildcard
+from extensions import (limiter, ratelimit_storage_is_memory, socketio,
+                        socketio_cors_is_wildcard, socketio_message_queue_is_unset)
 
 
 # Content-Security-Policy for Talisman below. 'unsafe-inline' is kept for
@@ -34,8 +37,40 @@ _CSP = {
 }
 
 
+class _ColorFormatter(logging.Formatter):
+    _COLORS = {
+        logging.DEBUG: "\x1b[36m",
+        logging.INFO: "\x1b[32m",
+        logging.WARNING: "\x1b[33m",
+        logging.ERROR: "\x1b[31m",
+        logging.CRITICAL: "\x1b[1;31m",
+    }
+    _RESET = "\x1b[0m"
+
+    def __init__(self, stream):
+        super().__init__(
+            "[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
+        self._use_color = stream.isatty()
+
+    def format(self, record):
+        message = super().format(record)
+        if not self._use_color:
+            return message
+        color = self._COLORS.get(record.levelno, self._RESET)
+        return f"{color}{message}{self._RESET}"
+
+
+def _configure_logging(app):
+    for logger_name in (app.logger.name, "werkzeug"):
+        logger = logging.getLogger(logger_name)
+        for handler in logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setFormatter(_ColorFormatter(handler.stream))
+
+
 def create_app():
     app = Flask(__name__)
+    _configure_logging(app)
     environment = os.environ.get("APP_ENV", "development").lower()
     config_class = CONFIG_BY_ENV.get(environment)
     if config_class is None:
@@ -97,6 +132,17 @@ def create_app():
                 "SOCKETIO_CORS_ALLOWED_ORIGINS is unset, so Socket.IO accepts connections from any "
                 "origin. Signed-in-only data is still protected (see sockets.py's connect handler), "
                 "but set this to your real domain(s) for defense in depth in production."
+            )
+        if socketio_message_queue_is_unset:
+            app.logger.warning(
+                "SOCKETIO_MESSAGE_QUEUE is unset, so realtime pushes (sockets.py's notify_admin / "
+                "notify_branch / notify_bell, etc.) only reach connections held by the same worker "
+                "process that triggered them. This only works correctly with a single worker "
+                "process — if you run more than one gunicorn/uwsgi worker (see wsgi.py), a tab "
+                "connected to a different worker than the one that handled a given write will miss "
+                "that realtime update until it manually refreshes. Set SOCKETIO_MESSAGE_QUEUE to a "
+                "shared redis:// URL for any multi-worker deployment — the same Redis instance used "
+                "for RATELIMIT_STORAGE_URI works fine for this too."
             )
 
     from routes.auth import bp as auth_bp

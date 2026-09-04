@@ -4,6 +4,32 @@
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Inventory Log{% endblock %}
 
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Notes value can't stretch this column — and therefore the whole
+     table — wider than the others; it wraps in place instead. */
+  .ml-table th:nth-child(1), .ml-table td:nth-child(1) { width: 14%; }
+  .ml-table th:nth-child(2), .ml-table td:nth-child(2) { width: 14%; }
+  .ml-table th:nth-child(3), .ml-table td:nth-child(3) { width: 20%; }
+  .ml-table th:nth-child(4), .ml-table td:nth-child(4) { width: 12%; }
+  .ml-table th:nth-child(5), .ml-table td:nth-child(5) { width: 10%; }
+  .ml-table th:nth-child(6), .ml-table td:nth-child(6) { width: 30%; }
+
+  @media (max-width: 680px) {
+    /* Same reasoning as Admin Log's Details column: a long Notes
+       paragraph reads better stacked (label above value) than
+       squeezed into the generic right-aligned mobile row. */
+    .ml-table td[data-label="Notes"] {
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
   <div style="padding: 4px 22px 14px;">
@@ -22,7 +48,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table table-fixed ml-table">
+        <colgroup>
+          <col style="width:14%"><col style="width:14%"><col style="width:20%">
+          <col style="width:12%"><col style="width:10%"><col style="width:30%">
+        </colgroup>
         <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th><th>Notes</th></tr></thead>
         <tbody>
           {% for l in logs %}

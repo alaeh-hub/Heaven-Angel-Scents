@@ -67,7 +67,10 @@
     </div>
     {% if low_stock %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:22%"><col style="width:38%"><col style="width:40%">
+        </colgroup>
         <thead><tr><th>Branch</th><th>Item</th><th class="num">On hand</th></tr></thead>
         <tbody>
           {% for row in low_stock %}
@@ -92,7 +95,11 @@
     </div>
     {% if recent_requests %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:24%"><col style="width:26%"><col style="width:14%">
+          <col style="width:14%"><col style="width:22%">
+        </colgroup>
         <thead><tr><th>Branch</th><th>Delivery #</th><th class="num">Items</th><th class="num">Qty</th><th>Status</th></tr></thead>
         <tbody>
           {% for r in recent_requests %}
@@ -120,7 +127,10 @@
   </div>
   {% if top_sellers %}
   <div class="table-wrap">
-    <table>
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:40px"><col style="width:46%"><col style="width:27%"><col style="width:27%">
+      </colgroup>
       <thead><tr><th style="width:36px;"></th><th>Item</th><th class="num">Units sold</th><th class="num">Revenue</th></tr></thead>
       <tbody>
         {% for p in top_sellers %}
@@ -147,7 +157,10 @@
     </div>
     {% if top_packages %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:40px"><col style="width:48%"><col style="width:26%"><col style="width:26%">
+        </colgroup>
         <thead><tr><th style="width:36px;"></th><th>Package</th><th class="num">Orders</th><th class="num">Revenue</th></tr></thead>
         <tbody>
           {% for pkg in top_packages %}
@@ -176,7 +189,11 @@
     </div>
     {% if top_partners %}
     <div class="table-wrap">
-      <table>
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:40px"><col style="width:34%"><col style="width:20%">
+          <col style="width:20%"><col style="width:26%">
+        </colgroup>
         <thead><tr><th style="width:36px;"></th><th>Partner</th><th>Type</th><th class="num">Orders</th><th class="num">Total sales</th></tr></thead>
         <tbody>
           {% for p in top_partners %}
@@ -207,7 +224,11 @@
   </div>
   {% if recent_activity %}
   <div class="table-wrap">
-    <table>
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:18%"><col style="width:18%"><col style="width:24%">
+        <col style="width:20%"><col style="width:20%">
+      </colgroup>
       <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th></tr></thead>
       <tbody>
         {% for a in recent_activity %}

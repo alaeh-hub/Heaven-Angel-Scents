@@ -72,6 +72,11 @@
   .cart-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .cart-table td {
+    overflow-wrap: anywhere;
   }
 
   .cart-table th {
@@ -100,16 +105,6 @@
   .cart-table th.num {
     text-align: right;
     white-space: nowrap;
-  }
-
-  .cart-table th:nth-child(3),
-  .cart-table td:nth-child(3) {
-    width: 110px;
-  }
-
-  .cart-table th:last-child,
-  .cart-table td:last-child {
-    width: 40px;
   }
 
   .cart-qty-input {
@@ -340,6 +335,10 @@
 
     <div class="cart-table-wrap">
       <table class="cart-table">
+        <colgroup>
+          <col style="width:32%"><col style="width:16%"><col style="width:110px">
+          <col style="width:20%"><col style="width:20%"><col style="width:40px">
+        </colgroup>
         <thead>
           <tr>
             <th>Item</th>

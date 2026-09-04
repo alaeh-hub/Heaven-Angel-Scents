@@ -460,14 +460,15 @@ def record_sale():
 
     payment_method covers employees who take product for themselves
     where the cost is deducted from their salary instead of paid in
-    cash — see buyer_user_id on the sales table.
+    cash — see buyer_name on the sales table (free text, not tied to
+    a login account; buyer_user_id is a separate, currently-unused FK).
     """
     bid = _branch_id()
     if request.method == "POST":
         sku = request.form.get("sku")
         sale_type = request.form.get("sale_type")
         payment_method = request.form.get("payment_method")
-        raw_buyer = request.form.get("buyer_user_id", "").strip()
+        raw_buyer = request.form.get("buyer_name", "").strip()
 
         try:
             qty = parse_positive_int(

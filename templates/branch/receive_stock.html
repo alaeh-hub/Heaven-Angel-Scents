@@ -34,6 +34,11 @@
   .delivery-items-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .delivery-items-table td {
+    overflow-wrap: anywhere;
   }
 
   .delivery-items-table th {
@@ -111,6 +116,9 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="request_id" value="{{ d.request_id }}">
           <table class="delivery-items-table">
+            <colgroup>
+              <col style="width:40%"><col style="width:20%"><col style="width:20%"><col style="width:20%">
+            </colgroup>
             <thead>
               <tr>
                 <th>Item</th>

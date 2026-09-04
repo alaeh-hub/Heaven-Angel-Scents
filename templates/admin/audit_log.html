@@ -6,21 +6,27 @@
 
 {% block head %}
 <style>
-  /* Details is free text (e.g. a "remarks updated" note) with no length
-     cap of its own — one long entry used to stretch this column (and
-     therefore the whole table) far wider than every other row instead
-     of just wrapping in place. Capping the column's width and forcing
-     it to wrap keeps every row the same width regardless of how long
-     any single Details value is. */
-  .al-table th.al-col-details {
-    width: 320px;
-  }
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Details value (free text, no length cap of its own) can't stretch
+     this column — and therefore the whole table — wider than the
+     others. table-layout:fixed + overflow-wrap:anywhere (both from
+     .table-fixed) wrap it in place instead.
 
-  .al-table td.al-col-details {
-    max-width: 320px;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: 1.5;
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.al-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint a cell like "When" would stay pinned to a hardcoded
+     15% of the row instead of taking the full-width mobile layout —
+     and combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wraps every single character of something like
+     "Sep 04, 2026 02:33 PM" onto its own line. */
+  @media (min-width: 681px) {
+    .al-table th:nth-child(1), .al-table td:nth-child(1) { width: 15%; }
+    .al-table th:nth-child(2), .al-table td:nth-child(2) { width: 14%; }
+    .al-table th:nth-child(3), .al-table td:nth-child(3) { width: 17%; }
+    .al-table th:nth-child(4), .al-table td:nth-child(4) { width: 18%; }
+    .al-table th:nth-child(5), .al-table td:nth-child(5) { width: 36%; }
   }
 
   @media (max-width: 680px) {
@@ -62,7 +68,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table al-table">
+      <table class="smart-table table-fixed al-table">
+        <colgroup>
+          <col style="width:15%"><col style="width:14%"><col style="width:17%">
+          <col style="width:18%"><col style="width:36%">
+        </colgroup>
         <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th class="al-col-details">Details</th></tr></thead>
         <tbody>
           {% for l in logs %}

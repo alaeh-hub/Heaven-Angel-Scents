@@ -568,7 +568,7 @@ def record_sale():
         sku = request.form.get("sku")
         sale_type = request.form.get("sale_type")
         payment_method = request.form.get("payment_method")
-        raw_buyer = request.form.get("buyer_user_id", "").strip()
+        raw_buyer = request.form.get("buyer_name", "").strip()
 
         try:
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")

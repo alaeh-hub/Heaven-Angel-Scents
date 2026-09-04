@@ -3,74 +3,199 @@
 {% block eyebrow %}{{ 'Organization' if session.role == 'Admin' else session.branch_name }}{% endblock %}
 {% block heading %}AI-Proposed Stock Requests{% endblock %}
 
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Reasoning value (free text, no length cap of its own) can't
+     stretch this column — and therefore the whole table — wider than
+     the others. Same fix already applied to Admin Log's Details column
+     and Inventory Log's Notes column. Admin sees one extra column
+     (Branch) that Branch staff don't, so widths are set separately for
+     each case below rather than sharing one colgroup. */
+  .dr-table.dr-table-admin th:nth-child(1),
+  .dr-table.dr-table-admin td:nth-child(1) {
+    width: 10%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(2),
+  .dr-table.dr-table-admin td:nth-child(2) {
+    width: 12%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(3),
+  .dr-table.dr-table-admin td:nth-child(3) {
+    width: 12%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(4),
+  .dr-table.dr-table-admin td:nth-child(4) {
+    width: 21%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(5),
+  .dr-table.dr-table-admin td:nth-child(5) {
+    width: 23%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(6),
+  .dr-table.dr-table-admin td:nth-child(6) {
+    width: 12%;
+  }
+
+  .dr-table.dr-table-admin th:nth-child(7),
+  .dr-table.dr-table-admin td:nth-child(7) {
+    width: 10%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(1),
+  .dr-table.dr-table-branch td:nth-child(1) {
+    width: 12%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(2),
+  .dr-table.dr-table-branch td:nth-child(2) {
+    width: 14%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(3),
+  .dr-table.dr-table-branch td:nth-child(3) {
+    width: 25%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(4),
+  .dr-table.dr-table-branch td:nth-child(4) {
+    width: 27%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(5),
+  .dr-table.dr-table-branch td:nth-child(5) {
+    width: 12%;
+  }
+
+  .dr-table.dr-table-branch th:nth-child(6),
+  .dr-table.dr-table-branch td:nth-child(6) {
+    width: 10%;
+  }
+
+  @media (max-width: 680px) {
+
+    /* Same reasoning as Admin Log's Details column and Inventory Log's
+       Notes column: a long Reasoning paragraph reads better stacked
+       (label above value) than squeezed into the generic right-aligned
+       mobile row, and the multi-line Items list needs the same
+       treatment so each product line stays left-aligned and readable. */
+    .dr-table td.dr-col-reasoning,
+    .dr-table td.dr-col-items {
+      max-width: none;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card card-pad">
   <p class="text-faint" style="font-size:12.5px; margin:0;">
     The AI assistant can draft a stock request when you ask it to, or when it spots low stock —
     but nothing here is real until you approve it. Approving turns a draft into a normal
-    Pending delivery on the <a href="{{ url_for('admin.requests_list') if session.role == 'Admin' else url_for('branch.request_stock') }}">Stock Requests</a> page, exactly as if it had been requested by hand.
+    Pending delivery on the <a
+      href="{{ url_for('admin.requests_list') if session.role == 'Admin' else url_for('branch.request_stock') }}">Stock
+      Requests</a> page, exactly as if it had been requested by hand.
   </p>
 </div>
 
 <div class="card mt-24">
   <div class="card-header">
     <h2>Drafts</h2>
-    <span class="hint">{{ drafts|length }} total &middot; most recent first</span>
+    <span class="hint" id="draftsCount">{{ drafts|length }} total &middot; most recent first</span>
   </div>
   {% if drafts %}
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>When</th>
-          {% if session.role == 'Admin' %}<th>Branch</th>{% endif %}
-          <th>Proposed by</th>
-          <th>Items</th>
-          <th>Reasoning</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for d in drafts %}
-        <tr>
-          <td class="mono text-soft" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-          {% if session.role == 'Admin' %}<td data-label="Branch">{{ d.branch_name }}</td>{% endif %}
-          <td data-label="Proposed by">{{ d.created_by_username or 'AI Assistant' }}</td>
-          <td data-label="Items">
-            {% for item in d.items %}
-            <div class="item-sub">{{ item.suggested_qty }}&times; {{ item.item_name }} <span class="mono text-faint">({{ item.unit }})</span></div>
-            {% endfor %}
-          </td>
-          <td class="text-soft" style="font-size:12px; max-width:260px;" data-label="Reasoning">{{ d.reasoning or d.note or '—' }}</td>
-          <td data-label="Status">
-            <span class="badge badge-{{ 'pending' if d.status == 'Pending Review' else ('fulfilled' if d.status == 'Approved' else 'rejected') }}">{{ d.status }}</span>
-            {% if d.resulting_request_id %}<div class="item-sub">→ delivery on file</div>{% endif %}
-          </td>
-          <td data-label="">
-            {% if d.status == 'Pending Review' %}
-            <div class="inline-form">
-              <form method="POST" action="{{ url_for('ai.approve_draft', draft_id=d.draft_id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-accent btn-sm">Approve</button>
-              </form>
-              <form method="POST" action="{{ url_for('ai.reject_draft', draft_id=d.draft_id) }}"
-                onsubmit="return confirm('Reject this draft? This can\'t be undone.');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-danger btn-sm">Reject</button>
-              </form>
-            </div>
-            {% else %}
-            <span class="text-faint" style="font-size:12.5px;">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="15" data-count-target="draftsCount" data-count-label="draft">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch, item, or reasoning…"
+          autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table
+        class="smart-table table-fixed dr-table {{ 'dr-table-admin' if session.role == 'Admin' else 'dr-table-branch' }}">
+        <thead>
+          <tr>
+            <th>When</th>
+            {% if session.role == 'Admin' %}<th>Branch</th>{% endif %}
+            <th>Proposed by</th>
+            <th class="dr-col-items">Items</th>
+            <th class="dr-col-reasoning">Reasoning</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in drafts %}
+          <tr
+            data-search="{{ ((d.branch_name if session.role == 'Admin' else '') ~ ' ' ~ (d.created_by_username or 'AI Assistant') ~ ' ' ~ (d.items|map(attribute='item_name')|join(' ')) ~ ' ' ~ (d.reasoning or d.note or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            {% if session.role == 'Admin' %}<td data-label="Branch">{{ d.branch_name }}</td>{% endif %}
+            <td data-label="Proposed by">{{ d.created_by_username or 'AI Assistant' }}</td>
+            <td class="dr-col-items" data-label="Items">
+              {% for item in d.items %}
+              <div class="item-sub">{{ item.suggested_qty }}&times; {{ item.item_name }} <span
+                  class="mono text-faint">({{ item.unit }})</span></div>
+              {% endfor %}
+            </td>
+            <td class="text-soft dr-col-reasoning" style="font-size:12.5px;" data-label="Reasoning">{{ d.reasoning or
+              d.note or '—' }}</td>
+            <td data-label="Status">
+              <span
+                class="badge badge-{{ 'pending' if d.status == 'Pending Review' else ('fulfilled' if d.status == 'Approved' else 'rejected') }}">{{
+                d.status }}</span>
+              {% if d.resulting_request_id %}<div class="item-sub">&rarr; delivery on file</div>{% endif %}
+            </td>
+            <td data-label="">
+              {% if d.status == 'Pending Review' %}
+              <div class="inline-form">
+                <form method="POST" action="{{ url_for('ai.approve_draft', draft_id=d.draft_id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-accent btn-sm">Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('ai.reject_draft', draft_id=d.draft_id) }}"
+                  onsubmit="return confirm('Reject this draft? This can\'t be undone.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                </form>
+              </div>
+              {% else %}
+              <span class="text-faint" style="font-size:12.5px;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No drafts match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No AI-proposed drafts yet — ask the assistant to put together a reorder.</p></div>
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No AI-proposed drafts yet — ask the assistant to put together a reorder.</p>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

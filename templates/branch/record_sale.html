@@ -45,113 +45,132 @@
 {% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1fr 1.4fr; gap: 18px; align-items: start;">
-  <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Deducts from your branch inventory immediately.
-    </p>
-    <form method="POST" id="saleForm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="card card-pad" style="max-width:640px;">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Deducts from your branch inventory immediately.
+  </p>
+  <form method="POST" id="saleForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <div class="field">
-        <label for="productName">Product</label>
-        <select id="productName" required data-catalog='{{ inventory | tojson }}'>
-          <option value="">Select…</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="sku">Unit</label>
-        <select id="sku" name="sku" required disabled>
-          <option value="">Select a product first…</option>
-        </select>
-      </div>
-
-      <div class="form-row">
-        <div class="field">
-          <label for="qty_sold">Quantity sold</label>
-          <input type="number" id="qty_sold" name="qty_sold" min="1" required>
-        </div>
-        <div class="field">
-          <label for="unit_price">Price charged (₱)</label>
-          <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
-        </div>
-      </div>
-      <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
-
-      <div class="form-row">
-        <div class="field">
-          <label>Type</label>
-          <div class="rb-mode" id="saleTypeSwitch">
-            <button type="button" class="rb-mode-opt active" data-value="Sale">Sale</button>
-            <button type="button" class="rb-mode-opt" data-value="Refill">Refill</button>
-          </div>
-          <input type="hidden" name="sale_type" id="sale_type" value="Sale">
-        </div>
-        <div class="field">
-          <label>Payment method</label>
-          <div class="rb-mode" id="paymentSwitch">
-            <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
-            <button type="button" class="rb-mode-opt" data-value="Salary Deduction">Salary Ded.</button>
-          </div>
-          <input type="hidden" name="payment_method" id="payment_method" value="Cash">
-        </div>
-      </div>
-      <!-- AFTER -->
-      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Refill: customer's own bottle, product cost only — doesn't deduct stock.</div>
-
-      <!-- AFTER -->
-      <div class="form-row" id="buyerField" style="display:none;">
-        <div class="field" style="flex:1;">
-          <label for="buyer_user_id">Employee (Salary Deduction)</label>
-          <input type="text" id="buyer_user_id" name="buyer_user_id" placeholder="Type the employee's name…"
-            autocomplete="off" maxlength="120">
-          <div class="help">Free text — type whatever name identifies them for payroll. Not tied to a login account.
-          </div>
-        </div>
-      </div>
-
-      <!-- Customer name/address only apply to a normal cash sale to an
-           outside customer. A Salary Deduction sale is an employee taking
-           product for themselves — pairing that with a separate "customer
-           name" field invited mixing up two different people on the same
-           sale (whose name is this, the employee's or the customer's?).
-           This whole block is hidden and cleared whenever Salary
-           Deduction is selected — see the paymentSwitch wiring below. -->
-      <div id="customerFieldsWrap">
-        <div class="form-row">
-          <div class="field">
-            <label for="customer_name">Customer name <span class="text-faint">(optional)</span></label>
-            <input type="text" id="customer_name" name="customer_name" maxlength="120" autocomplete="off"
-              list="customerNameList" placeholder="Walk-in, or type a name…"
-              data-customers='{{ customers | tojson }}'>
-            <datalist id="customerNameList">
-              {% for c in customers %}
-              <option value="{{ c.name }}"></option>
-              {% endfor %}
-            </datalist>
-          </div>
-          <div class="field">
-            <label for="customer_address">Customer address <span class="text-faint">(optional)</span></label>
-            <input type="text" id="customer_address" name="customer_address" maxlength="255" autocomplete="off"
-              placeholder="Fills in automatically for a repeat customer">
-          </div>
-        </div>
-        <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Picking a name already on file fills in
-          their address from the first sale it was recorded on — edit it if it's changed.</div>
-      </div>
-
-      <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <h2>Recent sales</h2><a href="{{ url_for('branch.sales_history') }}" class="hint">full history →</a>
+    <div class="field">
+      <label for="productName">Product</label>
+      <select id="productName" required data-catalog='{{ inventory | tojson }}'>
+        <option value="">Select…</option>
+      </select>
     </div>
-    {% if recent_sales %}
+
+    <div class="field">
+      <label for="sku">Unit</label>
+      <select id="sku" name="sku" required disabled>
+        <option value="">Select a product first…</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="qty_sold">Quantity</label>
+        <input type="number" id="qty_sold" name="qty_sold" min="1" required>
+      </div>
+      <div class="field">
+        <label for="unit_price">Price charged (₱)</label>
+        <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
+      </div>
+    </div>
+    <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+
+    <div class="form-row">
+      <div class="field">
+        <label>Type</label>
+        <div class="rb-mode" id="saleTypeSwitch">
+          <button type="button" class="rb-mode-opt active" data-value="Sale">Sale</button>
+          <button type="button" class="rb-mode-opt" data-value="Refill">Refill</button>
+        </div>
+        <input type="hidden" name="sale_type" id="sale_type" value="Sale">
+      </div>
+      <div class="field">
+        <label>Payment method</label>
+        <div class="rb-mode" id="paymentSwitch">
+          <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
+          <button type="button" class="rb-mode-opt" data-value="Salary Deduction">Salary</button>
+        </div>
+        <input type="hidden" name="payment_method" id="payment_method" value="Cash">
+      </div>
+    </div>
+    <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Refill: customer's own bottle, product cost
+      only — doesn't deduct stock.</div>
+
+    <div class="form-row" id="buyerField" style="display:none;">
+      <div class="field" style="flex:1;">
+        <label for="buyer_name">Employee (Salary Deduction)</label>
+        <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee's name…" autocomplete="off"
+          maxlength="120">
+        <div class="help">Free text — type whatever name identifies them for payroll. Not tied to a login account.
+        </div>
+      </div>
+    </div>
+
+    <!-- Customer name/address only apply to a normal cash sale to an
+         outside customer. A Salary Deduction sale is an employee taking
+         product for themselves — pairing that with a separate "customer
+         name" field invited mixing up two different people on the same
+         sale (whose name is this, the employee's or the customer's?).
+         This whole block is hidden and cleared whenever Salary
+         Deduction is selected — see the paymentSwitch wiring below. -->
+    <div id="customerFieldsWrap">
+      <div class="form-row">
+        <div class="field">
+          <label for="customer_name">Customer name <span class="text-faint">(optional)</span></label>
+          <input type="text" id="customer_name" name="customer_name" maxlength="120" autocomplete="off"
+            list="customerNameList" placeholder="Walk-in, or type a name…" data-customers='{{ customers | tojson }}'>
+          <datalist id="customerNameList">
+            {% for c in customers %}
+            <option value="{{ c.name }}"></option>
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="field">
+          <label for="customer_address">Customer address <span class="text-faint">(optional)</span></label>
+          <input type="text" id="customer_address" name="customer_address" maxlength="255" autocomplete="off"
+            placeholder="Fills in automatically for a repeat customer">
+        </div>
+      </div>
+      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Picking a name already on file fills in
+        their address from the first sale it was recorded on — edit it if it's changed.</div>
+    </div>
+
+    <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
+  </form>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Recent sales</h2>
+    <span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if recent_sales|length != 1 }} · <a
+        href="{{ url_for('branch.sales_history') }}" class="text-soft">full history →</a></span>
+  </div>
+  {% if recent_sales %}
+  <div data-smart-table data-page-size="10" data-count-target="recentSalesCount" data-count-label="sale">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by item or SKU…" autocomplete="off">
+      </div>
+    </div>
     <div class="table-wrap">
-      <table>
+      <table class="smart-table table-fixed">
+        <colgroup>
+          <col style="width:12%">
+          <col style="width:22%">
+          <col style="width:10%">
+          <col style="width:8%">
+          <col style="width:12%">
+          <col style="width:12%">
+          <col style="width:16%">
+          <col style="width:8%">
+        </colgroup>
         <thead>
           <tr>
             <th>When</th>
@@ -166,9 +185,12 @@
         </thead>
         <tbody>
           {% for s in recent_sales %}
-          <tr>
+          <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
             <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
-            <td data-label="Item">{{ s.item_name }}</td>
+            <td data-label="Item">
+              <div class="item-name">{{ s.item_name }}</div>
+              <div class="item-sub mono">{{ s.sku }}</div>
+            </td>
             <td data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
             <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
             <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
@@ -181,14 +203,23 @@
           {% endfor %}
         </tbody>
       </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No sales match your search.</p>
+      </div>
     </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">—</div>
-      <p>No sales recorded yet today.</p>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
     </div>
-    {% endif %}
   </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No sales recorded yet.</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -210,7 +241,7 @@
     }
 
     var buyerField = document.getElementById('buyerField');
-    var buyerSelect = document.getElementById('buyer_user_id');
+    var buyerSelect = document.getElementById('buyer_name');
     var customerFieldsWrap = document.getElementById('customerFieldsWrap');
     var customerNameInput = document.getElementById('customer_name');
     var customerAddressInput = document.getElementById('customer_address');
