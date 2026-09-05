@@ -187,7 +187,7 @@
         <tbody>
           {% for s in recent_sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
-            <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d, %I:%M %p') }}</td>
+            <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
             <td data-label="Item">
               <div class="item-name">{{ s.item_name }}</div>
               <div class="item-sub mono">{{ s.sku }}</div>

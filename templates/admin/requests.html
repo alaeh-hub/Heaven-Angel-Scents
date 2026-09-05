@@ -84,12 +84,8 @@
               {% elif r.status == 'In Transit' %}
               <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
               {% elif r.status == 'Fulfilled' %}
-              <div class="inline-form">
-                <span class="text-faint" style="font-size:12.5px;">received {{ r.total_received }}{% if r.total_damaged
-                  %}, {{ r.total_damaged }} damaged{% endif %}</span>
-                <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}"
-                  class="btn btn-ghost btn-sm">Receipt</a>
-              </div>
+              <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}"
+                class="btn btn-ghost btn-sm">Receipt</a>
               {% else %}
               <span class="text-faint" style="font-size:12.5px;">—</span>
               {% endif %}

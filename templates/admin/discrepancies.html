@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Discrepancies{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Discrepancies{% endblock %}
+
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Notes value can't stretch this column — and therefore the whole
+     table — wider than the others; it wraps in place instead. Same
+     pattern as movement_logs.html's .ml-table. */
+  .dc-table th:nth-child(1), .dc-table td:nth-child(1) { width: 12%; }
+  .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
+  .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 12%; }
+  .dc-table th:nth-child(4), .dc-table td:nth-child(4) { width: 16%; }
+  .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 10%; }
+  .dc-table th:nth-child(6), .dc-table td:nth-child(6) { width: 8%; }
+  .dc-table th:nth-child(7), .dc-table td:nth-child(7) { width: 28%; }
+
+  @media (max-width: 680px) {
+    /* Same reasoning as Admin Log / Inventory Log's Notes/Details
+       column: a long paragraph reads better stacked (label above
+       value) than squeezed into the generic right-aligned mobile row. */
+    .dc-table td.dc-col-notes {
+      max-width: none;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if totals.discrepancy_count else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
+    <div class="stat-label">Total discrepancies</div>
+    <div class="stat-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
+    <div class="stat-foot">across every branch, all-time</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-red">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+    </div>
+    <div class="stat-label">Damaged units</div>
+    <div class="stat-value danger">{{ totals.damaged_units }}</div>
+    <div class="stat-foot">reported damaged at receipt</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-neutral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
+    </div>
+    <div class="stat-label">Shortfall units</div>
+    <div class="stat-value">{{ totals.shortfall_units }}</div>
+    <div class="stat-foot">dispatched but never received</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>By branch</h2>
+    <span class="hint">sorted by most discrepancies</span>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      A branch high on this list — especially with damage spread across several deliveries rather than one bad
+      shipment — is worth a closer look: a courier problem on that route, or a handling issue at the branch itself.
+    </p>
+  </div>
+  {% if summary %}
+  <div class="table-wrap">
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:28%"><col style="width:18%"><col style="width:18%">
+        <col style="width:18%"><col style="width:18%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th class="num">Deliveries affected</th>
+          <th class="num">Damaged units</th>
+          <th class="num">Shortfall units</th>
+          <th class="num">Total discrepancies</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in summary %}
+        <tr>
+          <td class="item-name" data-label="Branch">{{ s.branch_name }}</td>
+          <td class="num mono" data-label="Deliveries affected">{{ s.deliveries_affected }}</td>
+          <td class="num mono {{ 'qty-down' if s.damaged_units }}" data-label="Damaged units">{{ s.damaged_units }}</td>
+          <td class="num mono {{ 'qty-down' if s.shortfall_units }}" data-label="Shortfall units">{{ s.shortfall_units }}</td>
+          <td class="num mono" data-label="Total discrepancies">{{ s.discrepancy_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No branches yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="tabs">
+  <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.discrepancies') }}">All branches</a>
+  {% for b in branch_list %}
+  <a class="tab {{ 'active' if branch_filter == b.branch_id|string }}"
+    href="{{ url_for('admin.discrepancies', branch_id=b.branch_id) }}">{{ b.branch_name }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Discrepancy log</h2>
+    <span class="hint">damage &amp; shortfall &middot; last 300</span>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Every DAMAGE and ADJUSTMENT entry tied to a delivery, across every branch. This is the fleet-wide rollup of
+      what each branch's own <em>Discrepancies</em> page shows scoped to itself — open a delivery number below,
+      or its receipt once Fulfilled, for the full per-item breakdown.
+    </p>
+  </div>
+  {% if logs %}
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch, delivery #, item, or notes…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed dc-table">
+        <colgroup>
+          <col style="width:12%"><col style="width:14%"><col style="width:12%">
+          <col style="width:16%"><col style="width:10%"><col style="width:8%"><col style="width:28%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Branch</th>
+            <th>Delivery #</th>
+            <th>Item</th>
+            <th>Type</th>
+            <th class="num">Change</th>
+            <th class="dc-col-notes">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+          <tr data-search="{{ (l.branch_name ~ ' ' ~ (l.delivery_number or '') ~ ' ' ~ l.item_name ~ ' ' ~ l.movement_type ~ ' ' ~ (l.notes or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Branch">{{ l.branch_name }}</td>
+            <td data-label="Delivery #">
+              {% if l.reference_id %}
+              <a href="{{ url_for('admin.review_request', request_id=l.reference_id) }}" class="mono item-name">{{ l.delivery_number or ('#' ~ l.reference_id) }}</a>
+              {% else %}
+              <span class="text-faint">—</span>
+              {% endif %}
+            </td>
+            <td data-label="Item">{{ l.item_name }}</td>
+            <td data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
+            <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
+            <td class="text-soft dc-col-notes" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No discrepancies match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">✓</div><p>No damage or shortfall reported on any delivery{{ '' if branch_filter == 'all' else ' for this branch' }}.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

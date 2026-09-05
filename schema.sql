@@ -1095,3 +1095,54 @@ CREATE TABLE IF NOT EXISTS ai_stock_draft_items (
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
     INDEX idx_ai_stock_draft_items_draft (draft_id)
 );
+
+-- ----------------------------------------------------------------------------
+-- 21. Login Activity — every sign-in attempt, successful or not
+--
+--     Nothing previously tracked sign-ins or failed attempts at all —
+--     admin_actions only ever logs account/product/branch *changes* an
+--     already-authenticated admin makes, not the act of signing in
+--     itself. This is a separate, append-only table for that: one row
+--     per submission of the login form (see routes/auth.py's login()),
+--     whether it succeeded or not.
+--
+--     user_id is nullable and ON DELETE SET NULL (same "kept for
+--     traceability" pattern as admin_actions.actor_user_id) because a
+--     failed attempt very often won't match a real account at all —
+--     a typo'd username, or someone probing for valid logins — so this
+--     also stores whatever username/role was actually typed
+--     (username_attempted / role_attempted) regardless of whether it
+--     matched anything, which user_id alone could never capture for a
+--     failed attempt.
+--
+--     failure_reason is a short fixed label (see
+--     routes/auth.py's _LOGIN_FAILURE_REASONS), not a free-text
+--     message — keeps this filterable/groupable rather than every row
+--     carrying a slightly different hand-written string.
+--
+--     ip_address is whatever the WSGI layer reports as the remote
+--     address (request.remote_addr) — this app doesn't sit behind a
+--     trusted reverse proxy that sets X-Forwarded-For today, so this
+--     column is deliberately not trusting that header. If a proxy is
+--     added later, populate it from the proxy's real client-IP header
+--     instead once that's actually trustworthy.
+--
+--     Being a brand-new table, a plain guarded CREATE TABLE IF NOT
+--     EXISTS is sufficient and idempotent on its own, same as
+--     ai_stock_drafts above.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS login_activity (
+    activity_id       BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id           INT NULL,
+    username_attempted VARCHAR(80) NOT NULL,
+    role_attempted    VARCHAR(20) NOT NULL,
+    success           BOOLEAN NOT NULL,
+    failure_reason    VARCHAR(30) NULL,
+    ip_address        VARCHAR(45) NULL,
+    user_agent        VARCHAR(255) NULL,
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_login_activity_created_at (created_at),
+    INDEX idx_login_activity_username (username_attempted),
+    INDEX idx_login_activity_success (success)
+);

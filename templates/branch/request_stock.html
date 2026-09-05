@@ -145,14 +145,25 @@
 
   /* Fixed column widths (see .table-fixed in style.css) so nothing in
      this row — the delivery number included — can stretch a column,
-     and therefore the whole table, wider than the others. */
-  .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 16%; }
-  .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 20%; }
-  .rh-table th:nth-child(3), .rh-table td:nth-child(3) { width: 10%; }
-  .rh-table th:nth-child(4), .rh-table td:nth-child(4) { width: 10%; }
-  .rh-table th:nth-child(5), .rh-table td:nth-child(5) { width: 14%; }
-  .rh-table th:nth-child(6), .rh-table td:nth-child(6) { width: 14%; }
-  .rh-table th:nth-child(7), .rh-table td:nth-child(7) { width: 16%; }
+     and therefore the whole table, wider than the others.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.rh-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the Requested cell stayed pinned to a hardcoded 16%
+     of the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped every character onto its own line. */
+  @media (min-width: 681px) {
+    .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 16%; }
+    .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 20%; }
+    .rh-table th:nth-child(3), .rh-table td:nth-child(3) { width: 10%; }
+    .rh-table th:nth-child(4), .rh-table td:nth-child(4) { width: 10%; }
+    .rh-table th:nth-child(5), .rh-table td:nth-child(5) { width: 14%; }
+    .rh-table th:nth-child(6), .rh-table td:nth-child(6) { width: 14%; }
+    .rh-table th:nth-child(7), .rh-table td:nth-child(7) { width: 16%; }
+  }
 
   @media (max-width: 680px) {
     .cart-table-wrap {
@@ -378,7 +389,7 @@
   <div class="card">
     <div class="card-header">
       <h2>Request history</h2>
-      <span class="hint" id="requestHistoryCount">{{ history|length }} recent request{{ 's' if history|length != 1 }}</span>
+      <span class="hint" id="requestHistoryCount">{{ history|length }} recent request{{ 's' if history|length != 1 }} · <a href="{{ url_for('branch.requests_list') }}" class="text-soft">full history →</a></span>
     </div>
     {% if history %}
     <div data-smart-table data-page-size="10" data-count-target="requestHistoryCount" data-count-label="recent request">
@@ -630,6 +641,45 @@
         e.preventDefault();
       }
     });
+
+    // ---- Pre-fill from a "Reorder" / "Reorder all" link ----
+    // Dashboard's low-stock table links here with repeated ?sku=...&qty=...
+    // pairs (see branch.py's dashboard()) — same param names for both a
+    // single-item Reorder button and the bulk Reorder-all link, so this
+    // one block covers both. Positionally matched: the Nth sku pairs with
+    // the Nth qty, same order both lists were built in.
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var skus = params.getAll('sku');
+      var qtys = params.getAll('qty');
+      if (!skus.length) return;
+
+      var bySku = {};
+      products.forEach(function (row) { bySku[row.sku] = row; });
+
+      var addedCount = 0;
+      skus.forEach(function (sku, i) {
+        var row = bySku[sku];
+        if (!row) return;
+        var qty = parseInt(qtys[i], 10);
+        if (!qty || qty < 1) qty = 1;
+        if (cart[sku]) {
+          cart[sku].qty += qty;
+        } else {
+          cart[sku] = { item_name: row.item_name, unit: row.unit, price: row.price, qty: qty };
+        }
+        addedCount++;
+      });
+
+      if (addedCount) {
+        renderCart();
+        // Clear the querystring so refreshing/resubmitting the page
+        // doesn't silently re-add the same items again.
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }
+    })();
 
     renderCart();
   })();

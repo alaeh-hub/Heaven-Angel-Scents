@@ -63,6 +63,44 @@
   </form>
 </div>
 
+<!-- Bulk CSV import/export — same base_code/item_name/variant/unit/price
+     shape as the single-product form above. Export downloads the full
+     catalog in that shape; the downloaded file can be edited (prices,
+     new rows) and dropped straight back into the import form on the
+     left, no reshaping needed. See admin.py's export_products() /
+     import_products() for the column contract. -->
+<div class="card card-pad mt-24">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Bulk import / export (CSV)</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Export the current catalog, edit it in a spreadsheet, then import it back — a row whose
+    product code + unit already exists updates that product's name/variant/price; a new
+    combination adds it to the catalog with zero stock everywhere, same as adding one by hand.
+  </p>
+  <!-- The "Columns: ..." help line used to live inside this field, which
+       made column 1 taller than the button columns next to it — with
+       align-items:flex-end that pulled Import/Export CSV down to match
+       the help text's bottom instead of sitting flush with the file
+       input itself. Moved the help text below the row entirely so all
+       three columns are the same height and the buttons line up with
+       the Choose File box. -->
+  <div class="form-row" style="align-items:flex-end;">
+    <div class="field" style="flex:2 1 320px;">
+      <label for="csvFile">CSV file</label>
+      <input type="file" id="csvFile" name="csv_file" accept=".csv,text/csv" form="importProductsForm" required>
+    </div>
+    <div class="field" style="flex:0 0 auto;">
+      <button type="submit" form="importProductsForm" class="btn btn-accent">Import CSV</button>
+    </div>
+    <div class="field" style="flex:0 0 auto;">
+      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost">Export CSV</a>
+    </div>
+  </div>
+  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price.</div>
+  <form method="POST" action="{{ url_for('admin.import_products') }}" enctype="multipart/form-data" id="importProductsForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+</div>
+
 <div class="card mt-24">
   <div class="card-header">
     <h2>All Products</h2>

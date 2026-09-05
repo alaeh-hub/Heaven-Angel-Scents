@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Suppliers{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Suppliers{% endblock %}
+
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Supplier/Contact value can't stretch this column — and therefore
+     the whole table — wider than the others.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.sup-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the Supplier cell stayed pinned to a hardcoded 20% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped a long supplier name one character per line.
+     Same pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    .sup-table th:nth-child(1),
+    .sup-table td:nth-child(1) {
+      width: 20%;
+    }
+
+    .sup-table th:nth-child(2),
+    .sup-table td:nth-child(2) {
+      width: 14%;
+    }
+
+    .sup-table th:nth-child(3),
+    .sup-table td:nth-child(3) {
+      width: 17%;
+    }
+
+    .sup-table th:nth-child(4),
+    .sup-table td:nth-child(4) {
+      width: 8%;
+    }
+
+    .sup-table th:nth-child(5),
+    .sup-table td:nth-child(5) {
+      width: 12%;
+    }
+
+    .sup-table th:nth-child(6),
+    .sup-table td:nth-child(6) {
+      width: 12%;
+    }
+
+    .sup-table th:nth-child(7),
+    .sup-table td:nth-child(7) {
+      width: 17%;
+    }
+  }
+
+  /* Buttons are stacked (one per line, see below) rather than side by
+     side — that's what stops them forcing this column wide, not
+     stretching each one to fill it. Sizing to content instead of
+     width:100% keeps History/Edit looking like the same small buttons
+     used everywhere else in the app, not a chunky full-width pair. */
+  .sup-table td.sup-col-actions .inline-form {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* A touch smaller than the usual .btn-sm — this column only ever
+     holds two small actions stacked on top of each other, so there's
+     no reason for them to be as prominent as a page's main action
+     buttons. */
+  .sup-table td.sup-col-actions .btn {
+    padding: 5px 10px;
+    font-size: 11.5px;
+  }
+
+  .sup-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .sup-history-table th,
+  .sup-history-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .sup-history-table th.num,
+  .sup-history-table td.num {
+    text-align: right;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
+      </svg>
+    </div>
+    <div class="stat-label">Suppliers on file</div>
+    <div class="stat-value">{{ totals.supplier_count }}</div>
+    <div class="stat-foot">reachable from the Materials form too</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="2" y="6" width="20" height="13" rx="2" />
+        <path d="M2 10h20" />
+        <path d="M6 15h4" />
+      </svg>
+    </div>
+    <div class="stat-label">Spend with known suppliers</div>
+    <div class="stat-value accent">{{ totals.total_supplied_spend|peso }}</div>
+    <div class="stat-foot">sum of every material package logged with a supplier</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if totals.unassigned_material_count else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      </svg>
+    </div>
+    <div class="stat-label">Materials with no supplier on file</div>
+    <div class="stat-value {{ 'danger' if totals.unassigned_material_count else '' }}">{{
+      totals.unassigned_material_count }}</div>
+    <div class="stat-foot">assign one from Materials to track their supply here</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>All suppliers</h2>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="hint" id="suppliersCount">{{ rows|length }} supplier{{ 's' if rows|length != 1 }}</span>
+      <button type="button" class="btn btn-accent btn-sm" id="openAddSupplierBtn">+ Add supplier</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Total spend and material count are rolled up from every material package logged against a supplier on the
+      <a href="{{ url_for('admin.materials') }}">Materials</a> page — this page doesn't add its own purchase
+      records, it's a fuller view of the same data. Open "Supply history" on any row to see exactly what's been
+      bought from them and at what volume.
+    </p>
+  </div>
+  {% if rows %}
+  <div class="table-compact" data-smart-table data-page-size="10" data-count-target="suppliersCount" data-count-label="supplier">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by supplier or contact…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed sup-table">
+        <colgroup>
+          <col style="width:20%">
+          <col style="width:14%">
+          <col style="width:17%">
+          <col style="width:8%">
+          <col style="width:12%">
+          <col style="width:12%">
+          <col style="width:17%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Supplier</th>
+            <th>Contact</th>
+            <th>Reach</th>
+            <th class="num">Materials</th>
+            <th class="num">Total spend</th>
+            <th>Last purchase</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in rows %}
+          <tr
+            data-search="{{ (s.supplier_name ~ ' ' ~ (s.contact_person or '') ~ ' ' ~ (s.phone or '') ~ ' ' ~ (s.email or ''))|lower }}">
+            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+            <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
+            <td data-label="Reach">
+              <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
+              <div class="item-sub">{{ s.email or '—' }}</div>
+            </td>
+            <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
+            <td class="num mono" data-label="Total spend">{{ s.total_spent|peso }}</td>
+            <td class="mono text-soft" data-label="Last purchase">{{ s.last_purchase_at.strftime('%b %d, %Y') if
+              s.last_purchase_at else '—' }}</td>
+            <td data-label="" class="sup-col-actions">
+              <div class="inline-form">
+                {% if s.materials_supplied %}
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openSupplyHistory(this)"
+                  data-supplier-name="{{ s.supplier_name }}"
+                  data-materials='{{ s.materials_supplied | tojson }}'>History</button>
+                {% endif %}
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
+                  data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
+                  data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
+                  data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
+                  data-notes="{{ s.notes or '' }}">Edit</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No suppliers match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just
+      leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">✦</div>
+    <p>No suppliers added yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add supplier -->
+<div id="addSupplierOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Only the name is required — fill in what you have and add the rest later from Edit.
+    </p>
+    <form method="POST" action="{{ url_for('admin.add_supplier') }}" id="addSupplierForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="suppliers">
+      <div class="field">
+        <label for="supplier_name">Supplier name</label>
+        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100"
+          required>
+      </div>
+      <div class="field">
+        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
+        <input type="text" id="contact_person" name="contact_person" maxlength="100">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
+          <input type="text" id="phone" name="phone" maxlength="30">
+        </div>
+        <div class="field">
+          <label for="email">Email <span class="text-faint">(optional)</span></label>
+          <input type="email" id="email" name="email" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="address">Address <span class="text-faint">(optional)</span></label>
+        <input type="text" id="address" name="address" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+        <input type="text" id="notes" name="notes" maxlength="255">
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="addSupplierCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Add supplier</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit supplier -->
+<div id="editSupplierOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:420px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Edit supplier</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Changes apply immediately — every material already linked to this supplier will show the updated details.
+    </p>
+    <form method="POST" action="{{ url_for('admin.edit_supplier') }}" id="editSupplierForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="suppliers">
+      <input type="hidden" name="supplier_id" id="editSupplierId">
+      <div class="field">
+        <label for="editSupplierName">Supplier name</label>
+        <input type="text" id="editSupplierName" name="supplier_name" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="editContactPerson">Contact person</label>
+        <input type="text" id="editContactPerson" name="contact_person" maxlength="100">
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="editPhone">Phone</label>
+          <input type="text" id="editPhone" name="phone" maxlength="30">
+        </div>
+        <div class="field">
+          <label for="editEmail">Email</label>
+          <input type="email" id="editEmail" name="email" maxlength="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="editAddress">Address</label>
+        <input type="text" id="editAddress" name="address" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="editSupplierNotes">Notes</label>
+        <input type="text" id="editSupplierNotes" name="notes" maxlength="255">
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="editSupplierCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Supply history (read-only) -->
+<div id="supplyHistoryOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:560px; width:100%; max-height:80vh; overflow-y:auto;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Supply history — <span id="supplyHistorySupplierName"></span></h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+      Every material this supplier has provided, rolled up across every purchase logged for it.
+    </p>
+    <table class="sup-history-table">
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th class="num">Purchases</th>
+          <th class="num">Total volume</th>
+          <th class="num">Total spend</th>
+        </tr>
+      </thead>
+      <tbody id="supplyHistoryBody"></tbody>
+    </table>
+    <div style="margin-top:16px;">
+      <button type="button" class="btn btn-ghost" style="width:100%;" id="supplyHistoryCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function wireOverlay(overlayId, openBtnId, cancelBtnId) {
+    var overlay = document.getElementById(overlayId);
+    var openBtn = document.getElementById(openBtnId);
+    var cancelBtn = document.getElementById(cancelBtnId);
+    if (!overlay || !openBtn) return;
+
+    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
+    if (cancelBtn) cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  }
+
+  wireOverlay('addSupplierOverlay', 'openAddSupplierBtn', 'addSupplierCancelBtn');
+
+  (function () {
+    var overlay = document.getElementById('editSupplierOverlay');
+    if (!overlay) return;
+    var idInput = document.getElementById('editSupplierId');
+    var nameInput = document.getElementById('editSupplierName');
+    var contactInput = document.getElementById('editContactPerson');
+    var phoneInput = document.getElementById('editPhone');
+    var emailInput = document.getElementById('editEmail');
+    var addressInput = document.getElementById('editAddress');
+    var notesInput = document.getElementById('editSupplierNotes');
+    var cancelBtn = document.getElementById('editSupplierCancelBtn');
+
+    window.openEditSupplier = function (btn) {
+      idInput.value = btn.dataset.supplierId;
+      nameInput.value = btn.dataset.supplierName;
+      contactInput.value = btn.dataset.contactPerson;
+      phoneInput.value = btn.dataset.phone;
+      emailInput.value = btn.dataset.email;
+      addressInput.value = btn.dataset.address;
+      notesInput.value = btn.dataset.notes;
+      overlay.style.display = 'flex';
+    };
+
+    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  })();
+
+  (function () {
+    var overlay = document.getElementById('supplyHistoryOverlay');
+    if (!overlay) return;
+    var nameEl = document.getElementById('supplyHistorySupplierName');
+    var body = document.getElementById('supplyHistoryBody');
+    var closeBtn = document.getElementById('supplyHistoryCloseBtn');
+
+    function esc(value) {
+      var div = document.createElement('div');
+      div.textContent = String(value);
+      return div.innerHTML;
+    }
+    function peso(value) {
+      return '\u20b1' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    window.openSupplyHistory = function (btn) {
+      nameEl.textContent = btn.dataset.supplierName;
+      var materials = [];
+      try { materials = JSON.parse(btn.dataset.materials || '[]'); } catch (e) { materials = []; }
+      body.innerHTML = materials.map(function (mat) {
+        return '<tr>' +
+          '<td>' + esc(mat.material_name) + '</td>' +
+          '<td class="num mono">' + esc(mat.purchase_count) + '</td>' +
+          '<td class="num mono">' + esc(mat.total_qty) + ' ' + esc(mat.unit) + '</td>' +
+          '<td class="num mono">' + peso(mat.total_cost) + '</td>' +
+          '</tr>';
+      }).join('');
+      overlay.style.display = 'flex';
+    };
+
+    closeBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') overlay.style.display = 'none';
+    });
+  })();
+</script>
+{% endblock %}

@@ -43,6 +43,12 @@
 {% endblock %}
 
 {% block content %}
+<!-- Total spend now lives on the Suppliers page only ("Spend with
+     known suppliers") — a second "Total material spend" tile here
+     showed the same underlying number a click away and just needed
+     comparing every time something looked off. Materials tracked stays
+     here since it's specific to this page (the cost list), not
+     supplier-scoped. -->
 <div class="bento-grid stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
@@ -63,9 +69,9 @@
         <path d="M3 10h18M8 15h3" />
       </svg>
     </div>
-    <div class="stat-label">Total material spend</div>
-    <div class="stat-value accent">{{ totals.total_spent|peso }}</div>
-    <div class="stat-foot">across every material package logged</div>
+    <div class="stat-label">Suppliers on file</div>
+    <div class="stat-value accent">{{ suppliers|length }}</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.suppliers') }}" class="text-soft">full spend breakdown →</a></div>
   </div>
 </div>
 
@@ -75,7 +81,13 @@
     <h2>Suppliers</h2>
     <div style="display:flex; align-items:center; gap:14px;">
       <span class="hint" id="suppliersCount">{{ suppliers|length }} supplier{{ 's' if suppliers|length != 1 }}</span>
-      <button type="button" class="btn btn-accent btn-sm" id="openAddSupplierBtn">+ Add supplier</button>
+      <!-- "Add supplier" now lives on the Suppliers page only — it had
+           the exact same form/endpoint here, just a plainer read-out
+           of the same suppliers list with no spend/history alongside
+           it. This table stays (for a quick Edit while you're already
+           looking at a material's supplier), it just doesn't duplicate
+           the "add a new one" entry point anymore. -->
+      <a href="{{ url_for('admin.suppliers') }}" class="btn btn-ghost btn-sm">+ Add supplier</a>
     </div>
   </div>
   {% if suppliers %}
@@ -423,49 +435,6 @@
   </div>
 </div>
 
-<div id="addSupplierOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Only the name is required — fill in what you have and add the rest later from Edit.
-    </p>
-    <form method="POST" action="{{ url_for('admin.add_supplier') }}" id="addSupplierForm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="supplier_name">Supplier name</label>
-        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100"
-          required>
-      </div>
-      <div class="field">
-        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
-        <input type="text" id="contact_person" name="contact_person" maxlength="100">
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="phone">Phone <span class="text-faint">(optional)</span></label>
-          <input type="text" id="phone" name="phone" maxlength="30">
-        </div>
-        <div class="field">
-          <label for="email">Email <span class="text-faint">(optional)</span></label>
-          <input type="email" id="email" name="email" maxlength="120">
-        </div>
-      </div>
-      <div class="field">
-        <label for="address">Address <span class="text-faint">(optional)</span></label>
-        <input type="text" id="address" name="address" maxlength="255">
-      </div>
-      <div class="field">
-        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
-        <input type="text" id="notes" name="notes" maxlength="255">
-      </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="addSupplierCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Add supplier</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 <div id="editMaterialOverlay"
   style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
@@ -673,7 +642,6 @@
   }
 
   wireOverlay('addMaterialOverlay', 'openAddMaterialBtn', 'addMaterialCancelBtn');
-  wireOverlay('addSupplierOverlay', 'openAddSupplierBtn', 'addSupplierCancelBtn');
   wireOverlay('logUsageOverlay', 'openLogUsageBtn', 'logUsageCancelBtn');
 
   (function () {

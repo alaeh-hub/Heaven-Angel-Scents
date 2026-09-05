@@ -7,11 +7,23 @@
 <style>
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Location value can't stretch this column — and therefore the
-     whole table — wider than the others. */
-  .br-table th:nth-child(1), .br-table td:nth-child(1) { width: 26%; }
-  .br-table th:nth-child(2), .br-table td:nth-child(2) { width: 40%; }
-  .br-table th:nth-child(3), .br-table td:nth-child(3) { width: 14%; }
-  .br-table th:nth-child(4), .br-table td:nth-child(4) { width: 20%; }
+     whole table — wider than the others.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.br-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the Branch cell stayed pinned to a hardcoded 26% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped a long branch name one character per line.
+     Same pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    .br-table th:nth-child(1), .br-table td:nth-child(1) { width: 26%; }
+    .br-table th:nth-child(2), .br-table td:nth-child(2) { width: 40%; }
+    .br-table th:nth-child(3), .br-table td:nth-child(3) { width: 14%; }
+    .br-table th:nth-child(4), .br-table td:nth-child(4) { width: 20%; }
+  }
 </style>
 {% endblock %}
 

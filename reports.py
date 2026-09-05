@@ -43,15 +43,17 @@ from utils import PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
 # Built-in PDF fonts (Helvetica etc.) only cover Latin-1 and have no glyph
 # for the ₱ (Philippine peso) sign — it silently renders as a black "tofu"
 # box instead of erroring, which is easy to miss until someone opens the
-# PDF. DejaVu Sans does have that glyph, so every style below uses it
-# instead. Bundled under fonts/ so this works the same on any machine
-# this app runs on, regardless of what fonts happen to be installed
-# system-wide.
+# PDF. IBM Plex Sans does have that glyph (verified against both weights
+# below), so every style here uses it instead — it also matches the
+# IBM Plex Mono already used for SKU/mono styling elsewhere in the app,
+# so reports and the web UI share a type family. Bundled under fonts/ so
+# this works the same on any machine this app runs on, regardless of
+# what fonts happen to be installed system-wide.
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 pdfmetrics.registerFont(
-    TTFont("DejaVuSans", os.path.join(_FONTS_DIR, "DejaVuSans.ttf")))
+    TTFont("IBMPlexSans", os.path.join(_FONTS_DIR, "IBMPlexSans-Regular.ttf")))
 pdfmetrics.registerFont(
-    TTFont("DejaVuSans-Bold", os.path.join(_FONTS_DIR, "DejaVuSans-Bold.ttf")))
+    TTFont("IBMPlexSans-Bold", os.path.join(_FONTS_DIR, "IBMPlexSans-Bold.ttf")))
 
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
@@ -926,21 +928,21 @@ def get_report(report_type, filters, branch_scope=None, actor_label=""):
 def _pdf_styles():
     base = getSampleStyleSheet()
     return {
-        "brand": ParagraphStyle("brand", parent=base["Normal"], fontName="DejaVuSans-Bold",
+        "brand": ParagraphStyle("brand", parent=base["Normal"], fontName="IBMPlexSans-Bold",
                                 fontSize=16, textColor=INK, leading=19),
-        "brand_sub": ParagraphStyle("brand_sub", parent=base["Normal"], fontName="DejaVuSans",
+        "brand_sub": ParagraphStyle("brand_sub", parent=base["Normal"], fontName="IBMPlexSans",
                                     fontSize=8, textColor=INK_FAINT, leading=11),
-        "doc_title": ParagraphStyle("doc_title", parent=base["Normal"], fontName="DejaVuSans-Bold",
+        "doc_title": ParagraphStyle("doc_title", parent=base["Normal"], fontName="IBMPlexSans-Bold",
                                     fontSize=13, textColor=ACCENT_INK, alignment=TA_RIGHT, leading=16),
-        "doc_meta": ParagraphStyle("doc_meta", parent=base["Normal"], fontName="DejaVuSans",
+        "doc_meta": ParagraphStyle("doc_meta", parent=base["Normal"], fontName="IBMPlexSans",
                                    fontSize=8.5, textColor=INK_FAINT, alignment=TA_RIGHT, leading=12),
-        "th": ParagraphStyle("th", parent=base["Normal"], fontName="DejaVuSans-Bold",
+        "th": ParagraphStyle("th", parent=base["Normal"], fontName="IBMPlexSans-Bold",
                              fontSize=7.6, textColor=colors.white, leading=10),
-        "td": ParagraphStyle("td", parent=base["Normal"], fontName="DejaVuSans",
+        "td": ParagraphStyle("td", parent=base["Normal"], fontName="IBMPlexSans",
                              fontSize=7.6, textColor=INK, leading=10),
-        "td_num": ParagraphStyle("td_num", parent=base["Normal"], fontName="DejaVuSans",
+        "td_num": ParagraphStyle("td_num", parent=base["Normal"], fontName="IBMPlexSans",
                                  fontSize=7.6, textColor=INK, leading=10, alignment=TA_RIGHT),
-        "footer": ParagraphStyle("footer", parent=base["Normal"], fontName="DejaVuSans",
+        "footer": ParagraphStyle("footer", parent=base["Normal"], fontName="IBMPlexSans",
                                  fontSize=7.3, textColor=INK_FAINT, leading=10),
     }
 
@@ -1024,7 +1026,7 @@ def render_report_pdf(report):
                         badge_cells.append((r_idx, c_idx, bg_hex))
                         badge_style = ParagraphStyle(
                             f"badge_{r_idx}_{c_idx}", parent=s["td"],
-                            textColor=colors.HexColor(text_hex), fontName="DejaVuSans-Bold",
+                            textColor=colors.HexColor(text_hex), fontName="IBMPlexSans-Bold",
                         )
                         cells.append(Paragraph(text, badge_style))
                     else:
@@ -1043,9 +1045,9 @@ def render_report_pdf(report):
         if report.get("totals"):
             totals = report["totals"]
             total_label_style = ParagraphStyle(
-                "total_label", parent=s["td"], fontName="DejaVuSans-Bold", textColor=ACCENT_INK)
+                "total_label", parent=s["td"], fontName="IBMPlexSans-Bold", textColor=ACCENT_INK)
             total_num_style = ParagraphStyle(
-                "total_num", parent=s["td_num"], fontName="DejaVuSans-Bold", textColor=ACCENT_INK)
+                "total_num", parent=s["td_num"], fontName="IBMPlexSans-Bold", textColor=ACCENT_INK)
             total_row = []
             for c_idx, (key, _, ctype, _) in enumerate(columns):
                 if c_idx == 0:

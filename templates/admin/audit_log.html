@@ -77,7 +77,7 @@
         <tbody>
           {% for l in logs %}
           <tr data-search="{{ ((l.actor_username or '') ~ ' ' ~ l.action ~ ' ' ~ (l.target or '') ~ ' ' ~ (l.details or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Admin">{{ l.actor_username or '—' }}</td>
             <td data-label="Action">{{ m.action_badge(l.action) }}</td>
             <td class="item-name" data-label="Target">{{ l.target or '—' }}</td>

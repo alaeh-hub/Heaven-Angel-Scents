@@ -169,6 +169,14 @@ def create_app():
             app.logger.exception(
                 "Failed to ensure admin_actions audit table exists")
 
+    import login_activity
+    with app.app_context():
+        try:
+            login_activity.ensure_table()
+        except Exception:
+            app.logger.exception(
+                "Failed to ensure login_activity table exists")
+
     @app.errorhandler(403)
     def forbidden(e):
         return render_template("errors/error.html", code=403, message="You don't have access to that page."), 403

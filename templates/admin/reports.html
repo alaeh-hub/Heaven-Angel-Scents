@@ -300,30 +300,12 @@
 
 <div class="grid grid-2 stack">
   <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
-      <div>
-        <h2>Revenue by branch</h2>
-        <span class="hint" id="branchRevenueWindowLabel">last 14 days</span>
-      </div>
-      <div class="rb-mode" id="trendGranularitySwitch">
-        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
-        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
-        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
-        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
-      </div>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="branchRevenueChart"></canvas></div>
-  </div>
-  <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Revenue vs. Capital</h2>
       <span class="hint">capital invested vs. revenue earned, all-time</span>
     </div>
     <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
   </div>
-</div>
-
-<div class="grid grid-2 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Revenue, Materials &amp; Profit</h2>
@@ -331,6 +313,14 @@
     </div>
     <div class="chart-canvas-wrap"><canvas id="profitChart"></canvas></div>
   </div>
+</div>
+
+<!-- Revenue-by-branch (all-time) already lives on the Branch Performance
+     page's own bar chart — a second, time-windowed version of the same
+     comparison here was the same story told twice a click apart. Only
+     the windowed chart was dropped; Current stock by branch stays,
+     since nothing else in the app shows per-branch stock as a chart. -->
+<div class="grid grid-1 stack">
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Current stock by branch</h2>
@@ -341,10 +331,20 @@
 
 <div class="grid grid-1 stack">
   <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
+    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
       <div>
         <h2>Ledger movement</h2>
         <span class="hint" id="trendWindowLabel">last 14 days</span>
+      </div>
+      <!-- Granularity switch used to live on the Revenue-by-branch card
+           (removed above) — it also drives this chart and the
+           Revenue/Materials/Profit window label, so it moved here
+           rather than disappearing along with that card. -->
+      <div class="rb-mode" id="trendGranularitySwitch">
+        <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
+        <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="monthly">Monthly</button>
+        <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
     <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
@@ -467,21 +467,6 @@
           options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
         });
 
-        charts.branchRevenue = new Chart(document.getElementById('branchRevenueChart'), {
-          type: 'bar',
-          data: {
-            labels: data.by_branch_revenue.map(d => d.branch_name),
-            datasets: [{ label: 'Revenue', data: data.by_branch_revenue.map(d => d.revenue), backgroundColor: '#17975E', borderRadius: 4 }]
-          },
-          options: {
-            plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
-            },
-            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
-          }
-        });
-
         charts.capital = new Chart(document.getElementById('capitalChart'), {
           type: 'bar',
           data: {
@@ -532,8 +517,6 @@
         const windowLabel = TREND_WINDOW_LABELS[trendGranularity] || '';
         const trendLabelEl = document.getElementById('trendWindowLabel');
         if (trendLabelEl) trendLabelEl.textContent = windowLabel;
-        const branchRevenueLabelEl = document.getElementById('branchRevenueWindowLabel');
-        if (branchRevenueLabelEl) branchRevenueLabelEl.textContent = windowLabel;
         const profitLabelEl = document.getElementById('profitWindowLabel');
         if (profitLabelEl) profitLabelEl.textContent = windowLabel;
 

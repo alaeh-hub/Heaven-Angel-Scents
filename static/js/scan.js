@@ -20,11 +20,13 @@
     var ctx = canvas.getContext("2d", { willReadFrequently: true });
     var stream = null;
     var scanning = true;
+    var cameraOn = false;
     var rafId = null;
     var lastCode = null;
     var lastCodeAt = 0;
     var devices = [];
     var deviceIndex = 0;
+    var cameraOffOverlay = document.getElementById("scanCameraOff");
 
     function setStatus(text) {
         statusEl.textContent = text;
@@ -34,6 +36,10 @@
         return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     }
 
+    // Fully releases the camera (stops every track, so the browser/OS
+    // camera-in-use indicator turns off too) rather than just pausing
+    // frame scanning — that's what the on/off button now does; see
+    // toggleBtn's click handler below.
     function stopCamera() {
         if (rafId) {
             cancelAnimationFrame(rafId);
@@ -43,6 +49,14 @@
             stream.getTracks().forEach(function (track) { track.stop(); });
             stream = null;
         }
+        video.srcObject = null;
+        cameraOn = false;
+        if (cameraOffOverlay) cameraOffOverlay.style.display = "";
+        switchBtn.style.display = "none";
+        toggleBtn.textContent = "Start camera";
+        toggleBtn.classList.remove("btn-ghost");
+        toggleBtn.classList.add("btn-accent");
+        setStatus("Camera is off \u2014 tap Start camera to scan.");
     }
 
     function startCamera(deviceId) {
@@ -51,6 +65,7 @@
             return;
         }
         stopCamera();
+        setStatus("Starting camera\u2026");
         var constraints = {
             video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } },
             audio: false,
@@ -60,16 +75,21 @@
             video.srcObject = stream;
             return video.play();
         }).then(function () {
+            cameraOn = true;
+            if (cameraOffOverlay) cameraOffOverlay.style.display = "none";
             setStatus("Point the camera at the receipt\u2019s QR code.");
             scanning = true;
-            toggleBtn.textContent = "Pause";
+            toggleBtn.textContent = "Stop camera";
+            toggleBtn.classList.remove("btn-accent");
+            toggleBtn.classList.add("btn-ghost");
             tick();
             return navigator.mediaDevices.enumerateDevices();
         }).then(function (allDevices) {
             if (!allDevices) return;
             devices = allDevices.filter(function (d) { return d.kind === "videoinput"; });
-            switchBtn.style.display = devices.length > 1 ? "" : "none";
+            switchBtn.style.display = (cameraOn && devices.length > 1) ? "" : "none";
         }).catch(function () {
+            stopCamera();
             setStatus("Camera access was blocked or unavailable \u2014 use upload or manual entry below.");
         });
     }
@@ -95,9 +115,11 @@
     }
 
     toggleBtn.addEventListener("click", function () {
-        scanning = !scanning;
-        toggleBtn.textContent = scanning ? "Pause" : "Resume";
-        if (scanning) tick();
+        if (cameraOn) {
+            stopCamera();
+        } else {
+            startCamera(devices[deviceIndex] ? devices[deviceIndex].deviceId : undefined);
+        }
     });
 
     switchBtn.addEventListener("click", function () {
@@ -243,13 +265,21 @@
     }
 
     // ---- Lifecycle ----
+    // The camera no longer starts on page load (see below) — it only
+    // ever turns on when the person taps "Start camera". So on tab
+    // refocus, only resume it if it was actually left on before the tab
+    // was hidden; a fresh/never-started page should stay off.
+    var wasOnBeforeHidden = false;
     document.addEventListener("visibilitychange", function () {
         if (document.hidden) {
+            wasOnBeforeHidden = cameraOn;
             stopCamera();
-        } else if (scanning) {
+        } else if (wasOnBeforeHidden) {
             startCamera(devices[deviceIndex] ? devices[deviceIndex].deviceId : undefined);
         }
     });
 
-    startCamera();
+    // Deliberately no startCamera() call here — the camera stays off
+    // until the person explicitly presses "Start camera" above.
+    stopCamera();
 })();

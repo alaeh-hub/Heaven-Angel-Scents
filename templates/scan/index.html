@@ -48,6 +48,34 @@
     min-height: 16px;
   }
 
+  /* Shown inside the video frame while the camera hasn't been turned on
+     (including on first load — the camera no longer starts by itself,
+     see scan.js) instead of leaving a blank black rectangle. Hidden
+     the moment the camera actually starts. */
+  .scan-camera-off {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.55);
+    background: #000;
+    text-align: center;
+    padding: 16px;
+  }
+
+  .scan-camera-off svg {
+    width: 30px;
+    height: 30px;
+  }
+
+  .scan-camera-off p {
+    margin: 0;
+    font-size: 12.5px;
+  }
+
   .scan-drop {
     border: 1.5px dashed var(--border);
     border-radius: var(--radius-sm);
@@ -137,10 +165,14 @@
     <div class="scan-video-wrap">
       <video id="scanVideo" playsinline muted></video>
       <div class="scan-reticle"></div>
+      <div class="scan-camera-off" id="scanCameraOff">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7c1.4 0 2.7.27 3.9.75M22 12s-1.2 2.4-3.4 4.35M2 12s3.5 7 10 7c1.4 0 2.7-.27 3.9-.75"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>
+        <p>Camera is off</p>
+      </div>
     </div>
-    <div class="scan-status" id="scanCameraStatus">Starting camera&hellip;</div>
+    <div class="scan-status" id="scanCameraStatus">Camera is off &mdash; tap Start camera to scan.</div>
     <div style="display:flex; gap:8px; margin-top:10px;">
-      <button type="button" class="btn btn-ghost btn-sm" id="scanCameraToggle">Pause</button>
+      <button type="button" class="btn btn-accent btn-sm" id="scanCameraToggle">Start camera</button>
       <button type="button" class="btn btn-ghost btn-sm" id="scanCameraSwitch" style="display:none;">Switch camera</button>
     </div>
 

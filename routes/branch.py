@@ -1,5 +1,6 @@
 import datetime
 import uuid
+from urllib.parse import urlencode
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
@@ -55,6 +56,28 @@ def dashboard():
     low_stock = [row for row in inventory if row["stock_qty"]
                  <= row["reorder_level"]]
 
+    # Suggested reorder quantity: top back up to the same "full" reference
+    # the dashboard/branch_stock fill-bar visualizations use elsewhere
+    # (reorder_level * 3), never less than 1. Purely a starting point —
+    # see the Reorder button below, which pre-fills Request Stock's cart
+    # with this but leaves it fully editable there before submitting.
+    for row in low_stock:
+        row["suggested_qty"] = max(
+            (row["reorder_level"] * 3) - row["stock_qty"], 1)
+
+    # Pre-built querystring for "Reorder all low stock" — repeated sku/qty
+    # pairs that request_stock.html's JS reads with URLSearchParams.getAll()
+    # to seed the cart on load. Built here (not in the template) since a
+    # list-valued url_for() kwarg produces the same repeated-key querystring
+    # but doing it as plain urlencode keeps the two sku[]/qty[] lists
+    # trivially guaranteed to line up positionally.
+    reorder_all_url = None
+    if low_stock:
+        pairs = [("sku", row["sku"]) for row in low_stock] + \
+            [("qty", row["suggested_qty"]) for row in low_stock]
+        reorder_all_url = url_for(
+            "branch.request_stock") + "?" + urlencode(pairs)
+
     # A "request" is now a multi-item delivery (see stock_request_items) —
     # this dashboard widget only needs the header plus a couple of totals,
     # not the line-item detail itself (that's what the receipt is for).
@@ -80,6 +103,7 @@ def dashboard():
         "branch/dashboard.html",
         inventory=inventory, low_stock=low_stock,
         pending_requests=pending_requests, today_sales=today_sales,
+        reorder_all_url=reorder_all_url,
     )
 
 
@@ -97,6 +121,91 @@ def inventory():
         (bid,),
     )
     return render_template("branch/inventory.html", rows=rows, unit_choices=PRODUCT_UNITS)
+
+
+# ---------------------------------------------------------------- movement logs
+@bp.route("/movement-logs")
+@branch_required
+def movement_logs():
+    """Production/Sale/Refill activity only, scoped to this branch.
+
+    Same exclusion as admin.movement_logs(): stock-request-driven
+    movements (DISPATCH, RECEIPT, DAMAGE, ADJUSTMENT — every row tagged
+    reference_type='STOCK_REQUEST' by dispatch_request() /
+    receive_stock()) are left out here, since a delivery's own review
+    page and receipt PDF already show that history in full. See
+    Receive Shipment for that instead.
+    """
+    bid = _branch_id()
+    logs = query(
+        """SELECT sml.*, p.item_name
+           FROM stock_movement_logs sml
+           JOIN products p ON sml.sku = p.sku
+           WHERE sml.branch_id = %s
+             AND (sml.reference_type IS NULL OR sml.reference_type != 'STOCK_REQUEST')
+           ORDER BY sml.created_at DESC LIMIT 200""",
+        (bid,),
+    )
+    return render_template("branch/movement_logs.html", logs=logs)
+
+
+# ---------------------------------------------------------------- shipment discrepancies
+@bp.route("/discrepancies")
+@branch_required
+def discrepancies():
+    """The flip side of movement_logs() above: only DAMAGE and ADJUSTMENT
+    rows tied to a delivery (reference_type='STOCK_REQUEST') — units
+    reported damaged in transit, or dispatched but never received/
+    reported damaged (see receive_stock()'s shortfall handling). Each
+    delivery's own receipt already shows this per-item, but there's no
+    other place to see "which deliveries have had problems" across
+    time without opening every Fulfilled receipt one by one.
+    """
+    bid = _branch_id()
+    rows = query(
+        """SELECT sml.*, p.item_name, sr.delivery_number
+           FROM stock_movement_logs sml
+           JOIN products p ON sml.sku = p.sku
+           LEFT JOIN stock_requests sr
+             ON sml.reference_type = 'STOCK_REQUEST' AND sml.reference_id = sr.request_id
+           WHERE sml.branch_id = %s
+             AND sml.reference_type = 'STOCK_REQUEST'
+             AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+           ORDER BY sml.created_at DESC LIMIT 200""",
+        (bid,),
+    )
+    return render_template("branch/discrepancies.html", rows=rows)
+
+
+# ---------------------------------------------------------------- stock requests list
+@bp.route("/stock-requests")
+@branch_required
+def requests_list():
+    """Full history of this branch's deliveries, with status tabs — the
+    branch-scoped counterpart to admin's requests_list(). Request Stock
+    keeps its own short "recent" preview (see request_stock() below);
+    this is the page that link points to for the complete, filterable
+    history, same relationship as Record Sale -> Sales History.
+    """
+    bid = _branch_id()
+    status_filter = request.args.get("status", "all")
+    sql = """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at,
+                    COUNT(sri.item_id) AS item_count,
+                    COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                    COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value,
+                    COALESCE(SUM(sri.received_qty), 0) AS total_received,
+                    COALESCE(SUM(sri.damaged_qty), 0) AS total_damaged
+             FROM stock_requests sr
+             LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
+             WHERE sr.branch_id = %s"""
+    params = [bid]
+    if status_filter != "all":
+        sql += " AND sr.status = %s"
+        params.append(status_filter)
+    sql += """ GROUP BY sr.request_id
+               ORDER BY FIELD(sr.status,'Pending','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"""
+    stock_requests = query(sql, tuple(params))
+    return render_template("branch/requests.html", stock_requests=stock_requests, status_filter=status_filter)
 
 
 # ---------------------------------------------------------------- request stock
@@ -204,7 +313,7 @@ def request_stock():
            LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
            WHERE sr.branch_id = %s
            GROUP BY sr.request_id, sr.delivery_number, sr.status, sr.requested_at
-           ORDER BY sr.requested_at DESC LIMIT 25""",
+           ORDER BY sr.requested_at DESC LIMIT 10""",
         (bid,),
     )
     return render_template("branch/request_stock.html", products=products_list, history=history)
@@ -629,6 +738,81 @@ def sales_history():
         (bid,), fetchone=True,
     )
     return render_template("branch/sales_history.html", sales=sales, totals=totals)
+
+
+# ---------------------------------------------------------------- customers
+@bp.route("/customers")
+@branch_required
+def customers():
+    """Repeat-customer directory for this branch, built entirely from
+    `sales.customer_name` / `customer_address` — there's no separate
+    customers table. Address is taken from each name's *first* recorded
+    sale, same convention as the Record Sale autocomplete's data-customers
+    payload (see record_sale() below and schema.sql's comment on
+    sales.customer_address). Walk-ins (blank customer_name) are excluded
+    since there's nothing to group them by.
+    """
+    bid = _branch_id()
+    rows = query(
+        """SELECT s.customer_name AS name, s.customer_address AS address,
+                  agg.purchase_count, agg.total_units, agg.total_spent, agg.last_purchase_at
+           FROM (
+               SELECT customer_name,
+                      COUNT(*) AS purchase_count,
+                      COALESCE(SUM(qty_sold), 0) AS total_units,
+                      COALESCE(SUM(qty_sold * unit_price), 0) AS total_spent,
+                      MIN(sold_at) AS first_sold_at,
+                      MAX(sold_at) AS last_purchase_at
+               FROM sales
+               WHERE branch_id = %s AND customer_name IS NOT NULL AND customer_name <> ''
+               GROUP BY customer_name
+           ) agg
+           JOIN sales s
+             ON s.customer_name = agg.customer_name AND s.sold_at = agg.first_sold_at AND s.branch_id = %s
+           ORDER BY agg.total_spent DESC""",
+        (bid, bid),
+    )
+    totals = query(
+        """SELECT COUNT(DISTINCT customer_name) AS customer_count,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS total_named_revenue
+           FROM sales WHERE branch_id = %s AND customer_name IS NOT NULL AND customer_name <> ''""",
+        (bid,), fetchone=True,
+    )
+    return render_template("branch/customers.html", rows=rows, totals=totals)
+
+
+# ---------------------------------------------------------------- employee purchases
+@bp.route("/employee-purchases")
+@branch_required
+def employee_purchases():
+    """Salary Deduction leaderboard for this branch — who's taken how much
+    product against their own pay, for payroll reconciliation. This is
+    NOT "who rang up the sale": there's no such column on `sales` (see
+    record_sale()'s comment on buyer_name/buyer_user_id above), only who
+    the product was taken *for* on a Salary Deduction sale. Ordinary Cash
+    sales aren't attributable to any one staff member and are excluded.
+    """
+    bid = _branch_id()
+    rows = query(
+        """SELECT COALESCE(s.buyer_name, bu.username) AS employee_name,
+                  COUNT(*) AS transaction_count,
+                  COALESCE(SUM(s.qty_sold), 0) AS total_units,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS total_amount,
+                  MAX(s.sold_at) AS last_taken_at
+           FROM sales s
+           LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
+           WHERE s.branch_id = %s AND s.payment_method = 'Salary Deduction'
+           GROUP BY COALESCE(s.buyer_name, bu.username)
+           ORDER BY total_amount DESC""",
+        (bid,),
+    )
+    totals = query(
+        """SELECT COUNT(*) AS transaction_count,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS total_amount
+           FROM sales WHERE branch_id = %s AND payment_method = 'Salary Deduction'""",
+        (bid,), fetchone=True,
+    )
+    return render_template("branch/employee_purchases.html", rows=rows, totals=totals)
 
 
 # ---------------------------------------------------------------- reports

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Shipment Discrepancies{% endblock %}
+{% block eyebrow %}{{ session.branch_name }}{% endblock %}
+{% block heading %}Shipment Discrepancies{% endblock %}
+
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     Notes value can't stretch this column — and therefore the whole
+     table — wider than the others. Same pattern as Inventory Log.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.dc-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the When cell stayed pinned to a hardcoded 16% of the
+     row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped every character onto its own line. */
+  @media (min-width: 681px) {
+    .dc-table th:nth-child(1), .dc-table td:nth-child(1) { width: 16%; }
+    .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
+    .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 20%; }
+    .dc-table th:nth-child(4), .dc-table td:nth-child(4) { width: 12%; }
+    .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 38%; }
+  }
+
+  @media (max-width: 680px) {
+    .dc-table td[data-label="Notes"] {
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Every DAMAGE and ADJUSTMENT entry tied to a delivery — units reported damaged in transit, or
+      dispatched but never received or reported damaged (flagged automatically for HQ follow-up). This is
+      the same data each delivery's own receipt shows, just rolled up across every delivery so a pattern
+      is easier to spot. Everyday Production/Sale/Refill activity lives on the
+      <a href="{{ url_for('branch.movement_logs') }}">Inventory Log</a> instead.
+    </p>
+  </div>
+  {% if rows %}
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by item, delivery #, or notes…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed dc-table">
+        <colgroup>
+          <col style="width:16%"><col style="width:14%"><col style="width:20%">
+          <col style="width:12%"><col style="width:38%">
+        </colgroup>
+        <thead><tr><th>When</th><th>Item</th><th>Delivery #</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-search="{{ (r.item_name ~ ' ' ~ (r.delivery_number or '') ~ ' ' ~ r.movement_type ~ ' ' ~ (r.notes or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ r.created_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Item">{{ r.item_name }}</td>
+            <td data-label="Delivery #">
+              {% if r.delivery_number %}
+              <a href="{{ url_for('branch.requests_list') }}" class="mono item-name">{{ r.delivery_number }}</a>
+              {% else %}
+              <span class="text-faint">—</span>
+              {% endif %}
+            </td>
+            <td data-label="Type">{{ m.movement_badge(r.movement_type) }}</td>
+            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ r.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No entries match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">✓</div><p>No damage or shortfall reported on any delivery yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

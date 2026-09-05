@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Low Stock{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Low Stock{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if totals.low_stock_count else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
+    <div class="stat-label">Low stock SKUs</div>
+    <div class="stat-value {{ 'danger' if totals.low_stock_count else '' }}">{{ totals.low_stock_count }}</div>
+    <div class="stat-foot">at or below reorder level, across every branch</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if totals.out_of_stock_count else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M2 10h20M8 15h3"/></svg>
+    </div>
+    <div class="stat-label">Completely out of stock</div>
+    <div class="stat-value {{ 'danger' if totals.out_of_stock_count else '' }}">{{ totals.out_of_stock_count }}</div>
+    <div class="stat-foot">0 units on hand</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+    </div>
+    <div class="stat-label">Branches affected</div>
+    <div class="stat-value">{{ totals.branches_affected }}</div>
+    <div class="stat-foot">have at least one SKU to reorder</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>By branch</h2>
+    <span class="hint">sorted by most SKUs to reorder</span>
+  </div>
+  {% if summary %}
+  <div class="table-wrap">
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:46%"><col style="width:27%"><col style="width:27%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th class="num">Low stock SKUs</th>
+          <th class="num">Out of stock</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in summary %}
+        <tr>
+          <td class="item-name" data-label="Branch">{{ s.branch_name }}</td>
+          <td class="num mono" data-label="Low stock SKUs">{{ s.low_stock_count }}</td>
+          <td class="num mono {{ 'qty-down' if s.out_of_stock_count }}" data-label="Out of stock">{{ s.out_of_stock_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">✓</div><p>Every branch is above its reorder threshold.</p></div>
+  {% endif %}
+</div>
+
+<div class="tabs">
+  <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.low_stock') }}">All branches</a>
+  {% for b in branch_list %}
+  <a class="tab {{ 'active' if branch_filter == b.branch_id|string }}"
+    href="{{ url_for('admin.low_stock', branch_id=b.branch_id) }}">{{ b.branch_name }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>SKUs to reorder</h2>
+    <span class="hint" id="lowStockCount">{{ rows|length }} SKU{{ 's' if rows|length != 1 }}</span>
+  </div>
+  {% if rows %}
+  <div data-smart-table data-page-size="15" data-count-target="lowStockCount" data-count-label="SKU">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch, name, or SKU…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed">
+        <colgroup>
+          <col style="width:56px"><col style="width:16%"><col style="width:22%"><col style="width:10%">
+          <col style="width:8%"><col style="width:34%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Branch</th>
+            <th>Item</th>
+            <th>Variant</th>
+            <th>Unit</th>
+            <th style="min-width:180px;">Stock level</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr data-search="{{ (row.branch_name ~ ' ' ~ row.item_name ~ ' ' ~ row.sku)|lower }}">
+            <td data-label="">{{ m.product_thumb(row.image_path, row.item_name) }}</td>
+            <td data-label="Branch">{{ row.branch_name }}</td>
+            <td data-label="Item">
+              <div class="item-name">{{ row.item_name }}</div>
+              <div class="item-sub mono">{{ row.sku }}</div>
+            </td>
+            <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+            <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
+            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No SKUs match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Sorted most-critical first — furthest below its own reorder level, regardless of branch. A branch can dispatch a request for these from its own Request Stock page; HQ dispatches once that request comes in on <a href="{{ url_for('admin.requests_list') }}">Stock Requests</a>.</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">✓</div>
+    <p>{{ 'All branch inventory is above its reorder threshold.' if branch_filter == 'all' else 'This branch is above its reorder threshold for every SKU.' }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

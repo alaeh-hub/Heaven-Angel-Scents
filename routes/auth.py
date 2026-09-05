@@ -4,6 +4,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from db import execute, query
 from decorators import login_required
 from extensions import limiter
+import login_activity
 
 bp = Blueprint("auth", __name__)
 
@@ -32,6 +33,10 @@ def login():
             login_type = "Branch"
 
         if not username or not password:
+            login_activity.log_attempt(
+                username_attempted=username or "(blank)", role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_MISSING_FIELDS,
+            )
             flash("Please enter both your username and password.", "error")
             return render_template("login.html", login_type=login_type), 400
 
@@ -44,13 +49,37 @@ def login():
         )
 
         if not user or not check_password_hash(user["password_hash"], password):
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_BAD_CREDENTIALS,
+                user_id=(user["user_id"] if user else None),
+            )
             flash("Incorrect username or password.", "error")
             return render_template("login.html", login_type=login_type), 401
 
+        if not user["is_active"]:
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_INACTIVE_ACCOUNT,
+                user_id=user["user_id"],
+            )
+            flash("This account is no longer active. Please contact HQ.", "error")
+            return render_template("login.html", login_type=login_type), 403
+
         if user["role"] != login_type:
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_WRONG_ROLE_TAB,
+                user_id=user["user_id"],
+            )
             flash(
                 f"That account is a {user['role']} account. Switch tabs above and try again.", "error")
             return render_template("login.html", login_type=login_type), 403
+
+        login_activity.log_attempt(
+            username_attempted=username, role_attempted=login_type,
+            success=True, user_id=user["user_id"],
+        )
 
         session.clear()
         session["user_id"] = user["user_id"]

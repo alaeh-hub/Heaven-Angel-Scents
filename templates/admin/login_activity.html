@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Login Activity{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Login Activity{% endblock %}
+
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long User
+     Agent value can't stretch this column — and therefore the whole
+     table — wider than the others. Same pattern as Admin Log's al-table. */
+  .la-table th:nth-child(1), .la-table td:nth-child(1) { width: 14%; }
+  .la-table th:nth-child(2), .la-table td:nth-child(2) { width: 14%; }
+  .la-table th:nth-child(3), .la-table td:nth-child(3) { width: 10%; }
+  .la-table th:nth-child(4), .la-table td:nth-child(4) { width: 12%; }
+  .la-table th:nth-child(5), .la-table td:nth-child(5) { width: 16%; }
+  .la-table th:nth-child(6), .la-table td:nth-child(6) { width: 12%; }
+  .la-table th:nth-child(7), .la-table td:nth-child(7) { width: 22%; }
+
+  @media (max-width: 680px) {
+    .la-table td.la-col-agent {
+      max-width: none;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+    </div>
+    <div class="stat-label">Total attempts logged</div>
+    <div class="stat-value">{{ totals.total_attempts }}</div>
+    <div class="stat-foot">most recent 300 shown below</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon {{ 'stat-icon-red' if totals.failed_attempts else 'stat-icon-neutral' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
+    <div class="stat-label">Failed attempts</div>
+    <div class="stat-value {{ 'danger' if totals.failed_attempts else '' }}">{{ totals.failed_attempts }}</div>
+    <div class="stat-foot">all-time</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-neutral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a5 5 0 0 0-5 5c0 3 5 9 5 9s5-6 5-9a5 5 0 0 0-5-5z"/><circle cx="12" cy="7" r="1.8"/></svg>
+    </div>
+    <div class="stat-label">Distinct IPs behind failures</div>
+    <div class="stat-value">{{ totals.failed_ip_count }}</div>
+    <div class="stat-foot">all-time</div>
+  </div>
+</div>
+
+{% if recent_failures %}
+<div class="card">
+  <div class="card-header">
+    <h2>Worth a closer look</h2>
+    <span class="hint">3+ failed attempts, same username, last 24 hours</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:40%"><col style="width:30%"><col style="width:30%">
+      </colgroup>
+      <thead><tr><th>Username attempted</th><th class="num">Failed attempts</th><th>Most recent</th></tr></thead>
+      <tbody>
+        {% for f in recent_failures %}
+        <tr>
+          <td class="item-name mono" data-label="Username attempted">{{ f.username_attempted }}</td>
+          <td class="num mono qty-down" data-label="Failed attempts">{{ f.attempt_count }}</td>
+          <td class="mono text-soft" data-label="Most recent">{{ f.last_attempt_at.strftime('%b %d, %Y') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Could be a real user mistyping their password repeatedly, or someone guessing at an account's credentials — either way, worth checking in with that branch/account if it keeps happening.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="tabs">
+  <a class="tab {{ 'active' if outcome_filter == 'all' }}" href="{{ url_for('admin.login_activity_log') }}">All</a>
+  <a class="tab {{ 'active' if outcome_filter == 'success' }}" href="{{ url_for('admin.login_activity_log', outcome='success') }}">Successful</a>
+  <a class="tab {{ 'active' if outcome_filter == 'failed' }}" href="{{ url_for('admin.login_activity_log', outcome='failed') }}">Failed</a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Sign-in attempts</h2>
+    <span class="hint">last 300</span>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      One row per submission of the login form, whether it succeeded or not — separate from the
+      <a href="{{ url_for('admin.audit_log') }}">Admin Log</a>, which only covers changes an already-signed-in
+      admin makes. "Username attempted" is exactly what was typed, even if it never matched a real account.
+    </p>
+  </div>
+  {% if logs %}
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by username, IP, or reason…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed la-table">
+        <colgroup>
+          <col style="width:14%"><col style="width:14%"><col style="width:10%">
+          <col style="width:12%"><col style="width:16%"><col style="width:12%"><col style="width:22%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Username attempted</th>
+            <th>Role tab</th>
+            <th>Result</th>
+            <th>Reason</th>
+            <th>IP address</th>
+            <th class="la-col-agent">User agent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+          <tr data-search="{{ (l.username_attempted ~ ' ' ~ (l.ip_address or '') ~ ' ' ~ (l.failure_reason or '') ~ ' ' ~ (l.user_agent or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Username attempted">
+              <div class="item-name mono">{{ l.username_attempted }}</div>
+              {% if l.current_username and l.current_username != l.username_attempted %}
+              <div class="item-sub">now: {{ l.current_username }}</div>
+              {% endif %}
+            </td>
+            <td data-label="Role tab"><span class="badge badge-{{ 'unisex' if l.role_attempted == 'Admin' else 'transit' }}">{{ l.role_attempted }}</span></td>
+            <td data-label="Result">
+              {% if l.success %}
+              <span class="badge badge-active">Success</span>
+              {% else %}
+              <span class="badge badge-inactive">Failed</span>
+              {% endif %}
+            </td>
+            <td class="text-soft" style="font-size:12.5px;" data-label="Reason">{{ failure_reasons.get(l.failure_reason, '—') if not l.success else '—' }}</td>
+            <td class="mono text-soft" data-label="IP address">{{ l.ip_address or '—' }}</td>
+            <td class="text-soft la-col-agent" style="font-size:11.5px;" data-label="User agent">{{ l.user_agent or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No attempts match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No login attempts in this view.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

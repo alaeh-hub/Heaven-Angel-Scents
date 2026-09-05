@@ -28,19 +28,22 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:16%"><col style="width:26%"><col style="width:14%">
-          <col style="width:12%"><col style="width:16%"><col style="width:16%">
+          <col style="width:14%"><col style="width:22%"><col style="width:12%">
+          <col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:14%">
         </colgroup>
-        <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr></thead>
+        <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>
           {% for s in sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.variant)|lower }}" data-variant="{{ s.variant }}">
-            <td class="mono text-soft" data-label="Date">{{ s.sold_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="mono text-soft" data-label="Date">{{ s.sold_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Item">{{ s.item_name }}</td>
             <td data-label="Variant">{{ m.variant_badge(s.variant) }}</td>
             <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
             <td class="num mono" data-label="Unit price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td data-label="">
+              <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

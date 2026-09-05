@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Customers{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Customers{% endblock %}
+
+{% block head %}
+<style>
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     customer/branch list can't stretch this column — and therefore the
+     whole table — wider than the others.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.cust-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the Customer cell stayed pinned to a hardcoded 20% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped a long customer name one character per line.
+     Same pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    .cust-table th:nth-child(1), .cust-table td:nth-child(1) { width: 20%; }
+    .cust-table th:nth-child(2), .cust-table td:nth-child(2) { width: 22%; }
+    .cust-table th:nth-child(3), .cust-table td:nth-child(3) { width: 12%; }
+    .cust-table th:nth-child(4), .cust-table td:nth-child(4) { width: 10%; }
+    .cust-table th:nth-child(5), .cust-table td:nth-child(5) { width: 12%; }
+    .cust-table th:nth-child(6), .cust-table td:nth-child(6) { width: 12%; }
+    .cust-table th:nth-child(7), .cust-table td:nth-child(7) { width: 12%; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-3 stack">
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-violet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <div class="stat-label">Named customers</div>
+    <div class="stat-value">{{ totals.customer_count }}</div>
+    <div class="stat-foot">across every branch, all-time</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+    </div>
+    <div class="stat-label">Shop at more than one branch</div>
+    <div class="stat-value accent">{{ multi_branch_count }}</div>
+    <div class="stat-foot">worth a closer look for cross-branch offers</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-icon stat-icon-neutral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+    </div>
+    <div class="stat-label">Total named-customer revenue</div>
+    <div class="stat-value">{{ totals.total_named_revenue|peso }}</div>
+    <div class="stat-foot">sales with a customer name on file</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Customer directory</h2>
+    <span class="hint" id="customersCount">{{ rows|length }} customer{{ 's' if rows|length != 1 }}</span>
+  </div>
+  <div style="padding: 4px 22px 14px;">
+    <p class="text-faint" style="font-size:12px;">
+      Built from the customer name recorded on each sale — there's no separate customer accounts system, so this
+      groups by exact name text the same way each branch's own Customers page does. A customer who has bought from
+      more than one branch appears once here, with every branch they've shopped at listed. Address shown is from
+      their earliest sale on file, fleet-wide; walk-ins with no name recorded aren't included.
+    </p>
+  </div>
+  {% if rows %}
+  <div data-smart-table data-page-size="15" data-count-target="customersCount" data-count-label="customer">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by name, address, or branch…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed cust-table">
+        <colgroup>
+          <col style="width:20%"><col style="width:22%"><col style="width:12%">
+          <col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Branches shopped</th>
+            <th class="num">Purchases</th>
+            <th class="num">Units</th>
+            <th class="num">Total spent</th>
+            <th>Last purchase</th>
+            <th>Last at</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-search="{{ (r.name ~ ' ' ~ (r.address or '') ~ ' ' ~ r.branches)|lower }}">
+            <td data-label="Customer">
+              <div class="item-name">{{ r.name }}</div>
+              {% if r.address %}<div class="item-sub">{{ r.address }}</div>{% endif %}
+            </td>
+            <td class="text-soft" style="font-size:12.5px;" data-label="Branches shopped">
+              {{ r.branches }}
+              {% if r.branch_count > 1 %}<div class="item-sub" style="margin-top:2px;"><span class="badge badge-pending">{{ r.branch_count }} branches</span></div>{% endif %}
+            </td>
+            <td class="num mono" data-label="Purchases">{{ r.purchase_count }}</td>
+            <td class="num mono" data-label="Units">{{ r.total_units }}</td>
+            <td class="num mono" data-label="Total spent">{{ r.total_spent|peso }}</td>
+            <td class="mono text-soft" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
+            <td class="text-soft" data-label="Last at">{{ r.last_branch_name }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No customers match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No named customers on file yet — sales need a customer name entered on Record Sale to show up here.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

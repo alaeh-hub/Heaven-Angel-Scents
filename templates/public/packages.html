@@ -102,6 +102,46 @@
       animation-delay: -9s;
     }
 
+    /* Extra glows that live inside the page flow (not the fixed
+       backdrop) so they scroll in behind the lower sections instead
+       of the background staying flat once you scroll past the hero. */
+    .pp-fullsection {
+      z-index: 0;
+    }
+
+    .pp-section-glow {
+      position: absolute;
+      z-index: -1;
+      width: 380px;
+      height: 380px;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.22;
+      pointer-events: none;
+      animation: pp-drift 20s ease-in-out infinite;
+    }
+
+    #packages .pp-section-glow {
+      background: var(--red);
+      top: 10%;
+      left: -120px;
+      animation-delay: -4s;
+    }
+
+    #how-it-works .pp-section-glow {
+      background: var(--blue);
+      top: 15%;
+      right: -140px;
+      animation-delay: -12s;
+    }
+
+    #faq .pp-section-glow {
+      background: var(--red);
+      bottom: 5%;
+      left: -100px;
+      animation-delay: -6s;
+    }
+
     @keyframes pp-drift {
 
       0%,
@@ -258,43 +298,25 @@
       transform: translateY(0);
     }
 
-    /* ================= full-screen sections ================= */
-    /* Each top-level part of the page (Partner Program hero, How it
-       works, Packages, FAQ) occupies its own full viewport-height
-       "screen" and snaps into place as the visitor scrolls, similar to
-       a slide deck. --pp-header-h matches the header's real height so
-       each screen fills exactly what's left below the sticky header. */
+    /* ================= page sections ================= */
+    /* Each top-level part of the page (Partner Program hero, Packages,
+       How it works, FAQ) is a normal block-level section, sized to its
+       own content, with generous vertical rhythm between them. Content
+       here is data-driven (package count, FAQ items), so section height
+       is left to flow naturally instead of being forced to fill the
+       viewport — that's what was causing the big empty gaps. */
     :root {
       --pp-header-h: 108px;
     }
 
-    html {
-      scroll-snap-type: y proximity;
-    }
-
     .pp-fullsection {
       position: relative;
-      min-height: calc(100vh - var(--pp-header-h));
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      padding: 32px 0 36px;
-      scroll-snap-align: start;
-      scroll-snap-stop: always;
+      padding: 56px 0;
       scroll-margin-top: var(--pp-header-h);
-      opacity: 0.45;
-      transition: opacity 0.5s ease;
     }
 
-    .pp-fullsection.pp-section-active {
-      opacity: 1;
-    }
-
-    /* Hero and Packages read better vertically centered on their
-       screen; How it works and FAQ have more content so they start
-       right at the top instead. */
     .pp-fullsection--center {
-      justify-content: center;
+      padding: 88px 0 72px;
     }
 
     /* ---- side "screen" indicator dots ---- */
@@ -1038,22 +1060,13 @@
       }
 
       .pp-glow,
+      .pp-section-glow,
       .pp-best-value::after {
         animation: none !important;
       }
 
       .pp-reveal {
         transition: none !important;
-      }
-
-      html {
-        scroll-snap-type: none;
-      }
-
-      .pp-fullsection {
-        opacity: 1 !important;
-        transition: none !important;
-        min-height: 0;
       }
     }
   </style>
@@ -1219,6 +1232,7 @@
       </section>
 
       <section class="pp-fullsection pp-fullsection--center" id="packages">
+      <div class="pp-section-glow" aria-hidden="true"></div>
       {% set active_count = package_list|length %}
       {% set max_discount = (package_list|map(attribute='discount_percent')|list)|max if package_list else 0 %}
       <div class="pp-section-head pp-reveal">
@@ -1312,6 +1326,7 @@
       </section>
 
       <section class="pp-fullsection" id="how-it-works">
+      <div class="pp-section-glow" aria-hidden="true"></div>
       <div class="pp-section-head pp-reveal">
         <h2>How it works</h2>
       </div>
@@ -1362,6 +1377,7 @@
       </section>
 
       <section class="pp-fullsection" id="faq">
+      <div class="pp-section-glow" aria-hidden="true"></div>
       <div class="pp-faq pp-reveal">
         <div class="pp-section-head" style="margin-bottom:16px;">
           <h2>Frequently asked</h2>

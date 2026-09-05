@@ -1,5 +1,7 @@
+import csv
 import datetime
 import decimal
+import io
 import os
 import uuid
 
@@ -13,6 +15,7 @@ from werkzeug.utils import secure_filename
 from db import TransactionAborted, execute, query, transaction
 from decorators import admin_required
 from audit import log_action
+import login_activity
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
@@ -20,6 +23,7 @@ from utils import (
     MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
     build_sku, generate_temp_password, parse_base_code, parse_non_negative_decimal,
     parse_non_negative_int, parse_optional_id, parse_optional_text, parse_positive_decimal, parse_positive_int,
+    parse_required_text,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -141,14 +145,28 @@ def dashboard():
     # Top partners by package sales — same Closed-only rule. Joined
     # through partners for the same reason as above (a since-deleted
     # partner drops out of this breakdown, not out of the totals).
+    #
+    # Grouped by company name (case/whitespace-insensitive), not
+    # partner_id: the Partners page intentionally keeps a separate
+    # partner_id (and its own inquiry history) per submission even when
+    # the same company sends more than one inquiry — see partners.html's
+    # note on name/contact info coming from each inquiry's own first
+    # record. That's correct there, but on this dashboard summary two
+    # partner_id rows for "Hello World" reading as two different
+    # distributors is misleading — this rolls them into one line with a
+    # combined order count and total. MIN(partner_id)/MIN(partner_name)
+    # just picks one representative row per company for the link/label;
+    # MAX(partner_type) does the same for type (all rows for one company
+    # are expected to share a type in practice).
     top_partners = query(
-        """SELECT p.partner_id, p.partner_name, p.partner_type,
+        """SELECT MIN(p.partner_id) AS partner_id, MIN(p.partner_name) AS partner_name,
+                  MAX(p.partner_type) AS partner_type,
                   COUNT(pinq.inquiry_id) AS order_count,
                   COALESCE(SUM(pinq.order_amount), 0) AS total_spent
            FROM partner_inquiries pinq
            JOIN partners p ON p.partner_id = pinq.partner_id
            WHERE pinq.status = 'Closed'
-           GROUP BY p.partner_id, p.partner_name, p.partner_type
+           GROUP BY LOWER(TRIM(p.partner_name))
            ORDER BY total_spent DESC LIMIT 3"""
     )
 
@@ -379,6 +397,179 @@ def edit_product():
     return redirect(url_for("admin.products"))
 
 
+# ---------------------------------------------------------------- product bulk import/export (CSV)
+# Both routes below round-trip through the same shape the manual "Add a
+# product" form uses: base_code + unit (not the raw sku column) — so a
+# downloaded export, edited in a spreadsheet and re-uploaded, goes
+# through the exact same parse_base_code()/build_sku() validation as a
+# hand-typed product, rather than a separate, looser path for
+# CSV-sourced rows.
+_PRODUCT_CSV_COLUMNS = ["base_code", "item_name", "variant", "unit", "price"]
+
+
+def _base_code_from_sku(sku, unit):
+    """Reverse of build_sku(), for export only: strip the unit's known
+    suffix off the end of a stored SKU to recover the base_code an
+    admin would have typed (e.g. 'A1-85ML' + '85ML' -> 'A1'). Falls
+    back to returning the SKU unchanged if it doesn't end with the
+    expected suffix — shouldn't happen for any row created through the
+    normal add/import path, but keeps export from ever raising on
+    unexpected/legacy data instead of failing the whole download.
+    """
+    # utils._PRODUCT_UNIT_SUFFIXES is the same allow-list build_sku()
+    # itself uses — imported directly rather than duplicated here so
+    # there's exactly one place that maps a unit to its SKU suffix.
+    from utils import _PRODUCT_UNIT_SUFFIXES
+    suffix = _PRODUCT_UNIT_SUFFIXES.get(unit)
+    tail = f"-{suffix}" if suffix else None
+    if tail and sku.endswith(tail):
+        return sku[: -len(tail)]
+    return sku
+
+
+@bp.route("/products/export")
+@admin_required
+def export_products():
+    """Download the full product catalog as CSV, in the same
+    base_code/item_name/variant/unit/price shape /products/import
+    expects — so a downloaded file can be edited (prices changed, new
+    rows appended) and re-uploaded there directly with no reshaping.
+    """
+    catalog = query(
+        "SELECT sku, item_name, variant, unit, price FROM products ORDER BY item_name, unit"
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_PRODUCT_CSV_COLUMNS)
+    for row in catalog:
+        writer.writerow([
+            _base_code_from_sku(row["sku"], row["unit"]),
+            row["item_name"],
+            row["variant"],
+            row["unit"],
+            f"{row['price']:.2f}",
+        ])
+
+    log_action("export_products", details=f"{len(catalog)} SKUs")
+
+    # utf-8-sig (BOM) so Excel opens ₱/accented text correctly instead
+    # of guessing cp1252 on a plain utf-8 file, same reasoning as any
+    # other CSV this app hands to a non-technical admin.
+    payload = buffer.getvalue().encode("utf-8-sig")
+    filename = f"products_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return send_file(
+        io.BytesIO(payload), mimetype="text/csv",
+        as_attachment=True, download_name=filename,
+    )
+
+
+@bp.route("/products/import", methods=["POST"])
+@admin_required
+def import_products():
+    """Bulk create/update products from an uploaded CSV — same
+    base_code,item_name,variant,unit,price shape export_products()
+    above produces.
+
+    Each row resolves to a SKU via build_sku(), exactly like the manual
+    "Add a product" form:
+      - SKU already exists -> update item_name/variant/price. unit and
+        image_path are left alone (same restriction as edit_product() —
+        change a size by adding a new base_code/unit row instead).
+      - SKU is new          -> insert it and give every existing branch
+        a zero-stock row, same as the manual add path.
+
+    One bad or duplicate-in-file row is skipped and reported by row
+    number rather than aborting the whole upload, so a single typo
+    doesn't block importing the rest of a large catalog. Each row's own
+    insert/update is still atomic on its own, so nothing partial is
+    ever left behind for the rows that do fail.
+    """
+    file_storage = request.files.get("csv_file")
+    if not file_storage or not file_storage.filename:
+        flash("Choose a CSV file to import.", "error")
+        return redirect(url_for("admin.products"))
+
+    try:
+        raw = file_storage.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        flash("That file doesn't look like a valid CSV (couldn't read it as UTF-8).", "error")
+        return redirect(url_for("admin.products"))
+
+    reader = csv.DictReader(io.StringIO(raw))
+    required_columns = {"base_code", "item_name", "variant", "unit", "price"}
+    if not required_columns.issubset(set(reader.fieldnames or [])):
+        flash(
+            "CSV must have columns: base_code, item_name, variant, unit, price "
+            "(e.g. from Export CSV).", "error",
+        )
+        return redirect(url_for("admin.products"))
+
+    created = 0
+    updated = 0
+    errors = []
+
+    for row_num, row in enumerate(reader, start=2):  # row 1 is the header
+        try:
+            base_code = parse_base_code(row.get("base_code"))
+            item_name = (row.get("item_name") or "").strip()
+            variant = (row.get("variant") or "").strip()
+            unit = (row.get("unit") or "").strip()
+            price = parse_non_negative_decimal(row.get("price"), "Price")
+            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
+                raise ValidationError(
+                    "item_name, variant, and unit must all be valid.")
+            sku = build_sku(base_code, unit)
+        except ValidationError as err:
+            errors.append(f"Row {row_num}: {err}")
+            continue
+
+        existing = query(
+            "SELECT sku FROM products WHERE sku = %s", (sku,), fetchone=True)
+        try:
+            if existing:
+                execute(
+                    "UPDATE products SET item_name = %s, variant = %s, price = %s WHERE sku = %s",
+                    (item_name, variant, price, sku),
+                )
+                updated += 1
+            else:
+                with transaction() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO products (sku, item_name, variant, unit, price) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (sku, item_name, variant, unit, price),
+                    )
+                    cur.execute("SELECT branch_id FROM branches")
+                    branch_ids = [r[0] for r in cur.fetchall()]
+                    for branch_id in branch_ids:
+                        cur.execute(
+                            "INSERT IGNORE INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 0)",
+                            (branch_id, sku),
+                        )
+                    cur.close()
+                created += 1
+        except Exception:
+            errors.append(f"Row {row_num}: couldn't save SKU {sku}.")
+
+    if created or updated:
+        notify_all(["products", "inventory"])
+        log_action(
+            "import_products",
+            details=f"{created} created, {updated} updated, {len(errors)} skipped",
+        )
+        flash(f"Import complete — {created} added, {updated} updated.", "success")
+    if errors:
+        shown = errors[:10]
+        more = f" (+{len(errors) - 10} more)" if len(errors) > 10 else ""
+        flash("Some rows were skipped: " + "; ".join(shown) + more, "error")
+    if not created and not updated and not errors:
+        flash("No rows found in that file.", "error")
+
+    return redirect(url_for("admin.products"))
+
+
 # ---------------------------------------------------------------- production
 @bp.route("/production", methods=["GET", "POST"])
 @admin_required
@@ -489,46 +680,146 @@ def branches():
     return render_template("admin/branches.html", branch_list=branch_list)
 
 
-# ---------------------------------------------------------------- branch stock
-@bp.route("/branch-stock")
+# ---------------------------------------------------------------- low stock (fleet-wide)
+@bp.route("/low-stock")
 @admin_required
-def branch_stock():
-    """Read-only view of stock levels per branch.
-
-    There's no per-branch price to set anymore — every branch sells at
-    the HQ price on the product catalog (see products()). This page is
-    purely about stock levels now.
+def low_stock():
+    """Full, searchable/paginated list of every branch SKU at or below
+    its reorder level — the dashboard's "Low stock across branches"
+    widget only ever shows a preview of 8 rows (see dashboard()'s
+    `low_stock` query, LIMIT 8), so a branch with more than a handful
+    of SKUs to reorder had no single place to see the rest without
+    guessing which ones fell off that preview. This page is that place:
+    every low-stock row, filterable per branch, with a per-branch
+    summary up top so HQ can prioritize which branch to restock first.
     """
     branch_filter = request.args.get("branch_id", "all")
     branch_list = query(
         "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
 
-    rows = []
-    if branch_filter != "all":
-        rows = query(
-            """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant, p.unit,
-                      p.price AS hq_price, p.image_path, bi.stock_qty, bi.reorder_level
-               FROM branch_inventory bi
-               JOIN branches b ON bi.branch_id = b.branch_id
-               JOIN products p ON bi.sku = p.sku
-               WHERE b.is_hq = FALSE AND b.branch_id = %s
-               ORDER BY p.item_name""",
-            (branch_filter,),
-        )
-
-    totals = query(
-        """SELECT b.branch_id, b.branch_name, COALESCE(SUM(bi.stock_qty), 0) AS total_stock
-           FROM branches b
-           LEFT JOIN branch_inventory bi ON b.branch_id = bi.branch_id
-           LEFT JOIN products p ON bi.sku = p.sku
-           WHERE b.is_hq = FALSE
-           GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
+    # Per-branch rollup, always fleet-wide (the tabs below only filter
+    # the row list) — same convention as discrepancies()'s summary.
+    summary = query(
+        """SELECT b.branch_id, b.branch_name,
+                  COUNT(*) AS low_stock_count,
+                  COALESCE(SUM(CASE WHEN bi.stock_qty = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock_count
+           FROM branch_inventory bi
+           JOIN branches b ON bi.branch_id = b.branch_id
+           WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
+           GROUP BY b.branch_id, b.branch_name
+           ORDER BY low_stock_count DESC, b.branch_name"""
     )
+    totals = {
+        "low_stock_count": sum(s["low_stock_count"] for s in summary),
+        "out_of_stock_count": sum(s["out_of_stock_count"] for s in summary),
+        "branches_affected": len(summary),
+    }
+
+    sql = """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant, p.unit, p.image_path,
+                    bi.stock_qty, bi.reorder_level
+             FROM branch_inventory bi
+             JOIN branches b ON bi.branch_id = b.branch_id
+             JOIN products p ON bi.sku = p.sku
+             WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level"""
+    params = []
+    if branch_filter != "all":
+        sql += " AND b.branch_id = %s"
+        params.append(branch_filter)
+    # Most critical first: furthest below its own reorder level (a
+    # branch sitting at 0/20 sorts ahead of one at 8/10), branch/item
+    # as a stable tiebreaker.
+    sql += " ORDER BY (bi.stock_qty - bi.reorder_level) ASC, b.branch_name, p.item_name"
+    rows = query(sql, tuple(params))
 
     return render_template(
-        "admin/branch_stock.html",
-        rows=rows, branch_list=branch_list, branch_filter=branch_filter, totals=totals,
-        unit_choices=PRODUCT_UNITS,
+        "admin/low_stock.html",
+        rows=rows, summary=summary, totals=totals,
+        branch_list=branch_list, branch_filter=branch_filter,
+    )
+
+
+# ---------------------------------------------------------------- branch performance
+@bp.route("/branch-performance")
+@admin_required
+def branch_performance():
+    """Side-by-side comparison of every retail branch — revenue, units
+    sold, delivery discrepancies, and a rough inventory-turnover figure
+    — so an underperforming or high-shrinkage branch stands out at a
+    glance, instead of cross-referencing Branch Stock, Record Sale, and
+    Discrepancies by hand for each branch in turn.
+
+    Turnover here is intentionally a simple approximation — all-time
+    units sold divided by *current* stock on hand — not a proper
+    COGS-based ratio over a matching period, since neither a
+    per-branch cost basis nor point-in-time stock history exists to
+    compute the textbook version. It's still useful for a relative
+    comparison between branches (one selling through its stock several
+    times over vs. one barely moving it), just not to be read as an
+    absolute number — see the page's own note on this.
+    """
+    sort = request.args.get("sort", "revenue")
+    if sort not in ("revenue", "units", "discrepancies", "turnover"):
+        sort = "revenue"
+
+    rows = query(
+        """SELECT b.branch_id, b.branch_name,
+                  COALESCE(sales_agg.units_sold, 0) AS units_sold,
+                  COALESCE(sales_agg.revenue, 0) AS revenue,
+                  COALESCE(sales_agg.sales_count, 0) AS sales_count,
+                  COALESCE(stock_agg.total_stock, 0) AS total_stock,
+                  COALESCE(disc_agg.discrepancy_count, 0) AS discrepancy_count
+           FROM branches b
+           LEFT JOIN (
+               SELECT branch_id, SUM(qty_sold) AS units_sold,
+                      SUM(qty_sold * unit_price) AS revenue, COUNT(*) AS sales_count
+               FROM sales GROUP BY branch_id
+           ) sales_agg ON sales_agg.branch_id = b.branch_id
+           LEFT JOIN (
+               SELECT branch_id, SUM(stock_qty) AS total_stock
+               FROM branch_inventory GROUP BY branch_id
+           ) stock_agg ON stock_agg.branch_id = b.branch_id
+           LEFT JOIN (
+               SELECT branch_id, COUNT(*) AS discrepancy_count
+               FROM stock_movement_logs
+               WHERE reference_type = 'STOCK_REQUEST' AND movement_type IN ('DAMAGE', 'ADJUSTMENT')
+               GROUP BY branch_id
+           ) disc_agg ON disc_agg.branch_id = b.branch_id
+           WHERE b.is_hq = FALSE"""
+    )
+
+    # Turnover is a derived ratio (division by current stock, which can
+    # be zero), so it's computed here rather than in SQL — None means
+    # "can't be computed" (no stock on hand right now), shown as "—"
+    # rather than a misleading 0 or an unbounded number.
+    for r in rows:
+        r["turnover"] = round(r["units_sold"] / r["total_stock"],
+                              2) if r["total_stock"] else None
+
+    # Stable alphabetical pass first, so branches tied on the chosen
+    # metric (e.g. two branches with 0 discrepancies) fall back to
+    # branch name order rather than whatever order MySQL happened to
+    # return them in.
+    rows.sort(key=lambda r: r["branch_name"])
+    sort_keys = {
+        "revenue": lambda r: r["revenue"],
+        "units": lambda r: r["units_sold"],
+        "discrepancies": lambda r: r["discrepancy_count"],
+        # Branches with no computable turnover (zero stock right now)
+        # sort to the bottom regardless of direction — there's nothing
+        # meaningful to rank them against.
+        "turnover": lambda r: (r["turnover"] is not None, r["turnover"] or 0),
+    }
+    rows.sort(key=sort_keys[sort], reverse=True)
+
+    totals = {
+        "revenue": sum(r["revenue"] for r in rows),
+        "units_sold": sum(r["units_sold"] for r in rows),
+        "discrepancy_count": sum(r["discrepancy_count"] for r in rows),
+    }
+
+    return render_template(
+        "admin/branch_performance.html",
+        rows=rows, totals=totals, sort=sort,
     )
 
 
@@ -1112,6 +1403,136 @@ def movement_logs():
     return render_template("admin/movement_logs.html", logs=logs, branch_list=branch_list, branch_filter=branch_filter)
 
 
+# ---------------------------------------------------------------- discrepancies (fleet-wide)
+@bp.route("/discrepancies")
+@admin_required
+def discrepancies():
+    """Fleet-wide view of delivery discrepancies — DAMAGE (reported at
+    receipt) and ADJUSTMENT (dispatched but never received/accounted
+    for — see branch.py's receive_stock() shortfall handling) rows tied
+    to a delivery (reference_type='STOCK_REQUEST'), across every branch.
+
+    Each delivery's own receipt already shows this per-item, and each
+    branch has its own Discrepancies page scoped to itself (see
+    branch.py's discrepancies()) — this is the admin-side rollup that
+    lets HQ spot a bad courier or a branch that keeps reporting damage/
+    shortfall, instead of only ever seeing one delivery at a time on
+    review_request().
+    """
+    branch_filter = request.args.get("branch_id", "all")
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+
+    # Per-branch rollup, always fleet-wide regardless of the tab below —
+    # change_qty is stored negative for both DAMAGE and ADJUSTMENT (both
+    # deduct stock), so negating it back to a positive "units lost"
+    # figure here keeps the summary readable without the reader having
+    # to mentally flip the sign themselves.
+    summary = query(
+        """SELECT b.branch_id, b.branch_name,
+                  COUNT(sml.log_id) AS discrepancy_count,
+                  COUNT(DISTINCT sml.reference_id) AS deliveries_affected,
+                  COALESCE(SUM(CASE WHEN sml.movement_type = 'DAMAGE' THEN -sml.change_qty ELSE 0 END), 0) AS damaged_units,
+                  COALESCE(SUM(CASE WHEN sml.movement_type = 'ADJUSTMENT' THEN -sml.change_qty ELSE 0 END), 0) AS shortfall_units
+           FROM branches b
+           LEFT JOIN stock_movement_logs sml
+             ON sml.branch_id = b.branch_id
+            AND sml.reference_type = 'STOCK_REQUEST'
+            AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+           WHERE b.is_hq = FALSE
+           GROUP BY b.branch_id, b.branch_name
+           ORDER BY discrepancy_count DESC, damaged_units DESC, b.branch_name"""
+    )
+
+    # Detail log — same shape as branch.py's discrepancies(), just
+    # joined across every branch and filterable by one, same
+    # all/per-branch tabs convention as low_stock().
+    sql = """SELECT sml.*, p.item_name, b.branch_name, sr.delivery_number
+              FROM stock_movement_logs sml
+              JOIN products p ON sml.sku = p.sku
+              JOIN branches b ON sml.branch_id = b.branch_id
+              LEFT JOIN stock_requests sr
+                ON sml.reference_type = 'STOCK_REQUEST' AND sml.reference_id = sr.request_id
+              WHERE sml.reference_type = 'STOCK_REQUEST'
+                AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')"""
+    params = []
+    if branch_filter != "all":
+        sql += " AND sml.branch_id = %s"
+        params.append(branch_filter)
+    sql += " ORDER BY sml.created_at DESC LIMIT 300"
+    logs = query(sql, tuple(params))
+
+    totals = {
+        "discrepancy_count": sum(s["discrepancy_count"] for s in summary),
+        "damaged_units": sum(s["damaged_units"] for s in summary),
+        "shortfall_units": sum(s["shortfall_units"] for s in summary),
+    }
+
+    return render_template(
+        "admin/discrepancies.html",
+        summary=summary, logs=logs, totals=totals,
+        branch_list=branch_list, branch_filter=branch_filter,
+    )
+
+
+# ---------------------------------------------------------------- announcements
+@bp.route("/announcements", methods=["GET", "POST"])
+@admin_required
+def announcements():
+    """Push a one-line message to every signed-in branch tab (or one
+    specific branch) via the notification bell — see sockets.py's
+    notify_bell(). Unlike the notify_admin/notify_branch scope pushes
+    used everywhere else in this app, notify_bell carries an actual
+    human-readable message meant to be read directly in the bell
+    dropdown, not acted on programmatically.
+
+    This is fire-and-forget over Socket.IO: nothing is persisted to the
+    database, so only branches with a tab open right now will see it —
+    there's no inbox to check later. What IS kept is a trace in the
+    Admin Log (see audit.log_action below), so there's still a record
+    of who sent what, to whom, and when, even though the notification
+    itself is ephemeral.
+    """
+    branch_list = query(
+        "SELECT branch_id, branch_name FROM branches ORDER BY branch_name")
+
+    if request.method == "POST":
+        target = request.form.get("target", "all")
+        level = request.form.get("level", "info")
+        if level not in ("info", "success", "warning"):
+            level = "info"
+
+        try:
+            message = parse_required_text(
+                request.form.get("message", ""), "Message", max_length=500)
+        except ValidationError as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.announcements"))
+
+        if target == "all":
+            notify_bell(message, room=None, level=level)
+            log_action("send_announcement", target="All branches",
+                       details=message[:255])
+            flash("Announcement sent to all branches currently online.", "success")
+        else:
+            branch = query(
+                "SELECT branch_id, branch_name FROM branches WHERE branch_id = %s",
+                (target,), fetchone=True,
+            )
+            if not branch:
+                flash("Select a valid branch.", "error")
+                return redirect(url_for("admin.announcements"))
+            notify_bell(
+                message, room=f"branch:{branch['branch_id']}", level=level)
+            log_action("send_announcement",
+                       target=branch["branch_name"], details=message[:255])
+            flash(
+                f"Announcement sent to {branch['branch_name']} (if currently online).", "success")
+        return redirect(url_for("admin.announcements"))
+
+    return render_template("admin/announcements.html", branch_list=branch_list)
+
+
 # ---------------------------------------------------------------- audit log
 @bp.route("/audit-log")
 @admin_required
@@ -1129,6 +1550,60 @@ def audit_log():
            ORDER BY created_at DESC LIMIT 300"""
     )
     return render_template("admin/audit_log.html", logs=logs)
+
+
+# ---------------------------------------------------------------- login activity
+@bp.route("/login-activity")
+@admin_required
+def login_activity_log():
+    """Every sign-in attempt, successful or not — separate from Admin
+    Log above, which only ever covers changes an already-authenticated
+    admin makes, never the act of signing in itself. See login_activity.py
+    for how entries get written (from routes/auth.py's login()).
+
+    username_attempted / role_attempted are what was actually typed at
+    the time, kept even if that username never matched a real account
+    (a typo, or someone probing for valid logins) or if the matching
+    account's username has since changed — current_username shows what
+    that account is called today, for cross-reference, when the two
+    differ.
+    """
+    outcome_filter = request.args.get("outcome", "all")
+    sql = """SELECT la.*, u.username AS current_username
+             FROM login_activity la
+             LEFT JOIN users u ON la.user_id = u.user_id"""
+    if outcome_filter == "success":
+        sql += " WHERE la.success = TRUE"
+    elif outcome_filter == "failed":
+        sql += " WHERE la.success = FALSE"
+    sql += " ORDER BY la.created_at DESC LIMIT 300"
+    logs = query(sql)
+
+    totals = query(
+        """SELECT COUNT(*) AS total_attempts,
+                  COALESCE(SUM(CASE WHEN success THEN 0 ELSE 1 END), 0) AS failed_attempts,
+                  COUNT(DISTINCT CASE WHEN NOT success THEN ip_address END) AS failed_ip_count
+           FROM login_activity""",
+        fetchone=True,
+    )
+
+    # Usernames with several failed attempts in the last 24 hours —
+    # worth a second look (repeated typos from a real user, or someone
+    # actively guessing at an account's password).
+    recent_failures = query(
+        """SELECT username_attempted, COUNT(*) AS attempt_count, MAX(created_at) AS last_attempt_at
+           FROM login_activity
+           WHERE success = FALSE AND created_at >= NOW() - INTERVAL 24 HOUR
+           GROUP BY username_attempted
+           HAVING attempt_count >= 3
+           ORDER BY attempt_count DESC LIMIT 10"""
+    )
+
+    return render_template(
+        "admin/login_activity.html", logs=logs, totals=totals,
+        outcome_filter=outcome_filter, recent_failures=recent_failures,
+        failure_reasons=login_activity.LOGIN_FAILURE_REASONS,
+    )
 
 
 # ---------------------------------------------------------------- reports
@@ -1203,9 +1678,9 @@ def reports_data():
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
-    # Bucket size — and time window — shared by three charts: Ledger
-    # movement (bucketed by day/week/month/year), and Revenue by branch
-    # + Revenue/Materials/Profit (not bucketed, just totaled within the
+    # Bucket size — and time window — shared by two charts: Ledger
+    # movement (bucketed by day/week/month/year), and
+    # Revenue/Materials/Profit (not bucketed, just totaled within the
     # same window, e.g. "last 14 days" for daily). Same allow-list
     # pattern reports.py uses elsewhere: the value picked here is never
     # user text going into SQL, it's a key into a fixed dict, and only
@@ -1224,19 +1699,6 @@ def reports_data():
             FROM stock_movement_logs
             WHERE created_at >= NOW() - {window_sql}
             GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day"""
-    )
-
-    # Revenue by branch, windowed to match the granularity switch (e.g.
-    # last 14 days for "Daily") rather than all-time — the filter lives
-    # in the JOIN condition, not WHERE, so a branch with zero sales in
-    # the window still shows up with a 0 bar instead of disappearing.
-    by_branch_revenue = query(
-        f"""SELECT b.branch_name,
-                   COALESCE(SUM(s.qty_sold), 0) AS units_sold,
-                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
-            FROM branches b
-            LEFT JOIN sales s ON b.branch_id = s.branch_id AND s.sold_at >= NOW() - {window_sql}
-            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
     stock_by_branch = query(
@@ -1327,7 +1789,7 @@ def reports_data():
         row["day"] = row["day"].isoformat()
 
     return jsonify(
-        by_variant=by_variant, by_branch=by_branch, by_branch_revenue=by_branch_revenue,
+        by_variant=by_variant, by_branch=by_branch,
         movement_trend=movement_trend, stock_by_branch=stock_by_branch, totals=totals,
         financials=financials,
     )
@@ -1591,6 +2053,15 @@ def log_material_usage():
 @bp.route("/materials/suppliers/add", methods=["POST"])
 @admin_required
 def add_supplier():
+    # return_to lets this same endpoint be posted to from either the
+    # Materials page (its long-standing inline supplier table) or the
+    # standalone Suppliers directory — see suppliers() below — without
+    # duplicating the insert logic. Defaults to materials so any
+    # existing form that doesn't send this field keeps working exactly
+    # as before.
+    return_to = request.form.get("return_to", "materials")
+    return_endpoint = "admin.suppliers" if return_to == "suppliers" else "admin.materials"
+
     supplier_name = request.form.get("supplier_name", "").strip()
     contact_person = request.form.get("contact_person", "").strip() or None
     phone = request.form.get("phone", "").strip() or None
@@ -1600,10 +2071,10 @@ def add_supplier():
 
     if not supplier_name:
         flash("Supplier name is required.", "error")
-        return redirect(url_for("admin.materials"))
+        return redirect(url_for(return_endpoint))
     if len(supplier_name) > 100:
         flash("Supplier name is too long (max 100 characters).", "error")
-        return redirect(url_for("admin.materials"))
+        return redirect(url_for(return_endpoint))
 
     try:
         execute(
@@ -1617,12 +2088,16 @@ def add_supplier():
         flash(f"Supplier '{supplier_name}' added.", "success")
     except Exception:
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
-    return redirect(url_for("admin.materials"))
+    return redirect(url_for(return_endpoint))
 
 
 @bp.route("/materials/suppliers/edit", methods=["POST"])
 @admin_required
 def edit_supplier():
+    # See add_supplier()'s comment on return_to — same reasoning here.
+    return_to = request.form.get("return_to", "materials")
+    return_endpoint = "admin.suppliers" if return_to == "suppliers" else "admin.materials"
+
     supplier_id = request.form.get("supplier_id")
     supplier_name = request.form.get("supplier_name", "").strip()
     contact_person = request.form.get("contact_person", "").strip() or None
@@ -1633,10 +2108,10 @@ def edit_supplier():
 
     if not supplier_name:
         flash("Supplier name is required.", "error")
-        return redirect(url_for("admin.materials"))
+        return redirect(url_for(return_endpoint))
     if len(supplier_name) > 100:
         flash("Supplier name is too long (max 100 characters).", "error")
-        return redirect(url_for("admin.materials"))
+        return redirect(url_for(return_endpoint))
 
     try:
         execute(
@@ -1652,7 +2127,74 @@ def edit_supplier():
         flash(f"Supplier '{supplier_name}' updated.", "success")
     except Exception:
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
-    return redirect(url_for("admin.materials"))
+    return redirect(url_for(return_endpoint))
+
+
+# ---------------------------------------------------------------- suppliers (standalone directory)
+@bp.route("/suppliers")
+@admin_required
+def suppliers():
+    """Standalone supplier directory.
+
+    `suppliers` has existed as a table with add/edit routes for a while,
+    but the only place to see them was the inline table on the
+    Materials page (and the dropdown on its add-material form) — there
+    was no single place to see every supplier with what they've
+    actually supplied and at what volume, without cross-referencing the
+    material log by hand. This page is that place; the add/edit forms
+    are the same ones from Materials (add_supplier()/edit_supplier()
+    above), just also reachable from here via return_to=suppliers so
+    editing a supplier from this page comes back to this page instead
+    of jumping over to Materials.
+    """
+    rows = query(
+        """SELECT s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
+                  s.address, s.notes, s.created_at,
+                  COUNT(rm.material_id) AS material_count,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_spent,
+                  MAX(rm.created_at) AS last_purchase_at
+           FROM suppliers s
+           LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+           GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
+                    s.address, s.notes, s.created_at
+           ORDER BY total_spent DESC, s.supplier_name"""
+    )
+
+    # What each supplier has actually supplied, and at what volume —
+    # one row per (supplier, material), rolled up across every purchase
+    # logged for that pair. Grouped in Python onto each supplier row
+    # below rather than queried once per supplier.
+    material_rows = query(
+        """SELECT rm.supplier_id, rm.material_name, rm.unit,
+                  COUNT(*) AS purchase_count,
+                  COALESCE(SUM(rm.package_qty), 0) AS total_qty,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_cost
+           FROM raw_materials rm
+           WHERE rm.supplier_id IS NOT NULL
+           GROUP BY rm.supplier_id, rm.material_name, rm.unit
+           ORDER BY rm.material_name"""
+    )
+    materials_by_supplier = {}
+    for row in material_rows:
+        materials_by_supplier.setdefault(row["supplier_id"], []).append({
+            "material_name": row["material_name"],
+            "unit": row["unit"],
+            "purchase_count": row["purchase_count"],
+            "total_qty": float(row["total_qty"]),
+            "total_cost": float(row["total_cost"]),
+        })
+    for r in rows:
+        r["materials_supplied"] = materials_by_supplier.get(r["supplier_id"], [])
+
+    totals = query(
+        """SELECT (SELECT COUNT(*) FROM suppliers) AS supplier_count,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_supplied_spend,
+                  (SELECT COUNT(*) FROM raw_materials WHERE supplier_id IS NULL) AS unassigned_material_count
+           FROM raw_materials rm WHERE rm.supplier_id IS NOT NULL""",
+        fetchone=True,
+    )
+
+    return render_template("admin/suppliers.html", rows=rows, totals=totals)
 
 
 # ---------------------------------------------------------------- capital
@@ -2157,3 +2699,69 @@ def update_inquiry_remarks(inquiry_id):
     )
     flash(f"Remarks saved for {inquiry['company_name']}'s inquiry.", "success")
     return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+
+# ---------------------------------------------------------------- customer directory (company-wide)
+@bp.route("/customers")
+@admin_required
+def customers():
+    """Company-wide repeat-customer directory, aggregated across every
+    branch — the admin counterpart to branch.customers().
+
+    Same underlying data as the branch-scoped version: there's no
+    separate customers table, this is built entirely from
+    `sales.customer_name` / `customer_address`, grouped by name. The
+    difference here is scope: a customer who has bought from more than
+    one branch is folded into a single row instead of appearing once
+    per branch, with a "Branches" column showing where they've shopped
+    and the branch of their most recent purchase.
+
+    Address is taken from the earliest sale on file for that name
+    fleet-wide (same "first sale wins" convention as the branch page
+    and Record Sale's autocomplete — see schema.sql's comment on
+    sales.customer_address). Walk-ins (blank customer_name) are
+    excluded since there's nothing to group them by. Matching is by
+    exact customer_name text, same as everywhere else this field is
+    used — two different spellings of the same person's name are
+    treated as two different customers, same limitation the branch
+    page and Record Sale autocomplete already have.
+    """
+    rows = query(
+        """SELECT s.customer_name AS name, s.customer_address AS address,
+                  agg.branch_count, agg.branches, agg.purchase_count,
+                  agg.total_units, agg.total_spent, agg.last_purchase_at,
+                  last_b.branch_name AS last_branch_name
+           FROM (
+               SELECT sa.customer_name,
+                      COUNT(DISTINCT sa.branch_id) AS branch_count,
+                      GROUP_CONCAT(DISTINCT b.branch_name ORDER BY b.branch_name SEPARATOR ', ') AS branches,
+                      COUNT(*) AS purchase_count,
+                      COALESCE(SUM(sa.qty_sold), 0) AS total_units,
+                      COALESCE(SUM(sa.qty_sold * sa.unit_price), 0) AS total_spent,
+                      MIN(sa.sold_at) AS first_sold_at,
+                      MAX(sa.sold_at) AS last_purchase_at
+               FROM sales sa
+               JOIN branches b ON sa.branch_id = b.branch_id
+               WHERE sa.customer_name IS NOT NULL AND sa.customer_name <> ''
+               GROUP BY sa.customer_name
+           ) agg
+           JOIN sales s
+             ON s.customer_name = agg.customer_name AND s.sold_at = agg.first_sold_at
+           JOIN sales last_sale
+             ON last_sale.customer_name = agg.customer_name AND last_sale.sold_at = agg.last_purchase_at
+           JOIN branches last_b ON last_sale.branch_id = last_b.branch_id
+           ORDER BY agg.total_spent DESC"""
+    )
+
+    totals = query(
+        """SELECT COUNT(DISTINCT customer_name) AS customer_count,
+                  COALESCE(SUM(qty_sold * unit_price), 0) AS total_named_revenue
+           FROM sales WHERE customer_name IS NOT NULL AND customer_name <> ''"""
+        , fetchone=True,
+    )
+    multi_branch_count = sum(1 for r in rows if r["branch_count"] > 1)
+
+    return render_template(
+        "admin/customers.html", rows=rows, totals=totals,
+        multi_branch_count=multi_branch_count,
+    )

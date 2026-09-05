@@ -20,15 +20,27 @@
 
   /* Fixed column widths (see .table-fixed in style.css) so a long
      package name/description can't stretch this column — and
-     therefore the whole table — wider than the others. */
-  .pk-all-table th:nth-child(1), .pk-all-table td:nth-child(1) { width: 23%; }
-  .pk-all-table th:nth-child(2), .pk-all-table td:nth-child(2) { width: 10%; }
-  .pk-all-table th:nth-child(3), .pk-all-table td:nth-child(3) { width: 8%; }
-  .pk-all-table th:nth-child(4), .pk-all-table td:nth-child(4) { width: 13%; }
-  .pk-all-table th:nth-child(5), .pk-all-table td:nth-child(5) { width: 11%; }
-  .pk-all-table th:nth-child(6), .pk-all-table td:nth-child(6) { width: 13%; }
-  .pk-all-table th:nth-child(7), .pk-all-table td:nth-child(7) { width: 10%; }
-  .pk-all-table th:nth-child(8), .pk-all-table td:nth-child(8) { width: 12%; }
+     therefore the whole table — wider than the others.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.pk-all-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the Package cell stayed pinned to a hardcoded 23% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped a long package name one character per line.
+     Same pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    .pk-all-table th:nth-child(1), .pk-all-table td:nth-child(1) { width: 23%; }
+    .pk-all-table th:nth-child(2), .pk-all-table td:nth-child(2) { width: 10%; }
+    .pk-all-table th:nth-child(3), .pk-all-table td:nth-child(3) { width: 8%; }
+    .pk-all-table th:nth-child(4), .pk-all-table td:nth-child(4) { width: 13%; }
+    .pk-all-table th:nth-child(5), .pk-all-table td:nth-child(5) { width: 11%; }
+    .pk-all-table th:nth-child(6), .pk-all-table td:nth-child(6) { width: 13%; }
+    .pk-all-table th:nth-child(7), .pk-all-table td:nth-child(7) { width: 10%; }
+    .pk-all-table th:nth-child(8), .pk-all-table td:nth-child(8) { width: 12%; }
+  }
 </style>
 {% endblock %}
 

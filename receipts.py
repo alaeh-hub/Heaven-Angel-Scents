@@ -59,24 +59,24 @@ DANGER_SOFT = colors.HexColor("#FCE7EA")
 GOOD = colors.HexColor("#17975E")
 
 # Vendored copy lives in a root-level fonts/ folder, alongside this file
-# (i.e. project_root/fonts/DejaVuSans.ttf). Checked FIRST and is what a
+# (i.e. project_root/fonts/IBMPlexSans-Regular.ttf). This is what a
 # production deploy should actually be relying on: it travels with the
-# app instead of depending on the host OS happening to have the
-# fonts-dejavu-core package installed, which is exactly why ₱ was
-# rendering as a black box on a server that doesn't have it.
-_VENDORED_DEJAVU = (
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans.ttf"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans-Bold.ttf"),
+# app instead of depending on the host OS happening to have a matching
+# font package installed, which is exactly why ₱ was rendering as a
+# black box on a server that doesn't have one.
+_VENDORED_PLEX = (
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "IBMPlexSans-Regular.ttf"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "IBMPlexSans-Bold.ttf"),
 )
 
-# Fallback for machines that don't have the vendored copy yet (e.g. an
-# older deploy) but do have the OS package installed.
-_DEJAVU_CANDIDATES = [
-    _VENDORED_DEJAVU,
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ("/usr/share/fonts/dejavu/DejaVuSans.ttf",
-     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+# Unlike DejaVu Sans (the previous choice here), IBM Plex Sans isn't a
+# font Linux distros commonly ship system-wide, so there's no realistic
+# OS-installed fallback path worth searching — the vendored copy above
+# is the only real candidate. Kept as a list (of one) so the loop below
+# and its "quietly fall back to Helvetica" behavior don't need to change
+# shape if a fallback path ever needs adding back.
+_PLEX_CANDIDATES = [
+    _VENDORED_PLEX,
 ]
 
 
@@ -85,23 +85,24 @@ def _register_receipt_fonts():
     Reportlab's built-in Helvetica only supports WinAnsiEncoding, which
     doesn't include ₱ — it renders as a solid black box instead.
 
-    DejaVu Sans has full Unicode currency-symbol coverage. It's vendored
-    directly into static/fonts/ so this doesn't depend on the deploy
-    target happening to have fonts-dejavu-core (or any font package) on
-    the OS — that's what caused the ₱ symbol to silently degrade to a
-    box on a server where the app worked in every other respect. The
-    OS-path candidates are kept as a secondary fallback only. If truly
-    nothing is found, this quietly falls back to Helvetica — every ₱
-    would then render as a box, but the PDF still generates instead of
-    raising.
+    IBM Plex Sans has full Unicode currency-symbol coverage (verified to
+    include ₱ in both regular and bold), and matches the IBM Plex Mono
+    already used for SKU/mono styling elsewhere in the app, so receipts
+    share a type family with the rest of the app. It's vendored directly
+    into fonts/ so this doesn't depend on the deploy target happening to
+    have it (or any matching font package) installed at the OS level —
+    that's what caused the ₱ symbol to silently degrade to a box on a
+    server where the app worked in every other respect. If truly nothing
+    is found, this quietly falls back to Helvetica — every ₱ would then
+    render as a box, but the PDF still generates instead of raising.
     """
-    if "DejaVuSans" in pdfmetrics.getRegisteredFontNames():
-        return "DejaVuSans", "DejaVuSans-Bold"
-    for regular_path, bold_path in _DEJAVU_CANDIDATES:
+    if "IBMPlexSans" in pdfmetrics.getRegisteredFontNames():
+        return "IBMPlexSans", "IBMPlexSans-Bold"
+    for regular_path, bold_path in _PLEX_CANDIDATES:
         if os.path.exists(regular_path) and os.path.exists(bold_path):
-            pdfmetrics.registerFont(TTFont("DejaVuSans", regular_path))
-            pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", bold_path))
-            return "DejaVuSans", "DejaVuSans-Bold"
+            pdfmetrics.registerFont(TTFont("IBMPlexSans", regular_path))
+            pdfmetrics.registerFont(TTFont("IBMPlexSans-Bold", bold_path))
+            return "IBMPlexSans", "IBMPlexSans-Bold"
     return "Helvetica", "Helvetica-Bold"
 
 

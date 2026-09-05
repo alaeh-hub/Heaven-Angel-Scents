@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
   --bg: #F4F5F8;
@@ -162,7 +162,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -194,7 +194,7 @@ h1,
 h2,
 h3,
 .display {
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: 'Manrope', -apple-system, sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -365,7 +365,7 @@ th.num {
 }
 
 .brand-mark {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -577,7 +577,7 @@ th.num {
   justify-content: center;
   font-weight: 700;
   font-size: 13px;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Manrope', sans-serif;
   flex-shrink: 0;
   box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 3px var(--border-strong);
 }
@@ -1164,7 +1164,7 @@ th.num {
 }
 
 .stat-value {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -2166,7 +2166,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .auth-brand .mark {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -2231,7 +2231,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .error-shell .code {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-weight: 800;
   font-size: 64px;
   color: var(--red);
@@ -2373,6 +2373,19 @@ input[type="file"]:hover::-webkit-file-upload-button {
   .topbar {
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  /* The eyebrow ("Catalog & Supply", "Admin Overview", etc.) and page
+     heading ("Good to see you, admin", "Products", etc.) come from
+     base.html's shared topbar markup, so this one place covers every
+     page's header at once. Desktop sizes (22px heading / 11px eyebrow)
+     read as oversized on a narrow phone screen — scaled both down here. */
+  .topbar h1 {
+    font-size: 17px;
+  }
+
+  .topbar .eyebrow {
+    font-size: 10px;
   }
 
   .flashes {

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Announcements{% endblock %}
+{% block eyebrow %}Organization{% endblock %}
+{% block heading %}Announcements{% endblock %}
+
+{% block content %}
+<div class="card card-pad" style="max-width:640px;">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Send an announcement</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    Pushed straight to the notification bell of every signed-in tab it targets — nothing is saved to an
+    inbox, so only branches with the app open right now will see it. A record of who sent what, and to
+    whom, is still kept on the <a href="{{ url_for('admin.audit_log') }}">Admin Log</a>.
+  </p>
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="target">Send to</label>
+        <select id="target" name="target" required>
+          <option value="all">All branches</option>
+          {% for b in branch_list %}
+          <option value="{{ b.branch_id }}">{{ b.branch_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="level">Type</label>
+        <select id="level" name="level" required>
+          <option value="info">Info</option>
+          <option value="success">Success</option>
+          <option value="warning">Warning</option>
+        </select>
+        <div class="help">Only affects the color of the dot next to it in the bell dropdown.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="message">Message</label>
+      <input type="text" id="message" name="message" maxlength="500" placeholder="e.g. HQ closes early today at 5PM." required>
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%;">Send announcement</button>
+  </form>
+</div>
+{% endblock %}
