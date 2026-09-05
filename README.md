@@ -16,8 +16,8 @@ truth (MySQL):
 
 | Role | Access surface | Core concern |
 |---|---|---|
-| **HQ Admin** | `/admin/*` | Catalog, warehouse production, dispatch, partners, packages, accounts, reporting |
-| **Branch Staff** | `/branch/*` | Local inventory, sales/refills, stock requests, receiving shipments |
+| **HQ Admin** | `/admin/*` | Catalog, warehouse production, dispatch, partners, packages, accounts, monitoring, reporting |
+| **Branch Staff** | `/branch/*` | Local inventory, sales/refills, stock requests, receiving shipments, customer history, discrepancy review |
 | **Distributor / Reseller** | `/partner-portal/<slug>/*` | Browses bundled packages, submits inquiries — public, unauthenticated |
 | **Any signed-in user** | `/ai/*` | Role-scoped, read-only conversational assistant over their own data |
 
@@ -213,7 +213,11 @@ Key modeling decisions worth calling out:
 4. If `must_change_password` is set (fresh account or post-reset), every
    subsequent request is redirected to `/change-password` until cleared —
    enforced centrally in `decorators._require_session()`, not per-route.
-5. Every authenticated request re-validates the account against the
+5. Each login submission is recorded in `login_activity`, including
+  successful attempts and categorized failures (missing fields, bad
+  credentials, inactive account, or wrong role tab). Logging is best-effort
+  and never prevents authentication when the table is unavailable.
+6. Every authenticated request re-validates the account against the
    database (not just the session cookie), so admin-side deactivation or
    a forced reset takes effect immediately, network-wide.
 
@@ -403,15 +407,16 @@ be edited or deleted from the app itself.
 | `db.py` | Request-scoped MySQL connection; `query`, `execute`, `transaction()` |
 | `decorators.py` | `login_required`, `admin_required`, `branch_required` — live RBAC |
 | `audit.py` | `admin_actions` table bootstrap + `log_action()` |
+| `login_activity.py` | Best-effort sign-in attempt logging and fallback table bootstrap |
 | `sockets.py` | Socket.IO room management and scoped realtime broadcasts |
 | `mailer.py` | Best-effort SMTP notification for new partner inquiries |
 | `utils.py` | Shared constants (units, sale types, partner types) and input validators |
 | `routes/auth.py` | Login, logout, forced/self-service password change |
-| `routes/admin.py` | HQ-side: dashboard, catalog, production, requests, branches, partners, packages, accounts, logs |
-| `routes/branch.py` | Branch-side: dashboard, inventory, sales, stock requests, receiving |
+| `routes/admin.py` | HQ-side: dashboard, catalog, production, requests, branches, partners, packages, accounts, customers, suppliers, monitoring, logs |
+| `routes/branch.py` | Branch-side: dashboard, inventory, sales, stock requests, receiving, customers, employee purchases, discrepancies, movement logs |
 | `routes/portal.py` | Public, unauthenticated partner package browsing + inquiry submission |
 | `routes/ai.py` | Role-scoped snapshot builder + Gemini chat proxy |
-| `schema.sql` | Relational schema (MySQL/InnoDB) — single source of truth |
+| `schema.sql` | Relational schema (MySQL/InnoDB), including suppliers, customer sale fields, and login activity — single source of truth |
 | `seed.py` | Dev-only starter accounts (refuses to run when `APP_ENV=production`) |
 | `static/js/main.js` | Realtime scope-to-page mapping, smart tables, notification bell |
 | `static/js/motion.js` | Vendored UI motion/animation helpers |
@@ -436,3 +441,37 @@ All monetary aggregates that feed "Top packages" / "Top partners" /
 partner "Package sales" figures count **only Closed** partner inquiries —
 a New, Contacted, Follow-up, or On Hold lead has not yet converted and is
 deliberately excluded, consistently, everywhere that figure appears.
+
+### 7.1 Operational monitoring and analysis
+
+- **Low Stock** gives HQ a fleet-wide, branch-filterable view of every SKU
+  at or below its reorder level, with out-of-stock and affected-branch
+  rollups.
+- **Branch Performance** compares retail branches by revenue, units sold,
+  delivery discrepancies, and an explicitly approximate inventory-turnover
+  ratio based on all-time units sold divided by current stock.
+- **Discrepancies** separates delivery-related DAMAGE and ADJUSTMENT entries
+  from ordinary production, sale, and refill activity. Admin sees the
+  fleet-wide ledger; branch staff see only their own branch.
+- **Announcements** lets HQ publish operational notices to signed-in users.
+  **Login Activity** gives HQ a searchable record of sign-in outcomes,
+  attempted usernames, role tabs, source IPs, user agents, and timestamps.
+
+### 7.2 Customer, supplier, and employee purchase records
+
+- Sales retain optional walk-in `customer_name` and `customer_address`
+  values. Admin and branch customer pages aggregate purchase count,
+  quantity, and spend while keeping branch visibility scoped appropriately.
+- Raw materials may reference a reusable supplier record. Admin can manage
+  suppliers without duplicating supplier data across material rows.
+- Salary-deduction sales retain the free-text employee name and are exposed
+  through the branch Employee Purchases view for payroll reconciliation;
+  they are not tied to application login accounts.
+
+### 7.3 Presentation changes
+
+The shared server-rendered UI now uses IBM Plex Sans (`fonts/IBMPlexSans-*.ttf`)
+as its bundled typeface, with updated admin and branch navigation, dashboard
+cards, tables, filters, and responsive layouts. The legacy DejaVu Sans font
+files were removed. Existing progressive enhancement, Socket.IO refreshes,
+and CSRF-protected forms remain the interaction model.
