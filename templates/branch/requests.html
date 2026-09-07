@@ -20,12 +20,16 @@
      combined with overflow-wrap:anywhere from .table-fixed, that
      narrow box wrapped every character onto its own line. */
   @media (min-width: 681px) {
-    .sr-table th:nth-child(1), .sr-table td:nth-child(1) { width: 14%; }
-    .sr-table th:nth-child(2), .sr-table td:nth-child(2) { width: 20%; }
+    /* "Requested" was wrapping onto a second line at ordinary desktop
+       widths — 14% wasn't enough room for "Sep 04, 2026" once every
+       other column's own content was accounted for, so it gets extra
+       room here at the other columns' expense. */
+    .sr-table th:nth-child(1), .sr-table td:nth-child(1) { width: 20%; }
+    .sr-table th:nth-child(2), .sr-table td:nth-child(2) { width: 18%; }
     .sr-table th:nth-child(3), .sr-table td:nth-child(3) { width: 10%; }
-    .sr-table th:nth-child(4), .sr-table td:nth-child(4) { width: 16%; }
+    .sr-table th:nth-child(4), .sr-table td:nth-child(4) { width: 14%; }
     .sr-table th:nth-child(5), .sr-table td:nth-child(5) { width: 16%; }
-    .sr-table th:nth-child(6), .sr-table td:nth-child(6) { width: 24%; }
+    .sr-table th:nth-child(6), .sr-table td:nth-child(6) { width: 22%; }
   }
 </style>
 {% endblock %}
@@ -59,8 +63,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed sr-table">
         <colgroup>
-          <col style="width:14%"><col style="width:20%"><col style="width:10%">
-          <col style="width:16%"><col style="width:16%"><col style="width:24%">
+          <col style="width:20%"><col style="width:18%"><col style="width:10%">
+          <col style="width:14%"><col style="width:16%"><col style="width:22%">
         </colgroup>
         <thead>
           <tr>
@@ -86,7 +90,7 @@
               {% elif r.status == 'In Transit' %}
               <a href="{{ url_for('branch.receive_stock') }}" class="btn btn-accent btn-sm">Confirm receipt</a>
               {% elif r.status == 'Fulfilled' %}
-              <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+              <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
               {% else %}
               <span class="text-faint" style="font-size:12.5px;">—</span>
               {% endif %}

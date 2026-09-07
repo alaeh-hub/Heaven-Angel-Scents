@@ -318,7 +318,7 @@
     {% if req.status == 'In Transit' %}
     <span class="rd-actions-note">Dispatched — awaiting the branch to confirm receipt.</span>
     {% elif req.status == 'Fulfilled' %}
-    <a href="{{ url_for('admin.request_receipt', request_id=req.request_id) }}" class="btn btn-accent">Download receipt</a>
+    <a href="{{ url_for('admin.request_receipt', request_id=req.request_id) }}" class="btn btn-accent" target="_blank">Download receipt</a>
     {% else %}
     <span class="rd-actions-note">This delivery was rejected.</span>
     {% endif %}

@@ -7,6 +7,7 @@ import sys
 from flask import Flask, render_template, session
 from flask_talisman import Talisman
 from flask_wtf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
@@ -83,6 +84,30 @@ def create_app():
             "Set the SECRET_KEY environment variable (e.g. via `python -c "
             "\"import secrets; print(secrets.token_hex(32))\"`), or set FLASK_DEBUG=1 "
             "if this really is local development."
+        )
+
+    if app.config["NUM_PROXIES"] > 0:
+        # Trust exactly this many reverse-proxy hops' X-Forwarded-For /
+        # X-Forwarded-Proto / X-Forwarded-Host headers — see config.py's
+        # NUM_PROXIES comment for why this is opt-in rather than always
+        # applied. Without this, Flask-Limiter's IP-based rate limits
+        # (auth.login, the partner-portal inquiry form) key on whatever
+        # request.remote_addr resolves to, which behind a proxy is the
+        # proxy's own address for every visitor.
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=app.config["NUM_PROXIES"],
+            x_proto=app.config["NUM_PROXIES"],
+            x_host=app.config["NUM_PROXIES"],
+        )
+    elif not app.config["DEBUG"]:
+        app.logger.warning(
+            "NUM_PROXIES is 0, so this app trusts request.remote_addr as-is. If a reverse proxy "
+            "or load balancer sits in front of it (common in production, especially since Talisman "
+            "is forcing HTTPS/HSTS here), every IP-based rate limit — login attempts, the partner "
+            "portal's inquiry form — will bucket by the proxy's address for ALL visitors combined "
+            "instead of per-visitor. Set NUM_PROXIES to the number of proxy hops in front of this "
+            "app (usually 1) if that's your setup."
         )
 
     if not app.config.get("PARTNER_PORTAL_SLUG"):

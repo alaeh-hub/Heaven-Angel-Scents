@@ -39,6 +39,57 @@
     border: 1px solid var(--border-strong);
     color: var(--accent-ink);
   }
+
+  /* Fixed column widths (see .table-fixed in style.css) so a long
+     supplier/material name or note can't stretch these columns — and
+     therefore the whole table — wider than the others; it wraps in
+     place instead. Same pattern as Suppliers/Inventory Log/etc.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (td:nth-child(n)) out-specificity
+     style.css's generic mobile rule .table-wrap td { width: 100% }
+     (one class + one tag), so below the 680px breakpoint a cell would
+     stay pinned to a hardcoded desktop width instead of taking the
+     full-width mobile layout — and combined with overflow-wrap:anywhere
+     from .table-fixed, that narrow box would wrap every character onto
+     its own line. */
+  @media (min-width: 681px) {
+    .mat-sup-table th:nth-child(1), .mat-sup-table td:nth-child(1) { width: 26%; }
+    .mat-sup-table th:nth-child(2), .mat-sup-table td:nth-child(2) { width: 20%; }
+    .mat-sup-table th:nth-child(3), .mat-sup-table td:nth-child(3) { width: 24%; }
+    .mat-sup-table th:nth-child(4), .mat-sup-table td:nth-child(4) { width: 12%; }
+    .mat-sup-table th:nth-child(5), .mat-sup-table td:nth-child(5) { width: 18%; }
+
+    .mat-table th:nth-child(1), .mat-table td:nth-child(1) { width: 20%; }
+    .mat-table th:nth-child(2), .mat-table td:nth-child(2) { width: 16%; }
+    .mat-table th:nth-child(3), .mat-table td:nth-child(3) { width: 14%; }
+    .mat-table th:nth-child(4), .mat-table td:nth-child(4) { width: 14%; }
+    .mat-table th:nth-child(5), .mat-table td:nth-child(5) { width: 22%; }
+    .mat-table th:nth-child(6), .mat-table td:nth-child(6) { width: 14%; }
+
+    /* "When" here carries a full date+time stamp ("Sep 04, 2026
+       02:33 PM"), noticeably longer than the date-only "When"
+       columns elsewhere in the app — 16% was wrapping it onto a
+       second line at ordinary desktop widths, so it gets extra room
+       here at the other columns' expense. */
+    .mat-usage-table th:nth-child(1), .mat-usage-table td:nth-child(1) { width: 24%; }
+    .mat-usage-table th:nth-child(2), .mat-usage-table td:nth-child(2) { width: 18%; }
+    .mat-usage-table th:nth-child(3), .mat-usage-table td:nth-child(3) { width: 10%; }
+    .mat-usage-table th:nth-child(4), .mat-usage-table td:nth-child(4) { width: 18%; }
+    .mat-usage-table th:nth-child(5), .mat-usage-table td:nth-child(5) { width: 30%; }
+  }
+
+  @media (max-width: 680px) {
+    /* Same reasoning as Inventory Log's Notes column: a long usage
+       note reads better stacked (label above value) than squeezed into
+       the generic right-aligned mobile row. */
+    .mat-usage-table td[data-label="Notes"] {
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -49,7 +100,7 @@
      comparing every time something looked off. Materials tracked stays
      here since it's specific to this page (the cost list), not
      supplier-scoped. -->
-<div class="bento-grid stack">
+<div class="grid grid-2 stack">
   <div class="card stat-tile">
     <div class="stat-icon stat-icon-violet">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -102,7 +153,11 @@
       </div>
     </div>
     <div class="table-wrap table-airy">
-      <table class="smart-table">
+      <table class="smart-table table-fixed mat-sup-table">
+        <colgroup>
+          <col style="width:26%"><col style="width:20%"><col style="width:24%">
+          <col style="width:12%"><col style="width:18%">
+        </colgroup>
         <thead>
           <tr>
             <th>Supplier</th>
@@ -177,7 +232,11 @@
       </div>
     </div>
     <div class="table-wrap table-airy">
-      <table class="smart-table">
+      <table class="smart-table table-fixed mat-table">
+        <colgroup>
+          <col style="width:20%"><col style="width:16%"><col style="width:14%">
+          <col style="width:14%"><col style="width:22%"><col style="width:14%">
+        </colgroup>
         <thead>
           <tr>
             <th>Material</th>
@@ -276,7 +335,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table table-fixed mat-usage-table">
+        <colgroup>
+          <col style="width:24%"><col style="width:18%"><col style="width:10%">
+          <col style="width:18%"><col style="width:30%">
+        </colgroup>
         <thead>
           <tr>
             <th>When</th>

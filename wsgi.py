@@ -4,7 +4,7 @@ Exposes `app` for ordinary WSGI servers. Because Socket.IO needs
 long-lived connections, a production deployment also needs an async
 worker instead of plain sync workers, e.g.:
 
-    pip install gevent gevent-websocket
+    pip install -r requirements.txt
     gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app
 
 (gevent rather than eventlet — eventlet's own maintainers are steering

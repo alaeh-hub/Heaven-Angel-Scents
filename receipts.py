@@ -27,7 +27,6 @@ branch side so a branch can only ever pull a receipt for its own
 request; admin callers omit it since HQ can see every branch.
 """
 import io
-import os
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -38,13 +37,13 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.lib.utils import simpleSplit
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
     HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+import brand_assets
+from brand_assets import NumberedCanvas, logo_drawing
 from db import query
 from utils import make_receipt_code
 
@@ -58,55 +57,13 @@ DANGER = colors.HexColor("#E23A48")
 DANGER_SOFT = colors.HexColor("#FCE7EA")
 GOOD = colors.HexColor("#17975E")
 
-# Vendored copy lives in a root-level fonts/ folder, alongside this file
-# (i.e. project_root/fonts/IBMPlexSans-Regular.ttf). This is what a
-# production deploy should actually be relying on: it travels with the
-# app instead of depending on the host OS happening to have a matching
-# font package installed, which is exactly why ₱ was rendering as a
-# black box on a server that doesn't have one.
-_VENDORED_PLEX = (
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "IBMPlexSans-Regular.ttf"),
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "IBMPlexSans-Bold.ttf"),
-)
-
-# Unlike DejaVu Sans (the previous choice here), IBM Plex Sans isn't a
-# font Linux distros commonly ship system-wide, so there's no realistic
-# OS-installed fallback path worth searching — the vendored copy above
-# is the only real candidate. Kept as a list (of one) so the loop below
-# and its "quietly fall back to Helvetica" behavior don't need to change
-# shape if a fallback path ever needs adding back.
-_PLEX_CANDIDATES = [
-    _VENDORED_PLEX,
-]
-
-
-def _register_receipt_fonts():
-    """This receipt prints the peso sign (₱) inline in the items table.
-    Reportlab's built-in Helvetica only supports WinAnsiEncoding, which
-    doesn't include ₱ — it renders as a solid black box instead.
-
-    IBM Plex Sans has full Unicode currency-symbol coverage (verified to
-    include ₱ in both regular and bold), and matches the IBM Plex Mono
-    already used for SKU/mono styling elsewhere in the app, so receipts
-    share a type family with the rest of the app. It's vendored directly
-    into fonts/ so this doesn't depend on the deploy target happening to
-    have it (or any matching font package) installed at the OS level —
-    that's what caused the ₱ symbol to silently degrade to a box on a
-    server where the app worked in every other respect. If truly nothing
-    is found, this quietly falls back to Helvetica — every ₱ would then
-    render as a box, but the PDF still generates instead of raising.
-    """
-    if "IBMPlexSans" in pdfmetrics.getRegisteredFontNames():
-        return "IBMPlexSans", "IBMPlexSans-Bold"
-    for regular_path, bold_path in _PLEX_CANDIDATES:
-        if os.path.exists(regular_path) and os.path.exists(bold_path):
-            pdfmetrics.registerFont(TTFont("IBMPlexSans", regular_path))
-            pdfmetrics.registerFont(TTFont("IBMPlexSans-Bold", bold_path))
-            return "IBMPlexSans", "IBMPlexSans-Bold"
-    return "Helvetica", "Helvetica-Bold"
-
-
-FONT_REGULAR, FONT_BOLD = _register_receipt_fonts()
+# This receipt prints the peso sign (₱) inline in the items table, which
+# needs a font with real Unicode currency-symbol coverage (built-in
+# Helvetica only has WinAnsiEncoding and renders ₱ as a black box) — see
+# brand_assets.register_fonts() for the shared vendored-font logic
+# (also used by reports.py and this module's own NumberedCanvas), so
+# the font files/names only need to be right in one place.
+FONT_REGULAR, FONT_BOLD = brand_assets.register_fonts()
 
 
 def _fetch_request(request_id, branch_id=None):
@@ -269,10 +226,11 @@ def build_receipt_pdf(request_id, branch_id=None):
     # ---- Letterhead ----
     header = Table(
         [[
+            logo_drawing(26),
             Table(
                 [[Paragraph("Heaven <font color='#2E5AF0'>&amp;</font> Angel Scents", s["brand"])],
                  [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
-                colWidths=[95 * mm],
+                colWidths=[84 * mm],
             ),
             Table(
                 [[Paragraph("GOODS RECEIVED RECEIPT", s["doc_title"])],
@@ -282,8 +240,13 @@ def build_receipt_pdf(request_id, branch_id=None):
                 colWidths=[75 * mm],
             ),
         ]],
-        colWidths=[95 * mm, 75 * mm],
+        colWidths=[11 * mm, 84 * mm, 75 * mm],
     )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, 0), 0),
+        ("RIGHTPADDING", (0, 0), (0, 0), 0),
+    ]))
     story.append(header)
     story.append(Spacer(1, 8))
     story.append(HRFlowable(width="100%", thickness=1.4,
@@ -482,7 +445,7 @@ def build_receipt_pdf(request_id, branch_id=None):
         s["footer"],
     ))
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     buf.seek(0)
     return buf, req
 
@@ -591,6 +554,11 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
             c.drawCentredString(x_center, state["y"], text)
         advance(gap if gap is not None else size + 4)
 
+    def logo(size, gap=None):
+        if not dry:
+            renderPDF.draw(logo_drawing(size), c, x_center - (size / 2), state["y"] - size)
+        advance(gap if gap is not None else size + 6)
+
     def wrapped_left(label, text, size=7.2, gap=None):
         if not dry:
             c.setFont(FONT_BOLD, size)
@@ -606,6 +574,7 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
         advance(gap if gap is not None else 2)
 
     # ---- Letterhead ----
+    logo(20, gap=26)
     center("HEAVEN & ANGEL SCENTS", font=FONT_BOLD, size=12, gap=15)
     center("Perfume Manufacturing & Retail", size=7.2, gap=9)
     if sale.get("location"):

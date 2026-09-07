@@ -75,16 +75,41 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
         style="max-width:520px;background:#ffffff;border-radius:12px;
         overflow:hidden;border:1px solid #e7e3dd;">
-        <tr><td style="padding:24px 24px 4px;">
-          <div style="font-size:17px;font-weight:800;letter-spacing:-0.01em;">
-            <span style="color:#3b6ef2;">Heaven</span>
-            <span style="color:#1c1b19;">&amp;</span>
-            <span style="color:#e2483d;">Angel</span>
-            <span style="color:#1c1b19;"> Scents</span>
-          </div>
-          <div style="font-size:11.5px;color:#8a8580;margin-top:2px;">
-            Partner Program &middot; New package inquiry
-          </div>
+        <!-- Brand accent bar — same top-of-letterhead treatment as the
+             generated PDF reports/receipts, so mail, receipts, and
+             reports all read as one system rather than three different
+             looks. A flat rule rather than a gradient: some inboxes
+             (Outlook desktop's Word rendering engine especially) drop
+             CSS gradients on table backgrounds, and a solid color never
+             degrades. -->
+        <tr><td style="height:4px;line-height:4px;font-size:0;background:#3b6ef2;">&nbsp;</td></tr>
+        <tr><td style="padding:22px 24px 4px;">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <!-- Logo mark — a plain monogram badge rather than an
+                 <img>: some mail clients block remote images by
+                 default (so the real drop/halo icon would just be a
+                 broken square until the user clicks "show images"),
+                 while a table cell with a background color and text
+                 always renders immediately, in every client, with no
+                 network round trip. border-radius degrades gracefully
+                 to a square in the handful of clients that don't
+                 support it (still on-brand navy either way). -->
+            <td width="34" style="width:34px;height:34px;border-radius:10px;background:#1B2A63;
+              text-align:center;vertical-align:middle;font-size:13px;font-weight:800;
+              color:#ffffff;letter-spacing:-0.02em;">H&amp;A</td>
+            <td style="width:10px;">&nbsp;</td>
+            <td style="vertical-align:middle;">
+              <div style="font-size:17px;font-weight:800;letter-spacing:-0.01em;">
+                <span style="color:#3b6ef2;">Heaven</span>
+                <span style="color:#1c1b19;">&amp;</span>
+                <span style="color:#e2483d;">Angel</span>
+                <span style="color:#1c1b19;"> Scents</span>
+              </div>
+              <div style="font-size:11.5px;color:#8a8580;margin-top:2px;">
+                Partner Program &middot; New package inquiry
+              </div>
+            </td>
+          </tr></table>
         </td></tr>
         <tr><td style="padding:18px 24px 6px;">
           <span style="display:inline-block;font-size:11px;font-weight:700;

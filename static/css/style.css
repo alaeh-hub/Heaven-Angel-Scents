@@ -212,6 +212,29 @@ a {
   border-radius: 3px;
 }
 
+/* Off-screen until focused, then dropped into view at the top-left —
+   lets a keyboard/screen-reader user jump straight past the sidebar's
+   nav links (repeated on every single page) to the actual page
+   content. See base.html for the link and #main-content it targets. */
+.skip-link {
+  position: absolute;
+  top: -48px;
+  left: 12px;
+  z-index: 10000;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #FFFFFF;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: var(--shadow-md);
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
 .btn,
 .theme-toggle,
 .tab,
@@ -1618,6 +1641,7 @@ input[type="text"],
 input[type="password"],
 input[type="number"],
 input[type="date"],
+input[type="month"],
 input[type="email"],
 input[type="tel"],
 input[type="search"],
@@ -1640,6 +1664,179 @@ textarea:focus {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ============================================================
+   Custom select — progressive enhancement over every <select>
+   (see main.js's initCustomSelects()). On a phone, a native
+   <select>'s open dropdown is a full-screen OS-drawn control
+   (iOS's spinning wheel, Android's oversized list) that CSS can
+   never reach or resize — this replaces it with a compact, anchored
+   panel styled to match every other input in the app, on both
+   mobile and desktop.
+
+   .cs-trigger mirrors the plain <select> rule above almost exactly
+   so nothing shifts size/position where it replaces one — the real
+   <select> is repositioned invisibly on top of it rather than
+   removed, so it stays the actual form control (name/value/
+   required/disabled all still work exactly as before; see main.js
+   for why and how that stays in sync).
+   ============================================================ */
+.cs-select {
+  position: relative;
+  width: 100%;
+}
+
+.cs-select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  /* Clicks land on .cs-trigger underneath instead of popping the
+     native OS picker — the whole point of this component. The
+     select still receives focus (Tab) and keyboard input; it's
+     only pointer interaction that's redirected. */
+  pointer-events: none;
+}
+
+.cs-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-select.cs-focus .cs-trigger,
+.cs-select.cs-open .cs-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.cs-select.cs-disabled .cs-trigger {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cs-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cs-trigger-label.cs-placeholder {
+  color: var(--ink-faint);
+}
+
+.cs-chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--ink-faint);
+  transition: transform 0.15s ease;
+}
+
+.cs-select.cs-open .cs-chevron {
+  transform: rotate(180deg);
+}
+
+.cs-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 200;
+  max-height: min(280px, 55vh);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 4px;
+  display: none;
+}
+
+/* Flips the panel above the trigger instead of below, when there
+   isn't room underneath (a select low in a long form, or near the
+   bottom of a modal) — set by main.js based on actual available
+   space, same reasoning as every other floating panel in the app. */
+.cs-select.cs-open-up .cs-panel {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.cs-select.cs-open .cs-panel {
+  display: block;
+}
+
+.cs-option {
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.cs-option:hover,
+.cs-option.cs-active {
+  background: var(--accent-soft);
+}
+
+.cs-option.cs-selected {
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
+.cs-option-disabled {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.cs-option-disabled:hover {
+  background: none;
+}
+
+.cs-option-empty {
+  padding: 10px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+/* A couple of narrow contexts (e.g. .table-filter's unit dropdown)
+   size the plain <select> down a step via a tag-selector rule
+   elsewhere in this file (`.table-filter select { ... }`) — that
+   doesn't reach .cs-trigger (a <button>, not a <select>), so those
+   spots render at .cs-trigger's normal padding/font-size instead of
+   their slightly more compact one. Close enough to not look broken
+   (10px/14px vs. 9px/13.5px) and left alone rather than chasing
+   pixel parity in every narrow spot in the app.
+
+   On phones the panel is already compact by design (max-height above
+   caps it well under the screen, same width as the trigger) — this
+   is what actually fixes "the dropdown is too big on mobile": there
+   is no native OS picker involved anymore to be full-screen in the
+   first place. */
+@media (max-width: 480px) {
+  .cs-panel {
+    max-height: min(240px, 50vh);
+  }
 }
 
 /* File inputs render very differently across browsers (a bare OS button
@@ -2017,6 +2214,32 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
   .table-wrap .item-sub {
     font-size: 11.5px;
+  }
+
+  /* A td holding a main value plus a small .item-sub caption — a
+     product's SKU under its name, a partner's package-sales total with
+     an order count underneath, a supplier's phone with an email below
+     it, a username with "now: renamed-to" underneath — makes 3 flex
+     items once the generated data-label sits alongside the value and
+     its caption. justify-content: space-between spreads those across
+     the row (label left, value center, caption flung to the far
+     right) instead of stacking them, which reads as a value with a
+     line jammed through it. Stack top-to-bottom instead, the same as
+     desktop, in one shared rule rather than patching every table that
+     happens to have this shape one page at a time. */
+  .table-wrap td:has(>.item-sub) {
+    display: block;
+    text-align: left !important;
+  }
+
+  .table-wrap td:has(>.item-sub)::before {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .table-wrap td:has(>.item-sub) .item-sub {
+    margin-top: 2px;
+    text-align: left !important;
   }
 }
 

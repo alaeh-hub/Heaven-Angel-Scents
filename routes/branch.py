@@ -824,7 +824,10 @@ def reports():
             "branch_label", meta["label"]), "windowed": meta["windowed"]}
         for key, meta in REPORT_TYPES.items() if meta["branch"]
     ]
-    return render_template("branch/reports.html", report_types=report_types, unit_choices=PRODUCT_UNITS)
+    return render_template(
+        "branch/reports.html", report_types=report_types, unit_choices=PRODUCT_UNITS,
+        current_month=datetime.date.today().strftime("%Y-%m"),
+    )
 
 
 @bp.route("/reports/generate")

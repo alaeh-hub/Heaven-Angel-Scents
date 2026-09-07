@@ -148,6 +148,7 @@
       <div class="rb-mode" id="rb_mode_switch">
         <button type="button" class="rb-mode-opt active" data-mode="recent">Recent</button>
         <button type="button" class="rb-mode-opt" data-mode="range">Date range</button>
+        <button type="button" class="rb-mode-opt" data-mode="month">Month</button>
         <button type="button" class="rb-mode-opt" data-mode="all">All time</button>
       </div>
       <input type="hidden" name="mode" id="rb_mode" value="recent">
@@ -169,6 +170,10 @@
         <div class="field" data-mode-field="range" style="display:none;">
           <label for="rb_date_to">To</label>
           <input type="date" id="rb_date_to" name="date_to">
+        </div>
+        <div class="field" data-mode-field="month" style="display:none;">
+          <label for="rb_month">Month</label>
+          <input type="month" id="rb_month" name="month" value="{{ current_month }}">
         </div>
       </div>
       <div class="rb-note" data-mode-field="all" style="display:none;">

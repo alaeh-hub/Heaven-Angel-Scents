@@ -21,13 +21,26 @@ FAILURE_MISSING_FIELDS = "missing_fields"
 FAILURE_BAD_CREDENTIALS = "bad_credentials"
 FAILURE_WRONG_ROLE_TAB = "wrong_role_tab"
 FAILURE_INACTIVE_ACCOUNT = "inactive_account"
+FAILURE_LOCKED_OUT = "locked_out"
 
 LOGIN_FAILURE_REASONS = {
     FAILURE_MISSING_FIELDS: "Username or password left blank",
     FAILURE_BAD_CREDENTIALS: "Incorrect username or password",
     FAILURE_WRONG_ROLE_TAB: "Signed in on the wrong role tab",
     FAILURE_INACTIVE_ACCOUNT: "Account deactivated",
+    FAILURE_LOCKED_OUT: "Temporarily locked out (too many failed attempts)",
 }
+
+# Per-username lockout, on top of auth.login's IP-based rate limit
+# (10/min via flask-limiter). The IP limit alone doesn't stop a
+# distributed brute force against one specific account from many IPs;
+# this stops that regardless of how many source IPs are involved.
+#
+# A username is locked out once it has this many failed attempts within
+# LOCKOUT_WINDOW_MINUTES *since its last successful login* (a success
+# resets the count immediately, it doesn't just age out of the window).
+LOCKOUT_FAILURE_THRESHOLD = 5
+LOCKOUT_WINDOW_MINUTES = 15
 
 
 def ensure_table():
@@ -66,6 +79,63 @@ def ensure_table():
                INDEX idx_login_activity_success (success)
            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
     )
+
+
+def is_locked_out(username):
+    """True if `username` currently has >= LOCKOUT_FAILURE_THRESHOLD
+    failed login attempts within LOCKOUT_WINDOW_MINUTES, since its last
+    successful login.
+
+    Only counts FAILURE_BAD_CREDENTIALS rows — i.e. an actual wrong
+    username/password guess. Every other failure reason is excluded:
+      - FAILURE_LOCKED_OUT is logged when this function already said
+        "locked out" and the login route bailed out before ever
+        checking the password, so it isn't a credential guess at all.
+        Counting it anyway would let an attacker keep the lockout alive
+        indefinitely just by retrying against the locked account every
+        few minutes forever (turning this into a way to lock a real
+        user out long-term rather than a brief brute-force cooldown).
+      - FAILURE_WRONG_ROLE_TAB and FAILURE_INACTIVE_ACCOUNT are both
+        logged *after* routes/auth.py's login() has already confirmed
+        the password was correct (see login()'s ordering) — the account
+        just isn't reachable from that tab, or is deactivated. Counting
+        those would lock out an admin who genuinely knows their
+        password just for forgetting to switch tabs, or an account
+        HQ deliberately deactivated getting flagged as if it were under
+        attack.
+      - FAILURE_MISSING_FIELDS never even reaches a password check, so
+        it carries no information about whether anyone knows the real
+        password — and counting it would mean 5 blank-password
+        submissions of anyone's username alone lock that account out.
+    Excluding all of these means the lockout only extends in response
+    to actual wrong-password guesses, and otherwise expires
+    LOCKOUT_WINDOW_MINUTES after the last real one.
+
+    Same "never raise" contract as log_attempt(): if login_activity
+    isn't there yet (pre-migration database) this fails open (not
+    locked out) rather than breaking every login attempt.
+    """
+    try:
+        row = query(
+            """SELECT COUNT(*) AS c
+               FROM login_activity
+               WHERE username_attempted = %s
+                 AND success = FALSE
+                 AND failure_reason = %s
+                 AND created_at >= NOW() - INTERVAL %s MINUTE
+                 AND created_at > COALESCE(
+                     (SELECT MAX(created_at) FROM login_activity
+                      WHERE username_attempted = %s AND success = TRUE),
+                     '1970-01-01'
+                 )""",
+            (username, FAILURE_BAD_CREDENTIALS, LOCKOUT_WINDOW_MINUTES, username),
+            fetchone=True,
+        )
+    except Exception:
+        current_app.logger.exception(
+            "Failed to check login lockout status for username=%s", username)
+        return False
+    return bool(row and row["c"] >= LOCKOUT_FAILURE_THRESHOLD)
 
 
 def log_attempt(*, username_attempted, role_attempted, success, user_id=None, failure_reason=None):

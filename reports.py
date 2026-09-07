@@ -19,7 +19,6 @@ Design intent:
 """
 import datetime
 import io
-import os
 
 from openpyxl import Workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
@@ -31,29 +30,24 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+from brand_assets import NumberedCanvas, logo_drawing, register_fonts
 from db import query
 from utils import PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES
 
 # Built-in PDF fonts (Helvetica etc.) only cover Latin-1 and have no glyph
 # for the ₱ (Philippine peso) sign — it silently renders as a black "tofu"
 # box instead of erroring, which is easy to miss until someone opens the
-# PDF. IBM Plex Sans does have that glyph (verified against both weights
-# below), so every style here uses it instead — it also matches the
-# IBM Plex Mono already used for SKU/mono styling elsewhere in the app,
-# so reports and the web UI share a type family. Bundled under fonts/ so
-# this works the same on any machine this app runs on, regardless of
-# what fonts happen to be installed system-wide.
-_FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
-pdfmetrics.registerFont(
-    TTFont("IBMPlexSans", os.path.join(_FONTS_DIR, "IBMPlexSans-Regular.ttf")))
-pdfmetrics.registerFont(
-    TTFont("IBMPlexSans-Bold", os.path.join(_FONTS_DIR, "IBMPlexSans-Bold.ttf")))
+# PDF. IBM Plex Sans does have that glyph, and matches the IBM Plex Mono
+# already used for SKU/mono styling elsewhere in the app, so reports and
+# the web UI share a type family. See brand_assets.register_fonts() for
+# the shared vendored-font registration (also used by receipts.py and
+# this module's own NumberedCanvas), so the font files/names only need
+# to be right in one place.
+register_fonts()
 
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
@@ -201,7 +195,18 @@ def parse_report_filters(args):
         except ValueError:
             return None
 
-    mode = _choice("mode", ("recent", "range", "all"), "recent")
+    def _month(name):
+        raw = (args.get(name) or "").strip()
+        try:
+            # Normalizes to exactly "YYYY-MM" (e.g. a stray "2026-9" from
+            # a hand-edited querystring becomes "2026-09") rather than
+            # trusting whatever shape the browser's <input type="month">
+            # actually sent.
+            return datetime.datetime.strptime(raw, "%Y-%m").strftime("%Y-%m")
+        except ValueError:
+            return None
+
+    mode = _choice("mode", ("recent", "range", "month", "all"), "recent")
     try:
         recent_n = int(args.get("recent_n", 20))
     except (TypeError, ValueError):
@@ -217,6 +222,7 @@ def parse_report_filters(args):
         "recent_n": recent_n,
         "date_from": _date("date_from"),
         "date_to": _date("date_to"),
+        "month": _month("month"),
         "branch_id": branch_id,
         "status": _choice("status", STATUS_CHOICES, "all"),
         "movement_type": _choice("movement_type", MOVEMENT_TYPE_CHOICES, "all"),
@@ -235,11 +241,30 @@ def parse_report_filters(args):
     }
 
 
+def _month_bounds(month_str):
+    """(first_day, last_day) date objects for a "YYYY-MM" string, or for
+    the current calendar month if month_str is missing/invalid — the
+    same "fall back to a safe default rather than error" contract as
+    every other filter parsed in this module."""
+    try:
+        year, mon = (int(p) for p in month_str.split("-"))
+        first_day = datetime.date(year, mon, 1)
+    except (AttributeError, TypeError, ValueError):
+        today = datetime.date.today()
+        first_day = today.replace(day=1)
+        year, mon = first_day.year, first_day.month
+    next_month_first = (
+        datetime.date(year + 1, 1, 1) if mon == 12
+        else datetime.date(year, mon + 1, 1)
+    )
+    return first_day, next_month_first - datetime.timedelta(days=1)
+
+
 def _time_window(date_col, filters, params):
     """Append a time-window WHERE fragment for date_col and return
     (where_fragment, order_by_sql, row_limit, is_capped_all_time).
 
-    params is mutated in place (range mode appends its bound(s)).
+    params is mutated in place (range/month modes append their bound(s)).
     """
     mode = filters["mode"]
     if mode == "range":
@@ -255,6 +280,15 @@ def _time_window(date_col, filters, params):
         # more than MAX_ROWS rows would silently drop the excess with no
         # "capped, narrow your filters" note anywhere in the report.
         return frag, f"ORDER BY {date_col} ASC", MAX_ROWS, True
+    if mode == "month":
+        first_day, last_day = _month_bounds(filters["month"])
+        frag = f" AND {date_col} >= %s AND {date_col} <= %s"
+        params.append(f"{first_day.isoformat()} 00:00:00")
+        params.append(f"{last_day.isoformat()} 23:59:59")
+        # A single calendar month of activity is realistically never
+        # anywhere near MAX_ROWS, but capped the same way range/all-time
+        # are just in case — same reasoning as range mode above.
+        return frag, f"ORDER BY {date_col} ASC", MAX_ROWS, True
     if mode == "all":
         return "", f"ORDER BY {date_col} DESC", MAX_ROWS, True
     return "", f"ORDER BY {date_col} DESC", filters["recent_n"], False
@@ -268,6 +302,9 @@ def _window_note(filters, truncated):
         frm = filters["date_from"] or "the beginning"
         to = filters["date_to"] or "today"
         note = f"{frm} through {to}"
+    elif mode == "month":
+        first_day, _ = _month_bounds(filters["month"])
+        note = first_day.strftime("%B %Y")
     else:
         note = "All time"
     if truncated:
@@ -972,11 +1009,12 @@ def render_report_pdf(report):
 
     header = Table(
         [[
+            logo_drawing(30),
             Table([[Paragraph(
                 "<font color='#2E5AF0'>Heaven</font> <font color='#5B6272'>&amp;</font> "
                 "<font color='#E23A48'>Angel</font> Scents", s["brand"])],
                 [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
-                colWidths=[130 * mm]),
+                colWidths=[118 * mm]),
             Table([[Paragraph(report["title"].upper() + " REPORT", s["doc_title"])],
                    [Paragraph(report["subtitle"], s["doc_meta"])],
                    [Paragraph(
@@ -985,8 +1023,13 @@ def render_report_pdf(report):
                        s["doc_meta"])]],
                   colWidths=[135 * mm]),
         ]],
-        colWidths=[130 * mm, 135 * mm],
+        colWidths=[12 * mm, 118 * mm, 135 * mm],
     )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, 0), 0),
+        ("RIGHTPADDING", (0, 0), (0, 0), 0),
+    ]))
     story.append(header)
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width="100%", thickness=1.2,
@@ -1113,7 +1156,7 @@ def render_report_pdf(report):
         s["footer"],
     ))
 
-    doc.build(story)
+    doc.build(story, canvasmaker=NumberedCanvas)
     buf.seek(0)
     return buf
 

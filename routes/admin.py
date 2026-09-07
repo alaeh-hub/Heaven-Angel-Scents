@@ -320,9 +320,14 @@ def products():
                        details=f"{item_name} ({variant}, {unit}) — ₱{price:,.2f}")
             flash(f"{item_name} — {unit} ({sku}) added to the catalog.", "success")
         except Exception:
-            # The SKU insert failed (almost always a duplicate base
-            # code + unit) — don't leave an orphaned image file behind
-            # for a product row that was never created.
+            # Almost always a duplicate base code + unit, but log it
+            # properly regardless — a real DB failure here would
+            # otherwise look identical to a duplicate SKU, with no
+            # trace to tell the two apart.
+            current_app.logger.exception(
+                "add product failed for sku=%s base_code=%s unit=%s", sku, base_code, unit)
+            # Don't leave an orphaned image file behind for a product
+            # row that was never created.
             if image_path:
                 _delete_product_image(image_path)
             flash(f"'{base_code}' already has a {unit} entry (SKU {sku}).", "error")
@@ -551,6 +556,8 @@ def import_products():
                     cur.close()
                 created += 1
         except Exception:
+            current_app.logger.exception(
+                "import_products failed on row %s (sku=%s)", row_num, sku)
             errors.append(f"Row {row_num}: couldn't save SKU {sku}.")
 
     if created or updated:
@@ -669,6 +676,8 @@ def branches():
                 log_action("add_branch", target=name, details=location or None)
                 flash(f"{name} added.", "success")
             except Exception:
+                current_app.logger.exception(
+                    "add branch failed for name=%s", name)
                 flash("A branch with that name already exists.", "error")
         return redirect(url_for("admin.branches"))
 
@@ -1045,6 +1054,8 @@ def users():
                 flash(
                     f"Account '{username}' created. They'll be asked to set a new password at first login.", "success")
             except Exception:
+                current_app.logger.exception(
+                    "create account failed for username=%s role=%s", username, role)
                 flash(f"Username '{username}' is already taken.", "error")
         return redirect(url_for("admin.users"))
 
@@ -1618,6 +1629,7 @@ def reports():
     ]
     return render_template(
         "admin/reports.html", branch_list=branch_list, report_types=report_types, unit_choices=PRODUCT_UNITS,
+        current_month=datetime.date.today().strftime("%Y-%m"),
     )
 
 
@@ -1853,6 +1865,8 @@ def materials():
             flash(
                 f"{material_name} added at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
         except Exception:
+            current_app.logger.exception(
+                "add material failed for material_name=%s", material_name)
             flash(
                 f"'{material_name}' already exists in the materials list.", "error")
         return redirect(url_for("admin.materials"))
@@ -1960,6 +1974,8 @@ def edit_material():
         flash(
             f"{material_name} updated at ₱{cost_per_unit:,.4f} per {unit.lower()}.", "success")
     except Exception:
+        current_app.logger.exception(
+            "edit material failed for material_id=%s material_name=%s", material_id, material_name)
         flash(f"'{material_name}' already exists in the materials list.", "error")
     return redirect(url_for("admin.materials"))
 
@@ -2087,6 +2103,8 @@ def add_supplier():
                    details=contact_person or None)
         flash(f"Supplier '{supplier_name}' added.", "success")
     except Exception:
+        current_app.logger.exception(
+            "add supplier failed for supplier_name=%s", supplier_name)
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
     return redirect(url_for(return_endpoint))
 
@@ -2126,6 +2144,8 @@ def edit_supplier():
                    details=contact_person or None)
         flash(f"Supplier '{supplier_name}' updated.", "success")
     except Exception:
+        current_app.logger.exception(
+            "edit supplier failed for supplier_id=%s supplier_name=%s", supplier_id, supplier_name)
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
     return redirect(url_for(return_endpoint))
 
@@ -2529,6 +2549,8 @@ def add_package_item(package_id):
             (package_id, sku, qty),
         )
     except Exception:
+        current_app.logger.exception(
+            "add_package_item failed for package_id=%s sku=%s", package_id, sku)
         flash(
             "That product is already in this package — remove it first if you need to change its quantity.",
             "error",

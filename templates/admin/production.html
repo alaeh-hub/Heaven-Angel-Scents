@@ -55,6 +55,37 @@
     font-size: 12.5px;
     color: var(--ink-faint);
   }
+
+  /* Fixed column widths (see .table-fixed in style.css) so a long item
+     name can't stretch these columns — and therefore the whole table —
+     wider than the others; it wraps in place instead. Same pattern as
+     Materials/Suppliers/Inventory Log/etc.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (td:nth-child(n)) out-specificity
+     style.css's generic mobile rule .table-wrap td { width: 100% }
+     (one class + one tag), so below the 680px breakpoint a cell would
+     stay pinned to a hardcoded desktop width instead of taking the
+     full-width mobile layout — and combined with overflow-wrap:anywhere
+     from .table-fixed, that narrow box would wrap every character onto
+     its own line. */
+  @media (min-width: 681px) {
+    .ms-table th:nth-child(1), .ms-table td:nth-child(1) { width: 34%; }
+    .ms-table th:nth-child(2), .ms-table td:nth-child(2) { width: 18%; }
+    .ms-table th:nth-child(3), .ms-table td:nth-child(3) { width: 16%; }
+    .ms-table th:nth-child(4), .ms-table td:nth-child(4) { width: 32%; }
+
+    /* "Date" carries a full date+time stamp ("Sep 04, 2026 02:33
+       PM"), noticeably longer than the date-only columns elsewhere
+       in the app — 20% was wrapping it onto a second line at
+       ordinary desktop widths, so it gets extra room here at the
+       other columns' expense. */
+    .ph-table th:nth-child(1), .ph-table td:nth-child(1) { width: 26%; }
+    .ph-table th:nth-child(2), .ph-table td:nth-child(2) { width: 28%; }
+    .ph-table th:nth-child(3), .ph-table td:nth-child(3) { width: 12%; }
+    .ph-table th:nth-child(4), .ph-table td:nth-child(4) { width: 16%; }
+    .ph-table th:nth-child(5), .ph-table td:nth-child(5) { width: 18%; }
+  }
 </style>
 {% endblock %}
 
@@ -141,7 +172,10 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="smart-table">
+        <table class="smart-table table-fixed ms-table">
+          <colgroup>
+            <col style="width:34%"><col style="width:18%"><col style="width:16%"><col style="width:32%">
+          </colgroup>
           <thead>
             <tr>
               <th>Item</th>
@@ -203,7 +237,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table">
+      <table class="smart-table table-fixed ph-table">
+        <colgroup>
+          <col style="width:26%"><col style="width:28%"><col style="width:12%">
+          <col style="width:16%"><col style="width:18%">
+        </colgroup>
         <thead>
           <tr>
             <th>Date</th>

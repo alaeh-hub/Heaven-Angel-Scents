@@ -34,6 +34,32 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
 
+    # Number of trusted reverse-proxy hops in front of this app (nginx,
+    # a load balancer, etc.). Flask-Limiter's IP-based rate limits
+    # (auth.login, the partner-portal inquiry form) key on
+    # request.remote_addr — behind a proxy that's the proxy's own IP for
+    # every visitor, not the real client's, unless something tells
+    # Werkzeug to read the real address from X-Forwarded-For instead.
+    # app.py wraps the app in ProxyFix using this many hops when it's
+    # non-zero.
+    #
+    # Leave at 0 (the default) for local dev or any deployment with no
+    # reverse proxy in front — ProxyFix isn't applied, so a direct client
+    # can't spoof X-Forwarded-For to fake a different IP and dodge a rate
+    # limit. Set it to the exact number of proxies between the client and
+    # this app (usually 1) when there is one, or every IP-based limit
+    # collapses into a single shared bucket for all traffic (see app.py's
+    # startup warning if this is left at 0 in production).
+    NUM_PROXIES = int(os.environ.get("NUM_PROXIES", "0"))
+
+    # Master on/off switch for Flask-Limiter, read by flask-limiter itself
+    # (RATELIMIT_ENABLED is its own config key, not app-specific). Default
+    # on; the test suite (see tests/conftest.py) sets this to "0" before
+    # the app is ever imported so a run of many requests against
+    # rate-limited routes (login, the AI chat endpoint, ...) doesn't trip
+    # a real limit and fail unrelated tests.
+    RATELIMIT_ENABLED = os.environ.get("RATELIMIT_ENABLED", "1") == "1"
+
     # AI Assistant (Gemini). Read-only, role/branch-scoped — see routes/ai.py.
     # If GEMINI_API_KEY is blank, the assistant just tells the user it isn't configured.
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

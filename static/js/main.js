@@ -135,21 +135,636 @@ document.addEventListener('DOMContentLoaded', () => {
         el.style.width = pct + '%';
     });
 
-    document.querySelectorAll('.flash').forEach((el) => {
-        setTimeout(() => {
-            el.classList.add('flash-exit');
-            el.addEventListener('animationend', () => el.remove(), { once: true });
-        }, 5000);
-    });
+    document.querySelectorAll('.flash').forEach(attachFlashDismiss);
 
     initConfirmDialogs();
 
     initSmartTables();
     initSmartLists();
     initDispatchQtyWarnings();
+    initCustomSelects();
+    initSoftNav();
     const notifBell = initNotificationBell();
     initRealtime(notifBell);
 });
+
+// Fades a flash/toast out and removes it from the DOM 5s after it
+// appears — shared by the initial page-load flashes above and by
+// initSoftNav()'s appendFreshFlashes() below (a flash that shows up
+// after a soft-submitted form, without ever going through a real page
+// load, needs the exact same treatment or it never disappears).
+function attachFlashDismiss(el) {
+    setTimeout(() => {
+        el.classList.add('flash-exit');
+        el.addEventListener('animationend', () => el.remove(), { once: true });
+    }, 5000);
+}
+
+// Copies sidebar nav-link state (unread-count badges, and which link
+// is "active") from a freshly-fetched document onto the live page's
+// sidebar, which a soft nav/refresh never re-fetches or replaces
+// itself (see swapContent() below — only .content is swapped, the
+// sidebar stays the exact same DOM nodes throughout the session so
+// its own scroll position/hover state etc. isn't disturbed by every
+// navigation). Links are matched by href since that's the one thing
+// guaranteed identical between the live and freshly-rendered sidebar.
+function patchSidebarNav(freshDoc) {
+    document.querySelectorAll('.nav-link[href]').forEach((link) => {
+        const href = link.getAttribute('href');
+        const freshLink = freshDoc.querySelector(`.nav-link[href="${href}"]`);
+        if (!freshLink) return;
+
+        const liveBadge = link.querySelector('.nav-badge');
+        const freshBadge = freshLink.querySelector('.nav-badge');
+        if (liveBadge && !freshBadge) {
+            liveBadge.remove();
+        } else if (freshBadge && !liveBadge) {
+            link.appendChild(freshBadge.cloneNode(true));
+        } else if (freshBadge && liveBadge) {
+            liveBadge.textContent = freshBadge.textContent;
+        }
+
+        link.classList.toggle('active', freshLink.classList.contains('active'));
+    });
+}
+
+// Re-runs everything that turns freshly-swapped-in .content markup
+// into working, interactive UI — the exact same list softRefresh()
+// (realtime pushes) and initSoftNav() (link/form navigation) both
+// need after replacing .content wholesale with a server-rendered
+// fragment that hasn't been through any of this yet.
+function refreshDynamicContent() {
+    document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
+        const pct = parseFloat(el.dataset.pct) || 0;
+        el.style.width = pct + '%';
+    });
+    initSmartTables();
+    initSmartLists();
+    initDispatchQtyWarnings();
+    initCustomSelects();
+    // initConfirmDialogs() is intentionally NOT re-called here: it's
+    // delegated on `document` once at page load (see its own comment),
+    // so it already covers any form[data-confirm] that just got
+    // swapped in — re-attaching per element isn't necessary.
+    revealContent();
+}
+
+// Replaces the live .content with freshDoc's .content, if it has one.
+// Returns false (and touches nothing) when it doesn't — a page outside
+// the signed-in app shell (the login screen after a session expires
+// mid-navigation, most notably) never renders a .content at all, and
+// swapping nothing in would leave the visible page silently pretending
+// a request that actually landed somewhere else still succeeded.
+// Callers fall back to a real navigation (window.location) when this
+// returns false.
+function swapContent(freshDoc) {
+    const freshContent = freshDoc.querySelector('.content');
+    const liveContent = document.querySelector('.content');
+    if (!freshContent || !liveContent) return false;
+    liveContent.replaceWith(freshContent);
+    if (freshDoc.title) document.title = freshDoc.title;
+    patchSidebarNav(freshDoc);
+    refreshDynamicContent();
+    // Deferred two animation frames rather than run inline here: a page
+    // script that measures its own layout at creation time (every
+    // Chart.js instance — new Chart(canvas, ...) reads the canvas's
+    // container size synchronously, once, when it's built) can catch the
+    // browser mid-reflow if it runs in the same tick as the .content
+    // replaceWith() above, before the swapped-in grid/cards have settled
+    // into their final size. That's what let a freshly-drawn chart come
+    // out squashed or stretched on a soft nav — the fixed-height
+    // .chart-canvas-wrap the CSS forces it into afterwards doesn't fix a
+    // canvas whose *internal* drawing-buffer resolution was already
+    // measured wrong. Two rAFs is the standard "wait for a layout+paint
+    // to actually happen" trick: the first fires before the frame the
+    // browser paints the new .content in, the second only after that
+    // frame has been committed, guaranteeing every size read inside
+    // runPageScripts() reflects the real, settled layout.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            runPageScripts(freshDoc);
+        });
+    });
+    return true;
+}
+
+// Re-runs the page's own {% block scripts %} (base.html wraps that
+// block's output in #page-scripts, deliberately kept outside .content —
+// see the comment there) every time swapContent() replaces .content. A
+// soft nav only ever *fetches* that markup — DOMParser never executes any
+// <script> it parses — and whatever's already sitting in the live page
+// from the last real load doesn't retroactively apply to whatever new
+// .content just got swapped in. That's what left every page whose
+// behavior lives in {% block scripts %} looking inert after a sidebar
+// click: Branch Performance/Reports' charts never drew, Record Sale's
+// Type/Payment switches and product→unit cascade never got wired up,
+// Partner Inquiries' "Edit remarks" button never opened its modal — all
+// of it worked again only after a real reload actually ran that script.
+function runPageScripts(freshDoc) {
+    const freshScripts = freshDoc.getElementById('page-scripts');
+    const liveScripts = document.getElementById('page-scripts');
+    if (!freshScripts || !liveScripts) return;
+
+    liveScripts.innerHTML = '';
+
+    Array.prototype.forEach.call(freshScripts.querySelectorAll('script'), (oldScript) => {
+        const newScript = document.createElement('script');
+        Array.prototype.forEach.call(oldScript.attributes, (attr) => {
+            newScript.setAttribute(attr.name, attr.value);
+        });
+        // A script created via createElement() defaults to async=true,
+        // which would let a later inline script (a chart page's own init
+        // code) run before an earlier <script src="chart.umd.min.js">
+        // has actually finished loading. Forcing async=false preserves
+        // document order the same way a parser-inserted <script> would.
+        newScript.async = false;
+
+        if (oldScript.src) {
+            liveScripts.appendChild(newScript);
+            return;
+        }
+
+        // Inline script — the actual page behavior. Re-inserted verbatim,
+        // its top-level `const`/`let` bindings would land straight in the
+        // page's global lexical environment, which (unlike the <script>
+        // element itself) isn't cleared out by the innerHTML reset above
+        // — so revisiting the same page a second time in one tab, without
+        // a real reload in between, would throw "Identifier '...' has
+        // already been declared" on the very re-declaration this is
+        // trying to make. Wrapping in its own IIFE resets that scope on
+        // every run, the same as a fresh <script> on an actual page load.
+        newScript.textContent = '(function () {\n' + oldScript.textContent + '\n})();';
+        liveScripts.appendChild(newScript);
+    });
+}
+
+// .flashes lives outside .content (see base.html) specifically so a
+// .content swap never touches it — flashes need to survive a swap
+// unbothered, not get wiped and reappear mid-fade. That also means a
+// swap alone won't surface a flash a soft-submitted form's redirect
+// target queued (e.g. "Product added.") — this pulls those in
+// separately, clones them into the live toast stack, and starts their
+// own dismiss timer, same as any flash rendered on a real page load.
+function appendFreshFlashes(freshDoc) {
+    const freshFlashes = freshDoc.querySelectorAll('.flashes .flash');
+    if (!freshFlashes.length) return;
+    let liveContainer = document.querySelector('.flashes');
+    if (!liveContainer) {
+        liveContainer = document.createElement('div');
+        liveContainer.className = 'flashes';
+        liveContainer.setAttribute('role', 'status');
+        liveContainer.setAttribute('aria-live', 'polite');
+        document.body.appendChild(liveContainer);
+    }
+    freshFlashes.forEach((el) => {
+        const clone = el.cloneNode(true);
+        liveContainer.appendChild(clone);
+        attachFlashDismiss(clone);
+    });
+}
+
+// ---------------------------------------------------------------
+// Soft navigation: clicking a sidebar link, or any other same-app
+// link/form inside .content, no longer throws away and re-fetches the
+// *entire* page (sidebar included) the way a normal navigation does —
+// it fetches just the target page's HTML in the background and swaps
+// .content, the same trick softRefresh() already uses for realtime
+// pushes. The sidebar itself is never torn down and rebuilt, so its
+// own scroll position and hover/focus state ride out every click
+// untouched — the visible effect the "whole sidebar reloads" complaint
+// was describing.
+//
+// Forms get the same treatment on submit: instead of a full-page
+// POST-redirect-GET cycle, this fetches the form's action (fetch()
+// follows the redirect automatically, landing on the same page the
+// browser would have), swaps .content with the result, and pulls in
+// whatever flash message that redirect queued (see appendFreshFlashes)
+// — so "Product added." still shows up exactly like before, but the
+// admin never loses their scroll position or sees the page go blank
+// and repaint from scratch for what's otherwise a one-line change.
+//
+// Deliberately NOT intercepted (left as plain, real navigations):
+//   - anything not same-origin, a hash link, mailto:/tel:, or marked
+//     download
+//   - a link/form targeting a new tab/window (target="_blank") — every
+//     PDF/Excel/CSV download and receipt link in the app already uses
+//     this (see reports.html's Download buttons, and the various
+//     Receipt/Export links), since a file download isn't HTML this
+//     could swap into .content in the first place
+//   - GET forms (none in this app today, but a search form built this
+//     way tomorrow shouldn't silently break)
+//   - anything opted out with data-no-soft-nav / data-no-soft-submit —
+//     used on the sign-out form, which deliberately leaves the signed-
+//     in app shell entirely
+// and as a last resort, any response that isn't HTML containing a real
+// .content (checked via swapContent()'s own return value) falls back
+// to a real navigation there and then, rather than silently doing
+// nothing — this is what makes it safe to leave every other edge case
+// (a session that expired mid-click, an endpoint that turns out to
+// serve a file after all) to that one fallback instead of having to
+// enumerate every such case up front.
+function initSoftNav() {
+    let navToken = 0;
+
+    function isInternalNavigableLink(link) {
+        if (!link || !link.href) return false;
+        if (link.target && link.target !== '_self') return false;
+        if (link.hasAttribute('download')) return false;
+        if (link.dataset.noSoftNav !== undefined) return false;
+        if (link.getAttribute('href').charAt(0) === '#') return false;
+        let url;
+        try {
+            url = new URL(link.href, window.location.href);
+        } catch (e) {
+            return false;
+        }
+        if (url.origin !== window.location.origin) return false;
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+        return true;
+    }
+
+    function isSoftSubmittableForm(form, submitter) {
+        if (form.dataset.noSoftSubmit !== undefined) return false;
+        if ((form.method || 'get').toLowerCase() !== 'post') return false;
+        const target = (submitter && submitter.formTarget) || form.target;
+        if (target && target !== '_self') return false;
+        let url;
+        try {
+            url = new URL(form.action, window.location.href);
+        } catch (e) {
+            return false;
+        }
+        if (url.origin !== window.location.origin) return false;
+        return true;
+    }
+
+    // Every navigation (link or form) funnels through here. `request`
+    // is a function that performs the actual fetch and returns a
+    // Promise<Response> — a GET for a link, a POST with the form's
+    // data for a form — so the two call sites below only differ in
+    // how they build that one request.
+    function go(request, url, historyMode) {
+        const myToken = ++navToken;
+        const scrollY = window.scrollY;
+
+        request()
+            .then((r) => {
+                const contentType = r.headers.get('Content-Type') || '';
+                if (contentType.indexOf('text/html') === -1) {
+                    return Promise.reject(new Error('not html'));
+                }
+                return r.text().then((html) => ({ html, finalUrl: r.url }));
+            })
+            .then(({ html, finalUrl }) => {
+                // A second soft-nav started (another click/submit) while
+                // this one was still in flight — let that newer one win
+                // and drop this now-stale response instead of clobbering
+                // whatever it already rendered.
+                if (myToken !== navToken) return;
+
+                const fresh = new DOMParser().parseFromString(html, 'text/html');
+                if (!swapContent(fresh)) {
+                    // finalUrl reflects wherever the request actually
+                    // ended up (e.g. redirected to /login by an expired
+                    // session) — landing there directly instead of
+                    // re-requesting the original url avoids bouncing
+                    // through the same redirect a second time.
+                    window.location.href = finalUrl;
+                    return;
+                }
+                appendFreshFlashes(fresh);
+
+                if (historyMode === 'push') {
+                    history.pushState({ softNav: true }, '', finalUrl);
+                } else if (historyMode === 'replace') {
+                    history.replaceState({ softNav: true }, '', finalUrl);
+                }
+                if (historyMode !== 'pop') {
+                    window.scrollTo({ top: 0, behavior: 'auto' });
+                } else {
+                    window.scrollTo({ top: scrollY, behavior: 'auto' });
+                }
+            })
+            .catch(() => {
+                if (myToken !== navToken) return;
+                window.location.href = url;
+            });
+    }
+
+    document.addEventListener('click', (e) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        if (!link.closest('.sidebar') && !link.closest('.content')) return;
+        if (!isInternalNavigableLink(link)) return;
+
+        const url = new URL(link.href, window.location.href);
+        if (url.pathname === window.location.pathname && url.search === window.location.search) {
+            // Same page (only the #hash, if any, differs) — let the
+            // browser's own default handling (e.g. jumping to an
+            // in-page anchor) happen rather than "navigating" to a
+            // no-op and losing that behavior.
+            return;
+        }
+
+        e.preventDefault();
+        go(() => fetch(link.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }), link.href, 'push');
+    });
+
+    document.addEventListener('submit', (e) => {
+        if (e.defaultPrevented) return;
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        if (!form.closest('.content')) return;
+        const submitter = e.submitter;
+        if (!isSoftSubmittableForm(form, submitter)) return;
+
+        e.preventDefault();
+        const formData = new FormData(form, submitter);
+        go(
+            () => fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            }),
+            form.action,
+            'push',
+        );
+    });
+
+    window.addEventListener('popstate', () => {
+        go(() => fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }), window.location.href, 'pop');
+    });
+}
+
+// ---------------------------------------------------------------
+// Custom select: progressively enhances every <select> in the app
+// with a styled trigger + dropdown panel instead of relying on the
+// browser's native picker — on a phone, that native picker is a
+// full-screen OS-drawn control (iOS's spinning wheel, Android's
+// oversized list) that CSS can never reach or resize, which is what
+// read as "the dropdown is too big" on mobile. This builds a
+// compact, anchored panel instead, styled to match every other
+// input in the app, on both mobile and desktop.
+//
+// The real <select> stays in the DOM exactly where it was — same
+// name/id/required/disabled attributes, same position in its form —
+// just visually replaced: it's positioned invisibly *on top of* the
+// trigger button (see .cs-select select in style.css) so a screen
+// reader / the browser's own required-field validation still finds
+// a real, correctly-positioned control there, with pointer-events
+// disabled so clicks pass through to the button underneath instead
+// of popping the native picker. It's still the actual source of
+// truth for the field's submitted value; this never removes or
+// clones the select — only changes how it's shown and interacted
+// with. An individual select can opt out with a `data-cs-skip`
+// attribute (see admin/partner_inquiries.html's tiny inline status
+// dropdown, which is deliberately a bare native picker behind a
+// custom-styled dot, not a form field this component's box-shaped
+// trigger would fit well next to).
+//
+// Existing code elsewhere in the app sets these selects' .value
+// directly (edit-item modals, the product/unit autocombos on Record
+// Sale/Production/Request Stock) or rebuilds their whole <option>
+// list with innerHTML/appendChild (those same autocombos, as the
+// person picks a product). Rather than auditing and editing every
+// one of those call sites, this hooks into two things that catch
+// all of them automatically, from anywhere, including code that
+// runs after this file:
+//   - a property override on .value that re-syncs the trigger's
+//     label any time anything sets it
+//   - a MutationObserver watching each select's <option> list and
+//     its disabled attribute, so a select whose options get rebuilt
+//     after this ran still ends up with a matching custom panel
+//
+// Called again after softRefresh() swaps in fresh .content HTML
+// (plain, unenhanced <select> markup from the server) — see
+// initRealtime() below — the same way initSmartTables()/
+// initSmartLists() are. dataset.csEnhanced makes re-running this on
+// the *same* elements a no-op, so calling it more than once is safe.
+function initCustomSelects(root) {
+    (root || document).querySelectorAll('select').forEach(enhanceSelect);
+}
+
+function enhanceSelect(select) {
+    if (select.dataset.csEnhanced || select.multiple || select.dataset.csSkip !== undefined) return;
+    select.dataset.csEnhanced = '1';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cs-select';
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'cs-trigger';
+    // Not a separate tab stop: the real (invisible) <select> above it
+    // stays the thing that receives focus and keyboard input, exactly
+    // as it did before this ran, so Tab order through the form is
+    // unchanged and native required-field validation still targets a
+    // real, focusable control.
+    trigger.tabIndex = -1;
+    trigger.setAttribute('aria-hidden', 'true');
+    trigger.innerHTML =
+        '<span class="cs-trigger-label"></span>' +
+        '<svg class="cs-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<path d="m6 9 6 6 6-6"/></svg>';
+    wrap.appendChild(trigger);
+
+    const panel = document.createElement('div');
+    panel.className = 'cs-panel';
+    panel.setAttribute('role', 'listbox');
+    wrap.appendChild(panel);
+
+    const labelEl = trigger.querySelector('.cs-trigger-label');
+    let activeIndex = -1;
+
+    function optionEls() {
+        return Array.prototype.slice.call(panel.querySelectorAll('.cs-option'));
+    }
+
+    function isOpen() {
+        return wrap.classList.contains('cs-open');
+    }
+
+    function position() {
+        // Flip the panel above the trigger when there isn't room below
+        // — the same reasoning as every other floating panel in the
+        // app (e.g. the product-search combos), just generalized here
+        // since a <select> can live anywhere: low in a long form, near
+        // the bottom of a modal, etc.
+        wrap.classList.remove('cs-open-up');
+        const rect = trigger.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const panelHeight = panel.offsetHeight || 280;
+        if (spaceBelow < panelHeight && rect.top > spaceBelow) {
+            wrap.classList.add('cs-open-up');
+        }
+    }
+
+    function open() {
+        if (select.disabled || isOpen()) return;
+        rebuildPanel();
+        wrap.classList.add('cs-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        activeIndex = select.selectedIndex;
+        highlightActive();
+        position();
+        const activeEl = optionEls()[activeIndex];
+        if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function close() {
+        if (!isOpen()) return;
+        wrap.classList.remove('cs-open', 'cs-open-up');
+        trigger.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+    }
+
+    function highlightActive() {
+        optionEls().forEach(function (el, i) {
+            el.classList.toggle('cs-active', i === activeIndex);
+        });
+    }
+
+    function moveActive(delta) {
+        const opts = optionEls();
+        if (!opts.length) return;
+        let next = activeIndex;
+        for (let step = 0; step < opts.length; step++) {
+            next += delta;
+            if (next < 0) next = opts.length - 1;
+            if (next > opts.length - 1) next = 0;
+            if (!select.options[next].disabled) break;
+        }
+        activeIndex = next;
+        highlightActive();
+        const el = opts[activeIndex];
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+
+    function selectIndex(i) {
+        if (i < 0 || i >= select.options.length || select.options[i].disabled) return;
+        select.selectedIndex = i;
+        sync();
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function rebuildPanel() {
+        const opts = Array.prototype.slice.call(select.options);
+        if (!opts.length) {
+            panel.innerHTML = '<div class="cs-option-empty">No options</div>';
+            return;
+        }
+        panel.innerHTML = opts.map(function (opt, i) {
+            const classes = ['cs-option'];
+            if (opt.disabled) classes.push('cs-option-disabled');
+            return '<div class="' + classes.join(' ') + '" role="option" data-index="' + i + '">' +
+                (opt.textContent.trim() || ' ') + '</div>';
+        }).join('');
+        optionEls().forEach(function (el) {
+            el.addEventListener('click', function () {
+                const i = parseInt(el.dataset.index, 10);
+                selectIndex(i);
+                close();
+            });
+            // Same defensive preventDefault as the product-search
+            // combo's own menu (production.html's .ac-combo-menu):
+            // without it, the mousedown's default focus handling can
+            // close the panel a beat before the click handler above
+            // gets to run, so the click never registers.
+            el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        });
+        syncSelectedMarker();
+    }
+
+    function syncSelectedMarker() {
+        optionEls().forEach(function (el, i) {
+            el.classList.toggle('cs-selected', i === select.selectedIndex);
+        });
+    }
+
+    function syncTrigger() {
+        const opt = select.options[select.selectedIndex];
+        const text = opt ? opt.textContent.trim() : '';
+        labelEl.textContent = text || ' ';
+        labelEl.classList.toggle('cs-placeholder', !!opt && select.selectedIndex === 0 && opt.value === '');
+        wrap.classList.toggle('cs-disabled', select.disabled);
+    }
+
+    function sync() {
+        syncTrigger();
+        syncSelectedMarker();
+    }
+
+    // ---- .value interceptor: catches every future `select.value = x`
+    // from anywhere (this app's existing edit-modal/autocombo code
+    // included), so the trigger label never drifts out of sync with
+    // the real control it's standing in for. ----
+    const valueDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    if (valueDescriptor && valueDescriptor.configurable) {
+        Object.defineProperty(select, 'value', {
+            configurable: true,
+            enumerable: true,
+            get: function () { return valueDescriptor.get.call(select); },
+            set: function (v) {
+                valueDescriptor.set.call(select, v);
+                sync();
+            },
+        });
+    }
+
+    // ---- catches option-list rebuilds (innerHTML/appendChild) and
+    // disabled toggles from any existing or future script. ----
+    new MutationObserver(function () {
+        rebuildPanel();
+        syncTrigger();
+    }).observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+
+    // ---- native events: a real 'change' still fires when the select
+    // itself handles input directly (native type-ahead while hidden-
+    // but-focused) — keep the trigger in sync and close the panel
+    // either way. ----
+    select.addEventListener('change', function () { sync(); close(); });
+    select.addEventListener('focus', function () { wrap.classList.add('cs-focus'); });
+    select.addEventListener('blur', function () { wrap.classList.remove('cs-focus'); close(); });
+
+    trigger.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    trigger.addEventListener('click', function () {
+        if (select.disabled) return;
+        select.focus({ preventScroll: true });
+        if (isOpen()) close(); else open();
+    });
+
+    wrap.addEventListener('keydown', function (e) {
+        if (select.disabled) return;
+        if (e.key === 'Escape') { close(); return; }
+        if (e.key === 'Tab') { close(); return; }
+        if (!isOpen()) {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                open();
+            }
+            return;
+        }
+        if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1); }
+        else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (activeIndex >= 0) { selectIndex(activeIndex); close(); }
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (isOpen() && !wrap.contains(e.target)) close();
+    });
+
+    window.addEventListener('resize', function () { if (isOpen()) position(); });
+
+    rebuildPanel();
+    sync();
+}
 
 // Unified confirm-dialog pattern for every "are you sure?" form in the
 // app: give the <form> a data-confirm="Message" attribute and this one
@@ -544,23 +1159,6 @@ function initRealtime(notifBell) {
         }
     }, true);
 
-    function patchSidebarBadges(freshDoc) {
-        document.querySelectorAll('.nav-link[href]').forEach((link) => {
-            const href = link.getAttribute('href');
-            const freshLink = freshDoc.querySelector(`.nav-link[href="${href}"]`);
-            if (!freshLink) return;
-            const liveBadge = link.querySelector('.nav-badge');
-            const freshBadge = freshLink.querySelector('.nav-badge');
-            if (liveBadge && !freshBadge) {
-                liveBadge.remove();
-            } else if (freshBadge && !liveBadge) {
-                link.appendChild(freshBadge.cloneNode(true));
-            } else if (freshBadge && liveBadge) {
-                liveBadge.textContent = freshBadge.textContent;
-            }
-        });
-    }
-
     function softRefresh() {
         if (Date.now() < suppressUntil) return;
         if (activeFieldInsideContent() || contentDirty) {
@@ -572,28 +1170,8 @@ function initRealtime(notifBell) {
             .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
             .then((html) => {
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
-
-                const freshContent = fresh.querySelector('.content');
-                const liveContent = document.querySelector('.content');
-                if (freshContent && liveContent) liveContent.replaceWith(freshContent);
-
+                swapContent(fresh);
                 contentDirty = false;
-                patchSidebarBadges(fresh);
-
-                document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
-                    const pct = parseFloat(el.dataset.pct) || 0;
-                    el.style.width = pct + '%';
-                });
-                initSmartTables();
-                initSmartLists();
-                initDispatchQtyWarnings();
-                // initConfirmDialogs() is intentionally NOT re-called here: it's
-                // delegated on `document` once at page load (see its own
-                // comment), so it already covers any form[data-confirm] that
-                // just got swapped in with the fresh .content — re-attaching
-                // per element the way the old initToggleConfirmations() needed
-                // isn't necessary anymore.
-                revealContent();
             })
             .catch(() => {
 
@@ -606,7 +1184,7 @@ function initRealtime(notifBell) {
             .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
             .then((html) => {
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
-                patchSidebarBadges(fresh);
+                patchSidebarNav(fresh);
             })
             .catch(() => { });
     }

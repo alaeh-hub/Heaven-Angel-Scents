@@ -151,16 +151,19 @@
      unscoped, these two-selector rules (.rh-table td:nth-child(n))
      out-specificity style.css's generic mobile rule .table-wrap td
      { width: 100% } (one class + one tag), so below the 680px
-     breakpoint the Requested cell stayed pinned to a hardcoded 16%
+     breakpoint the Requested cell stayed pinned to a hardcoded width
      of the row instead of taking the full-width mobile layout — and
      combined with overflow-wrap:anywhere from .table-fixed, that
-     narrow box wrapped every character onto its own line. */
+     narrow box wrapped every character onto its own line. "Requested"
+     itself was also bumped up from 16% to 20% — same fix as Stock
+     Requests' own "Requested" column, which was wrapping onto a
+     second line at ordinary desktop widths. */
   @media (min-width: 681px) {
-    .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 16%; }
-    .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 20%; }
+    .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 20%; }
+    .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 18%; }
     .rh-table th:nth-child(3), .rh-table td:nth-child(3) { width: 10%; }
     .rh-table th:nth-child(4), .rh-table td:nth-child(4) { width: 10%; }
-    .rh-table th:nth-child(5), .rh-table td:nth-child(5) { width: 14%; }
+    .rh-table th:nth-child(5), .rh-table td:nth-child(5) { width: 12%; }
     .rh-table th:nth-child(6), .rh-table td:nth-child(6) { width: 14%; }
     .rh-table th:nth-child(7), .rh-table td:nth-child(7) { width: 16%; }
   }
@@ -402,8 +405,8 @@
       <div class="table-wrap">
         <table class="smart-table table-fixed rh-table">
           <colgroup>
-            <col style="width:16%"><col style="width:20%"><col style="width:10%"><col style="width:10%">
-            <col style="width:14%"><col style="width:14%"><col style="width:16%">
+            <col style="width:20%"><col style="width:18%"><col style="width:10%"><col style="width:10%">
+            <col style="width:12%"><col style="width:14%"><col style="width:16%">
           </colgroup>
           <thead>
             <tr>
@@ -427,7 +430,7 @@
               <td data-label="Status">{{ m.status_badge(r.status) }}</td>
               <td data-label="">
                 {% if r.status == 'Fulfilled' %}
-                <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+                <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
                 {% endif %}
               </td>
             </tr>

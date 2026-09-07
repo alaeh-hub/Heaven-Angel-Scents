@@ -8,13 +8,28 @@
 <style>
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Notes value can't stretch this column — and therefore the whole
-     table — wider than the others; it wraps in place instead. */
-  .ml-table th:nth-child(1), .ml-table td:nth-child(1) { width: 14%; }
-  .ml-table th:nth-child(2), .ml-table td:nth-child(2) { width: 14%; }
-  .ml-table th:nth-child(3), .ml-table td:nth-child(3) { width: 20%; }
-  .ml-table th:nth-child(4), .ml-table td:nth-child(4) { width: 12%; }
-  .ml-table th:nth-child(5), .ml-table td:nth-child(5) { width: 10%; }
-  .ml-table th:nth-child(6), .ml-table td:nth-child(6) { width: 30%; }
+     table — wider than the others; it wraps in place instead.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.ml-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint a cell like "When" stayed pinned to a hardcoded 14% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped every character onto its own line. Same
+     pattern/fix as branch's Inventory Log and Admin Log. */
+  @media (min-width: 681px) {
+    /* "When" bumped up from 14% to 18% (branch's own Inventory Log
+       already uses 18% for the same column) — 14% was still tight
+       enough to wrap "Sep 04, 2026" at ordinary desktop widths. */
+    .ml-table th:nth-child(1), .ml-table td:nth-child(1) { width: 18%; }
+    .ml-table th:nth-child(2), .ml-table td:nth-child(2) { width: 14%; }
+    .ml-table th:nth-child(3), .ml-table td:nth-child(3) { width: 20%; }
+    .ml-table th:nth-child(4), .ml-table td:nth-child(4) { width: 12%; }
+    .ml-table th:nth-child(5), .ml-table td:nth-child(5) { width: 10%; }
+    .ml-table th:nth-child(6), .ml-table td:nth-child(6) { width: 26%; }
+  }
 
   @media (max-width: 680px) {
     /* Same reasoning as Admin Log's Details column: a long Notes
@@ -50,8 +65,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed ml-table">
         <colgroup>
-          <col style="width:14%"><col style="width:14%"><col style="width:20%">
-          <col style="width:12%"><col style="width:10%"><col style="width:30%">
+          <col style="width:18%"><col style="width:14%"><col style="width:20%">
+          <col style="width:12%"><col style="width:10%"><col style="width:26%">
         </colgroup>
         <thead><tr><th>When</th><th>Branch</th><th>Item</th><th>Type</th><th class="num">Change</th><th>Notes</th></tr></thead>
         <tbody>

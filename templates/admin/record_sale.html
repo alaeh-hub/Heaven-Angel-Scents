@@ -198,7 +198,7 @@
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
             <td data-label="">
-              <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm">Receipt</a>
+              <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
             </td>
           </tr>
           {% endfor %}

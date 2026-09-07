@@ -9,14 +9,30 @@
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Notes value can't stretch this column — and therefore the whole
      table — wider than the others; it wraps in place instead. Same
-     pattern as movement_logs.html's .ml-table. */
-  .dc-table th:nth-child(1), .dc-table td:nth-child(1) { width: 12%; }
-  .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
-  .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 12%; }
-  .dc-table th:nth-child(4), .dc-table td:nth-child(4) { width: 16%; }
-  .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 10%; }
-  .dc-table th:nth-child(6), .dc-table td:nth-child(6) { width: 8%; }
-  .dc-table th:nth-child(7), .dc-table td:nth-child(7) { width: 28%; }
+     pattern as movement_logs.html's .ml-table.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.dc-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint the When cell stayed pinned to a hardcoded 12% of the
+     row instead of taking the full-width mobile layout — and combined
+     with overflow-wrap:anywhere from .table-fixed, that narrow box
+     wrapped every character onto its own line. Same pattern/fix as
+     branch's Shipment Discrepancies (.dc-table there is already
+     scoped this way). */
+  @media (min-width: 681px) {
+    /* "When" bumped up from 12% to 16% (branch's own Shipment
+       Discrepancies already uses 16% for the same column) — 12% was
+       tight enough to wrap "Sep 04, 2026" at ordinary desktop widths. */
+    .dc-table th:nth-child(1), .dc-table td:nth-child(1) { width: 16%; }
+    .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
+    .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 12%; }
+    .dc-table th:nth-child(4), .dc-table td:nth-child(4) { width: 16%; }
+    .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 10%; }
+    .dc-table th:nth-child(6), .dc-table td:nth-child(6) { width: 8%; }
+    .dc-table th:nth-child(7), .dc-table td:nth-child(7) { width: 24%; }
+  }
 
   @media (max-width: 680px) {
     /* Same reasoning as Admin Log / Inventory Log's Notes/Details
@@ -137,8 +153,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed dc-table">
         <colgroup>
-          <col style="width:12%"><col style="width:14%"><col style="width:12%">
-          <col style="width:16%"><col style="width:10%"><col style="width:8%"><col style="width:28%">
+          <col style="width:16%"><col style="width:14%"><col style="width:12%">
+          <col style="width:16%"><col style="width:10%"><col style="width:8%"><col style="width:24%">
         </colgroup>
         <thead>
           <tr>

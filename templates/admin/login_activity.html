@@ -8,14 +8,28 @@
 <style>
   /* Fixed column widths (see .table-fixed in style.css) so a long User
      Agent value can't stretch this column — and therefore the whole
-     table — wider than the others. Same pattern as Admin Log's al-table. */
-  .la-table th:nth-child(1), .la-table td:nth-child(1) { width: 14%; }
-  .la-table th:nth-child(2), .la-table td:nth-child(2) { width: 14%; }
-  .la-table th:nth-child(3), .la-table td:nth-child(3) { width: 10%; }
-  .la-table th:nth-child(4), .la-table td:nth-child(4) { width: 12%; }
-  .la-table th:nth-child(5), .la-table td:nth-child(5) { width: 16%; }
-  .la-table th:nth-child(6), .la-table td:nth-child(6) { width: 12%; }
-  .la-table th:nth-child(7), .la-table td:nth-child(7) { width: 22%; }
+     table — wider than the others. Same pattern as Admin Log's al-table.
+
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.la-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint a cell like "When" stayed pinned to a hardcoded 14% of
+     the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped every character onto its own line. Same
+     pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    /* "When" bumped up from 14% to 18% — it was still tight enough to
+       wrap "Sep 04, 2026" at ordinary desktop widths. */
+    .la-table th:nth-child(1), .la-table td:nth-child(1) { width: 18%; }
+    .la-table th:nth-child(2), .la-table td:nth-child(2) { width: 14%; }
+    .la-table th:nth-child(3), .la-table td:nth-child(3) { width: 10%; }
+    .la-table th:nth-child(4), .la-table td:nth-child(4) { width: 12%; }
+    .la-table th:nth-child(5), .la-table td:nth-child(5) { width: 16%; }
+    .la-table th:nth-child(6), .la-table td:nth-child(6) { width: 12%; }
+    .la-table th:nth-child(7), .la-table td:nth-child(7) { width: 18%; }
+  }
 
   @media (max-width: 680px) {
     .la-table td.la-col-agent {
@@ -25,6 +39,12 @@
       text-align: left;
       gap: 4px;
     }
+
+    /* "Username attempted" also carries an .item-sub ("now: <current
+       username>") when the account's since been renamed — stacking
+       that under the name instead of flinging it to the far right is
+       now handled once, globally, by style.css's
+       .table-wrap td:has(>.item-sub) rule. */
   }
 </style>
 {% endblock %}
@@ -115,8 +135,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed la-table">
         <colgroup>
-          <col style="width:14%"><col style="width:14%"><col style="width:10%">
-          <col style="width:12%"><col style="width:16%"><col style="width:12%"><col style="width:22%">
+          <col style="width:18%"><col style="width:14%"><col style="width:10%">
+          <col style="width:12%"><col style="width:16%"><col style="width:12%"><col style="width:18%">
         </colgroup>
         <thead>
           <tr>

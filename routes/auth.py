@@ -1,3 +1,5 @@
+import secrets
+
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -7,6 +9,15 @@ from extensions import limiter
 import login_activity
 
 bp = Blueprint("auth", __name__)
+
+# Burned in place of a real check_password_hash() call when the username
+# doesn't exist, so that branch takes about as long as the "user found,
+# wrong password" branch instead of returning early. Without this, an
+# attacker who can measure response time gets a (slow, but free) oracle
+# for which usernames exist — hashing is the expensive part of this
+# check, so skipping it entirely for unknown usernames is the tell.
+# Not a real credential: generated once per process, never stored.
+_DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_hex(32))
 
 
 @bp.route("/", methods=["GET"])
@@ -48,7 +59,34 @@ def login():
             (username,), fetchone=True,
         )
 
-        if not user or not check_password_hash(user["password_hash"], password):
+        # Always run a real check_password_hash() call, win or lose, so a
+        # nonexistent username doesn't return measurably faster than a
+        # wrong password for one that exists — see _DUMMY_PASSWORD_HASH.
+        #
+        # This has to happen *before* the is_locked_out() check below,
+        # not after: is_locked_out() is a cheap DB query with none of
+        # check_password_hash()'s deliberate cost, so if it ran first and
+        # short-circuited on a lockout, a locked-out username would
+        # respond measurably faster than every other case — an oracle
+        # for "this username is currently under a lockout" by timing
+        # alone, the same class of leak _DUMMY_PASSWORD_HASH exists to
+        # close. Paying the hash cost unconditionally first keeps every
+        # branch below the same shape.
+        password_ok = check_password_hash(
+            user["password_hash"] if user else _DUMMY_PASSWORD_HASH, password)
+
+        if login_activity.is_locked_out(username):
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_LOCKED_OUT,
+            )
+            flash(
+                "Too many failed attempts for this account. Please wait 15 minutes and try again.",
+                "error",
+            )
+            return render_template("login.html", login_type=login_type), 429
+
+        if not user or not password_ok:
             login_activity.log_attempt(
                 username_attempted=username, role_attempted=login_type,
                 success=False, failure_reason=login_activity.FAILURE_BAD_CREDENTIALS,

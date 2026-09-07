@@ -540,7 +540,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="return_status" value="{{ status_filter }}">
                     <select name="status" class="pi-status-select" onchange="this.form.submit();"
-                      aria-label="Update status for {{ inq.company_name }}'s inquiry">
+                      aria-label="Update status for {{ inq.company_name }}'s inquiry" data-cs-skip>
                       {% for s in inquiry_statuses %}
                       <option value="{{ s }}" {{ 'selected' if inq.status==s }}>{{ s }}</option>
                       {% endfor %}

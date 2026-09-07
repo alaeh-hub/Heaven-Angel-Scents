@@ -170,6 +170,7 @@
 </head>
 
 <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="app-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <aside class="sidebar" id="sidebar">
@@ -543,7 +544,7 @@
                hole. Reset to look identical to the .footer-action <a>
                it replaces (buttons carry their own browser chrome by
                default that a plain link doesn't). -->
-                    <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                    <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;" data-no-soft-submit>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- footer-action-btn (style.css) resets button chrome
                  without the `font: inherit` bug that used to make this
@@ -620,7 +621,7 @@
 
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-            <div class="flashes">
+            <div class="flashes" role="status" aria-live="polite">
                 {% for category, message in messages %}
                 <div class="flash flash-{{ category }}">{{ message }}</div>
                 {% endfor %}
@@ -628,15 +629,25 @@
             {% endif %}
             {% endwith %}
 
-            <div class="content">
+            <main class="content" id="main-content" tabindex="-1">
                 {% block content %}{% endblock %}
-            </div>
+            </main>
         </div>
     </div>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    {% block scripts %}{% endblock %}
+    <!-- Wrapped in an id'd container, deliberately kept outside
+         <main class="content"> — a page's own {% raw %}{% block scripts
+         %}{% endraw %} is what wires up its Chart.js instances (Branch
+         Performance, Reports), its segmented toggles (Record Sale's
+         Type/Payment switches), or a modal's button listeners (Partner
+         Inquiries' remarks dialog); see main.js's runPageScripts(), which
+         re-executes this container's contents every time a soft nav swaps
+         in a new .content — without that id, there'd be nothing for it to
+         find and re-run, and every one of those would stay inert until a
+         real page load. -->
+    <div id="page-scripts">{% block scripts %}{% endblock %}</div>
 </body>
 
 </html>

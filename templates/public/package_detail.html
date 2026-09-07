@@ -67,22 +67,27 @@
 
     .pp-brand { display: flex; align-items: center; gap: 12px; }
 
+    /* Same shape as the sidebar's .brand-logo (style.css) — the SVG
+       already draws its own rounded-square background, so this just
+       clips to match it edge-to-edge instead of caging a shrunken copy
+       inside a separate circular badge, which read as two mismatched
+       logo shapes stacked on top of each other. */
     .pp-crest {
       position: relative;
       flex-shrink: 0;
       width: 40px;
       height: 40px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+        0 0 0 1px rgba(255, 255, 255, 0.12) inset;
     }
 
     .pp-crest svg { position: relative; z-index: 1; width: 17px; height: 17px; color: var(--accent-ink); }
-    .pp-crest img { position: relative; z-index: 1; width: 30px; height: 30px; border-radius: 8px; }
+    .pp-crest img { width: 100%; height: 100%; display: block; object-fit: cover; }
 
     .pp-brand .mark { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
     .pp-brand .mark .bm-blue { color: var(--blue); }
@@ -497,7 +502,12 @@
     .pp-step p { font-size: 12px; color: var(--ink-faint); line-height: 1.55; margin: 0; }
 
     /* ================= other packages ================= */
-    .pp-other-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+    /* min(250px, 100%) — same fix as packages.html's .pp-grid: a bare
+       minmax(250px, 1fr) can force a track wider than the viewport on
+       the narrowest phones, and with body { overflow-x: hidden } that
+       overflow gets silently clipped instead of the grid dropping to
+       one column. */
+    .pp-other-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 14px; }
     .pp-other-card {
       display: flex;
       flex-direction: column;
@@ -939,6 +949,19 @@
         });
       }
 
+      // ---- auto-dismiss flash messages ----
+      // This page doesn't load main.js (the admin/branch app's shared
+      // script) — it's a standalone public page — so it needs its own
+      // copy of the same dismiss logic that page uses, or a flash here
+      // (e.g. an inquiry submission error) just sits on screen forever
+      // instead of fading out like everywhere else in the app.
+      document.querySelectorAll('.flash').forEach(function (el) {
+        setTimeout(function () {
+          el.classList.add('flash-exit');
+          el.addEventListener('animationend', function () { el.remove(); }, { once: true });
+        }, 5000);
+      });
+
       // ---- Relabel "company name" / show a hint on contact person,
       // depending on whether this inquiry is from a Distributor (has a
       // registered business) or a Reseller (may just be an individual).
@@ -1010,9 +1033,101 @@
       // If the form was just submitted with a validation error, a flash
       // message is already showing above — reopen the modal automatically
       // so the visitor doesn't have to click "Inquire" again to fix it.
+      // Only matters with JS off/broken: the submit handler right below
+      // this never lets the page actually reload on a normal submission,
+      // so this Jinja-rendered flash/reopen only ever fires from the
+      // real-navigation fallback path further down.
       {% if get_flashed_messages(category_filter=['error'])|length %}
       open();
       {% endif %}
+
+      // ---- submit the inquiry without leaving/reloading this page ----
+      // A plain POST here would work (the server redirects right back to
+      // this same page either way, success or validation error), but a
+      // full navigation throws away the gallery/contents selection the
+      // visitor was just looking at and flashes the whole page white for
+      // what's otherwise a one-line confirmation. Submitting via fetch
+      // and swapping in just the flash the response queued keeps this
+      // page exactly as it was and shows the same "Thanks!" / error
+      // message inline instead.
+      var inquireForm = overlay.querySelector('form');
+      var flashesContainer = document.querySelector('.flashes');
+
+      function ensureFlashesContainer() {
+        if (flashesContainer && document.body.contains(flashesContainer)) return flashesContainer;
+        flashesContainer = document.createElement('div');
+        flashesContainer.className = 'flashes';
+        flashesContainer.setAttribute('role', 'status');
+        flashesContainer.setAttribute('aria-live', 'polite');
+        document.body.appendChild(flashesContainer);
+        return flashesContainer;
+      }
+
+      function showFlash(text, category) {
+        var container = ensureFlashesContainer();
+        var el = document.createElement('div');
+        el.className = 'flash flash-' + category;
+        el.textContent = text;
+        container.appendChild(el);
+        setTimeout(function () {
+          el.classList.add('flash-exit');
+          el.addEventListener('animationend', function () { el.remove(); }, { once: true });
+        }, 5000);
+        return el;
+      }
+
+      if (inquireForm) {
+        inquireForm.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var formData = new FormData(inquireForm);
+          var submitBtn = inquireForm.querySelector('button[type="submit"]');
+          if (submitBtn) submitBtn.disabled = true;
+
+          fetch(inquireForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          })
+            .then(function (r) {
+              var contentType = r.headers.get('Content-Type') || '';
+              if (contentType.indexOf('text/html') === -1) return Promise.reject(new Error('not html'));
+              return r.text();
+            })
+            .then(function (html) {
+              var fresh = new DOMParser().parseFromString(html, 'text/html');
+              var freshFlashes = fresh.querySelectorAll('.flashes .flash');
+              if (!freshFlashes.length) {
+                // The server responded with something that isn't the
+                // usual flash-carrying redirect (e.g. the rate limiter's
+                // 429 page) — still say *something* rather than leaving
+                // the visitor clicking "Send inquiry" into silence.
+                showFlash('Something went wrong sending your inquiry — please try again in a moment.', 'error');
+                return;
+              }
+              var sawSuccess = false;
+              freshFlashes.forEach(function (el) {
+                var isSuccess = el.className.indexOf('flash-success') !== -1;
+                if (isSuccess) sawSuccess = true;
+                showFlash(el.textContent, isSuccess ? 'success' : (el.className.indexOf('flash-warning') !== -1 ? 'warning' : 'error'));
+              });
+              if (sawSuccess) {
+                close();
+                inquireForm.reset();
+                if (partnerTypeEl && partnerTypeEl.tagName === 'SELECT') applyPartnerTypeLabels();
+              }
+            })
+            .catch(function () {
+              // Network hiccup, or a genuinely non-HTML response this
+              // couldn't make sense of — fall back to a real submission
+              // rather than leaving the visitor stuck with a disabled
+              // button and no way forward.
+              inquireForm.submit();
+            })
+            .then(function () {
+              if (submitBtn) submitBtn.disabled = false;
+            });
+        });
+      }
 
       // ---- reveal-on-scroll for the landing sections below the fold ----
       var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

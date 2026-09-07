@@ -181,18 +181,23 @@
       gap: 12px;
     }
 
+    /* Same shape as the sidebar's .brand-logo (style.css) — the SVG
+       already draws its own rounded-square background, so this just
+       clips to match it edge-to-edge instead of caging a shrunken copy
+       inside a separate circular badge, which read as two mismatched
+       logo shapes stacked on top of each other. */
     .pp-crest {
       position: relative;
       flex-shrink: 0;
       width: 40px;
       height: 40px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+        0 0 0 1px rgba(255, 255, 255, 0.12) inset;
     }
 
     .pp-crest svg {
@@ -204,11 +209,10 @@
     }
 
     .pp-crest img {
-      position: relative;
-      z-index: 1;
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
     }
 
     .pp-brand .mark {
@@ -721,9 +725,17 @@
     }
 
     /* ================= package grid ================= */
+    /* minmax(300px, 1fr) alone forces every track to be at least
+       300px wide even when the viewport itself is narrower than that
+       (e.g. a 320px-wide phone leaves ~280px inside .pp-shell's 20px
+       side padding) — with body { overflow-x: hidden } above, that
+       overflow doesn't scroll, it just gets silently clipped, so the
+       card's right edge (price, button) was cut off instead of the
+       grid dropping to one column. min(300px, 100%) lets the track
+       shrink to fit the container instead of forcing it wider. */
     .pp-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
       gap: 18px;
     }
 
@@ -1486,6 +1498,19 @@
           try { localStorage.setItem('theme', next); } catch (e) { }
         });
       }
+
+      // ---- auto-dismiss flash messages ----
+      // This page doesn't load main.js (the admin/branch app's shared
+      // script) — it's a standalone public page — so it needs its own
+      // copy of the same dismiss logic that page uses, or a flash here
+      // (e.g. an inquiry submission error) just sits on screen forever
+      // instead of fading out like everywhere else in the app.
+      document.querySelectorAll('.flash').forEach(function (el) {
+        setTimeout(function () {
+          el.classList.add('flash-exit');
+          el.addEventListener('animationend', function () { el.remove(); }, { once: true });
+        }, 5000);
+      });
 
       // ---- land already close to the packages grid on a filter-tab
       // reload (the page stays hidden via .pp-pending-scroll until this

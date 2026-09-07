@@ -11,70 +11,87 @@
      the others. Same fix already applied to Admin Log's Details column
      and Inventory Log's Notes column. Admin sees one extra column
      (Branch) that Branch staff don't, so widths are set separately for
-     each case below rather than sharing one colgroup. */
-  .dr-table.dr-table-admin th:nth-child(1),
-  .dr-table.dr-table-admin td:nth-child(1) {
-    width: 10%;
-  }
+     each case below rather than sharing one colgroup.
 
-  .dr-table.dr-table-admin th:nth-child(2),
-  .dr-table.dr-table-admin td:nth-child(2) {
-    width: 12%;
-  }
+     Scoped to min-width: 681px (desktop table layout) only. Left
+     unscoped, these two-selector rules (.dr-table td:nth-child(n))
+     out-specificity style.css's generic mobile rule .table-wrap td
+     { width: 100% } (one class + one tag), so below the 680px
+     breakpoint a cell like "When" stayed pinned to a hardcoded 10%/12%
+     of the row instead of taking the full-width mobile layout — and
+     combined with overflow-wrap:anywhere from .table-fixed, that
+     narrow box wrapped every character onto its own line. Same
+     pattern/fix as Admin Log's .al-table. */
+  @media (min-width: 681px) {
+    /* "When" here carries a full date+time stamp ("Sep 04, 2026
+       02:33 PM"), noticeably longer than the date-only "When"
+       columns elsewhere in the app — 10%/12% was wrapping it onto a
+       second line at ordinary desktop widths, so it gets extra room
+       here at Items'/Reasoning's expense. */
+    .dr-table.dr-table-admin th:nth-child(1),
+    .dr-table.dr-table-admin td:nth-child(1) {
+      width: 20%;
+    }
 
-  .dr-table.dr-table-admin th:nth-child(3),
-  .dr-table.dr-table-admin td:nth-child(3) {
-    width: 12%;
-  }
+    .dr-table.dr-table-admin th:nth-child(2),
+    .dr-table.dr-table-admin td:nth-child(2) {
+      width: 12%;
+    }
 
-  .dr-table.dr-table-admin th:nth-child(4),
-  .dr-table.dr-table-admin td:nth-child(4) {
-    width: 21%;
-  }
+    .dr-table.dr-table-admin th:nth-child(3),
+    .dr-table.dr-table-admin td:nth-child(3) {
+      width: 12%;
+    }
 
-  .dr-table.dr-table-admin th:nth-child(5),
-  .dr-table.dr-table-admin td:nth-child(5) {
-    width: 23%;
-  }
+    .dr-table.dr-table-admin th:nth-child(4),
+    .dr-table.dr-table-admin td:nth-child(4) {
+      width: 16%;
+    }
 
-  .dr-table.dr-table-admin th:nth-child(6),
-  .dr-table.dr-table-admin td:nth-child(6) {
-    width: 12%;
-  }
+    .dr-table.dr-table-admin th:nth-child(5),
+    .dr-table.dr-table-admin td:nth-child(5) {
+      width: 18%;
+    }
 
-  .dr-table.dr-table-admin th:nth-child(7),
-  .dr-table.dr-table-admin td:nth-child(7) {
-    width: 10%;
-  }
+    .dr-table.dr-table-admin th:nth-child(6),
+    .dr-table.dr-table-admin td:nth-child(6) {
+      width: 12%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(1),
-  .dr-table.dr-table-branch td:nth-child(1) {
-    width: 12%;
-  }
+    .dr-table.dr-table-admin th:nth-child(7),
+    .dr-table.dr-table-admin td:nth-child(7) {
+      width: 10%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(2),
-  .dr-table.dr-table-branch td:nth-child(2) {
-    width: 14%;
-  }
+    .dr-table.dr-table-branch th:nth-child(1),
+    .dr-table.dr-table-branch td:nth-child(1) {
+      width: 22%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(3),
-  .dr-table.dr-table-branch td:nth-child(3) {
-    width: 25%;
-  }
+    .dr-table.dr-table-branch th:nth-child(2),
+    .dr-table.dr-table-branch td:nth-child(2) {
+      width: 14%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(4),
-  .dr-table.dr-table-branch td:nth-child(4) {
-    width: 27%;
-  }
+    .dr-table.dr-table-branch th:nth-child(3),
+    .dr-table.dr-table-branch td:nth-child(3) {
+      width: 20%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(5),
-  .dr-table.dr-table-branch td:nth-child(5) {
-    width: 12%;
-  }
+    .dr-table.dr-table-branch th:nth-child(4),
+    .dr-table.dr-table-branch td:nth-child(4) {
+      width: 22%;
+    }
 
-  .dr-table.dr-table-branch th:nth-child(6),
-  .dr-table.dr-table-branch td:nth-child(6) {
-    width: 10%;
+    .dr-table.dr-table-branch th:nth-child(5),
+    .dr-table.dr-table-branch td:nth-child(5) {
+      width: 12%;
+    }
+
+    .dr-table.dr-table-branch th:nth-child(6),
+    .dr-table.dr-table-branch td:nth-child(6) {
+      width: 10%;
+    }
   }
 
   @media (max-width: 680px) {
