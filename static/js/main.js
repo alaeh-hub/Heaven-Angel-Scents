@@ -73,6 +73,60 @@ function initMobileSidebar() {
     });
 }
 
+function initSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarCollapseToggle');
+    if (!sidebar || !toggleBtn) return;
+
+    const STORAGE_KEY = 'sidebarCollapsed';
+    const root = document.documentElement;
+
+    // Collapsed nav-link labels are hidden with font-size: 0, not
+    // display: none (see style.css's html.sidebar-collapsed .nav-link),
+    // so a screen reader still gets the text — but a sighted mouse/
+    // keyboard user loses the visible label entirely. Mirror it into a
+    // native title tooltip instead, built once per link from its own
+    // text (icon + notification badge stripped out) and cached on the
+    // element so it's not re-derived on every toggle or soft nav.
+    function applyNavTitles(collapsed) {
+        sidebar.querySelectorAll('.nav-link').forEach((link) => {
+            if (!link.dataset.label) {
+                const clone = link.cloneNode(true);
+                const badge = clone.querySelector('.nav-badge');
+                if (badge) badge.remove();
+                link.dataset.label = clone.textContent.trim();
+            }
+            if (collapsed) {
+                link.setAttribute('title', link.dataset.label);
+            } else {
+                link.removeAttribute('title');
+            }
+        });
+    }
+
+    function setCollapsed(collapsed) {
+        root.classList.toggle('sidebar-collapsed', collapsed);
+        toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+        toggleBtn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        applyNavTitles(collapsed);
+        try {
+            localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+        } catch (e) {
+
+        }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        setCollapsed(!root.classList.contains('sidebar-collapsed'));
+    });
+
+    // Sync the button label/nav titles with whatever base.html's inline
+    // <head> script already applied to <html> before first paint (that
+    // script only sets the class, to avoid a layout flash — everything
+    // else it would need is exactly what setCollapsed() does here).
+    setCollapsed(root.classList.contains('sidebar-collapsed'));
+}
+
 function initThemeToggle() {
     const btn = document.getElementById('themeToggle');
     if (!btn) return;
@@ -126,6 +180,7 @@ function revealContent() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initMobileSidebar();
+    initSidebarCollapse();
     initThemeToggle();
     initPhClock();
     revealContent();
@@ -188,6 +243,73 @@ function patchSidebarNav(freshDoc) {
     });
 }
 
+// Copies the topbar's eyebrow + heading (base.html's {% block eyebrow %}
+// / {% block heading %}) from a freshly-fetched document onto the live
+// page. Same reason this needs its own patch function as
+// patchSidebarNav() above: the topbar lives outside <main class="content">
+// (deliberately — see base.html), so swapContent() replacing .content
+// alone never touches it, and it was just sitting there still showing
+// whatever page the last *real* load rendered. That's what left the
+// page title/eyebrow stuck on (say) "Reports" after soft-navigating to
+// Record Sale, Scan Receipt, Partner Inquiries, AI Assistant, etc. —
+// .content, the sidebar's active link, and document.title all updated
+// correctly, only this was left behind.
+function patchTopbar(freshDoc) {
+    const liveEyebrow = document.querySelector('.topbar .eyebrow');
+    const freshEyebrow = freshDoc.querySelector('.topbar .eyebrow');
+    if (liveEyebrow && freshEyebrow) liveEyebrow.textContent = freshEyebrow.textContent;
+
+    const liveHeading = document.querySelector('.topbar h1');
+    const freshHeading = freshDoc.querySelector('.topbar h1');
+    if (liveHeading && freshHeading) liveHeading.textContent = freshHeading.textContent;
+}
+
+// Copies a page's own {% block head %} (base.html wraps it in
+// <!--page-head-start-->/<!--page-head-end--> comment markers,
+// specifically so this can find it) from a freshly-fetched document
+// into the live page's <head>. Every page that defines this block puts
+// its own layout-critical <style> there — Record Sale's Type/Payment
+// segmented-control styling, Reports'/Record Sale's .rb-mode-opt
+// buttons, Scan Receipt's .scan-grid layout, AI Assistant's
+// .chat-shell layout, Partner Inquiries' table/icon styling, Branch
+// Performance's .bp-table column widths, and more — none of which live
+// in the shared static/css/style.css, all of which swapContent()
+// replacing .content alone never touches, since <head> isn't part of
+// .content. A soft nav to any of those pages left them relying on
+// whatever page was last *actually* loaded for their <head> — usually
+// nothing matching at all — so their segmented controls, grids, and
+// icons rendered as bare, unstyled markup until a real reload finally
+// rendered that page's own <style> block. Re-syncing this on every
+// swapContent() call fixes that the same way patchTopbar() does for
+// the eyebrow/heading.
+function patchPageHead(freshDoc) {
+    function markers(doc) {
+        let start = null;
+        let end = null;
+        doc.head.childNodes.forEach((node) => {
+            if (node.nodeType !== Node.COMMENT_NODE) return;
+            const text = node.data.trim();
+            if (text === 'page-head-start') start = node;
+            if (text === 'page-head-end') end = node;
+        });
+        return { start, end };
+    }
+
+    const live = markers(document);
+    const fresh = markers(freshDoc);
+    if (!live.start || !live.end || !fresh.start || !fresh.end) return;
+
+    while (live.start.nextSibling && live.start.nextSibling !== live.end) {
+        live.start.nextSibling.remove();
+    }
+
+    let node = fresh.start.nextSibling;
+    while (node && node !== fresh.end) {
+        document.head.insertBefore(document.importNode(node, true), live.end);
+        node = node.nextSibling;
+    }
+}
+
 // Re-runs everything that turns freshly-swapped-in .content markup
 // into working, interactive UI — the exact same list softRefresh()
 // (realtime pushes) and initSoftNav() (link/form navigation) both
@@ -224,6 +346,8 @@ function swapContent(freshDoc) {
     liveContent.replaceWith(freshContent);
     if (freshDoc.title) document.title = freshDoc.title;
     patchSidebarNav(freshDoc);
+    patchTopbar(freshDoc);
+    patchPageHead(freshDoc);
     refreshDynamicContent();
     // Deferred two animation frames rather than run inline here: a page
     // script that measures its own layout at creation time (every
@@ -267,19 +391,42 @@ function runPageScripts(freshDoc) {
 
     liveScripts.innerHTML = '';
 
-    Array.prototype.forEach.call(freshScripts.querySelectorAll('script'), (oldScript) => {
+    const oldScripts = Array.prototype.slice.call(freshScripts.querySelectorAll('script'));
+
+    // Runs the page's scripts strictly one at a time, in document order —
+    // a parser-inserted <script src> blocks the parser until it's fetched
+    // *and* executed before the next <script> runs, even an inline one;
+    // that's what a chart page's inline init code is relying on when it
+    // assumes `Chart` (from an earlier <script src="chart.umd.min.js">)
+    // is already defined by the time it runs on a real page load.
+    //
+    // A previous version of this function tried to recreate that by
+    // setting `.async = false` on each dynamically-created script, but
+    // that guarantee only ever applies to *src* scripts relative to each
+    // other — a dynamically-inserted *inline* script has nothing to
+    // fetch, so per spec it executes the instant it's appended, not
+    // "once every earlier script has actually finished" like a parser
+    // guarantees. That's what let a page's first-ever soft-nav visit
+    // this session (the one time chart.umd.min.js hadn't already been
+    // fetched and cached) run the chart-init inline script before
+    // Chart.js had loaded: `typeof Chart` was still 'undefined', the
+    // script's own `if (typeof Chart === 'undefined') return;` guard
+    // bailed out, and no chart ever got created — invisible unless you
+    // knew to check, since nothing throws. Chaining each script off the
+    // previous *src* script's load/error event (inline scripts have
+    // nothing to wait for, so they run and immediately hand off to the
+    // next one) restores the ordering a real page load gives for free.
+    function runNext(index) {
+        if (index >= oldScripts.length) return;
+        const oldScript = oldScripts[index];
         const newScript = document.createElement('script');
         Array.prototype.forEach.call(oldScript.attributes, (attr) => {
             newScript.setAttribute(attr.name, attr.value);
         });
-        // A script created via createElement() defaults to async=true,
-        // which would let a later inline script (a chart page's own init
-        // code) run before an earlier <script src="chart.umd.min.js">
-        // has actually finished loading. Forcing async=false preserves
-        // document order the same way a parser-inserted <script> would.
-        newScript.async = false;
 
         if (oldScript.src) {
+            newScript.onload = () => runNext(index + 1);
+            newScript.onerror = () => runNext(index + 1);
             liveScripts.appendChild(newScript);
             return;
         }
@@ -295,7 +442,10 @@ function runPageScripts(freshDoc) {
         // every run, the same as a fresh <script> on an actual page load.
         newScript.textContent = '(function () {\n' + oldScript.textContent + '\n})();';
         liveScripts.appendChild(newScript);
-    });
+        runNext(index + 1);
+    }
+
+    runNext(0);
 }
 
 // .flashes lives outside .content (see base.html) specifically so a

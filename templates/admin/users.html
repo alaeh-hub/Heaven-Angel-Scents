@@ -103,7 +103,7 @@
       New temporary password for <strong>{{ temp_password_reveal.username }}</strong>. Copy it now — it won't be shown again.
     </p>
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px;">
-      <code id="tempPasswordValue" style="flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); font-size:14px; word-break:break-all;">{{ temp_password_reveal.password }}</code>
+      <code id="tempPasswordValue" style="flex:1; padding:10px 12px; border:var(--border-width-strong) solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg); font-size:14px; word-break:break-all;">{{ temp_password_reveal.password }}</code>
       <button type="button" class="btn btn-ghost btn-sm" id="tempPasswordCopyBtn">Copy</button>
     </div>
     <button type="button" class="btn btn-accent" style="width:100%;" id="tempPasswordCloseBtn">Done</button>

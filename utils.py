@@ -40,10 +40,11 @@ _BASE_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9\-]{0,29}$")
 # Both consume stock; both carry their own manually-entered price.
 SALE_TYPES = ("Sale", "Refill")
 
-# Cash is a normal register transaction. Salary Deduction is an employee
-# taking product for themselves where the cost comes out of their pay
-# instead of the register — see buyer_user_id on the sales table.
-PAYMENT_METHODS = ("Cash", "Salary Deduction")
+# Cash is a normal register transaction. Credit is anyone — an employee
+# taking product against their own pay, or a customer buying on store
+# credit ("utang") — taking product now without paying cash at the
+# register; buyer_name on the sales table records who it's owed by.
+PAYMENT_METHODS = ("Cash", "Credit")
 
 MATERIAL_UNITS = ("Gram", "Milliliter", "Liter", "Gallon", "Piece")
 
@@ -179,7 +180,8 @@ def parse_required_text(raw, field_label="Value", max_length=None):
     if not value:
         raise ValidationError(f"{field_label} is required.")
     if max_length and len(value) > max_length:
-        raise ValidationError(f"{field_label} must be under {max_length} characters.")
+        raise ValidationError(
+            f"{field_label} must be under {max_length} characters.")
     return value
 
 
@@ -193,7 +195,8 @@ def parse_optional_text(raw, field_label="Value", max_length=None):
     if not value:
         return None
     if max_length and len(value) > max_length:
-        raise ValidationError(f"{field_label} must be under {max_length} characters.")
+        raise ValidationError(
+            f"{field_label} must be under {max_length} characters.")
     return value
 
 
@@ -202,7 +205,8 @@ def parse_email(raw, field_label="Email"):
     if not value:
         raise ValidationError(f"{field_label} is required.")
     if len(value) > 120 or not _EMAIL_RE.match(value):
-        raise ValidationError(f"{field_label} doesn't look like a valid email address.")
+        raise ValidationError(
+            f"{field_label} doesn't look like a valid email address.")
     return value
 
 
@@ -266,7 +270,8 @@ def make_receipt_code(sale_id):
     """
     secret = current_app.config["SECRET_KEY"].encode("utf-8")
     signature = hmac.new(
-        secret, _RECEIPT_CODE_SALT + str(sale_id).encode("utf-8"), hashlib.sha256
+        secret, _RECEIPT_CODE_SALT +
+        str(sale_id).encode("utf-8"), hashlib.sha256
     ).hexdigest()[:10].upper()
     return f"{_RECEIPT_CODE_PREFIX}-{sale_id:06d}-{signature}"
 

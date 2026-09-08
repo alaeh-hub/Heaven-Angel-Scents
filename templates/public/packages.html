@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -11,7 +11,7 @@
     (function () {
       try {
         var stored = localStorage.getItem('theme');
-        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var theme = stored || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
       } catch (e) { }
 
@@ -88,7 +88,7 @@
     .pp-glow-blue {
       width: 460px;
       height: 460px;
-      background: var(--blue);
+      background: var(--brand-gold);
       top: -180px;
       left: -120px;
     }
@@ -96,7 +96,7 @@
     .pp-glow-red {
       width: 420px;
       height: 420px;
-      background: var(--red);
+      background: var(--accent-ink);
       top: -80px;
       right: -140px;
       animation-delay: -9s;
@@ -122,21 +122,21 @@
     }
 
     #packages .pp-section-glow {
-      background: var(--red);
+      background: var(--accent-ink);
       top: 10%;
       left: -120px;
       animation-delay: -4s;
     }
 
     #how-it-works .pp-section-glow {
-      background: var(--blue);
+      background: var(--brand-gold);
       top: 15%;
       right: -140px;
       animation-delay: -12s;
     }
 
     #faq .pp-section-glow {
-      background: var(--red);
+      background: var(--accent-ink);
       bottom: 5%;
       left: -100px;
       animation-delay: -6s;
@@ -196,7 +196,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--brand-gold) 55%, transparent),
         0 0 0 1px rgba(255, 255, 255, 0.12) inset;
     }
 
@@ -222,15 +222,15 @@
       line-height: 1.1;
     }
 
-    .pp-brand .mark .bm-blue {
-      color: var(--blue);
+    .pp-brand .mark .bm-gold {
+      color: var(--accent-ink);
     }
 
-    .pp-brand .mark .bm-red {
-      color: var(--red);
+    .pp-brand .mark .bm-ink {
+      color: var(--ink);
     }
 
-    .pp-brand .mark span:not(.bm-blue):not(.bm-red) {
+    .pp-brand .mark span:not(.bm-gold):not(.bm-ink) {
       color: var(--ink-faint);
       font-style: italic;
       font-weight: 500;
@@ -363,7 +363,7 @@
       font-weight: 700;
       color: var(--ink-soft);
       background: var(--surface);
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       padding: 4px 10px;
       border-radius: 999px;
       white-space: nowrap;
@@ -428,7 +428,7 @@
     }
 
     .pp-hero h1 .grad-text {
-      color: var(--red);
+      color: var(--accent-ink);
     }
 
     .pp-hero p {
@@ -468,7 +468,7 @@
     /* ---- hero side panel ---- */
     .pp-hero-panel {
       position: relative;
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: var(--radius-lg);
       background: var(--surface);
       box-shadow: var(--shadow-md);
@@ -483,7 +483,7 @@
       content: "";
       position: absolute;
       inset: 0;
-      background: color-mix(in srgb, var(--brand-navy) 5%, transparent);
+      background: color-mix(in srgb, var(--brand-gold) 5%, transparent);
       pointer-events: none;
     }
 
@@ -533,7 +533,7 @@
       position: relative;
       margin-top: 14px;
       padding-top: 14px;
-      border-top: 1px dashed var(--border-strong);
+      border-top: var(--border-width-strong) dashed var(--border-strong);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -652,7 +652,7 @@
       height: 28px;
       border-radius: 50%;
       background: var(--accent);
-      color: #fff;
+      color: var(--gold-contrast);
       font-size: 12.5px;
       font-weight: 800;
       margin-bottom: 14px;
@@ -699,7 +699,7 @@
       gap: 2px;
       padding: 4px;
       background: var(--surface);
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: 999px;
       box-shadow: var(--shadow-sm);
     }
@@ -720,7 +720,7 @@
     }
 
     .pp-filter-bar a.active {
-      color: #fff;
+      color: var(--gold-contrast);
       background: var(--accent);
     }
 
@@ -755,7 +755,7 @@
       display: block;
       height: 5px;
       margin: 0 -22px 18px;
-      background: var(--brand-navy);
+      background: var(--brand-gold);
       opacity: 0.9;
     }
 
@@ -776,8 +776,8 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: .04em;
-      color: #fff;
-      background: var(--red);
+      color: var(--gold-contrast);
+      background: var(--brand-gold);
       padding: 5px 10px 5px 8px;
       border-radius: 999px;
       z-index: 2;
@@ -921,7 +921,7 @@
     }
 
     .pp-faq-item {
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: var(--radius-sm);
       background: var(--surface);
       margin-bottom: 10px;
@@ -1104,7 +1104,7 @@
           <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
         </div>
         <div>
-          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span>
+          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span>
           </div>
           <div class="sub">Scents · Business Partners</div>
         </div>
@@ -1475,7 +1475,7 @@
 
       <div class="pp-footer">
         <div>
-          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span>
+          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span>
             Scents</div>
           <div class="pp-footer-note">Have a question that's not answered above? Open any package and send an inquiry —
             that's the fastest way to reach our team.</div>

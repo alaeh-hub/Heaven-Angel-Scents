@@ -498,7 +498,8 @@ def import_products():
     try:
         raw = file_storage.read().decode("utf-8-sig")
     except UnicodeDecodeError:
-        flash("That file doesn't look like a valid CSV (couldn't read it as UTF-8).", "error")
+        flash(
+            "That file doesn't look like a valid CSV (couldn't read it as UTF-8).", "error")
         return redirect(url_for("admin.products"))
 
     reader = csv.DictReader(io.StringIO(raw))
@@ -566,7 +567,8 @@ def import_products():
             "import_products",
             details=f"{created} created, {updated} updated, {len(errors)} skipped",
         )
-        flash(f"Import complete — {created} added, {updated} updated.", "success")
+        flash(
+            f"Import complete — {created} added, {updated} updated.", "success")
     if errors:
         shown = errors[:10]
         more = f" (+{len(errors) - 10} more)" if len(errors) > 10 else ""
@@ -855,10 +857,11 @@ def sale_receipt(sale_id):
 @admin_required
 def record_sale():
     """HQ selling straight from the warehouse (branch_id=1) — walk-in
-    sales, refills, or an employee taking product with the cost deducted
-    from their salary. Mirrors branch.record_sale(); the only difference
-    is HQ can't produce here, only sell/refill from whatever the
-    warehouse already has on hand (see production() for adding stock).
+    sales, refills, or a Credit sale (an employee against their own pay,
+    or a customer buying on store credit/"utang"). Mirrors
+    branch.record_sale(); the only difference is HQ can't produce here,
+    only sell/refill from whatever the warehouse already has on hand
+    (see production() for adding stock).
 
     There's no branch price to fall back to anymore — the HQ price is
     only ever a suggested starting point; the actual amount charged is
@@ -893,15 +896,15 @@ def record_sale():
             return redirect(url_for("admin.record_sale"))
 
         buyer_name = None
-        if payment_method == "Salary Deduction":
+        if payment_method == "Credit":
             if not raw_buyer:
-                flash("Enter which employee this salary deduction applies to.", "error")
+                flash("Enter who this credit sale is for.", "error")
                 return redirect(url_for("admin.record_sale"))
             if len(raw_buyer) > 120:
-                flash("Employee name is too long (max 120 characters).", "error")
+                flash("Name is too long (max 120 characters).", "error")
                 return redirect(url_for("admin.record_sale"))
             # This is now a plain free-text name, not a lookup against real
-            # login accounts — HQ handles reconciling it against payroll
+            # login accounts — HQ handles reconciling/collecting it
             # themselves. Whatever the admin types is what's recorded.
             buyer_name = raw_buyer
 
@@ -943,7 +946,7 @@ def record_sale():
                         (after_qty, HQ_BRANCH_ID, sku),
                     )
                 movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Salary deduction — {buyer_name}"
+                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Credit — {buyer_name}"
                 if is_refill:
                     notes += " · no stock deducted (refill)"
                 cur.execute(
@@ -2204,7 +2207,8 @@ def suppliers():
             "total_cost": float(row["total_cost"]),
         })
     for r in rows:
-        r["materials_supplied"] = materials_by_supplier.get(r["supplier_id"], [])
+        r["materials_supplied"] = materials_by_supplier.get(
+            r["supplier_id"], [])
 
     totals = query(
         """SELECT (SELECT COUNT(*) FROM suppliers) AS supplier_count,
@@ -2778,8 +2782,7 @@ def customers():
     totals = query(
         """SELECT COUNT(DISTINCT customer_name) AS customer_count,
                   COALESCE(SUM(qty_sold * unit_price), 0) AS total_named_revenue
-           FROM sales WHERE customer_name IS NOT NULL AND customer_name <> ''"""
-        , fetchone=True,
+           FROM sales WHERE customer_name IS NOT NULL AND customer_name <> ''""", fetchone=True,
     )
     multi_branch_count = sum(1 for r in rows if r["branch_count"] > 1)
 

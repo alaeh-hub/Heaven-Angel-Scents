@@ -20,17 +20,27 @@
     left: 0;
     right: 0;
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius-sm);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
     max-height: 260px;
     overflow-y: auto;
-    z-index: 60;
+    z-index: 500;
     display: none;
   }
 
   .ac-combo-menu.open {
     display: block;
+  }
+
+  /* Same reasoning as .cs-select.cs-open in style.css: a long product
+     list can overhang past the bottom of this card, and .ac-combo-menu's
+     own z-index isn't enough on its own to guarantee it paints above a
+     *different* card/table sitting right below (e.g. the production
+     log table under this form) — promoting the whole combo to its own
+     stacking context while its menu is open makes that reliable. */
+  .ac-combo:has(.ac-combo-menu.open) {
+    z-index: 500;
   }
 
   .ac-combo-option {

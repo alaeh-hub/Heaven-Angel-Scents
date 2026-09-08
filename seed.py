@@ -3,8 +3,8 @@ Run once after importing schema.sql to create starter login accounts:
 
     python seed.py
 
-Creates three accounts (Admin / HQ, plus two starter branch accounts
-for Manila and Cebu), each with must_change_password=TRUE so whoever
+Creates two accounts (Admin / HQ, plus one starter branch account
+for Balayan), each with must_change_password=TRUE so whoever
 signs in first is forced to set their own password immediately.
 
 Two safety rules, on top of that:
@@ -18,10 +18,10 @@ Two safety rules, on top of that:
 
 2. Passwords are no longer hardcoded. Each one is read from its own
    environment variable if you've set one (SEED_ADMIN_PASSWORD,
-   SEED_MANILA_PASSWORD, SEED_CEBU_PASSWORD); otherwise a random
-   password is generated and printed once. Either way, the password is
-   only ever shown in this script's own output — never checked into
-   source control, never reused across setups.
+   SEED_BALAYAN_PASSWORD); otherwise a random password is generated and
+   printed once. Either way, the password is only ever shown in this
+   script's own output — never checked into source control, never
+   reused across setups.
 """
 import os
 import sys
@@ -47,8 +47,7 @@ with app.app_context():
 
     accounts = [
         ("admin", os.environ.get("SEED_ADMIN_PASSWORD") or generate_temp_password(), "Admin", None),
-        ("manila", os.environ.get("SEED_MANILA_PASSWORD") or generate_temp_password(), "Branch", "Manila Branch"),
-        ("cebu", os.environ.get("SEED_CEBU_PASSWORD") or generate_temp_password(), "Branch", "Cebu Branch"),
+        ("balayan", os.environ.get("SEED_BALAYAN_PASSWORD") or generate_temp_password(), "Branch", "Balayan Branch"),
     ]
 
     for username, password, role, branch_name in accounts:

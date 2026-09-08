@@ -567,10 +567,11 @@ def record_sale():
     a different amount, so the price is always typed in here rather
     than pulled from the catalog automatically.
 
-    payment_method covers employees who take product for themselves
-    where the cost is deducted from their salary instead of paid in
-    cash — see buyer_name on the sales table (free text, not tied to
-    a login account; buyer_user_id is a separate, currently-unused FK).
+    payment_method covers anyone taking product now without paying
+    cash — an employee against their own pay, or a customer buying on
+    store credit ("utang") — see buyer_name on the sales table (free
+    text, not tied to a login account; buyer_user_id is a separate,
+    currently-unused FK).
     """
     bid = _branch_id()
     if request.method == "POST":
@@ -604,12 +605,12 @@ def record_sale():
 
         # AFTER
         buyer_name = None
-        if payment_method == "Salary Deduction":
+        if payment_method == "Credit":
             if not raw_buyer:
-                flash("Enter which employee this salary deduction applies to.", "error")
+                flash("Enter who this credit sale is for.", "error")
                 return redirect(url_for("branch.record_sale"))
             if len(raw_buyer) > 120:
-                flash("Employee name is too long (max 120 characters).", "error")
+                flash("Name is too long (max 120 characters).", "error")
                 return redirect(url_for("branch.record_sale"))
             # Free-text name, not a login lookup — see admin.py's
             # record_sale() for the same change and reasoning.
@@ -661,7 +662,7 @@ def record_sale():
                         (after_qty, bid, sku),
                     )
                 movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale" if payment_method == "Cash" else f"Salary deduction — {buyer_name}"
+                notes = "Point-of-sale" if payment_method == "Cash" else f"Credit — {buyer_name}"
                 if is_refill:
                     notes += " · no stock deducted (refill)"
                 cur.execute(
@@ -781,27 +782,28 @@ def customers():
     return render_template("branch/customers.html", rows=rows, totals=totals)
 
 
-# ---------------------------------------------------------------- employee purchases
-@bp.route("/employee-purchases")
+# ---------------------------------------------------------------- credit purchases
+@bp.route("/credit-purchases")
 @branch_required
-def employee_purchases():
-    """Salary Deduction leaderboard for this branch — who's taken how much
-    product against their own pay, for payroll reconciliation. This is
+def credit_purchases():
+    """Credit leaderboard for this branch — who's taken how much product
+    on credit, whether an employee against their own pay or a customer
+    on store credit ("utang"), for reconciliation/collection. This is
     NOT "who rang up the sale": there's no such column on `sales` (see
     record_sale()'s comment on buyer_name/buyer_user_id above), only who
-    the product was taken *for* on a Salary Deduction sale. Ordinary Cash
-    sales aren't attributable to any one staff member and are excluded.
+    the product was taken *for* on a Credit sale. Ordinary Cash sales
+    aren't attributable to any one person and are excluded.
     """
     bid = _branch_id()
     rows = query(
-        """SELECT COALESCE(s.buyer_name, bu.username) AS employee_name,
+        """SELECT COALESCE(s.buyer_name, bu.username) AS buyer_name,
                   COUNT(*) AS transaction_count,
                   COALESCE(SUM(s.qty_sold), 0) AS total_units,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS total_amount,
                   MAX(s.sold_at) AS last_taken_at
            FROM sales s
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
-           WHERE s.branch_id = %s AND s.payment_method = 'Salary Deduction'
+           WHERE s.branch_id = %s AND s.payment_method = 'Credit'
            GROUP BY COALESCE(s.buyer_name, bu.username)
            ORDER BY total_amount DESC""",
         (bid,),
@@ -809,10 +811,10 @@ def employee_purchases():
     totals = query(
         """SELECT COUNT(*) AS transaction_count,
                   COALESCE(SUM(qty_sold * unit_price), 0) AS total_amount
-           FROM sales WHERE branch_id = %s AND payment_method = 'Salary Deduction'""",
+           FROM sales WHERE branch_id = %s AND payment_method = 'Credit'""",
         (bid,), fetchone=True,
     )
-    return render_template("branch/employee_purchases.html", rows=rows, totals=totals)
+    return render_template("branch/credit_purchases.html", rows=rows, totals=totals)
 
 
 # ---------------------------------------------------------------- reports

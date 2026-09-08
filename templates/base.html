@@ -13,11 +13,24 @@
         // there's no flash of the light theme on a person who's chosen
         // dark. Kept intentionally tiny and inline (not in main.js, which
         // loads at the end of body) — this has to run before first paint.
+        // Dark (black & gold) is the system's default theme regardless of
+        // the OS preference — only an explicit choice via the theme
+        // toggle (stored below) switches someone to light.
         (function () {
             try {
                 var stored = localStorage.getItem('theme');
-                var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                var theme = stored || 'dark';
                 document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) { }
+
+            // Same reasoning as the theme attribute above: apply the
+            // collapsed sidebar rail before first paint, from main.js's
+            // initSidebarCollapse() persisted choice, so there's no
+            // visible full-width-to-collapsed jump right after load.
+            try {
+                if (localStorage.getItem('sidebarCollapsed') === '1') {
+                    document.documentElement.classList.add('sidebar-collapsed');
+                }
             } catch (e) { }
         })();
     </script>
@@ -34,7 +47,7 @@
             justify-content: center;
             width: 38px;
             height: 38px;
-            border: 1px solid var(--border-strong);
+            border: var(--border-width-strong) solid var(--border-strong);
             background: var(--surface);
             border-radius: 999px;
             cursor: pointer;
@@ -80,7 +93,7 @@
             max-height: 380px;
             overflow-y: auto;
             background: var(--surface);
-            border: 1px solid var(--border);
+            border: var(--border-width-strong) solid var(--border-strong);
             border-radius: var(--radius-sm, 10px);
             box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
             z-index: 60;
@@ -152,7 +165,7 @@
         }
 
         .notif-dot.success {
-            background: var(--good, #4F7A5C);
+            background: var(--success);
         }
 
         .notif-body {
@@ -166,7 +179,9 @@
             margin-top: 2px;
         }
     </style>
+    <!--page-head-start-->
     {% block head %}{% endblock %}
+    <!--page-head-end-->
 </head>
 
 <body>
@@ -184,8 +199,8 @@
                     <div class="brand-logo" aria-hidden="true">
                         <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
                     </div>
-                    <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span
-                            class="bm-red">Angel</span>
+                    <div class="brand-mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span
+                            class="bm-ink">Angel</span>
                     </div>
                 </div>
                 <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
@@ -474,13 +489,13 @@
                     </svg>
                     Customers
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'branch.employee_purchases' }}"
-                    href="{{ url_for('branch.employee_purchases') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'branch.credit_purchases' }}"
+                    href="{{ url_for('branch.credit_purchases') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="2" y="6" width="20" height="13" rx="2" />
                         <path d="M2 10h20M6 15h4" />
                     </svg>
-                    Employee Purchases
+                    Credit Purchases
                 </a>
             </nav>
             <nav class="nav-group">
@@ -560,6 +575,18 @@
                 </div>
             </div>
         </aside>
+
+        <!-- Sibling of .sidebar, not a child — see style.css's
+             .sidebar-collapse-toggle comment for why (it needs to sit
+             outside .sidebar's own overflow-x: hidden to straddle its
+             edge). Hidden until the sidebar is hovered or already
+             collapsed; toggled by main.js's initSidebarCollapse(). -->
+        <button type="button" class="sidebar-collapse-toggle" id="sidebarCollapseToggle"
+            aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 6l-6 6 6 6" />
+            </svg>
+        </button>
 
         <div class="main">
             <div class="topbar">

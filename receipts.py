@@ -47,12 +47,12 @@ from brand_assets import NumberedCanvas, logo_drawing
 from db import query
 from utils import make_receipt_code
 
-INK = colors.HexColor("#12141A")
-INK_FAINT = colors.HexColor("#5B6272")
-ACCENT = colors.HexColor("#2E5AF0")
-ACCENT_INK = colors.HexColor("#1D3BC4")
-ACCENT_SOFT = colors.HexColor("#E7ECFE")
-BORDER = colors.HexColor("#E5E8EF")
+INK = colors.HexColor("#17140D")
+INK_FAINT = colors.HexColor("#5B5445")
+ACCENT = colors.HexColor("#C9A227")
+ACCENT_INK = colors.HexColor("#8A6D1F")
+ACCENT_SOFT = colors.HexColor("#FBF1D6")
+BORDER = colors.HexColor("#E9E0C9")
 DANGER = colors.HexColor("#E23A48")
 DANGER_SOFT = colors.HexColor("#FCE7EA")
 GOOD = colors.HexColor("#17975E")
@@ -163,7 +163,7 @@ def _styles():
 
 def _fetch_sale(sale_id, branch_id=None):
     """A single recorded sale/refill, with the product, branch, and
-    (if it was a Salary Deduction) the employee name already joined in.
+    (if it was a Credit sale) the buyer's name already joined in.
     """
     sql = """SELECT s.*, p.item_name, p.variant, p.unit, b.branch_name, b.location,
                     COALESCE(s.buyer_name, bu.username) AS buyer_username
@@ -228,7 +228,7 @@ def build_receipt_pdf(request_id, branch_id=None):
         [[
             logo_drawing(26),
             Table(
-                [[Paragraph("Heaven <font color='#2E5AF0'>&amp;</font> Angel Scents", s["brand"])],
+                [[Paragraph("Heaven <font color='#8A6D1F'>&amp;</font> Angel Scents", s["brand"])],
                  [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
                 colWidths=[84 * mm],
             ),
@@ -292,7 +292,7 @@ def build_receipt_pdf(request_id, branch_id=None):
     for item in items:
         line_total = item["requested_qty"] * item["unit_price"]
         item_cell = Paragraph(
-            f"{item['item_name']}<br/><font size=6.8 color='#5B6272'>{item['sku']}</font>",
+            f"{item['item_name']}<br/><font size=6.8 color='#5B5445'>{item['sku']}</font>",
             s["item_cell"],
         )
         items_rows.append([
@@ -319,8 +319,8 @@ def build_receipt_pdf(request_id, branch_id=None):
     items_table.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F5F6F9")),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F5F6F9")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F5F0E1")),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F5F0E1")),
         ("SPAN", (0, -1), (7, -1)),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -590,7 +590,7 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
     kv("Branch", sale["branch_name"])
     kv("Sale type", sale["sale_type"])
     payment_value = sale["payment_method"]
-    if sale["payment_method"] == "Salary Deduction" and sale["buyer_username"]:
+    if sale["payment_method"] == "Credit" and sale["buyer_username"]:
         payment_value += f" ({sale['buyer_username']})"
     kv("Payment", payment_value)
     kv("Customer", sale["customer_name"] or "Walk-in", gap=10)

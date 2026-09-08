@@ -1,41 +1,69 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+/* ---------------------------------------------------------------------
+   Color system — black & gold.
+   Dark is the default theme (see the inline script in base.html/
+   login.html/packages.html/package_detail.html that stamps data-theme
+   before first paint) with light as the opt-in alternative, so both
+   palettes below are first-class, not "dark mode as an afterthought".
+
+   --brand-black / --brand-gold / --gold-contrast are FIXED — identical
+   in both themes. They're for brand marks that live on their own
+   permanently-dark surface (the login page's auth-visual panel, the
+   sidebar logo glow) or that need guaranteed contrast against whichever
+   gold the accent happens to be (text sitting on a solid --accent
+   fill) — everything else should read the theme-aware tokens below
+   them instead.
+
+   --accent (gold) replaces the old --blue as the system's single
+   interactive/brand hue. --red/--danger, --success and --warning stay
+   as genuine status colors (error, success, caution) — removing them
+   too would make delete/error/low-stock states unreadable at a glance,
+   so only the decorative blue/plum accents were retired.
+   --------------------------------------------------------------------- */
+
 :root {
-  --bg: #F4F5F8;
+  --brand-black: #1C170D;
+  --brand-gold: #D4AF37;
+  --gold-contrast: #14110A;
+
+  --bg: #FAF7EF;
   --surface: #FFFFFF;
-  --surface-2: #FAFBFD;
-  --ink: #12141A;
-  --ink-soft: #5B6272;
-  --ink-faint: #97A0AF;
-  --border: #E5E8EF;
-  --border-strong: #D2D7E2;
+  --surface-2: #F5F0E1;
+  --ink: #17140D;
+  --ink-soft: #5B5445;
+  --ink-faint: #948C76;
+  /* --border-strong is --accent-ink — a deeper, more legible gold than
+     --brand-gold (which is too washed-out at normal contrast on white)
+     — so every firmly outlined element (inputs, buttons, chips, the
+     avatar ring) reads as a clearly visible gold in light mode too,
+     not a separate near-black. --border stays a plain black-tinted
+     gray for hairlines (table rows, card edges, the sidebar's own
+     edge). */
+  --border: #C7C2B3;
+  --border-strong: var(--accent-ink);
+  --border-width-strong: 1px;
+  --border-width-hero: 3px;
 
-  --blue: #1B2A63;
-  --blue-ink: #101A45;
-  --blue-soft: #E4E6F0;
-
-  --brand-navy: #1B2A63;
+  --accent: #C9A227;
+  --accent-ink: #8A6D1F;
+  --accent-soft: #FBF1D6;
 
   --red: #E23A48;
   --red-ink: #B31E30;
   --red-soft: #FCE7EA;
 
-  --plum: #7C5CFA;
-  --plum-soft: #EFEAFE;
-
-  --accent: var(--blue);
-  --accent-ink: var(--blue-ink);
-  --accent-soft: var(--blue-soft);
-
   --success: #17975E;
   --success-soft: #E1F5EC;
+  --success-border: #B9E7D1;
   --warning: #C9820B;
   --warning-soft: #FBF0D9;
+  --warning-border: #F0D69B;
   --danger: var(--red);
   --danger-soft: var(--red-soft);
   --danger-border: #F6C3CA;
-  --info: var(--blue);
-  --info-soft: var(--blue-soft);
+  --info: var(--accent);
+  --info-soft: var(--accent-soft);
 
   --radius-sm: 6px;
   --radius: 10px;
@@ -45,38 +73,60 @@
   --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.06), 0 12px 28px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16), 0 4px 14px rgba(15, 23, 42, 0.1);
   --sidebar-w: 264px;
+  --sidebar-w-collapsed: 76px;
 
   color-scheme: light;
+}
+
+/* Sidebar rail: collapsed to an icon-only strip at rest, and expands
+   back to full width on hover/keyboard-focus (see .sidebar's own rule
+   below) or when explicitly pinned open via #sidebarCollapseToggle /
+   main.js's initSidebarCollapse(). "Pinned" is the one part of this
+   that needs to survive a page load, so it's the one piece that lives
+   as a class on <html> (set before first paint by base.html's inline
+   theme script — see its comment) rather than only as CSS :hover /
+   :focus-within, which obviously can't persist across a navigation.
+   Scoped to desktop widths only — below the mobile breakpoint .sidebar
+   is an off-canvas drawer opened by a tap, not a hover, and it should
+   always show its full content once open (see the max-width: 760px
+   block far below, which never applies any of this). */
+@media (min-width: 761px) {
+  html.sidebar-pinned {
+    --sidebar-w-live: var(--sidebar-w);
+  }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0B0D12;
-  --surface: #12151C;
-  --surface-2: #171B24;
-  --ink: #EDEFF4;
-  --ink-soft: #A7ADBB;
-  --ink-faint: #6C7381;
-  --border: #232733;
-  --border-strong: #323848;
+  --bg: #0A0908;
+  --surface: #0A0908;
+  --surface-2: #120F0A;
+  --ink: #F3EEDD;
+  --ink-soft: #B7AD91;
+  --ink-faint: #756C57;
+  --border: #2B2517;
+  --border-strong: #55471F;
+  /* Same weight as light mode's outline (see :root above) — only the
+     color (gold here, black there) is meant to differ between themes. */
+  --border-width-strong: 1px;
+  --border-width-hero: 3px;
 
-  --blue: #58A6FF;
-  --blue-ink: #8FC7FF;
-  --blue-soft: #17273F;
+  --accent: #D9B54A;
+  --accent-ink: #E8C766;
+  --accent-soft: #2E260F;
 
   --red: #FF7A86;
   --red-ink: #FFB4BB;
   --red-soft: #3A1E23;
   --danger-border: #5C2A31;
 
-  --plum: #B79CFF;
-  --plum-soft: #2A2440;
-
   --success: #6FCF9E;
   --success-soft: #163427;
+  --success-border: #2A5C42;
   --warning: #E3B155;
   --warning-soft: #3A2C12;
+  --warning-border: #5C4419;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 18px rgba(0, 0, 0, 0.35);
@@ -173,7 +223,7 @@ body {
   height: 40px;
   object-fit: cover;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
   display: block;
 }
 
@@ -223,7 +273,7 @@ a {
   z-index: 10000;
   padding: 10px 16px;
   background: var(--accent);
-  color: #FFFFFF;
+  color: var(--gold-contrast);
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: 13px;
@@ -276,6 +326,7 @@ th.num {
 .app-shell {
   display: flex;
   min-height: 100vh;
+  position: relative;
 }
 
 .sidebar {
@@ -294,6 +345,67 @@ th.num {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+  transition: width 0.2s ease;
+}
+
+/* Toggle handle for collapsing the sidebar to an icon-only rail. Lives
+   in .app-shell (not inside .sidebar itself) so it can straddle the
+   sidebar's right edge without .sidebar's own overflow-x: hidden
+   clipping it. Positioned off var(--sidebar-w), which already tracks
+   whichever width .sidebar is currently using (see the
+   html.sidebar-collapsed override above), so it slides with the edge
+   as the sidebar animates open/closed. Hidden by default and revealed
+   on hover — see the rules below — except while collapsed, when it
+   stays visible since the rail is too narrow to "discover" a hover
+   affordance on. */
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 27px;
+  left: var(--sidebar-w);
+  transform: translateX(-50%);
+  z-index: 6;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: left 0.2s ease, opacity 0.15s ease, background 0.15s ease,
+    color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-collapse-toggle svg {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.sidebar:hover~.sidebar-collapse-toggle,
+.sidebar-collapse-toggle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+html.sidebar-collapsed .sidebar-collapse-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+html.sidebar-collapsed .sidebar-collapse-toggle svg {
+  transform: rotate(180deg);
 }
 
 .sidebar::-webkit-scrollbar {
@@ -325,7 +437,7 @@ th.num {
   right: 22px;
   bottom: 0;
   height: 1px;
-  background: var(--brand-navy);
+  background: var(--brand-gold);
   opacity: 0.5;
 }
 
@@ -356,7 +468,7 @@ th.num {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--brand-gold) 55%, transparent),
     0 0 0 1px rgba(255, 255, 255, 0.12) inset;
 }
 
@@ -396,15 +508,15 @@ th.num {
   min-width: 0;
 }
 
-.brand-mark .bm-blue {
-  color: var(--blue);
+.brand-mark .bm-gold {
+  color: var(--accent-ink);
 }
 
-.brand-mark .bm-red {
-  color: var(--red);
+.brand-mark .bm-ink {
+  color: var(--ink);
 }
 
-.brand-mark span:not(.bm-blue):not(.bm-red) {
+.brand-mark span:not(.bm-gold):not(.bm-ink) {
   color: var(--ink-faint);
   font-style: italic;
   font-weight: 500;
@@ -439,6 +551,24 @@ th.num {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+/* Collapsed rail: just the mark icon, centered, wordmark/subtitle
+   hidden. .sidebar-close is only ever shown on the mobile breakpoint
+   (see the max-width: 760px block below), where .sidebar never carries
+   .collapsed, so it's untouched here. */
+html.sidebar-collapsed .brand {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+html.sidebar-collapsed .brand-top {
+  justify-content: center;
+}
+
+html.sidebar-collapsed .brand-mark,
+html.sidebar-collapsed .brand-sub {
+  display: none;
 }
 
 .nav-group {
@@ -498,7 +628,7 @@ th.num {
 }
 
 .nav-link:hover {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
 }
 
@@ -533,7 +663,7 @@ th.num {
 .nav-link.active svg {
   opacity: 1;
   background: var(--accent);
-  color: #fff;
+  color: var(--gold-contrast);
   box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
@@ -558,7 +688,37 @@ th.num {
 }
 
 .nav-badge-transit {
-  background: var(--blue);
+  background: var(--accent);
+  color: var(--gold-contrast);
+}
+
+/* Collapsed rail: icon-only nav. The label after each <svg> is a plain
+   text node (not wrapped in its own element — see base.html), so it
+   can't be display:none'd directly; font-size: 0 shrinks it to nothing
+   without touching the svg or badge, which both set their own explicit
+   (non-relative) sizes and so ignore the parent's font-size. Section
+   headers and the label's own hover title come from main.js's
+   initSidebarCollapse(), which also sets each link's title attribute
+   so the name is still available on hover/focus. */
+html.sidebar-collapsed .nav-label {
+  display: none;
+}
+
+html.sidebar-collapsed .nav-link {
+  justify-content: center;
+  gap: 0;
+  padding: 8px 4px;
+  font-size: 0;
+}
+
+html.sidebar-collapsed .nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 10px;
+  margin-left: 0;
+  font-size: 9px;
+  min-width: 14px;
+  padding: 1px 4px;
 }
 
 .sidebar-footer {
@@ -579,13 +739,13 @@ th.num {
   margin-bottom: 10px;
   padding: 9px 10px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface-2);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .user-chip:hover {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-color: var(--border-strong);
 }
 
@@ -593,8 +753,8 @@ th.num {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--brand-navy);
-  color: #fff;
+  background: var(--brand-gold);
+  color: var(--gold-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -602,7 +762,7 @@ th.num {
   font-size: 13px;
   font-family: 'Manrope', sans-serif;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 3px var(--border-strong);
+  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 calc(2px + var(--border-width-strong)) var(--border-strong);
 }
 
 .user-name {
@@ -682,7 +842,7 @@ th.num {
 }
 
 .footer-action:hover {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
 }
 
@@ -700,6 +860,25 @@ th.num {
 .footer-action-danger:hover svg {
   opacity: 1;
   background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+/* Collapsed rail: user-chip shrinks to just the avatar, and the footer
+   actions (whose labels ARE their own <span>, unlike .nav-link above)
+   drop that span and center the icon instead. */
+html.sidebar-collapsed .user-chip {
+  justify-content: center;
+}
+
+html.sidebar-collapsed .user-chip>div:not(.avatar) {
+  display: none;
+}
+
+html.sidebar-collapsed .footer-action {
+  justify-content: center;
+}
+
+html.sidebar-collapsed .footer-action span {
+  display: none;
 }
 
 .main {
@@ -738,7 +917,7 @@ th.num {
   gap: 7px;
   padding: 7px 13px 7px 11px;
   border-radius: 999px;
-  border: 1px solid var(--border-strong);
+  border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
@@ -771,7 +950,7 @@ th.num {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  border: 1px solid var(--border-strong);
+  border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface);
   color: var(--ink-soft);
   display: inline-flex;
@@ -844,12 +1023,22 @@ th.num {
   height: 11px;
   border-radius: 2px;
   flex-shrink: 0;
-  background: var(--brand-navy);
+  background: var(--brand-gold);
 }
 
 .content {
   padding: 28px 32px 60px;
   max-width: 1180px;
+}
+
+/* .content stays flush against the sidebar edge normally — .main
+   fills the rest of the flex row, and .content's own max-width just
+   clips how wide it grows within that. Collapsing the sidebar to its
+   icon rail frees up enough extra width that hugging the left edge
+   starts to look lopsided, so re-center .content within .main instead,
+   same as a wide reading-width layout would. */
+html.sidebar-collapsed .content {
+  margin-inline: auto;
 }
 
 .content>*+* {
@@ -920,7 +1109,7 @@ th.num {
 .flash-success {
   background: var(--success-soft);
   color: var(--success);
-  border-color: #B9E7D1;
+  border-color: var(--success-border);
 }
 
 .flash-error {
@@ -932,12 +1121,12 @@ th.num {
 .flash-warning {
   background: var(--warning-soft);
   color: var(--warning);
-  border-color: #F0D69B;
+  border-color: var(--warning-border);
 }
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
@@ -951,7 +1140,7 @@ th.num {
   align-items: baseline;
   justify-content: space-between;
   padding: 18px 22px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-width-strong) solid var(--border-strong);
 }
 
 .card-header h2 {
@@ -1050,7 +1239,9 @@ th.num {
 .bento-hero {
   grid-column: span 2;
   grid-row: span 2;
-  background: var(--blue-soft);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-width: var(--border-width-hero);
   justify-content: space-between;
 }
 
@@ -1125,9 +1316,16 @@ th.num {
   height: 18px;
 }
 
+/* stat-icon-blue/-violet keep their old names (many templates already
+   reference them) but no longer mean "blue"/"violet" — they're the
+   two decorative icon-chip variants for tiles that carry no status
+   meaning, alternating gold-filled and ink-filled for rhythm across a
+   dashboard's stat grid. stat-icon-red stays literally red — it's only
+   ever applied conditionally, when a tile really is flagging something
+   (pending requests, low stock). */
 .stat-icon-blue {
-  background: var(--blue-soft);
-  color: var(--blue-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .stat-icon-red {
@@ -1136,14 +1334,14 @@ th.num {
 }
 
 .stat-icon-violet {
-  background: var(--plum-soft);
-  color: var(--plum);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
 }
 
 .stat-icon-neutral {
   background: var(--bg);
   color: var(--ink-soft);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
 }
 
 .stat-tile:has(>.stat-icon) {
@@ -1228,7 +1426,7 @@ th.num {
   inset: 0 auto 0 0;
   height: 100%;
   border-radius: 99px;
-  background: var(--brand-navy);
+  background: var(--brand-gold);
 }
 
 .fill-bar.low {
@@ -1253,6 +1451,13 @@ th.num {
   text-align: right;
 }
 
+/* No border of its own — .table-wrap always sits flush inside a .card,
+   and .card now carries the same thick border-strong outline every
+   other rounded element does. Giving table-wrap its own copy on top of
+   that produced a doubled line along the shared left/right/bottom
+   edges once both were upgraded to the same color and weight. The
+   .card-header / .table-toolbar bottom border above it still does the
+   real job of separating the header/toolbar from the grid. */
 .table-wrap {
   overflow: auto;
   max-height: 520px;
@@ -1330,7 +1535,7 @@ th {
   top: 0;
   z-index: 3;
   background: var(--surface);
-  box-shadow: 0 1px 0 var(--border);
+  box-shadow: 0 var(--border-width-strong) 0 var(--border-strong);
 }
 
 td {
@@ -1352,15 +1557,11 @@ tbody tr {
 }
 
 tbody tr:nth-child(even) {
-  background: rgba(15, 23, 42, 0.02);
-}
-
-:root[data-theme="dark"] tbody tr:nth-child(even) {
-  background: rgba(237, 239, 244, 0.025);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
 }
 
 tbody tr:hover {
-  background: rgba(46, 90, 240, 0.055);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* Airier row rhythm for tables whose cells carry two lines of content
@@ -1378,10 +1579,6 @@ tbody tr:hover {
 
 .table-airy .item-name {
   margin-bottom: 3px;
-}
-
-:root[data-theme="dark"] tbody tr:hover {
-  background: rgba(110, 147, 255, 0.09);
 }
 
 td.num,
@@ -1435,7 +1632,7 @@ th.num {
      label, which is what produced "PENDIN"/"G" split across two lines
      on the dashboard. white-space: nowrap keeps a badge's label
      unbreakable regardless of what its container asks of surrounding
-     text. .badge-payroll already carried this fix on its own — it's
+     text. .badge-credit already carried this fix on its own — it's
      just promoted to the base class so every badge gets it, not only
      the one variant someone happened to hit this bug on before. */
   white-space: nowrap;
@@ -1456,8 +1653,8 @@ th.num {
 }
 
 .badge-transit {
-  background: var(--blue-soft);
-  color: var(--blue-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .badge-fulfilled {
@@ -1478,16 +1675,16 @@ th.num {
 .badge-inactive {
   background: var(--bg);
   color: var(--ink-faint);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
 }
 
-.badge-payroll {
+.badge-credit {
   white-space: nowrap;
   max-width: 100%;
   min-width: 0;
 }
 
-.badge-payroll-name {
+.badge-credit-name {
   text-transform: none;
   font-weight: 500;
   opacity: 0.75;
@@ -1499,19 +1696,25 @@ th.num {
   max-width: 130px;
 }
 
+/* Male/Female/Unisex is a 3-way identity category, not a status — kept
+   distinct without reaching for blue/red/plum: filled gold, a solid
+   ink chip, and a gold-outlined ghost chip (echoing "gold is the
+   outlines") so the three read apart by weight and shape, not just hue. */
 .badge-male {
-  background: var(--blue-soft);
-  color: var(--blue-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .badge-female {
-  background: var(--red-soft);
-  color: var(--red-ink);
+  background: var(--surface-2);
+  color: var(--ink);
+  border: var(--border-width-strong) solid var(--border-strong);
 }
 
 .badge-unisex {
-  background: var(--plum-soft);
-  color: var(--plum);
+  background: transparent;
+  color: var(--ink-soft);
+  border: var(--border-width-strong) solid var(--border-strong);
 }
 
 .tag-dot {
@@ -1535,15 +1738,15 @@ th.num {
 }
 
 .tag-male {
-  color: var(--blue);
+  color: var(--accent-ink);
 }
 
 .tag-female {
-  color: var(--red);
+  color: var(--ink);
 }
 
 .tag-unisex {
-  color: var(--plum);
+  color: var(--ink-soft);
 }
 
 .btn {
@@ -1570,18 +1773,26 @@ th.num {
   flex-shrink: 0;
 }
 
+/* The two filled buttons are a literal black-and-gold pair: .btn-primary
+   is a fixed black chip with gold text (used for the one-off standout
+   CTA — see errors/error.html), .btn-accent is the everyday gold-filled
+   action button with dark text on top. Both use FIXED tokens rather
+   than the theme's --ink/--bg, on purpose — --ink flips to near-white
+   in dark mode, which would turn a "black" button pale and make its
+   gold text unreadable. */
 .btn-primary {
-  background: var(--ink);
-  color: #fff;
+  background: var(--brand-black);
+  color: var(--brand-gold);
+  border-color: var(--brand-gold);
 }
 
 .btn-primary:hover {
-  background: var(--ink-soft);
+  background: color-mix(in srgb, var(--brand-black) 80%, var(--brand-gold));
 }
 
 .btn-accent {
   background: var(--accent);
-  color: #fff;
+  color: var(--gold-contrast);
 }
 
 .btn-accent:hover {
@@ -1595,7 +1806,7 @@ th.num {
 }
 
 .btn-ghost:hover {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
 }
 
@@ -1650,7 +1861,7 @@ select,
 textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border-strong);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 14px;
@@ -1710,7 +1921,7 @@ textarea:focus {
   gap: 8px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border-strong);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
@@ -1760,11 +1971,11 @@ textarea:focus {
   left: 0;
   right: 0;
   top: calc(100% + 6px);
-  z-index: 200;
+  z-index: 500;
   max-height: min(280px, 55vh);
   overflow-y: auto;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
   padding: 4px;
@@ -1782,6 +1993,21 @@ textarea:focus {
 
 .cs-select.cs-open .cs-panel {
   display: block;
+}
+
+/* A select that opens with a long option list (many branches, many
+   products/units, etc.) can overhang past the bottom of whatever card
+   it lives in — .cs-panel's z-index alone isn't enough to guarantee it
+   paints above a *different* card/table sitting right below it, since
+   that only wins the stacking comparison for certain if .cs-select
+   itself is promoted to its own stacking context while it's open (a
+   plain z-index buried a couple of layers down doesn't reliably beat
+   a sibling section in every browser). Promoting the whole trigger +
+   panel unit only while open — never while closed — keeps this from
+   affecting normal layout/click-through anywhere else. */
+.cs-select.cs-open {
+  position: relative;
+  z-index: 500;
 }
 
 .cs-option {
@@ -1846,7 +2072,7 @@ textarea:focus {
 input[type="file"] {
   width: 100%;
   padding: 8px;
-  border: 1px dashed var(--border-strong);
+  border: var(--border-width-strong) dashed var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
@@ -1872,7 +2098,7 @@ input[type="file"]::file-selector-button,
 input[type="file"]::-webkit-file-upload-button {
   margin-right: 12px;
   padding: 8px 14px;
-  border: 1px solid var(--border-strong);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 12.5px;
@@ -1887,7 +2113,7 @@ input[type="file"]:hover::file-selector-button,
 input[type="file"]:hover::-webkit-file-upload-button {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--gold-contrast);
 }
 
 .form-row {
@@ -1998,7 +2224,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   justify-content: space-between;
   gap: 16px;
   padding: 16px 22px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-width-strong) solid var(--border-strong);
   flex-wrap: wrap;
 }
 
@@ -2135,7 +2361,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
     max-width: none;
   }
 
-  .badge-payroll-name {
+  .badge-credit-name {
     max-width: 90px;
   }
 }
@@ -2172,7 +2398,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
   .table-wrap tbody tr {
     margin-bottom: 12px;
-    border: 1px solid var(--border);
+    border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius);
     overflow: hidden;
     background: var(--surface) !important;
@@ -2277,7 +2503,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 .auth-visual {
   position: relative;
   overflow: hidden;
-  background: var(--brand-navy);
+  background: var(--brand-black);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2292,18 +2518,18 @@ input[type="file"]:hover::-webkit-file-upload-button {
   pointer-events: none;
 }
 
-.auth-blob-blue {
+.auth-blob-gold {
   width: 360px;
   height: 360px;
-  background: #4E79FF;
+  background: var(--brand-gold);
   top: -100px;
   left: -80px;
 }
 
-.auth-blob-red {
+.auth-blob-amber {
   width: 320px;
   height: 320px;
-  background: #FF5C6B;
+  background: var(--accent-ink);
   bottom: -100px;
   right: -60px;
 }
@@ -2377,7 +2603,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   width: 100%;
   max-width: 380px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 40px 34px 32px;
@@ -2395,15 +2621,15 @@ input[type="file"]:hover::-webkit-file-upload-button {
   letter-spacing: -0.02em;
 }
 
-.auth-brand .mark .bm-blue {
-  color: var(--blue);
+.auth-brand .mark .bm-gold {
+  color: var(--accent-ink);
 }
 
-.auth-brand .mark .bm-red {
-  color: var(--red);
+.auth-brand .mark .bm-ink {
+  color: var(--ink);
 }
 
-.auth-brand .mark span:not(.bm-blue):not(.bm-red) {
+.auth-brand .mark span:not(.bm-gold):not(.bm-ink) {
   color: var(--ink-faint);
   font-style: italic;
   font-weight: 500;
@@ -2457,7 +2683,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   font-family: 'Manrope', sans-serif;
   font-weight: 800;
   font-size: 64px;
-  color: var(--red);
+  color: var(--accent-ink);
 }
 
 .chart-card {
@@ -2508,6 +2734,14 @@ input[type="file"]:hover::-webkit-file-upload-button {
     flex-direction: column;
   }
 
+  /* The off-canvas drawer below always opens at a fixed width (not
+     var(--sidebar-w)), so the icon-rail concept doesn't apply here —
+     hide the desktop-only collapse handle rather than let it float
+     over the drawer. */
+  .sidebar-collapse-toggle {
+    display: none;
+  }
+
   .clock-chip,
   .topbar-divider {
     display: none;
@@ -2519,7 +2753,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
     justify-content: center;
     width: 36px;
     height: 36px;
-    border: 1px solid var(--border-strong);
+    border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--ink-soft);

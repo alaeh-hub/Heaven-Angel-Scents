@@ -156,7 +156,7 @@ stock_requests ("deliveries" — header)            production_logs
    status: Pending → In Transit → Fulfilled
                   ↘ Rejected
 
-sales (Sale | Refill; Cash | Salary Deduction)
+sales (Sale | Refill; Cash | Credit)
    └─ decrements branch_inventory.stock_qty (Refill: cost only, no stock impact)
 
 stock_movement_logs (append-only ledger)
@@ -270,9 +270,10 @@ flagged `is_hq = TRUE`) → a `PRODUCTION` movement is logged → realtime
 2. **Type**: `Sale` (customer takes a bottle, stock decrements) or
    `Refill` (customer's own bottle, product cost only, **no stock
    change**).
-3. **Payment**: `Cash` (normal register total) or `Salary Deduction`
-   (free-text employee name, flagged distinctly for payroll
-   reconciliation — not tied to a login account).
+3. **Payment**: `Cash` (normal register total) or `Credit` (free-text
+   name — an employee against their own pay, or a customer buying on
+   store credit/"utang" — flagged distinctly for reconciliation, not
+   tied to a login account).
 4. A `sales` row is inserted; for `Sale` type, branch stock is
    decremented and a `SALE`/`REFILL` movement is logged; realtime
    `sales`/`inventory` scopes fire.
@@ -457,16 +458,17 @@ deliberately excluded, consistently, everywhere that figure appears.
   **Login Activity** gives HQ a searchable record of sign-in outcomes,
   attempted usernames, role tabs, source IPs, user agents, and timestamps.
 
-### 7.2 Customer, supplier, and employee purchase records
+### 7.2 Customer, supplier, and credit purchase records
 
 - Sales retain optional walk-in `customer_name` and `customer_address`
   values. Admin and branch customer pages aggregate purchase count,
   quantity, and spend while keeping branch visibility scoped appropriately.
 - Raw materials may reference a reusable supplier record. Admin can manage
   suppliers without duplicating supplier data across material rows.
-- Salary-deduction sales retain the free-text employee name and are exposed
-  through the branch Employee Purchases view for payroll reconciliation;
-  they are not tied to application login accounts.
+- Credit sales retain the free-text buyer name — employee or customer —
+  and are exposed through the branch Credit Purchases view for
+  reconciliation/collection; they are not tied to application login
+  accounts.
 
 ### 7.3 Presentation changes
 

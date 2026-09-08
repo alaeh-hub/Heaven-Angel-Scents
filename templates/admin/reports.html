@@ -15,7 +15,7 @@
     display: inline-flex;
     gap: 2px;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: var(--border-width-strong) solid var(--border-strong);
     border-radius: 99px;
     padding: 3px;
   }
@@ -34,7 +34,7 @@
 
   .rb-mode-opt.active {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: var(--border-width-strong) solid var(--border-strong);
     color: var(--accent-ink);
   }
 
@@ -124,9 +124,9 @@
       <div class="field" data-filter="payment_method" style="display:none;">
         <label for="rb_payment_method">Payment method</label>
         <select id="rb_payment_method" name="payment_method">
-          <option value="all">Cash &amp; Salary Deduction</option>
+          <option value="all">Cash &amp; Credit</option>
           <option value="Cash">Cash only</option>
-          <option value="Salary Deduction">Salary Deduction only</option>
+          <option value="Credit">Credit only</option>
         </select>
       </div>
       <div class="field" data-filter="variant" style="display:none;">
@@ -360,8 +360,30 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
 <script>
-  const PALETTE = ['#2E5AF0', '#E23A48', '#7C5CFA', '#17975E', '#C9820B'];
-  const VARIANT_COLORS = { Male: '#2E5AF0', Female: '#E23A48', Unisex: '#7C5CFA' };
+  // Reads a color straight off the theme so every chart repaints
+  // correctly whether the page loaded in dark (the default) or light —
+  // see style.css's :root / :root[data-theme="dark"] custom properties.
+  function themeColor(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  // Ledger movement's stacked-by-type bars index into this by position
+  // (see `PALETTE[i % PALETTE.length]` below), so it needs one distinct
+  // color per movement_type schema.sql's ENUM can produce — 7
+  // (PRODUCTION, DISPATCH, RECEIPT, SALE, REFILL, ADJUSTMENT, DAMAGE),
+  // not 5. Branch Reports' own copy of this chart only ever sees the 5
+  // branch-side types (no PRODUCTION/DISPATCH there), so its PALETTE
+  // stays at 5 — this one has to cover admin's full set or the last two
+  // types silently wrap around and reuse an earlier type's color,
+  // making them indistinguishable in the chart and its legend. Slot 1
+  // is the theme's gold accent; the rest are a validated, colorblind-safe
+  // categorical order (see the dataviz skill's reference palette) — a
+  // 7-way identity chart can't be told apart in black-and-gold alone.
+  const PALETTE = (isDark
+    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9']
+    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']);
+  const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink'), Unisex: themeColor('--ink-soft') };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
   // for the "last N ___" label under the chart title, the actual
@@ -378,16 +400,40 @@
     return '₱' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // Hides (never removes) each canvas and drops an error note next to
+  // it. A prior version called canvas.remove() here, which deleted the
+  // <canvas> element outright — fine for that one failed attempt, but
+  // every later loadReportsData() call (the next tab focus, the
+  // granularity switch, ...) still does
+  // `new Chart(document.getElementById(id), ...)`, and once that id no
+  // longer resolves to anything, `new Chart(null, ...)` throws, lands
+  // right back in this function, and by then there's no canvas left to
+  // act on — the chart was gone for the rest of the session, recoverable
+  // only by a full page reload. Hiding instead of removing keeps the
+  // canvas around so clearChartError() below can bring it back the next
+  // time a fetch actually succeeds.
   function showChartError(message) {
     document.querySelectorAll('.chart-card canvas').forEach((canvas) => {
       const wrap = canvas.parentElement;
-      canvas.remove();
+      canvas.style.display = 'none';
+      if (wrap.querySelector('.chart-error-note')) return;
       const note = document.createElement('p');
-      note.className = 'text-faint';
+      note.className = 'text-faint chart-error-note';
       note.style.fontSize = '13px';
       note.textContent = message;
       wrap.appendChild(note);
     });
+  }
+
+  // Reverses showChartError() above — called once a fetch has actually
+  // succeeded and charts are about to be rebuilt, so a failure on one
+  // attempt doesn't leave things broken forever once a later attempt
+  // gets good data.
+  function clearChartError() {
+    document.querySelectorAll('.chart-card canvas').forEach((canvas) => {
+      canvas.style.display = '';
+    });
+    document.querySelectorAll('.chart-card .chart-error-note').forEach((note) => note.remove());
   }
 
   // Every chart instance built by loadReportsData() is kept here so the
@@ -415,8 +461,8 @@
     }
 
     Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = '#5B6272';
-    Chart.defaults.borderColor = '#E5E8EF';
+    Chart.defaults.color = themeColor('--ink-soft');
+    Chart.defaults.borderColor = themeColor('--border');
     // Paired with .chart-canvas-wrap's fixed height in style.css — this
     // stops Chart.js from deriving canvas height from the container's
     // width (its default behavior), which is what let the Ledger
@@ -430,6 +476,7 @@
         return r.json();
       })
       .then(data => {
+        clearChartError();
         destroyCharts();
 
         document.getElementById('totalUnits').textContent = data.totals.units;
@@ -449,7 +496,7 @@
           type: 'doughnut',
           data: {
             labels: data.by_variant.map(d => d.variant),
-            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || '#2E5AF0'), borderWidth: 0 }]
+            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderWidth: 0 }]
           },
           options: { plugins: { legend: { position: 'bottom' } } }
         });
@@ -461,15 +508,15 @@
             datasets: [{
               label: 'Units sold',
               data: data.by_branch.map(d => d.units_sold),
-              borderColor: '#2E5AF0',
-              backgroundColor: '#2E5AF0',
-              pointBackgroundColor: '#2E5AF0',
+              borderColor: themeColor('--accent'),
+              backgroundColor: themeColor('--accent'),
+              pointBackgroundColor: themeColor('--accent'),
               pointRadius: 4,
               tension: 0.35,
               fill: false,
             }]
           },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
         });
 
         charts.capital = new Chart(document.getElementById('capitalChart'), {
@@ -478,7 +525,7 @@
             labels: ['Capital invested', 'Total revenue'],
             datasets: [{
               data: [data.financials.capital, data.totals.revenue],
-              backgroundColor: ['#C9820B', '#2E5AF0'],
+              backgroundColor: [themeColor('--warning'), themeColor('--accent')],
               borderRadius: 4,
             }]
           },
@@ -487,7 +534,7 @@
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
             },
-            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
+            scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } }
           }
         });
 
@@ -497,7 +544,7 @@
             labels: ['Revenue', 'Material cost', 'Profit'],
             datasets: [{
               data: [data.financials.revenue_windowed, data.financials.materials_cost, data.financials.profit],
-              backgroundColor: ['#2E5AF0', '#E23A48', profitValue >= 0 ? '#17975E' : '#E23A48'],
+              backgroundColor: [themeColor('--accent'), themeColor('--danger'), profitValue >= 0 ? themeColor('--success') : themeColor('--danger')],
               borderRadius: 4,
             }]
           },
@@ -506,7 +553,7 @@
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
             },
-            scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } }
+            scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } }
           }
         });
 
@@ -514,9 +561,9 @@
           type: 'bar',
           data: {
             labels: data.stock_by_branch.map(d => d.branch_name),
-            datasets: [{ label: 'Units on hand', data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: '#7C5CFA', borderRadius: 4 }]
+            datasets: [{ label: 'Units on hand', data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: themeColor('--accent'), borderRadius: 4 }]
           },
-          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#E5E8EF' } }, y: { grid: { display: false } } } }
+          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: themeColor('--border') } }, y: { grid: { display: false } } } }
         });
 
         const windowLabel = TREND_WINDOW_LABELS[trendGranularity] || '';
@@ -539,7 +586,7 @@
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'bar',
           data: { labels: days, datasets },
-          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: '#E5E8EF' } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
         });
       })
       .catch(err => {
@@ -590,17 +637,37 @@
   // back from memory on Back/Forward navigation without re-running any
   // of the script above, which would leave stale numbers on screen.
   // event.persisted tells us that's what just happened.
-  window.addEventListener('pageshow', (e) => {
+  //
+  // Both this and the tab-refocus listener below are attached to
+  // window/document rather than anything inside .content, so a soft
+  // nav revisit to this page (see main.js's runPageScripts(), which
+  // re-runs this whole script every time without an actual browser
+  // reload) can't rely on .content being replaced to clean them up —
+  // window and document are never replaced. Left alone, each revisit
+  // stacks one more copy on top of whatever a previous visit already
+  // left behind, so a single future tab-focus or bfcache restore fires
+  // all of them at once, each with its own `charts` object racing a
+  // fresh Chart.js instance onto the same canvas — Chart.js refuses a
+  // second chart on a canvas that already has one, so all but the last
+  // of these throw, and the resulting canvas (both the plotted graph
+  // and its legend's color-swatch icons) comes out garbled until an
+  // actual reload. Tearing down whichever pair the previous visit
+  // registered before adding this run's own keeps exactly one pair
+  // alive at a time.
+  if (window.__adminReportsCleanup) window.__adminReportsCleanup();
+  const handlePageshow = (e) => {
     if (e.persisted) loadReportsData();
-  });
-
-  // Tab re-focus: if this tab was in the background (person checked
-  // something else) and comes back into view, refresh so whatever
-  // they're about to read reflects the latest data rather than
-  // whatever was current when they last looked away.
-  document.addEventListener('visibilitychange', () => {
+  };
+  const handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') loadReportsData();
-  });
+  };
+  window.addEventListener('pageshow', handlePageshow);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.__adminReportsCleanup = () => {
+    window.removeEventListener('pageshow', handlePageshow);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.__adminReportsCleanup = null;
+  };
 </script>
 <script>
   // ---- Report builder: shows only the filters that apply to the
@@ -617,7 +684,7 @@
       stock_requests: ['branch_id', 'status', 'search', 'window'],
       inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
       sales_history: ['branch_id', 'variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
-      employee_purchases: ['branch_id', 'sale_type', 'search', 'window'],
+      credit_purchases: ['branch_id', 'sale_type', 'search', 'window'],
       accounts: ['role', 'account_status', 'search'],
       partners: ['partner_type', 'search'],
       packages: ['package_scope', 'package_status', 'search'],
@@ -630,7 +697,7 @@
     const SEARCH_LABELS = {
       accounts: { label: 'Search username', placeholder: 'e.g. manila' },
       inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
-      employee_purchases: { label: 'Search item / SKU / employee', placeholder: 'e.g. Golden Hour, HAS-001, or an employee name' },
+      credit_purchases: { label: 'Search item / SKU / name', placeholder: 'e.g. Golden Hour, HAS-001, or a name' },
       partners: { label: 'Search partner / contact', placeholder: 'e.g. Golden Scent Trading' },
       packages: { label: 'Search package', placeholder: 'e.g. Starter Bundle' },
       partner_inquiries: { label: 'Search company / contact', placeholder: 'e.g. Golden Scent Trading' },

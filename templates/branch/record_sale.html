@@ -10,7 +10,7 @@
     display: inline-flex;
     gap: 2px;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: var(--border-width-strong) solid var(--border-strong);
     border-radius: 99px;
     padding: 3px;
     width: 100%;
@@ -32,7 +32,7 @@
 
   .rb-mode-opt.active {
     background: var(--surface);
-    border: 1px solid var(--border-strong);
+    border: var(--border-width-strong) solid var(--border-strong);
     color: var(--accent-ink);
   }
 
@@ -91,7 +91,7 @@
         <label>Payment method</label>
         <div class="rb-mode" id="paymentSwitch">
           <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
-          <button type="button" class="rb-mode-opt" data-value="Salary Deduction">Salary</button>
+          <button type="button" class="rb-mode-opt" data-value="Credit">Credit</button>
         </div>
         <input type="hidden" name="payment_method" id="payment_method" value="Cash">
       </div>
@@ -101,21 +101,22 @@
 
     <div class="form-row" id="buyerField" style="display:none;">
       <div class="field" style="flex:1;">
-        <label for="buyer_name">Employee (Salary Deduction)</label>
-        <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee's name…" autocomplete="off"
+        <label for="buyer_name">Name (Credit)</label>
+        <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee's or customer's name…" autocomplete="off"
           maxlength="120">
-        <div class="help">Free text — type whatever name identifies them for payroll. Not tied to a login account.
+        <div class="help">Free text — type whoever this credit sale is owed by, employee or customer. Not tied to a login account.
         </div>
       </div>
     </div>
 
     <!-- Customer name/address only apply to a normal cash sale to an
-         outside customer. A Salary Deduction sale is an employee taking
-         product for themselves — pairing that with a separate "customer
-         name" field invited mixing up two different people on the same
-         sale (whose name is this, the employee's or the customer's?).
-         This whole block is hidden and cleared whenever Salary
-         Deduction is selected — see the paymentSwitch wiring below. -->
+         outside customer. A Credit sale is one person — employee or
+         customer — taking product now against a balance owed later —
+         pairing that with a separate "customer name" field invited
+         mixing up two different people on the same sale (whose name is
+         this, the credit buyer's or the customer's?). This whole block
+         is hidden and cleared whenever Credit is selected — see the
+         paymentSwitch wiring below. -->
     <div id="customerFieldsWrap">
       <div class="form-row">
         <div class="field">
@@ -226,7 +227,7 @@
 {% block scripts %}
 <script>
   (function () {
-    // ---- Sale/Refill and Cash/Salary Deduction segmented toggles ----
+    // ---- Sale/Refill and Cash/Credit segmented toggles ----
     function wireSwitch(switchId, hiddenInputId, onChange) {
       var el = document.getElementById(switchId);
       var hidden = document.getElementById(hiddenInputId);
@@ -248,18 +249,18 @@
 
     wireSwitch('saleTypeSwitch', 'sale_type');
     wireSwitch('paymentSwitch', 'payment_method', function (value) {
-      var isSalary = value === 'Salary Deduction';
-      buyerField.style.display = isSalary ? '' : 'none';
-      buyerSelect.required = isSalary;
-      if (!isSalary) buyerSelect.value = '';
+      var isCredit = value === 'Credit';
+      buyerField.style.display = isCredit ? '' : 'none';
+      buyerSelect.required = isCredit;
+      if (!isCredit) buyerSelect.value = '';
 
-      // Salary Deduction is one person (the employee) taking product for
-      // themselves — showing a separate "customer name" field alongside
-      // the employee field invites confusion over whose name is whose.
-      // Hide it, and clear whatever was typed, so nothing stale gets
-      // submitted with a Salary Deduction sale.
-      customerFieldsWrap.style.display = isSalary ? 'none' : '';
-      if (isSalary) {
+      // Credit is one person (employee or customer) taking product now
+      // against a balance owed later — showing a separate "customer
+      // name" field alongside it invites confusion over whose name is
+      // whose. Hide it, and clear whatever was typed, so nothing stale
+      // gets submitted with a Credit sale.
+      customerFieldsWrap.style.display = isCredit ? 'none' : '';
+      if (isCredit) {
         customerNameInput.value = '';
         customerAddressInput.value = '';
       }

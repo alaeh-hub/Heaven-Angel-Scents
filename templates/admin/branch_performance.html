@@ -135,9 +135,15 @@
     var branchNames = {{ rows | map(attribute='branch_name') | list | tojson }};
     var branchRevenue = {{ rows | map(attribute='revenue') | list | map('float') | list | tojson }};
 
+    // Reads a color straight off the theme so the chart repaints
+    // correctly whether the page loaded in dark (the default) or light.
+    function themeColor(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
     Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = '#5B6272';
-    Chart.defaults.borderColor = '#E5E8EF';
+    Chart.defaults.color = themeColor('--ink-soft');
+    Chart.defaults.borderColor = themeColor('--border');
     Chart.defaults.maintainAspectRatio = false;
 
     var chart = new Chart(canvas, {
@@ -147,7 +153,7 @@
         datasets: [{
           label: 'Revenue',
           data: branchRevenue,
-          backgroundColor: '#2E5AF0',
+          backgroundColor: themeColor('--accent'),
           borderRadius: 4,
         }]
       },
@@ -164,7 +170,7 @@
           }
         },
         scales: {
-          x: { beginAtZero: true, grid: { color: '#E5E8EF' } },
+          x: { beginAtZero: true, grid: { color: themeColor('--border') } },
           y: { grid: { display: false } }
         }
       }

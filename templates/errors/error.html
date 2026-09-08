@@ -5,6 +5,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ code }} · Heaven &amp; Angel Scents</title>
+  <script>
+    // Same dark-by-default stamping as every other page (see base.html) —
+    // without this, an error page hit before any other page loads would
+    // render in the light palette regardless of what's actually stored.
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        document.documentElement.setAttribute('data-theme', stored || 'dark');
+      } catch (e) { }
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 

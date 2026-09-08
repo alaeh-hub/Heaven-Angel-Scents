@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 {% import "_macros.html" as m %}
 
@@ -13,7 +13,7 @@
     (function () {
       try {
         var stored = localStorage.getItem('theme');
-        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var theme = stored || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
       } catch (e) {}
     })();
@@ -36,8 +36,8 @@
     }
 
     .pp-glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.3; animation: pp-drift 18s ease-in-out infinite; }
-    .pp-glow-blue { width: 460px; height: 460px; background: var(--blue); top: -180px; left: -120px; }
-    .pp-glow-red { width: 420px; height: 420px; background: var(--red); top: -80px; right: -140px; animation-delay: -9s; }
+    .pp-glow-blue { width: 460px; height: 460px; background: var(--brand-gold); top: -180px; left: -120px; }
+    .pp-glow-red { width: 420px; height: 420px; background: var(--accent-ink); top: -80px; right: -140px; animation-delay: -9s; }
 
     @keyframes pp-drift {
       0%, 100% { transform: translate(0, 0) scale(1); }
@@ -82,7 +82,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--blue) 55%, transparent),
+      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--brand-gold) 55%, transparent),
         0 0 0 1px rgba(255, 255, 255, 0.12) inset;
     }
 
@@ -90,9 +90,9 @@
     .pp-crest img { width: 100%; height: 100%; display: block; object-fit: cover; }
 
     .pp-brand .mark { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
-    .pp-brand .mark .bm-blue { color: var(--blue); }
-    .pp-brand .mark .bm-red { color: var(--red); }
-    .pp-brand .mark span:not(.bm-blue):not(.bm-red) { color: var(--ink-faint); font-style: italic; font-weight: 500; }
+    .pp-brand .mark .bm-gold { color: var(--accent-ink); }
+    .pp-brand .mark .bm-ink { color: var(--ink); }
+    .pp-brand .mark span:not(.bm-gold):not(.bm-ink) { color: var(--ink-faint); font-style: italic; font-weight: 500; }
     .pp-brand .sub { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
 
     .pp-header-actions { display: flex; align-items: center; gap: 10px; }
@@ -216,7 +216,7 @@
       height: 64px;
       flex-shrink: 0;
       padding: 0;
-      border: 2px solid var(--border);
+      border: calc(var(--border-width-strong) + 1px) solid var(--border-strong);
       border-radius: var(--radius);
       background: var(--surface);
       cursor: pointer;
@@ -236,7 +236,7 @@
 
     .pp-gallery-main {
       position: relative;
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: var(--radius-lg);
       background: var(--surface-2);
       overflow: hidden;
@@ -254,7 +254,7 @@
       color: var(--accent-ink);
       background: color-mix(in srgb, var(--surface) 85%, transparent);
       backdrop-filter: blur(6px);
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       padding: 5px 10px;
       border-radius: 999px;
     }
@@ -292,7 +292,7 @@
 
     /* ================= package contents table ================= */
     .pp-contents-table {
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: var(--radius);
       overflow: hidden;
       margin-bottom: 30px;
@@ -367,7 +367,7 @@
       display: block;
       height: 4px;
       margin: -22px -22px 18px;
-      background: var(--brand-navy);
+      background: var(--brand-gold);
     }
 
     .pp-summary-scope {
@@ -492,7 +492,7 @@
       height: 26px;
       border-radius: 50%;
       background: var(--accent);
-      color: #fff;
+      color: var(--gold-contrast);
       font-size: 12px;
       font-weight: 800;
       margin-bottom: 12px;
@@ -527,7 +527,7 @@
 
     /* ================= FAQ ================= */
     .pp-faq { margin: 44px 0 10px; }
-    .pp-faq-item { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); margin-bottom: 10px; overflow: hidden; transition: border-color 0.2s ease; }
+    .pp-faq-item { border: var(--border-width-strong) solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); margin-bottom: 10px; overflow: hidden; transition: border-color 0.2s ease; }
     .pp-faq-item:hover { border-color: var(--border-strong); }
     .pp-faq-item summary {
       list-style: none;
@@ -632,7 +632,7 @@
           <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
         </div>
         <div>
-          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
+          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span></div>
           <div class="sub">Scents · Partner Program</div>
         </div>
       </div>
@@ -865,7 +865,7 @@
 
       <div class="pp-footer">
         <div>
-          <div class="mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span> Scents</div>
+          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span> Scents</div>
           <div class="pp-footer-note">Have a question? Send an inquiry above — that's the fastest way to reach our team.</div>
         </div>
         <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>

@@ -52,15 +52,16 @@
   <span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
   {% endmacro %}
 
-  {# Cash is a normal register transaction. Salary Deduction is an employee
-  taking product for themselves where the cost comes out of their pay
-  instead of the register — flagged distinctly so it's easy to spot
-  rows that need to be reconciled with payroll rather than the till. #}
+  {# Cash is a normal register transaction. Credit is anyone — an employee
+  taking product against their own pay, or a customer buying on store
+  credit ("utang") — taking product now without paying cash, flagged
+  distinctly so it's easy to spot rows that still need to be settled or
+  reconciled rather than the till. #}
   {% macro payment_method_badge(payment_method, buyer_username=None) %}
-  {% if payment_method == 'Salary Deduction' %}
-  <span class="badge badge-pending badge-payroll"
-    title="Deducted from {{ buyer_username or 'an employee' }}'s salary, not paid in cash">Salary{% if buyer_username
-    %}<span class="badge-payroll-name"> · {{ buyer_username }}</span>{% endif %}</span>
+  {% if payment_method == 'Credit' %}
+  <span class="badge badge-pending badge-credit"
+    title="On credit for {{ buyer_username or 'someone' }}, not paid in cash">Credit{% if buyer_username
+    %}<span class="badge-credit-name"> · {{ buyer_username }}</span>{% endif %}</span>
   {% else %}
   <span class="badge badge-active">Cash</span>
   {% endif %}
@@ -68,8 +69,8 @@
 
   {# Pipeline: New -> Contacted -> Follow-up / On Hold -> Closed / Declined.
   Colors are reused from the existing badge palette rather than adding new
-  CSS: Follow-up borrows the "unisex" plum (needs a nudge, distinct from
-  New's amber), On Hold borrows "inactive" gray (paused, not urgent),
+  CSS: Follow-up borrows the "unisex" ink-outline (needs a nudge, distinct
+  from New's amber), On Hold borrows "inactive" gray (paused, not urgent),
   Declined borrows "rejected" red (didn't convert, distinct from New). #}
   {% macro inquiry_status_badge(status) %}
   {% set map = {

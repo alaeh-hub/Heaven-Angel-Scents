@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Employee Purchases{% endblock %}
+{% block title %}Credit Purchases{% endblock %}
 {% block eyebrow %}{{ session.branch_name }}{% endblock %}
-{% block heading %}Employee Purchases{% endblock %}
+{% block heading %}Credit Purchases{% endblock %}
 
 {% block head %}
 <style>
   /* Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.ep-table td:nth-child(n))
+     unscoped, these two-selector rules (.cp-table td:nth-child(n))
      out-specificity style.css's generic mobile rule .table-wrap td
      { width: 100% } (one class + one tag), so below the 680px
-     breakpoint the Employee cell stayed pinned to a hardcoded 32% of
+     breakpoint the Name cell stayed pinned to a hardcoded 32% of
      the row instead of taking the full-width mobile layout — and
      combined with overflow-wrap:anywhere from .table-fixed, that
      narrow box wrapped a long name one character per line. */
   @media (min-width: 681px) {
-    .ep-table th:nth-child(1), .ep-table td:nth-child(1) { width: 40px; }
-    .ep-table th:nth-child(2), .ep-table td:nth-child(2) { width: 32%; }
-    .ep-table th:nth-child(3), .ep-table td:nth-child(3) { width: 18%; }
-    .ep-table th:nth-child(4), .ep-table td:nth-child(4) { width: 18%; }
-    .ep-table th:nth-child(5), .ep-table td:nth-child(5) { width: 18%; }
-    .ep-table th:nth-child(6), .ep-table td:nth-child(6) { width: 14%; }
+    .cp-table th:nth-child(1), .cp-table td:nth-child(1) { width: 40px; }
+    .cp-table th:nth-child(2), .cp-table td:nth-child(2) { width: 32%; }
+    .cp-table th:nth-child(3), .cp-table td:nth-child(3) { width: 18%; }
+    .cp-table th:nth-child(4), .cp-table td:nth-child(4) { width: 18%; }
+    .cp-table th:nth-child(5), .cp-table td:nth-child(5) { width: 18%; }
+    .cp-table th:nth-child(6), .cp-table td:nth-child(6) { width: 14%; }
   }
 </style>
 {% endblock %}
@@ -28,25 +28,26 @@
 {% block content %}
 <div class="grid grid-2 stack">
   <div class="card stat-tile">
-    <div class="stat-label">Salary Deduction transactions</div>
+    <div class="stat-label">Credit transactions</div>
     <div class="stat-value">{{ totals.transaction_count }}</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Total deducted from payroll</div>
+    <div class="stat-label">Total on credit</div>
     <div class="stat-value accent">{{ totals.total_amount|peso }}</div>
   </div>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <h2>By employee</h2>
-    <span class="hint">Salary Deduction only · all-time</span>
+    <h2>By name</h2>
+    <span class="hint">Credit only · all-time</span>
   </div>
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
-      This is who product was taken <em>for</em> on a Salary Deduction sale (see Record Sale's "Payment
-      method" toggle) — not who rang up the sale. Ordinary Cash sales aren't attributed to any one staff
-      member and aren't counted here.
+      This is who product was taken <em>for</em> on a Credit sale (see Record Sale's "Payment
+      method" toggle) — an employee against their own pay, or a customer buying on store credit
+      ("utang") — not who rang up the sale. Ordinary Cash sales aren't attributed to any one
+      buyer and aren't counted here.
     </p>
   </div>
   {% if rows %}
@@ -54,11 +55,11 @@
     <div class="table-toolbar">
       <div class="table-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" class="smart-search-input" placeholder="Search by employee…" autocomplete="off">
+        <input type="text" class="smart-search-input" placeholder="Search by name…" autocomplete="off">
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table-fixed ep-table smart-table">
+      <table class="table-fixed cp-table smart-table">
         <colgroup>
           <col style="width:40px"><col style="width:32%"><col style="width:18%">
           <col style="width:18%"><col style="width:18%"><col style="width:14%">
@@ -66,21 +67,21 @@
         <thead>
           <tr>
             <th style="width:36px;"></th>
-            <th>Employee</th>
+            <th>Name</th>
             <th class="num">Transactions</th>
             <th class="num">Units</th>
-            <th class="num">Total deducted</th>
+            <th class="num">Total owed</th>
             <th>Last taken</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
-          <tr data-search="{{ (r.employee_name or '')|lower }}">
+          <tr data-search="{{ (r.buyer_name or '')|lower }}">
             <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-            <td class="item-name" data-label="Employee">{{ r.employee_name or '—' }}</td>
+            <td class="item-name" data-label="Name">{{ r.buyer_name or '—' }}</td>
             <td class="num mono" data-label="Transactions">{{ r.transaction_count }}</td>
             <td class="num mono" data-label="Units">{{ r.total_units }}</td>
-            <td class="num mono" data-label="Total deducted">{{ r.total_amount|peso }}</td>
+            <td class="num mono" data-label="Total owed">{{ r.total_amount|peso }}</td>
             <td class="mono text-soft" data-label="Last taken">{{ r.last_taken_at.strftime('%b %d, %Y') }}</td>
           </tr>
           {% endfor %}
@@ -88,7 +89,7 @@
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
         <div class="glyph">—</div>
-        <p>No employees match your search.</p>
+        <p>No names match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
@@ -98,7 +99,7 @@
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No Salary Deduction sales recorded yet.</p></div>
+  <div class="empty-state"><div class="glyph">—</div><p>No Credit sales recorded yet.</p></div>
   {% endif %}
 </div>
 {% endblock %}

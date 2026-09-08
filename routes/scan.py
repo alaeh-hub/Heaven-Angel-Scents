@@ -96,7 +96,7 @@ def verify():
 
     line_total = sale["qty_sold"] * sale["unit_price"]
     payment_value = sale["payment_method"]
-    if sale["payment_method"] == "Salary Deduction" and sale["buyer_username"]:
+    if sale["payment_method"] == "Credit" and sale["buyer_username"]:
         payment_value += f" ({sale['buyer_username']})"
 
     return jsonify(

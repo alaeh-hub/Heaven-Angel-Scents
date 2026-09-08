@@ -11,7 +11,7 @@
     (function () {
       try {
         var stored = localStorage.getItem('theme');
-        var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var theme = stored || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
       } catch (e) {}
     })();
@@ -88,7 +88,7 @@
       align-items: center;
       gap: 2px;
       background: var(--bg);
-      border: 1px solid var(--border);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: 99px;
       padding: 3px;
       margin: 0 0 22px;
@@ -136,7 +136,7 @@
       left: 3px;
       width: calc(50% - 3px);
       background: var(--surface);
-      border: 1px solid var(--border-strong);
+      border: var(--border-width-strong) solid var(--border-strong);
       border-radius: 99px;
       box-shadow: 0 1px 3px rgba(28, 27, 25, 0.08);
       transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -286,13 +286,16 @@
 
     /* ---- inline button spinner shown while the sign-in request is
        submitting, instead of a full-page takeover screen ---- */
+    /* Ring color matches the button's own text color (var(--gold-contrast))
+       rather than white — .btn-accent is a gold fill with dark text, so a
+       white spinner would barely show up against it. */
     .btn-spinner {
       display: none;
       width: 15px;
       height: 15px;
       border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.4);
-      border-top-color: #fff;
+      border: 2px solid color-mix(in srgb, var(--gold-contrast) 35%, transparent);
+      border-top-color: var(--gold-contrast);
       animation: btn-spin 0.7s linear infinite;
       margin-right: 8px;
       vertical-align: -2px;
@@ -337,14 +340,14 @@
 
   <div class="auth-shell">
     <div class="auth-visual">
-      <div class="auth-blob auth-blob-blue"></div>
-      <div class="auth-blob auth-blob-red"></div>
+      <div class="auth-blob auth-blob-gold"></div>
+      <div class="auth-blob auth-blob-amber"></div>
       <div class="auth-visual-inner">
         <div class="brand-top" style="margin-bottom: 6px;">
           <div class="brand-logo brand-logo-lg" aria-hidden="true">
             <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
           </div>
-          <div class="brand-mark"><span class="bm-blue">Heaven</span> <span>&amp;</span> <span class="bm-red">Angel</span></div>
+          <div class="brand-mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span></div>
         </div>
         <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
         <div class="auth-visual-tagline">One system for HQ and every branch — stock, requests, and sales, all in sync.</div>

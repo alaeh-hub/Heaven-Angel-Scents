@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS branches (
 
 INSERT INTO branches (branch_id, branch_name, location, is_hq) VALUES
     (1, 'HQ Main Warehouse', 'Central Office', TRUE),
-    (2, 'Manila Branch',     'SM Megamall',    FALSE),
-    (3, 'Cebu Branch',       'Ayala Center',   FALSE)
+    (2, 'Balayan Branch',    'Balayan',        FALSE)
 ON DUPLICATE KEY UPDATE branch_name = branch_name;
 
 -- ----------------------------------------------------------------------------
@@ -276,20 +275,21 @@ CREATE TABLE IF NOT EXISTS stock_request_items (
 --    since refills are usually charged a different amount than a full
 --    sale of the same SKU.
 --
---    payment_method + buyer_name: covers employees who take product for
---    themselves where the cost is deducted from their salary rather than
---    paid in cash at the register. buyer_name is free text (whatever
---    name the person recording the sale types in) and is only set when
---    payment_method = 'Salary Deduction' — it is NOT tied to a login
---    account, so it does not have to match any real username.
+--    payment_method + buyer_name: covers anyone — an employee taking
+--    product against their own pay, or a customer buying on store
+--    credit ("utang") — taking product now without paying cash at the
+--    register. buyer_name is free text (whatever name the person
+--    recording the sale types in) and is only set when payment_method =
+--    'Credit' — it is NOT tied to a login account, so it does not have
+--    to match any real username.
 --    buyer_user_id is legacy: kept only so sales recorded before this
---    change still show who the deduction was against.
+--    change still show who the credit was against.
 --
 --    customer_name / customer_address: the walk-in customer a sale is
 --    for — both optional (a lot of cash sales are anonymous), free
 --    text, and unrelated to buyer_user_id/buyer_name above (which are
---    only ever about an *employee* being charged via payroll, not a
---    paying customer). customer_name is what the Record Sale page's
+--    only ever about who a *Credit* sale is charged to, not a paying
+--    customer). customer_name is what the Record Sale page's
 --    autocomplete suggests from and groups by; customer_address is
 --    what gets auto-filled when a suggested name is picked, sourced
 --    from that customer's earliest sale row (see routes' customer
@@ -304,8 +304,8 @@ CREATE TABLE IF NOT EXISTS sales (
     qty_sold         INT NOT NULL,
     unit_price       DECIMAL(10, 2) NOT NULL,
     sale_type        ENUM('Sale', 'Refill') NOT NULL DEFAULT 'Sale',
-    payment_method   ENUM('Cash', 'Salary Deduction') NOT NULL DEFAULT 'Cash',
-    buyer_user_id    INT NULL,                 -- the employee being charged, only set for Salary Deduction
+    payment_method   ENUM('Cash', 'Credit') NOT NULL DEFAULT 'Cash',
+    buyer_user_id    INT NULL,                 -- who's being charged, only set for Credit sales
     customer_name    VARCHAR(120) NULL,
     customer_address VARCHAR(255) NULL,
     sold_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -640,7 +640,24 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'payment_method'
     ) THEN
         ALTER TABLE sales
-            ADD COLUMN payment_method ENUM('Cash', 'Salary Deduction') NOT NULL DEFAULT 'Cash' AFTER sale_type;
+            ADD COLUMN payment_method ENUM('Cash', 'Credit') NOT NULL DEFAULT 'Cash' AFTER sale_type;
+    END IF;
+
+    -- sales.payment_method: rename the 'Salary Deduction' enum value to
+    -- the more general 'Credit' — this payment method now also covers a
+    -- customer buying on store credit ("utang"), not just an employee
+    -- against their own pay. Widen the enum first so both the old and
+    -- new value are valid, move existing rows over, then narrow back
+    -- down to just the final two values.
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'payment_method'
+              AND column_type LIKE '%Salary Deduction%'
+    ) THEN
+        ALTER TABLE sales MODIFY COLUMN payment_method
+            ENUM('Cash', 'Salary Deduction', 'Credit') NOT NULL DEFAULT 'Cash';
+        UPDATE sales SET payment_method = 'Credit' WHERE payment_method = 'Salary Deduction';
+        ALTER TABLE sales MODIFY COLUMN payment_method ENUM('Cash', 'Credit') NOT NULL DEFAULT 'Cash';
     END IF;
 
     -- sales.buyer_user_id -----------------------------------------------

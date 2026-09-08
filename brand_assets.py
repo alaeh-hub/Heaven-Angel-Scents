@@ -37,9 +37,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdfcanvas
 
-NAVY = "#1B2A63"
-WHITE = "#FFFFFF"
-FOOTER_INK = colors.HexColor("#5B6272")
+BRAND_BLACK = "#1C170D"
+GOLD = "#D4AF37"
+FOOTER_INK = colors.HexColor("#5B5445")
 
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
@@ -84,17 +84,17 @@ def logo_drawing(size):
     other flowable/graphic."""
     d = Drawing(size, size, transform=[size / 96, 0, 0, size / 96, 0, 0])
 
-    d.add(Rect(0, 0, 96, 96, rx=22, ry=22, fillColor=NAVY, strokeColor=None))
+    d.add(Rect(0, 0, 96, 96, rx=22, ry=22, fillColor=BRAND_BLACK, strokeColor=None))
 
     # Halo ring — svg ellipse cx=48 cy=33 rx=13.5 ry=5.6, y flipped: 96-33=63
-    d.add(Ellipse(48, 63, 13.5, 5.6, fillColor=None, strokeColor=WHITE, strokeWidth=3.2))
+    d.add(Ellipse(48, 63, 13.5, 5.6, fillColor=None, strokeColor=GOLD, strokeWidth=3.2))
 
     # Drop, rounded bottom — svg circle-ish center (48, 63.1) r=12.2, flipped: 96-63.1=32.9
-    d.add(Circle(48, 32.9, 12.2, fillColor=WHITE, strokeColor=None))
+    d.add(Circle(48, 32.9, 12.2, fillColor=GOLD, strokeColor=None))
 
     # Drop, pointed top — svg tip (48, 41.5) and shoulders (60.2/35.8, 63.1),
     # flipped: tip (48, 54.5), shoulders at y=32.9 (the circle's equator).
-    d.add(Polygon([48, 54.5, 60.2, 32.9, 35.8, 32.9], fillColor=WHITE, strokeColor=None))
+    d.add(Polygon([48, 54.5, 60.2, 32.9, 35.8, 32.9], fillColor=GOLD, strokeColor=None))
 
     return d
 

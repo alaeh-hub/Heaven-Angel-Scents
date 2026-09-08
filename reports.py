@@ -72,36 +72,30 @@ PACKAGE_STATUS_CHOICES = ("Active", "Retired")
 INQUIRY_STATUS_CHOICES = ("New", "Contacted", "Follow-up",
                           "On Hold", "Closed", "Declined")
 
-INK = colors.HexColor("#12141A")
-INK_FAINT = colors.HexColor("#5B6272")
-ACCENT = colors.HexColor("#2E5AF0")
-ACCENT_INK = colors.HexColor("#1D3BC4")
-ACCENT_SOFT = colors.HexColor("#E7ECFE")
-BORDER = colors.HexColor("#E5E8EF")
-ROW_ALT = colors.HexColor("#FAFBFD")
-
-# Brand red — the "Angel" half of the wordmark, and the same red the
-# badge system uses for Female/Rejected/danger states. Kept next to
-# ACCENT (blue, "Heaven") so report headers can render the same
-# two-tone brand mark used everywhere else (sidebar, login, receipts)
-# instead of printing the whole name in one flat color.
-BRAND_RED = colors.HexColor("#E23A48")
-BRAND_RED_INK = colors.HexColor("#B31E30")
+INK = colors.HexColor("#17140D")
+INK_FAINT = colors.HexColor("#5B5445")
+ACCENT = colors.HexColor("#C9A227")
+ACCENT_INK = colors.HexColor("#8A6D1F")
+ACCENT_SOFT = colors.HexColor("#FBF1D6")
+BORDER = colors.HexColor("#E9E0C9")
+ROW_ALT = colors.HexColor("#F5F0E1")
 
 # Hex pairs (background, text) for each badge "style" — a direct port
 # of the badge-* classes in style.css (light-theme values), so a
 # Status/Type/Variant column in a generated report is colored exactly
-# like the matching badge the person already sees on screen.
+# like the matching badge the person already sees on screen. Male/
+# Female/Unisex is an identity category, not a status, so it gets its
+# own gold/ink/muted-ink scale rather than reusing red/blue.
 BADGE_STYLES = {
     "pending":   ("#FBF0D9", "#C9820B"),  # --warning-soft / --warning
-    "transit":   ("#E7ECFE", "#1D3BC4"),  # --blue-soft / --blue-ink
+    "transit":   ("#FBF1D6", "#8A6D1F"),  # --accent-soft / --accent-ink
     "fulfilled": ("#E1F5EC", "#17975E"),  # --success-soft / --success
     "rejected":  ("#FCE7EA", "#B31E30"),  # --red-soft / --red-ink
     "active":    ("#E1F5EC", "#17975E"),
-    "inactive":  ("#F4F5F8", "#97A0AF"),  # --bg / --ink-faint
-    "male":      ("#E7ECFE", "#1D3BC4"),
-    "female":    ("#FCE7EA", "#B31E30"),
-    "unisex":    ("#EFEAFE", "#7C5CFA"),  # --plum-soft / --plum
+    "inactive":  ("#FAF7EF", "#948C76"),  # --bg / --ink-faint
+    "male":      ("#FBF1D6", "#8A6D1F"),  # --accent-soft / --accent-ink
+    "female":    ("#F5F0E1", "#17140D"),  # --surface-2 / --ink
+    "unisex":    ("#FAF7EF", "#5B5445"),  # --bg / --ink-soft
 }
 
 # Maps a column's *semantic kind* (not its literal value) to the
@@ -117,7 +111,7 @@ BADGE_KIND_MAPS = {
         "SALE": "unisex", "REFILL": "female", "ADJUSTMENT": "pending", "DAMAGE": "rejected",
     },
     "sale_type": {"Sale": "fulfilled", "Refill": "transit"},
-    "payment_method": {"Cash": "active", "Salary Deduction": "pending"},
+    "payment_method": {"Cash": "active", "Credit": "pending"},
     "variant": {"Male": "male", "Female": "female", "Unisex": "unisex"},
     "active_status": {"Active": "active", "Discontinued": "inactive", "Deactivated": "inactive"},
     "role": {"Admin": "unisex", "Branch": "transit"},
@@ -160,8 +154,8 @@ REPORT_TYPES = {
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
     "inventory_log":   {"label": "Inventory Log",    "admin": True, "branch": True,  "windowed": True},
     "sales_history":   {"label": "Sales History",    "admin": True, "branch": True,  "windowed": True},
-    "employee_purchases": {"label": "Employee Purchases (Salary Deduction)", "admin": True, "branch": True,
-                           "windowed": True, "branch_label": "Employee Purchases (Salary Deduction)"},
+    "credit_purchases": {"label": "Credit Purchases", "admin": True, "branch": True,
+                         "windowed": True, "branch_label": "Credit Purchases"},
     "accounts":        {"label": "Accounts",         "admin": True, "branch": False, "windowed": False},
     # Partners & Distribution — admin-only (branch accounts never see
     # this section of the app at all, same as Accounts above).
@@ -637,20 +631,20 @@ def _report_sales_history(filters, branch_scope):
                                   "Type", "badge:sale_type"), ("qty_sold", "Qty", "int"),
         ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
         ("payment_method", "Payment", "badge:payment_method"), ("buyer_username",
-                                                                "Employee (if salary deduction)", "str"),
+                                                                "Buyer (if Credit)", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
 
 
-def _report_employee_purchases(filters, branch_scope):
-    """Sales paid for via payroll deduction rather than cash — i.e. an
-    employee took product for themselves and the cost comes out of their
-    salary. Same shape as sales_history but always scoped to
-    payment_method = 'Salary Deduction', so HQ/payroll can pull exactly
-    what needs to be deducted from each employee for a given period.
+def _report_credit_purchases(filters, branch_scope):
+    """Sales taken on credit rather than cash — an employee against their
+    own pay, or a customer buying on store credit ("utang"). Same shape
+    as sales_history but always scoped to payment_method = 'Credit', so
+    HQ/branch staff can pull exactly what needs to be collected from or
+    deducted for each buyer for a given period.
     """
-    where, params = "", ["Salary Deduction"]
+    where, params = "", ["Credit"]
     if branch_scope is not None:
         where += " AND s.branch_id = %s"
         params.append(branch_scope)
@@ -685,11 +679,11 @@ def _report_employee_purchases(filters, branch_scope):
 
     columns = [] if branch_scope is not None else [
         ("branch_name", "Branch", "str")]
-    columns = [("sold_at", "Date", "datetime"), ("buyer_username", "Employee", "str")] + columns + [
+    columns = [("sold_at", "Date", "datetime"), ("buyer_username", "Buyer", "str")] + columns + [
         ("item_name", "Item", "str"), ("sku", "SKU",
                                        "str"), ("sale_type", "Type", "badge:sale_type"),
         ("qty_sold", "Qty", "int"), ("unit_price", "Unit Price", "money"),
-        ("line_total", "Amount to Deduct", "money"),
+        ("line_total", "Amount Owed", "money"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -909,7 +903,7 @@ _BUILDERS = {
     "stock_requests": _report_stock_requests,
     "inventory_log": _report_inventory_log,
     "sales_history": _report_sales_history,
-    "employee_purchases": _report_employee_purchases,
+    "credit_purchases": _report_credit_purchases,
     "accounts": _report_accounts,
     "partners": _report_partners,
     "packages": _report_packages,
@@ -1011,8 +1005,8 @@ def render_report_pdf(report):
         [[
             logo_drawing(30),
             Table([[Paragraph(
-                "<font color='#2E5AF0'>Heaven</font> <font color='#5B6272'>&amp;</font> "
-                "<font color='#E23A48'>Angel</font> Scents", s["brand"])],
+                "<font color='#8A6D1F'>Heaven</font> <font color='#5B5445'>&amp;</font> "
+                "<font color='#17140D'>Angel</font> Scents", s["brand"])],
                 [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
                 colWidths=[118 * mm]),
             Table([[Paragraph(report["title"].upper() + " REPORT", s["doc_title"])],

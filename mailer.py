@@ -54,11 +54,11 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
     ]
     row_html = "".join(
         f'<tr>'
-        f'<td style="padding:9px 14px;border-bottom:1px solid #eee;'
-        f'font-size:12px;font-weight:600;color:#8a8580;white-space:nowrap;'
+        f'<td style="padding:9px 14px;border-bottom:1px solid #E9E0C9;'
+        f'font-size:12px;font-weight:600;color:#948C76;white-space:nowrap;'
         f'text-transform:uppercase;letter-spacing:.03em;">{label}</td>'
-        f'<td style="padding:9px 14px;border-bottom:1px solid #eee;'
-        f'font-size:14px;color:#1c1b19;">{value}</td>'
+        f'<td style="padding:9px 14px;border-bottom:1px solid #E9E0C9;'
+        f'font-size:14px;color:#17140D;">{value}</td>'
         f'</tr>'
         for label, value in rows
     )
@@ -67,14 +67,14 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
     return f"""\
 <!DOCTYPE html>
 <html>
-<body style="margin:0;padding:0;background:#f4f2ef;font-family:-apple-system,
+<body style="margin:0;padding:0;background:#FAF7EF;font-family:-apple-system,
   BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-    style="background:#f4f2ef;padding:32px 16px;">
+    style="background:#FAF7EF;padding:32px 16px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
         style="max-width:520px;background:#ffffff;border-radius:12px;
-        overflow:hidden;border:1px solid #e7e3dd;">
+        overflow:hidden;border:1px solid #E9E0C9;">
         <!-- Brand accent bar — same top-of-letterhead treatment as the
              generated PDF reports/receipts, so mail, receipts, and
              reports all read as one system rather than three different
@@ -82,7 +82,7 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
              (Outlook desktop's Word rendering engine especially) drop
              CSS gradients on table backgrounds, and a solid color never
              degrades. -->
-        <tr><td style="height:4px;line-height:4px;font-size:0;background:#3b6ef2;">&nbsp;</td></tr>
+        <tr><td style="height:4px;line-height:4px;font-size:0;background:#D4AF37;">&nbsp;</td></tr>
         <tr><td style="padding:22px 24px 4px;">
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
             <!-- Logo mark — a plain monogram badge rather than an
@@ -93,19 +93,19 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
                  always renders immediately, in every client, with no
                  network round trip. border-radius degrades gracefully
                  to a square in the handful of clients that don't
-                 support it (still on-brand navy either way). -->
-            <td width="34" style="width:34px;height:34px;border-radius:10px;background:#1B2A63;
+                 support it (still on-brand black either way). -->
+            <td width="34" style="width:34px;height:34px;border-radius:10px;background:#1C170D;
               text-align:center;vertical-align:middle;font-size:13px;font-weight:800;
-              color:#ffffff;letter-spacing:-0.02em;">H&amp;A</td>
+              color:#D4AF37;letter-spacing:-0.02em;">H&amp;A</td>
             <td style="width:10px;">&nbsp;</td>
             <td style="vertical-align:middle;">
               <div style="font-size:17px;font-weight:800;letter-spacing:-0.01em;">
-                <span style="color:#3b6ef2;">Heaven</span>
-                <span style="color:#1c1b19;">&amp;</span>
-                <span style="color:#e2483d;">Angel</span>
-                <span style="color:#1c1b19;"> Scents</span>
+                <span style="color:#8A6D1F;">Heaven</span>
+                <span style="color:#17140D;">&amp;</span>
+                <span style="color:#17140D;">Angel</span>
+                <span style="color:#17140D;"> Scents</span>
               </div>
-              <div style="font-size:11.5px;color:#8a8580;margin-top:2px;">
+              <div style="font-size:11.5px;color:#948C76;margin-top:2px;">
                 Partner Program &middot; New package inquiry
               </div>
             </td>
@@ -113,13 +113,13 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
         </td></tr>
         <tr><td style="padding:18px 24px 6px;">
           <span style="display:inline-block;font-size:11px;font-weight:700;
-            color:#3b6ef2;background:#eaf0fe;padding:4px 10px;border-radius:999px;">
+            color:#8A6D1F;background:#FBF1D6;padding:4px 10px;border-radius:999px;">
             {_esc(partner_type)} inquiry
           </span>
-          <div style="font-size:18px;font-weight:700;margin-top:10px;color:#1c1b19;">
+          <div style="font-size:18px;font-weight:700;margin-top:10px;color:#17140D;">
             {_esc(company_name)}
           </div>
-          <div style="font-size:13px;color:#8a8580;margin-top:2px;">
+          <div style="font-size:13px;color:#948C76;margin-top:2px;">
             Interested in &ldquo;{_esc(package_name)}&rdquo;
           </div>
         </td></tr>
@@ -130,24 +130,24 @@ def _build_html_body(*, package_name, partner_type, company_name, contact_person
           </table>
         </td></tr>
         <tr><td style="padding:16px 24px 4px;">
-          <div style="font-size:11px;font-weight:700;color:#8a8580;
+          <div style="font-size:11px;font-weight:700;color:#948C76;
             text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">
             Message
           </div>
-          <div style="font-size:13.5px;color:#3a3733;line-height:1.6;
-            background:#f9f7f4;border:1px solid #eee;border-radius:8px;
+          <div style="font-size:13.5px;color:#5B5445;line-height:1.6;
+            background:#F5F0E1;border:1px solid #E9E0C9;border-radius:8px;
             padding:12px 14px;">
             {message_html}
           </div>
         </td></tr>
         <tr><td style="padding:22px 24px 26px;">
-          <div style="font-size:11.5px;color:#a29c94;line-height:1.6;">
+          <div style="font-size:11.5px;color:#948C76;line-height:1.6;">
             Reply directly to this email to respond{f' to {_esc(email)}' if email else ''}.
             Full history is also saved on the Partner Inquiries page.
           </div>
         </td></tr>
       </table>
-      <div style="font-size:11px;color:#a29c94;margin-top:16px;">
+      <div style="font-size:11px;color:#948C76;margin-top:16px;">
         Sent automatically from the Heaven &amp; Angel Scents partner portal.
       </div>
     </td></tr>
