@@ -7,25 +7,16 @@
 {% block content %}
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-icon {{ 'stat-icon-red' if totals.low_stock_count else 'stat-icon-neutral' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-    </div>
     <div class="stat-label">Low stock SKUs</div>
     <div class="stat-value {{ 'danger' if totals.low_stock_count else '' }}">{{ totals.low_stock_count }}</div>
     <div class="stat-foot">at or below reorder level, across every branch</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon {{ 'stat-icon-red' if totals.out_of_stock_count else 'stat-icon-neutral' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M2 10h20M8 15h3"/></svg>
-    </div>
     <div class="stat-label">Completely out of stock</div>
     <div class="stat-value {{ 'danger' if totals.out_of_stock_count else '' }}">{{ totals.out_of_stock_count }}</div>
     <div class="stat-foot">0 units on hand</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
-    </div>
     <div class="stat-label">Branches affected</div>
     <div class="stat-value">{{ totals.branches_affected }}</div>
     <div class="stat-foot">have at least one SKU to reorder</div>
@@ -90,12 +81,11 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:56px"><col style="width:16%"><col style="width:22%"><col style="width:10%">
+          <col style="width:16%"><col style="width:22%"><col style="width:10%">
           <col style="width:8%"><col style="width:34%">
         </colgroup>
         <thead>
           <tr>
-            <th></th>
             <th>Branch</th>
             <th>Item</th>
             <th>Variant</th>
@@ -106,13 +96,20 @@
         <tbody>
           {% for row in rows %}
           <tr data-search="{{ (row.branch_name ~ ' ' ~ row.item_name ~ ' ' ~ row.sku)|lower }}">
-            <td data-label="">{{ m.product_thumb(row.image_path, row.item_name) }}</td>
             <td data-label="Branch">{{ row.branch_name }}</td>
             <td data-label="Item">
-              <div class="item-name">{{ row.item_name }}</div>
-              <div class="item-sub mono">{{ row.sku }}</div>
+              <div class="item-thumb-row">
+                {{ m.product_thumb(row.image_path, row.item_name) }}
+                <div>
+                  <div class="item-name">{{ row.item_name }}</div>
+                  <div class="item-sub mono">{{ row.sku }}</div>
+                  <div class="item-sub item-sub-badge">
+                    {{ m.variant_badge(row.variant) }}
+                  </div>
+                </div>
+              </div>
             </td>
-            <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+            <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
             <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
             <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>

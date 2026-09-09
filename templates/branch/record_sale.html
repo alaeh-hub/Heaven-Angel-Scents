@@ -187,12 +187,16 @@
         <tbody>
           {% for s in recent_sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
-            <td class="mono text-soft" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
+            <td class="mono text-soft mobile-fold" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
             <td data-label="Item">
               <div class="item-name">{{ s.item_name }}</div>
               <div class="item-sub mono">{{ s.sku }}</div>
+              <div class="item-sub item-sub-badge">
+                {{ m.sale_type_badge(s.sale_type) }}
+                <span class="mono">{{ s.sold_at.strftime('%b %d') }}</span>
+              </div>
             </td>
-            <td data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
+            <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
             <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
             <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>

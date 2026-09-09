@@ -394,43 +394,21 @@
 {% block content %}
 <div class="bento-grid stack">
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-red">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M4 4h16v13H7l-3 3V4z" />
-        <path d="M8 9h8M8 12.5h5" />
-      </svg>
-    </div>
     <div class="stat-label">New</div>
     <div class="stat-value accent">{{ counts.new_count }}</div>
     <div class="stat-foot">not yet followed up on</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
-      </svg>
-    </div>
     <div class="stat-label">Contacted</div>
     <div class="stat-value">{{ counts.contacted_count }}</div>
     <div class="stat-foot">reached out, in progress</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M12 8v4l3 3" />
-        <circle cx="12" cy="12" r="9" />
-      </svg>
-    </div>
     <div class="stat-label">Follow-up / On Hold</div>
     <div class="stat-value">{{ counts.in_progress_count }}</div>
     <div class="stat-foot">needs a nudge, or waiting on them</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-neutral">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
-    </div>
     <div class="stat-label">Closed</div>
     <div class="stat-value">{{ counts.closed_count }}</div>
     <div class="stat-foot">{{ counts.total_count }} total &middot; {{ counts.declined_count }} declined</div>
@@ -499,10 +477,14 @@
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg></span>{% endif %}</div>
                   {% if inq.contact_person %}<div class="item-sub">{{ inq.contact_person }}</div>{% endif %}
+                  <div class="item-sub item-sub-badge">
+                    <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
+                      inq.partner_type }}</span>
+                  </div>
                 </div>
               </div>
             </td>
-            <td data-label="Type">
+            <td class="mobile-fold" data-label="Type">
               <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
                 inq.partner_type }}</span>
             </td>

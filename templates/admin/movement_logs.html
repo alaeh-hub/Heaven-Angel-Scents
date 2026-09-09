@@ -72,10 +72,16 @@
         <tbody>
           {% for l in logs %}
           <tr data-search="{{ (l.branch_name ~ ' ' ~ l.item_name ~ ' ' ~ l.movement_type ~ ' ' ~ (l.notes or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ l.created_at.strftime('%b %d, %Y') }}</td>
+            <td class="mono text-soft mobile-fold" data-label="When">{{ l.created_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Branch">{{ l.branch_name }}</td>
-            <td data-label="Item">{{ l.item_name }}</td>
-            <td data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
+            <td data-label="Item">
+              <div class="item-name">{{ l.item_name }}</div>
+              <div class="item-sub item-sub-badge">
+                {{ m.movement_badge(l.movement_type) }}
+                <span class="mono">{{ l.created_at.strftime('%b %d, %Y') }}</span>
+              </div>
+            </td>
+            <td class="mobile-fold" data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
             <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
             <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
           </tr>

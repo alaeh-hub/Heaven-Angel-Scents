@@ -29,12 +29,11 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:56px"><col style="width:24%"><col style="width:12%">
+          <col style="width:24%"><col style="width:12%">
           <col style="width:10%"><col style="width:14%"><col style="width:40%">
         </colgroup>
         <thead>
           <tr>
-            <th></th>
             <th>Item</th>
             <th>Variant</th>
             <th>Unit</th>
@@ -46,12 +45,17 @@
           {% for row in rows %}
           <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}"
             data-unit="{{ row.unit }}">
-            <td data-label="">{{ m.product_thumb(row.image_path, row.item_name) }}</td>
             <td data-label="Item">
-              <div class="item-name">{{ row.item_name }}</div>
-              <div class="item-sub mono">{{ row.sku }}</div>
+              <div class="item-thumb-row">
+                {{ m.product_thumb(row.image_path, row.item_name) }}
+                <div>
+                  <div class="item-name">{{ row.item_name }}</div>
+                  <div class="item-sub mono">{{ row.sku }}</div>
+                  <div class="item-sub item-sub-badge">{{ m.variant_badge(row.variant) }}</div>
+                </div>
+              </div>
             </td>
-            <td data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
+            <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
             <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
             <td class="num mono" data-label="Reference price">{{ row.price|peso }}</td>
             <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>

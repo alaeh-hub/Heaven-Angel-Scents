@@ -226,8 +226,11 @@
           <tr>
             <td class="item-name" data-label="Item">{{ item.item_name }}
               <div class="item-sub mono">{{ item.sku }}</div>
+              <div class="item-sub item-sub-badge">
+                {{ m.variant_badge(item.variant) }}
+              </div>
             </td>
-            <td data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
+            <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
             <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
             <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
             <td class="num mono" data-label="Ref. price">{{ item.unit_price|peso }}</td>
@@ -294,8 +297,11 @@
         <tr>
           <td class="item-name" data-label="Item">{{ item.item_name }}
             <div class="item-sub mono">{{ item.sku }}</div>
+            <div class="item-sub item-sub-badge">
+              {{ m.variant_badge(item.variant) }}
+            </div>
           </td>
-          <td data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
+          <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
           <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
           <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
           <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty if item.dispatched_qty is not none else '—' }}</td>

@@ -66,8 +66,14 @@
         <tbody>
           {% for r in rows %}
           <tr data-search="{{ (r.item_name ~ ' ' ~ (r.delivery_number or '') ~ ' ' ~ r.movement_type ~ ' ' ~ (r.notes or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ r.created_at.strftime('%b %d, %Y') }}</td>
-            <td data-label="Item">{{ r.item_name }}</td>
+            <td class="mono text-soft mobile-fold" data-label="When">{{ r.created_at.strftime('%b %d, %Y') }}</td>
+            <td data-label="Item">
+              <div class="item-name">{{ r.item_name }}</div>
+              <div class="item-sub item-sub-badge">
+                {{ m.movement_badge(r.movement_type) }}
+                <span class="mono">{{ r.created_at.strftime('%b %d, %Y') }}</span>
+              </div>
+            </td>
             <td data-label="Delivery #">
               {% if r.delivery_number %}
               <a href="{{ url_for('branch.requests_list') }}" class="mono item-name">{{ r.delivery_number }}</a>
@@ -75,7 +81,7 @@
               <span class="text-faint">—</span>
               {% endif %}
             </td>
-            <td data-label="Type">{{ m.movement_badge(r.movement_type) }}</td>
+            <td class="mobile-fold" data-label="Type">{{ m.movement_badge(r.movement_type) }}</td>
             <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ r.notes or '—' }}</td>
           </tr>
           {% endfor %}

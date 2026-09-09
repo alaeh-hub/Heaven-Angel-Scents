@@ -73,58 +73,61 @@ function initMobileSidebar() {
     });
 }
 
-function initSidebarCollapse() {
+function initSidebarNavTooltips() {
     const sidebar = document.getElementById('sidebar');
-    const toggleBtn = document.getElementById('sidebarCollapseToggle');
-    if (!sidebar || !toggleBtn) return;
+    if (!sidebar) return;
 
-    const STORAGE_KEY = 'sidebarCollapsed';
+    // The sidebar rests collapsed to an icon-only rail and expands on
+    // hover/keyboard-focus purely via CSS (see style.css's :not(:hover)
+    // :not(:focus-within) rules) — no JS involved in that part at all.
+    //
+    // Collapsed nav-link labels are hidden with font-size: 0, not
+    // display: none (see style.css), so a screen reader still gets the
+    // text, but there's no visible label to read at a glance. Mirror
+    // each one into a native title tooltip as a fallback for anyone who
+    // mouses over the rail without lingering long enough to trigger the
+    // hover-expand.
+    sidebar.querySelectorAll('.nav-link').forEach((link) => {
+        const clone = link.cloneNode(true);
+        const badge = clone.querySelector('.nav-badge');
+        if (badge) badge.remove();
+        link.title = clone.textContent.trim();
+    });
+}
+
+// Wires up the footer's "Pin sidebar open" button — the only way to
+// hold the sidebar expanded, since the rest of the collapse/expand
+// behavior is pure CSS hover/focus-within (see style.css's .sidebar
+// comment). Toggles html.sidebar-pinned, which every collapsed-rail
+// rule in style.css is scoped with html:not(.sidebar-pinned), and
+// persists the choice to localStorage so it survives across sessions
+// like the theme setting. The inline <head> script in base.html
+// applies that stored choice (or a touch/coarse-pointer default)
+// before first paint — this only needs to handle clicks from here on
+// and keep the button's own label/aria-pressed in sync.
+function initSidebarPinToggle() {
+    const btn = document.getElementById('sidebarPinToggle');
+    const label = document.getElementById('sidebarPinToggleLabel');
+    if (!btn || !label) return;
+
     const root = document.documentElement;
 
-    // Collapsed nav-link labels are hidden with font-size: 0, not
-    // display: none (see style.css's html.sidebar-collapsed .nav-link),
-    // so a screen reader still gets the text — but a sighted mouse/
-    // keyboard user loses the visible label entirely. Mirror it into a
-    // native title tooltip instead, built once per link from its own
-    // text (icon + notification badge stripped out) and cached on the
-    // element so it's not re-derived on every toggle or soft nav.
-    function applyNavTitles(collapsed) {
-        sidebar.querySelectorAll('.nav-link').forEach((link) => {
-            if (!link.dataset.label) {
-                const clone = link.cloneNode(true);
-                const badge = clone.querySelector('.nav-badge');
-                if (badge) badge.remove();
-                link.dataset.label = clone.textContent.trim();
-            }
-            if (collapsed) {
-                link.setAttribute('title', link.dataset.label);
-            } else {
-                link.removeAttribute('title');
-            }
-        });
+    function sync() {
+        const pinned = root.classList.contains('sidebar-pinned');
+        btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+        label.textContent = pinned ? 'Unpin sidebar' : 'Pin sidebar open';
     }
 
-    function setCollapsed(collapsed) {
-        root.classList.toggle('sidebar-collapsed', collapsed);
-        toggleBtn.setAttribute('aria-expanded', String(!collapsed));
-        toggleBtn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-        applyNavTitles(collapsed);
+    sync();
+
+    btn.addEventListener('click', () => {
+        const pinned = !root.classList.contains('sidebar-pinned');
+        root.classList.toggle('sidebar-pinned', pinned);
         try {
-            localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
-        } catch (e) {
-
-        }
-    }
-
-    toggleBtn.addEventListener('click', () => {
-        setCollapsed(!root.classList.contains('sidebar-collapsed'));
+            localStorage.setItem('sidebarPinned', String(pinned));
+        } catch (e) { }
+        sync();
     });
-
-    // Sync the button label/nav titles with whatever base.html's inline
-    // <head> script already applied to <html> before first paint (that
-    // script only sets the class, to avoid a layout flash — everything
-    // else it would need is exactly what setCollapsed() does here).
-    setCollapsed(root.classList.contains('sidebar-collapsed'));
 }
 
 function initThemeToggle() {
@@ -180,7 +183,8 @@ function revealContent() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initMobileSidebar();
-    initSidebarCollapse();
+    initSidebarNavTooltips();
+    initSidebarPinToggle();
     initThemeToggle();
     initPhClock();
     revealContent();

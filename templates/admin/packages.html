@@ -49,25 +49,16 @@
 {% set avg_discount = (package_list|sum(attribute='discount_percent') / package_list|length) if package_list else 0 %}
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
-    </div>
     <div class="stat-label">Total packages</div>
     <div class="stat-value">{{ package_list|length }}</div>
     <div class="stat-foot">for distributors &amp; resellers</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
-    </div>
     <div class="stat-label">Active</div>
     <div class="stat-value accent">{{ active_count }}</div>
     <div class="stat-foot">visible on the partner portal</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-neutral">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
-    </div>
     <div class="stat-label">Average discount</div>
     <div class="stat-value">{{ avg_discount|round(1) }}%</div>
     <div class="stat-foot">across every package</div>
@@ -154,15 +145,19 @@
             <td data-label="Package">
               <div class="item-name">{{ pkg.package_name }}</div>
               {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
+              <div class="item-sub item-sub-badge">
+                <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+                <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
+              </div>
             </td>
-            <td data-label="For">
+            <td class="mobile-fold" data-label="For">
               <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
             </td>
             <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
             <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
             <td class="num" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
             <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
-            <td data-label="Status">
+            <td class="mobile-fold" data-label="Status">
               <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
             </td>
             <td data-label="">

@@ -50,15 +50,19 @@
         <tbody>
           {% for r in stock_requests %}
           <tr data-search="{{ (r.branch_name ~ ' ' ~ r.delivery_number)|lower }}">
-            <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Branch">{{ r.branch_name }}</td>
             <td data-label="Delivery #">
               <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}" class="mono item-name">{{
                 r.delivery_number }}</a>
+              <div class="item-sub item-sub-badge">
+                {{ m.status_badge(r.status) }}
+                <span class="mono">{{ r.requested_at.strftime('%b %d, %Y') }}</span>
+              </div>
             </td>
             <td class="num mono" data-label="Items">{{ r.item_count }}</td>
             <td class="num mono" data-label="Total value">{{ r.total_value|peso }}</td>
-            <td data-label="Status">{{ m.status_badge(r.status) }}</td>
+            <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="">
               {% if r.status == 'Pending' %}
               <div class="inline-form">

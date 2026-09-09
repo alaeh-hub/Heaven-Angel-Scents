@@ -416,12 +416,12 @@
         });
 
         charts.stock = new Chart(document.getElementById('stockChart'), {
-          type: 'bar',
+          type: 'doughnut',
           data: {
             labels: data.stock_by_variant.map(d => d.variant),
-            datasets: [{ label: 'Units on hand', data: data.stock_by_variant.map(d => d.total_stock), backgroundColor: data.stock_by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderRadius: 4 }]
+            datasets: [{ data: data.stock_by_variant.map(d => d.total_stock), backgroundColor: data.stock_by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderWidth: 0 }]
           },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { position: 'bottom' } } }
         });
 
         charts.saleType = new Chart(document.getElementById('saleTypeChart'), {
@@ -485,11 +485,15 @@
             const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
             return row ? row.total : 0;
           }),
+          borderColor: PALETTE[i % PALETTE.length],
           backgroundColor: PALETTE[i % PALETTE.length],
-          borderRadius: 4,
+          pointBackgroundColor: PALETTE[i % PALETTE.length],
+          pointRadius: 3,
+          tension: 0.35,
+          fill: false,
         }));
         charts.trend = new Chart(document.getElementById('trendChart'), {
-          type: 'bar',
+          type: 'line',
           data: { labels: days, datasets },
           options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
         });

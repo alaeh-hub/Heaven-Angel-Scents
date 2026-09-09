@@ -47,25 +47,16 @@
 
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
-    </div>
     <div class="stat-label">Distributors</div>
     <div class="stat-value">{{ counts.distributor_count }}</div>
     <div class="stat-foot">{{ totals.total_distributor|peso }} in package sales</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
-    </div>
     <div class="stat-label">Resellers</div>
     <div class="stat-value">{{ counts.reseller_count }}</div>
     <div class="stat-foot">{{ totals.total_reseller|peso }} in package sales</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
-    </div>
     <div class="stat-label">Total package sales</div>
     <div class="stat-value accent">{{ totals.total_all|peso }}</div>
     <div class="stat-foot">across every partner &middot; closed orders only</div>
@@ -167,8 +158,12 @@
             <td data-label="Partner">
               <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a>
               {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
+              <div class="item-sub item-sub-badge">
+                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
+                <span class="mono">{{ p.created_at.strftime('%b %d, %Y') }}</span>
+              </div>
             </td>
-            <td data-label="Type">
+            <td class="mobile-fold" data-label="Type">
               <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
             </td>
             <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
@@ -189,7 +184,7 @@
               <span class="text-faint">—</span>
               {% endif %}
             </td>
-            <td class="mono text-soft" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
           </tr>
           {% endfor %}
         </tbody>

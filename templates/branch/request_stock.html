@@ -422,12 +422,18 @@
           <tbody>
             {% for r in history %}
             <tr data-search="{{ (r.delivery_number ~ ' ' ~ r.status)|lower }}">
-              <td class="mono text-soft" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-              <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
+              <td class="mono text-soft mobile-fold" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
+              <td class="mono item-name" data-label="Delivery #">
+                {{ r.delivery_number }}
+                <div class="item-sub item-sub-badge">
+                  {{ m.status_badge(r.status) }}
+                  <span class="mono">{{ r.requested_at.strftime('%b %d, %Y') }}</span>
+                </div>
+              </td>
               <td class="num mono" data-label="Items">{{ r.item_count }}</td>
               <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
               <td class="num mono" data-label="Value">{{ r.total_value|peso }}</td>
-              <td data-label="Status">{{ m.status_badge(r.status) }}</td>
+              <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
               <td data-label="">
                 {% if r.status == 'Fulfilled' %}
                 <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>

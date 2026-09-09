@@ -5,8 +5,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Business Partners · Heaven &amp; Angel Scents</title>
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_16.png') }}">
+  <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script>
     (function () {
       try {
@@ -181,59 +184,20 @@
       gap: 12px;
     }
 
-    /* Same shape as the sidebar's .brand-logo (style.css) — the SVG
-       already draws its own rounded-square background, so this just
-       clips to match it edge-to-edge instead of caging a shrunken copy
-       inside a separate circular badge, which read as two mismatched
-       logo shapes stacked on top of each other. */
-    .pp-crest {
-      position: relative;
-      flex-shrink: 0;
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--brand-gold) 55%, transparent),
-        0 0 0 1px rgba(255, 255, 255, 0.12) inset;
-    }
-
-    .pp-crest svg {
-      position: relative;
-      z-index: 1;
-      width: 17px;
-      height: 17px;
-      color: var(--accent-ink);
-    }
-
-    .pp-crest img {
-      width: 100%;
-      height: 100%;
+    /* logo-wordmark.png already has the mark and the "Heaven & Angel
+       Scents" text baked into one image (replacing the old separate
+       .pp-crest icon + .mark text spans) — sized to roughly the same
+       footprint the crest+mark row used to take up. width: auto lets
+       the image's own aspect ratio hold; object-fit: contain guards
+       against any stretch if this ever sits in a box shorter than its
+       natural width. */
+    .pp-wordmark {
       display: block;
-      object-fit: cover;
-    }
-
-    .pp-brand .mark {
-      font-size: 17px;
-      font-weight: 800;
-      letter-spacing: -0.01em;
-      line-height: 1.1;
-    }
-
-    .pp-brand .mark .bm-gold {
-      color: var(--accent-ink);
-    }
-
-    .pp-brand .mark .bm-ink {
-      color: var(--ink);
-    }
-
-    .pp-brand .mark span:not(.bm-gold):not(.bm-ink) {
-      color: var(--ink-faint);
-      font-style: italic;
-      font-weight: 500;
+      height: 40px;
+      width: auto;
+      max-width: 220px;
+      object-fit: contain;
+      flex-shrink: 0;
     }
 
     .pp-brand .sub {
@@ -995,9 +959,9 @@
       gap: 16px;
     }
 
-    .pp-footer .mark {
-      font-size: 13px;
-      font-weight: 800;
+    .pp-wordmark-sm {
+      height: 22px;
+      max-width: 130px;
     }
 
     .pp-footer-note {
@@ -1100,14 +1064,9 @@
   <header class="pp-header">
     <div class="pp-header-inner">
       <div class="pp-brand">
-        <div class="pp-crest" aria-hidden="true">
-          <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
-        </div>
-        <div>
-          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span>
-          </div>
-          <div class="sub">Scents · Business Partners</div>
-        </div>
+        <img class="pp-wordmark" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+          alt="Heaven &amp; Angel Scents">
+        <div class="sub">Scents · Business Partners</div>
       </div>
       <nav class="pp-nav">
         <a href="#packages">Packages</a>
@@ -1475,8 +1434,8 @@
 
       <div class="pp-footer">
         <div>
-          <div class="mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span class="bm-ink">Angel</span>
-            Scents</div>
+          <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+            alt="Heaven &amp; Angel Scents">
           <div class="pp-footer-note">Have a question that's not answered above? Open any package and send an inquiry —
             that's the fastest way to reach our team.</div>
         </div>

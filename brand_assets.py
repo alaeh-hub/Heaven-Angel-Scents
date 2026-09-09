@@ -1,7 +1,7 @@
 """Shared vector letterhead mark for generated PDFs (reports.py,
-receipts.py) — a reportlab redraw of static/img/logo-c-halo-drop.svg so
-every PDF the app produces carries the same icon as the web UI's
-sidebar/login logo and favicon, instead of a text-only wordmark.
+receipts.py) — a reportlab redraw of static/img/icon.svg so every PDF
+the app produces carries the same icon as the web UI's tab favicon and
+the sidebar's collapsed-rail mark, instead of a text-only wordmark.
 
 Kept out of utils.py deliberately: utils.py is imported by every route
 blueprint for its form-parsing helpers, and there's no reason to pull
@@ -10,27 +10,27 @@ modules (reports.py, receipts.py) that render PDFs.
 
 Why redrawn instead of rendered from the SVG file: reportlab has no
 built-in SVG loader, and pulling in a whole extra dependency (svglib)
-just to render one small static icon isn't worth it. The SVG's three
-shapes translate directly to reportlab primitives:
-  - the rounded-square background -> Rect(rx=...)
-  - the halo ring -> Ellipse (stroke only, no fill)
-  - the drop -> reportlab has no elliptical-arc primitive, so the
-    original path's short bezier taper (from the tip down to each
-    "shoulder") is approximated with a straight-sided Polygon, capped
-    by a true Circle for the rounded bottom half. Both are solid white
-    and overlap exactly at the circle's equator, so the seam between
-    them is invisible — the combined silhouette reads as one teardrop,
-    indistinguishable from the bezier original at letterhead/receipt
-    icon sizes (24-40pt).
+just to render one small static icon isn't worth it. Unlike the old
+halo/drop mark this replaced (which needed several curve-approximating
+shapes to reproduce), icon.svg is simple enough to redraw exactly:
+  - the rounded-square background -> Rect(rx=...), gold stroke instead
+    of the SVG's gold-gradient border (reportlab shapes have no easy
+    gradient stroke; a flat gold reads the same at letterhead/receipt
+    sizes) — same simplification the old mark already made for its own
+    solid-white drop against the SVG's subtle background gradient.
+  - the "&" -> a single String in Times-BoldItalic, a standard PDF
+    base-14 font (always available, no embedding needed) that's a
+    close match for the SVG's own bold italic Georgia/Times glyph —
+    far simpler than approximating the ampersand's curves as shapes.
 
-SVG coordinates run top-down (y grows downward) inside a 96x96 viewBox;
-reportlab's canvas runs bottom-up. Every y below is pre-flipped
-(96 - svg_y) so the shapes read correctly without a coordinate
-transform at draw time — only uniform scaling (size / 96) is needed.
+Coordinates are chosen directly in reportlab's own bottom-up 96x96
+space (no SVG y-flip needed, unlike the old mark — this wasn't
+translated from the SVG's coordinates, just designed to match its
+look), scaled uniformly at draw time via transform=[size/96, ...].
 """
 import os
 
-from reportlab.graphics.shapes import Circle, Drawing, Ellipse, Polygon, Rect
+from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -84,17 +84,19 @@ def logo_drawing(size):
     other flowable/graphic."""
     d = Drawing(size, size, transform=[size / 96, 0, 0, size / 96, 0, 0])
 
-    d.add(Rect(0, 0, 96, 96, rx=22, ry=22, fillColor=BRAND_BLACK, strokeColor=None))
+    # Rounded-square background — 1.5pt inset, rx=21, stroke-width=2.25:
+    # the same proportions (scaled from a 64-unit viewBox to this one's
+    # 96) as icon.svg's own background rect.
+    d.add(Rect(1.5, 1.5, 93, 93, rx=21, ry=21,
+          fillColor=BRAND_BLACK, strokeColor=GOLD, strokeWidth=2.25))
 
-    # Halo ring — svg ellipse cx=48 cy=33 rx=13.5 ry=5.6, y flipped: 96-33=63
-    d.add(Ellipse(48, 63, 13.5, 5.6, fillColor=None, strokeColor=GOLD, strokeWidth=3.2))
-
-    # Drop, rounded bottom — svg circle-ish center (48, 63.1) r=12.2, flipped: 96-63.1=32.9
-    d.add(Circle(48, 32.9, 12.2, fillColor=GOLD, strokeColor=None))
-
-    # Drop, pointed top — svg tip (48, 41.5) and shoulders (60.2/35.8, 63.1),
-    # flipped: tip (48, 54.5), shoulders at y=32.9 (the circle's equator).
-    d.add(Polygon([48, 54.5, 60.2, 32.9, 35.8, 32.9], fillColor=GOLD, strokeColor=None))
+    # The "&" itself. y=21 (String's y is its baseline, not a center)
+    # was picked by eye against renders at the actual sizes this is
+    # used at (26-40pt in reports.py/receipts.py) — reportlab has no
+    # built-in way to ask a font for a glyph's true visual bounding
+    # box, so there's no formula to derive it from instead.
+    d.add(String(48, 21, "&", fontName="Times-BoldItalic", fontSize=63,
+          fillColor=GOLD, textAnchor="middle"))
 
     return d
 
@@ -136,7 +138,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         pdfcanvas.Canvas.save(self)
 
     def _draw_page_number(self, total_pages):
-        page_w, _ = self._pagesize
+        page_w, _ = self.pagesize
         font, _ = register_fonts()
         self.setFont(font, 7.3)
         self.setFillColor(FOOTER_INK)

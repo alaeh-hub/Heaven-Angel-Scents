@@ -98,33 +98,16 @@
 {% block content %}
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
-      </svg>
-    </div>
     <div class="stat-label">Suppliers on file</div>
     <div class="stat-value">{{ totals.supplier_count }}</div>
     <div class="stat-foot">reachable from the Materials form too</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <rect x="2" y="6" width="20" height="13" rx="2" />
-        <path d="M2 10h20" />
-        <path d="M6 15h4" />
-      </svg>
-    </div>
     <div class="stat-label">Spend with known suppliers</div>
     <div class="stat-value accent">{{ totals.total_supplied_spend|peso }}</div>
     <div class="stat-foot">sum of every material package logged with a supplier</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon {{ 'stat-icon-red' if totals.unassigned_material_count else 'stat-icon-neutral' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-      </svg>
-    </div>
     <div class="stat-label">Materials with no supplier on file</div>
     <div class="stat-value {{ 'danger' if totals.unassigned_material_count else '' }}">{{
       totals.unassigned_material_count }}</div>

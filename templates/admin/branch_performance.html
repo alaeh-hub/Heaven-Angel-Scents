@@ -33,25 +33,16 @@
 {% block content %}
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-violet">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg>
-    </div>
     <div class="stat-label">Combined revenue</div>
     <div class="stat-value accent">{{ totals.revenue|peso }}</div>
     <div class="stat-foot">branch sales, all-time</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon stat-icon-blue">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z"/></svg>
-    </div>
     <div class="stat-label">Combined units sold</div>
     <div class="stat-value">{{ totals.units_sold }}</div>
     <div class="stat-foot">across every retail branch</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-icon {{ 'stat-icon-red' if totals.discrepancy_count else 'stat-icon-neutral' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-    </div>
     <div class="stat-label">Combined discrepancies</div>
     <div class="stat-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.discrepancies') }}" class="text-soft">full breakdown →</a></div>
@@ -75,7 +66,7 @@
 <div class="card">
   <div class="card-header">
     <h2>All branches</h2>
-    <span class="hint">{{ rows|length }} branch{{ 'es' if rows|length != 1 }}</span>
+    <span class="hint" id="bpBranchesCount">{{ rows|length }} branch{{ 'es' if rows|length != 1 }}</span>
   </div>
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
@@ -85,39 +76,56 @@
     </p>
   </div>
   {% if rows %}
-  <div class="table-wrap">
-    <table class="table-fixed bp-table">
-      <colgroup>
-        <col style="width:6%"><col style="width:22%"><col style="width:16%"><col style="width:12%">
-        <col style="width:10%"><col style="width:14%"><col style="width:10%"><col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th></th>
-          <th>Branch</th>
-          <th class="num">Revenue</th>
-          <th class="num">Units sold</th>
-          <th class="num">Sales</th>
-          <th class="num">Discrepancies</th>
-          <th class="num">Current stock</th>
-          <th class="num">Turnover</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        <tr>
-          <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-          <td class="item-name" data-label="Branch">{{ r.branch_name }}</td>
-          <td class="num mono" data-label="Revenue">{{ r.revenue|peso }}</td>
-          <td class="num mono" data-label="Units sold">{{ r.units_sold }}</td>
-          <td class="num mono" data-label="Sales">{{ r.sales_count }}</td>
-          <td class="num mono {{ 'qty-down' if r.discrepancy_count }}" data-label="Discrepancies">{{ r.discrepancy_count }}</td>
-          <td class="num mono" data-label="Current stock">{{ r.total_stock }}</td>
-          <td class="num mono" data-label="Turnover">{{ (r.turnover|string ~ 'x') if r.turnover is not none else '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div data-smart-table data-page-size="10" data-count-target="bpBranchesCount" data-count-label="branch">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by branch…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed bp-table">
+        <colgroup>
+          <col style="width:6%"><col style="width:22%"><col style="width:16%"><col style="width:12%">
+          <col style="width:10%"><col style="width:14%"><col style="width:10%"><col style="width:10%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Branch</th>
+            <th class="num">Revenue</th>
+            <th class="num">Units sold</th>
+            <th class="num">Sales</th>
+            <th class="num">Discrepancies</th>
+            <th class="num">Current stock</th>
+            <th class="num">Turnover</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-search="{{ r.branch_name|lower }}">
+            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td class="item-name" data-label="Branch">{{ r.branch_name }}</td>
+            <td class="num mono" data-label="Revenue">{{ r.revenue|peso }}</td>
+            <td class="num mono" data-label="Units sold">{{ r.units_sold }}</td>
+            <td class="num mono" data-label="Sales">{{ r.sales_count }}</td>
+            <td class="num mono {{ 'qty-down' if r.discrepancy_count }}" data-label="Discrepancies">{{ r.discrepancy_count }}</td>
+            <td class="num mono" data-label="Current stock">{{ r.total_stock }}</td>
+            <td class="num mono" data-label="Turnover">{{ (r.turnover|string ~ 'x') if r.turnover is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No branches match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
   </div>
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No branches yet.</p></div>
@@ -141,37 +149,44 @@
       return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     }
 
+    // Same validated, colorblind-safe categorical order as Reports'
+    // PALETTE (see admin/reports.html for the full rationale) \u2014 slot 1 is
+    // the theme's gold accent, the rest a fixed hue sequence so a chart
+    // with many branches still stays distinguishable at a glance.
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var PALETTE = (isDark
+      ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9']
+      : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']);
+
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = themeColor('--ink-soft');
     Chart.defaults.borderColor = themeColor('--border');
     Chart.defaults.maintainAspectRatio = false;
 
+    // Revenue by branch is a share of the combined total shown in the
+    // stat tile above, so a doughnut reads that relationship better
+    // than a bar ranking would \u2014 same reasoning as the other proportion
+    // breakdowns across Reports (units by variant, stock by branch, ...).
     var chart = new Chart(canvas, {
-      type: 'bar',
+      type: 'doughnut',
       data: {
         labels: branchNames,
         datasets: [{
-          label: 'Revenue',
           data: branchRevenue,
-          backgroundColor: themeColor('--accent'),
-          borderRadius: 4,
+          backgroundColor: branchNames.map(function (_, i) { return PALETTE[i % PALETTE.length]; }),
+          borderWidth: 0,
         }]
       },
       options: {
-        indexAxis: 'y',
         plugins: {
-          legend: { display: false },
+          legend: { position: 'bottom' },
           tooltip: {
             callbacks: {
               label: function (ctx) {
-                return '\u20b1' + Number(ctx.parsed.x).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return ctx.label + ': \u20b1' + Number(ctx.parsed).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
               }
             }
           }
-        },
-        scales: {
-          x: { beginAtZero: true, grid: { color: themeColor('--border') } },
-          y: { grid: { display: false } }
         }
       }
     });

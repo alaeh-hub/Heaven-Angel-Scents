@@ -6,8 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_16.png') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
     <script>
         // Set the theme attribute before the stylesheet even loads, so
         // there's no flash of the light theme on a person who's chosen
@@ -21,15 +24,26 @@
                 var stored = localStorage.getItem('theme');
                 var theme = stored || 'dark';
                 document.documentElement.setAttribute('data-theme', theme);
-            } catch (e) { }
 
-            // Same reasoning as the theme attribute above: apply the
-            // collapsed sidebar rail before first paint, from main.js's
-            // initSidebarCollapse() persisted choice, so there's no
-            // visible full-width-to-collapsed jump right after load.
-            try {
-                if (localStorage.getItem('sidebarCollapsed') === '1') {
-                    document.documentElement.classList.add('sidebar-collapsed');
+                // Same before-first-paint reasoning as the theme attribute
+                // above: setting html.sidebar-pinned here, not in main.js
+                // (which loads at the end of body), avoids a flash of the
+                // collapsed icon rail snapping open a beat after first
+                // paint. An explicit choice from the footer's pin toggle
+                // (see initSidebarPinToggle() in main.js) always wins;
+                // with no stored choice yet, default pinned open on
+                // touch/coarse-pointer devices, which can't trigger the
+                // hover-to-expand rail reliably (a tap can land as
+                // hover-then-click in one go, so the first tap just
+                // expands the rail instead of following the link).
+                // Hover-capable, fine-pointer devices keep defaulting to
+                // the collapsed rail, same as before this existed.
+                var pinnedStored = localStorage.getItem('sidebarPinned');
+                var pinned = pinnedStored === null
+                    ? window.matchMedia('(hover: none), (pointer: coarse)').matches
+                    : pinnedStored === 'true';
+                if (pinned) {
+                    document.documentElement.classList.add('sidebar-pinned');
                 }
             } catch (e) { }
         })();
@@ -196,12 +210,15 @@
                     </svg>
                 </button>
                 <div class="brand-top">
+                    <!-- Icon-only mark, shown only on the collapsed rail
+                         (see .brand-logo's own comment in style.css) —
+                         cross-fades with .brand-wordmark below rather
+                         than the two ever showing together. -->
                     <div class="brand-logo" aria-hidden="true">
-                        <img src="{{ url_for('static', filename='img/logo-c-halo-drop.svg') }}" alt="">
+                        <img src="{{ url_for('static', filename='img/icon.svg') }}" alt="">
                     </div>
-                    <div class="brand-mark"><span class="bm-gold">Heaven</span> <span>&amp;</span> <span
-                            class="bm-ink">Angel</span>
-                    </div>
+                    <img class="brand-wordmark" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+                        alt="Heaven &amp; Angel Scents">
                 </div>
                 <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
             </div>
@@ -546,6 +563,25 @@
                     </div>
                 </div>
                 <div class="footer-actions">
+                    <!-- Keeps the sidebar expanded instead of resting as
+                         the icon-only rail — see initSidebarPinToggle()
+                         in main.js, which toggles html.sidebar-pinned,
+                         persists the choice, and flips aria-pressed/the
+                         label text below. Not a form/link since it
+                         changes nothing server-side; a plain button
+                         reusing .footer-action/.footer-action-btn keeps
+                         it visually identical to Change password/Sign
+                         out and gets their existing collapse/pin CSS for
+                         free. -->
+                    <button type="button" class="footer-action footer-action-btn" id="sidebarPinToggle"
+                        aria-pressed="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M9 4h6" />
+                            <path d="M10 4v5.5L6 13v2h12v-2l-4-3.5V4" />
+                            <path d="M12 15v5" />
+                        </svg>
+                        <span id="sidebarPinToggleLabel">Pin sidebar open</span>
+                    </button>
                     <a class="footer-action" href="{{ url_for('auth.change_password') }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <rect x="3" y="11" width="18" height="10" rx="2" />
@@ -575,18 +611,6 @@
                 </div>
             </div>
         </aside>
-
-        <!-- Sibling of .sidebar, not a child — see style.css's
-             .sidebar-collapse-toggle comment for why (it needs to sit
-             outside .sidebar's own overflow-x: hidden to straddle its
-             edge). Hidden until the sidebar is hovered or already
-             collapsed; toggled by main.js's initSidebarCollapse(). -->
-        <button type="button" class="sidebar-collapse-toggle" id="sidebarCollapseToggle"
-            aria-label="Collapse sidebar" aria-expanded="true" aria-controls="sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M15 6l-6 6 6 6" />
-            </svg>
-        </button>
 
         <div class="main">
             <div class="topbar">
