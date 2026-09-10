@@ -34,6 +34,17 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
 
+    # Hard cap on request body size (bytes), enforced by Werkzeug before
+    # any route code runs — without this, Flask/Werkzeug impose no limit
+    # at all, so a signed-in account could send an oversized POST body
+    # (a giant AI chat message, a huge CSV import) repeatedly within its
+    # rate limit and force the server to buffer/parse it every time. 8MB
+    # comfortably covers the largest legitimate upload (a product photo)
+    # plus the CSV import with headroom; override via env if a real
+    # catalog import ever needs more.
+    MAX_CONTENT_LENGTH = int(
+        os.environ.get("MAX_CONTENT_LENGTH", 8 * 1024 * 1024))
+
     # Number of trusted reverse-proxy hops in front of this app (nginx,
     # a load balancer, etc.). Flask-Limiter's IP-based rate limits
     # (auth.login, the partner-portal inquiry form) key on

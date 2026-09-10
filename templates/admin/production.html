@@ -199,13 +199,13 @@
             <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
               <td data-label="Item">
                 <div class="item-name">{{ row.item_name }}</div>
-                <div class="item-sub mono">{{ row.sku }}</div>
+                <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit"> · {{ row.unit }}</span></div>
                 <div class="item-sub item-sub-badge">
                   {{ m.variant_badge(row.variant) }}
                 </div>
               </td>
               <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
-              <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
+              <td class="mono text-soft mobile-fold" data-label="Unit">{{ row.unit }}</td>
               <td data-label="On hand">{{ m.fill_bar(row.stock_qty, max_stock) }}</td>
             </tr>
             {% endfor %}
@@ -276,10 +276,11 @@
                 {% else %}
                 <span class="text-faint">—</span>
                 {% endif %}
+                <span class="mono">{{ l.unit }}</span>
                 <span class="mono">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</span>
               </div>
             </td>
-            <td class="mono text-soft" data-label="Unit">{{ l.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit">{{ l.unit }}</td>
             <td class="mobile-fold" data-label="Batch">
               {% if l.batch_code %}
               <span class="badge badge-pending">{{ l.batch_code }}</span>

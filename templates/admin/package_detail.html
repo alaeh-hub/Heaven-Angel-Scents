@@ -68,19 +68,19 @@
       <tbody>
         {% for item in items %}
         <tr>
-          <td data-label="Item">
+          <td data-label="Item" class="mobile-inline-anchor">
             <div class="item-name">{{ item.item_name }}</div>
-            <div class="item-sub mono">{{ item.sku }}</div>
+            <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit"> · {{ item.unit }}</span></div>
             <div class="item-sub item-sub-badge">
               {{ m.variant_badge(item.variant) }}
             </div>
           </td>
           <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
-          <td class="mono text-soft" data-label="Unit">{{ item.unit }}</td>
+          <td class="mono text-soft mobile-fold" data-label="Unit">{{ item.unit }}</td>
           <td class="num mono" data-label="Qty per set">{{ item.qty }}</td>
           <td class="num mono" data-label="Ref. price">{{ item.price|peso }}</td>
           <td class="num mono" data-label="Line total">{{ (item.qty * item.price)|peso }}</td>
-          <td data-label="">
+          <td data-label="" class="mobile-inline-action">
             <!-- Unified confirm pattern: form[data-confirm] is picked up
                  by main.js's delegated submit handler, same as
                  requests.html / request_detail.html / users.html. The

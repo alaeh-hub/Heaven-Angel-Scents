@@ -9,7 +9,11 @@ from decorators import branch_required
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sockets import notify_admin_and_branch
-from utils import PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, parse_non_negative_decimal, parse_non_negative_int, parse_optional_text, parse_positive_int
+from utils import (
+    PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
+    issue_form_token, parse_non_negative_int, parse_optional_text, parse_past_date,
+    parse_positive_decimal, parse_positive_int,
+)
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
 
@@ -224,6 +228,11 @@ def request_stock():
     """
     bid = _branch_id()
     if request.method == "POST":
+        if not consume_form_token("request_stock"):
+            flash(
+                "This delivery request already went through, or the form expired — check the history below before resending.", "error")
+            return redirect(url_for("branch.request_stock"))
+
         skus = request.form.getlist("sku[]")
         raw_qtys = request.form.getlist("requested_qty[]")
 
@@ -316,7 +325,10 @@ def request_stock():
            ORDER BY sr.requested_at DESC LIMIT 10""",
         (bid,),
     )
-    return render_template("branch/request_stock.html", products=products_list, history=history)
+    return render_template(
+        "branch/request_stock.html", products=products_list, history=history,
+        form_token=issue_form_token("request_stock"),
+    )
 
 
 # ---------------------------------------------------------------- receive stock
@@ -575,6 +587,11 @@ def record_sale():
     """
     bid = _branch_id()
     if request.method == "POST":
+        if not consume_form_token("branch_record_sale"):
+            flash(
+                "This sale already went through, or the form expired — check Sales History before recording it again.", "error")
+            return redirect(url_for("branch.record_sale"))
+
         sku = request.form.get("sku")
         sale_type = request.form.get("sale_type")
         payment_method = request.form.get("payment_method")
@@ -583,12 +600,22 @@ def record_sale():
         try:
             qty = parse_positive_int(
                 request.form.get("qty_sold"), "Quantity sold")
-            unit_price = parse_non_negative_decimal(
+            # Strictly positive, not just non-negative — a Sale/Refill
+            # charging ₱0 is otherwise a way to move stock out as a
+            # "sale" with zero revenue and no record of it being a
+            # freebie/giveaway. A real comp/sample should be handled
+            # some other way HQ can see, not recorded as a normal sale.
+            unit_price = parse_positive_decimal(
                 request.form.get("unit_price"), "Price charged")
             customer_name = parse_optional_text(
                 request.form.get("customer_name"), "Customer name", 120)
             customer_address = parse_optional_text(
                 request.form.get("customer_address"), "Customer address", 255)
+            # Lets a sale that actually happened earlier be logged under
+            # that date instead of today — blank defaults to today, same
+            # as the old always-"now" behavior.
+            sold_at = parse_past_date(
+                request.form.get("sold_at"), "Sale date")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("branch.record_sale"))
@@ -651,10 +678,10 @@ def record_sale():
 
                 cur.execute(
                     """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
-                                          buyer_name, customer_name, customer_address)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                          buyer_name, customer_name, customer_address, sold_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (bid, sku, qty, unit_price, sale_type,
-                     payment_method, buyer_name, customer_name, customer_address),
+                     payment_method, buyer_name, customer_name, customer_address, sold_at),
                 )
                 if not is_refill:
                     cur.execute(
@@ -719,7 +746,7 @@ def record_sale():
     )
     return render_template(
         "branch/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
-        customers=customers,
+        customers=customers, form_token=issue_form_token("branch_record_sale"),
     )
 
 

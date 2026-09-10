@@ -254,6 +254,14 @@
                     </svg>
                     Production Log
                 </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.formulas' }}"
+                    href="{{ url_for('admin.formulas') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M9 3v4M15 3v4M5 7h14l-1.5 13.5a1 1 0 0 1-1 .5H7.5a1 1 0 0 1-1-.9L5 7z" />
+                        <path d="M8.5 12h7M8.5 16h4" />
+                    </svg>
+                    Formulas
+                </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
                     href="{{ url_for('admin.materials') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">

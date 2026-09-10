@@ -23,11 +23,16 @@
   </div>
 </div>
 
-<div class="grid grid-3 stack">
+<div class="grid grid-4 stack">
   <div class="card stat-tile">
     <div class="stat-label">Total Capital</div>
     <div class="stat-value">{{ financials.capital|peso }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">from raw materials →</a></div>
+    <div class="stat-foot"><a href="{{ url_for('admin.formulas') }}" class="text-soft">cost of goods produced →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Raw Materials Bought</div>
+    <div class="stat-value">{{ financials.raw_materials_purchased|peso }}</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">for comparison →</a></div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Total Revenue</div>
@@ -38,8 +43,8 @@
   <div class="card stat-tile">
     <div class="stat-label">Net Profit</div>
     <div class="stat-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|peso }}</div>
-    <div class="stat-foot">{{ 'revenue (branches + packages) minus material cost' if financials.profit >= 0 else
-      'running at a loss — revenue minus material cost' }}</div>
+    <div class="stat-foot">{{ 'revenue (branches + packages) minus cost of goods' if financials.profit >= 0 else
+      'running at a loss — revenue minus cost of goods' }}</div>
   </div>
 </div>
 

@@ -52,7 +52,7 @@
           <tr data-search="{{ (r.branch_name ~ ' ' ~ r.delivery_number)|lower }}">
             <td class="mono text-soft mobile-fold" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
             <td data-label="Branch">{{ r.branch_name }}</td>
-            <td data-label="Delivery #">
+            <td data-label="Delivery #" class="mobile-inline-anchor">
               <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}" class="mono item-name">{{
                 r.delivery_number }}</a>
               <div class="item-sub item-sub-badge">
@@ -63,7 +63,7 @@
             <td class="num mono" data-label="Items">{{ r.item_count }}</td>
             <td class="num mono" data-label="Total value">{{ r.total_value|peso }}</td>
             <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               {% if r.status == 'Pending' %}
               <div class="inline-form">
                 <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}"

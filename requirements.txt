@@ -9,10 +9,11 @@ requests==2.32.3
 flask-socketio==5.6.1
 reportlab==5.0.1
 openpyxl==3.1.5
+Pillow==12.3.0
 flask-talisman==1.1.0
 
 # Production WSGI stack (see wsgi.py's module docstring for the gunicorn
-# invocation these are for). Install fine on any platform, including
+# invocation these are f/or). Install fine on any platform, including
 # Windows dev machines, but gunicorn itself only *runs* on POSIX — local
 # dev doesn't need this stack at all, since `py app.py` serves the app
 # via Flask-SocketIO's own threading mode (socketio.run()) instead.

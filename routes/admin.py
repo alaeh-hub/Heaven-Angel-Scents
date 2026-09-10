@@ -9,6 +9,7 @@ from flask import (
     Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
     request, send_file, session, url_for,
 )
+from PIL import Image, UnidentifiedImageError
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -21,9 +22,9 @@ from reports import REPORT_TYPES, get_report, parse_report_filters, render_repor
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
     MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
-    build_sku, generate_temp_password, parse_base_code, parse_non_negative_decimal,
-    parse_non_negative_int, parse_optional_id, parse_optional_text, parse_positive_decimal, parse_positive_int,
-    parse_required_text,
+    build_sku, consume_form_token, generate_temp_password, issue_form_token, parse_base_code,
+    parse_non_negative_decimal, parse_non_negative_int, parse_optional_id, parse_optional_text,
+    parse_past_date, parse_positive_decimal, parse_positive_int, parse_required_text,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -182,13 +183,18 @@ def dashboard():
     # package order is real money in exactly the same sense.
     #
     # "Capital" is no longer its own ledger (see schema.sql's note on
-    # capital_contributions being removed) — it's now just how much has
-    # been spent buying raw material packages, SUM(package_cost) over
-    # raw_materials. That's the same number as materials_cost below; the
-    # dashboard keeps the "Total Capital" label (financials.capital) for
-    # that stat tile, it just now shows this figure instead of a
-    # manually-logged one.
-    total_materials_cost = query(
+    # capital_contributions being removed) — it's now the cost of goods
+    # actually produced: SUM(total_cogs) over cogs_logs, i.e. each
+    # formula's cost per unit x how many units were logged as produced
+    # against it (see log_material_usage()). "Raw materials bought" is
+    # tracked alongside it (SUM(package_cost) over raw_materials) purely
+    # as a comparison figure now — what's been paid for material
+    # packages vs. what's actually gone into produced goods — it no
+    # longer feeds capital/profit itself.
+    total_cogs = query(
+        "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs", fetchone=True
+    )["v"]
+    raw_materials_purchased = query(
         "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials", fetchone=True
     )["v"]
     branch_sales_revenue = query(
@@ -200,12 +206,13 @@ def dashboard():
     )["v"]
     total_revenue = branch_sales_revenue + package_sales_revenue
     financials = {
-        "capital": total_materials_cost,
+        "capital": total_cogs,
         "revenue": total_revenue,
         "branch_sales_revenue": branch_sales_revenue,
         "package_sales_revenue": package_sales_revenue,
-        "materials_cost": total_materials_cost,
-        "profit": total_revenue - total_materials_cost,
+        "materials_cost": total_cogs,
+        "raw_materials_purchased": raw_materials_purchased,
+        "profit": total_revenue - total_cogs,
     }
 
     return render_template(
@@ -225,12 +232,25 @@ def dashboard():
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 PRODUCT_IMAGE_SUBDIR = "uploads/products"
 
+# Belt-and-suspenders on top of app.py's global MAX_CONTENT_LENGTH — this
+# caps just the image field itself to something no legitimate product
+# photo needs, rather than however big the whole request is allowed to be.
+MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024
+
+# What Pillow's Image.format reports for each extension we accept — used
+# to confirm the file's actual bytes are the kind of image its extension
+# claims, not just anything renamed to end in .png/.jpg/.webp.
+_IMAGE_FORMAT_BY_EXTENSION = {
+    "jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP",
+}
+
 
 def _save_product_image(file_storage):
     """Validate and persist an uploaded product image. Returns the
     image_path to store on the product row, or None if no file was
     actually chosen (the field is optional). Raises ValidationError on
-    an unsupported file type.
+    an unsupported file type, an oversized file, or a file whose actual
+    content isn't a decodable image matching its extension.
     """
     if not file_storage or not file_storage.filename:
         return None
@@ -240,6 +260,41 @@ def _save_product_image(file_storage):
     if ext not in ALLOWED_IMAGE_EXTENSIONS:
         raise ValidationError(
             "Product image must be a JPG, PNG, or WEBP file.")
+
+    stream = file_storage.stream
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(0)
+    if size > MAX_PRODUCT_IMAGE_BYTES:
+        raise ValidationError("Product image is too large (max 5MB).")
+
+    # Confirm this is actually a decodable image of the claimed type —
+    # trusting the extension alone would let anything (a non-image blob,
+    # a corrupt/hostile file) through, to later be served back as
+    # image/* purely because of its filename. Image.open() is lazy, so
+    # a first pass calls .verify() (checks structural integrity without
+    # decoding pixel data), then a second, fresh open decodes it for
+    # real via .load() — verify() alone can pass some files a real
+    # decode would still reject, and an object that's been verify()'d
+    # can't be reused for anything else per Pillow's own docs. Pillow's
+    # default Image.MAX_IMAGE_PIXELS guard also rejects a decompression-
+    # bomb-style image here (raises DecompressionBombError, caught by
+    # the bare except below same as any other bad-image case).
+    try:
+        with Image.open(stream) as img:
+            img.verify()
+        stream.seek(0)
+        with Image.open(stream) as img:
+            img.load()
+            actual_format = img.format
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise ValidationError("That file isn't a valid image.")
+    finally:
+        stream.seek(0)
+
+    if actual_format != _IMAGE_FORMAT_BY_EXTENSION.get(ext):
+        raise ValidationError(
+            "That file's contents don't match a JPG/PNG/WEBP image.")
 
     upload_dir = os.path.join(
         current_app.static_folder, *PRODUCT_IMAGE_SUBDIR.split("/"))
@@ -868,6 +923,11 @@ def record_sale():
     typed in on every sale/refill.
     """
     if request.method == "POST":
+        if not consume_form_token("admin_record_sale"):
+            flash(
+                "This sale already went through, or the form expired — check the sales list before recording it again.", "error")
+            return redirect(url_for("admin.record_sale"))
+
         sku = request.form.get("sku")
         sale_type = request.form.get("sale_type")
         payment_method = request.form.get("payment_method")
@@ -875,12 +935,20 @@ def record_sale():
 
         try:
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")
-            unit_price = parse_non_negative_decimal(
+            # Strictly positive — see branch.record_sale()'s identical
+            # comment: a ₱0 Sale/Refill is otherwise a way to move stock
+            # out with no revenue and nothing marking it as a freebie.
+            unit_price = parse_positive_decimal(
                 request.form.get("unit_price"), "Price charged")
             customer_name = parse_optional_text(
                 request.form.get("customer_name"), "Customer name", 120)
             customer_address = parse_optional_text(
                 request.form.get("customer_address"), "Customer address", 255)
+            # Lets a sale that actually happened earlier be logged under
+            # that date instead of today — blank defaults to today, same
+            # as the old always-"now" behavior.
+            sold_at = parse_past_date(
+                request.form.get("sold_at"), "Sale date")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.record_sale"))
@@ -935,10 +1003,10 @@ def record_sale():
 
                 cur.execute(
                     """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
-                                          buyer_name, customer_name, customer_address)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                          buyer_name, customer_name, customer_address, sold_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (HQ_BRANCH_ID, sku, qty, unit_price,
-                     sale_type, payment_method, buyer_name, customer_name, customer_address),
+                     sale_type, payment_method, buyer_name, customer_name, customer_address, sold_at),
                 )
                 if not is_refill:
                     cur.execute(
@@ -1005,7 +1073,7 @@ def record_sale():
     )
     return render_template(
         "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
-        customers=customers,
+        customers=customers, form_token=issue_form_token("admin_record_sale"),
     )
 
 
@@ -1753,19 +1821,25 @@ def reports_data():
 
     # Business-level financials.
     # - capital: no longer a logged ledger (see schema.sql's note on
-    #   capital_contributions being removed) — it's SUM(package_cost)
-    #   over raw_materials, i.e. everything ever spent buying material
-    #   packages. Always all-time, paired with all-time revenue on the
-    #   Revenue vs. Capital chart, same as before.
+    #   capital_contributions being removed) — it's SUM(total_cogs) over
+    #   cogs_logs, i.e. the cost of goods actually produced (each
+    #   formula's cost per unit x units logged as produced against it —
+    #   see log_material_usage()). Always all-time, paired with all-time
+    #   revenue on the Revenue vs. Capital chart, same as before.
+    # - raw_materials_purchased: SUM(package_cost) over raw_materials,
+    #   all-time — everything ever spent buying material packages. Kept
+    #   purely as a comparison figure alongside capital now (see the
+    #   Revenue vs. Capital chart), it no longer feeds profit itself.
     # - revenue_windowed / materials_cost / profit: scoped to the same
     #   window as the granularity switch, for the Revenue, Materials &
     #   Profit chart. Profit is a simple gross figure — revenue (branch
-    #   sales + closed package orders) minus what's been spent on raw
-    #   materials in that window — it doesn't subtract other costs
-    #   (rent, payroll, etc.), which the app doesn't currently track.
-    #   materials_cost here is windowed by raw_materials.created_at (when
-    #   a material package was logged/added), not by usage — usage no
-    #   longer carries a cost at all, see material_usage_logs.
+    #   sales + closed package orders) minus cost of goods produced in
+    #   that window — it doesn't subtract other costs (rent, payroll,
+    #   etc.), which the app doesn't currently track. materials_cost here
+    #   is windowed by cogs_logs.created_at (when a batch was logged),
+    #   not by raw material purchase date — a batch's cost is incurred
+    #   when the goods are actually produced, not when the ingredients
+    #   were bought.
     #
     #   Package orders are windowed by partner_inquiries.created_at,
     #   same as everything else windowed here — the moment of inquiry,
@@ -1775,6 +1849,9 @@ def reports_data():
     #   counts, same limitation the rest of this window-based reporting
     #   already has for anything without its own "completed_at" column.
     capital_total = query(
+        "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs", fetchone=True
+    )["v"]
+    raw_materials_purchased = query(
         "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials", fetchone=True
     )["v"]
     windowed_branch_revenue = query(
@@ -1788,11 +1865,12 @@ def reports_data():
     )["v"]
     windowed_revenue = windowed_branch_revenue + windowed_package_revenue
     windowed_materials_cost = query(
-        f"SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials WHERE created_at >= NOW() - {window_sql}",
+        f"SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE created_at >= NOW() - {window_sql}",
         fetchone=True,
     )["v"]
     financials = {
         "capital": capital_total,
+        "raw_materials_purchased": raw_materials_purchased,
         "revenue_windowed": windowed_revenue,
         "branch_revenue_windowed": windowed_branch_revenue,
         "package_revenue_windowed": windowed_package_revenue,
@@ -1838,6 +1916,11 @@ def materials():
                 request.form.get("package_cost"), "Cost")
             supplier_id = parse_optional_id(
                 request.form.get("supplier_id"), "Supplier")
+            # Lets a material bought a while ago be logged under the date it
+            # was actually purchased instead of today — blank defaults to
+            # today, same as the old always-"now" behavior.
+            purchased_at = parse_past_date(
+                request.form.get("purchased_at"), "Purchase date")
         except ValidationError as err:
             flash(str(err), "error")
             return redirect(url_for("admin.materials"))
@@ -1856,10 +1939,10 @@ def materials():
             execute(
                 """INSERT INTO raw_materials
                        (material_name, unit, purchase_mode, package_qty, package_cost,
-                        receipt_number, cost_per_unit, stock_qty, supplier_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        receipt_number, cost_per_unit, stock_qty, supplier_id, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (material_name, unit, purchase_mode, package_qty, package_cost,
-                 receipt_number, cost_per_unit, package_qty, supplier_id),
+                 receipt_number, cost_per_unit, package_qty, supplier_id, purchased_at),
             )
             notify_all(["materials"])
             log_action("add_material", target=material_name,
@@ -1886,7 +1969,8 @@ def materials():
            GROUP BY s.supplier_id ORDER BY s.supplier_name"""
     )
     recent_production = query(
-        """SELECT pl.log_id, pl.produced_at, pl.batch_code, p.item_name, p.unit
+        """SELECT pl.log_id, pl.sku, pl.produced_at, pl.batch_code, pl.qty_produced,
+                  p.item_name, p.unit
            FROM production_logs pl JOIN products p ON pl.sku = p.sku
            ORDER BY pl.produced_at DESC LIMIT 40"""
     )
@@ -1906,6 +1990,39 @@ def materials():
         "SELECT COALESCE(SUM(package_cost), 0) AS total_spent FROM raw_materials",
         fetchone=True,
     )
+
+    # Products whose packaging size actually has a formula on file — the
+    # only ones "Log material usage" can be logged against now (see
+    # log_material_usage() below). Joined on p.unit, not p.sku — a
+    # formula belongs to a packaging size (85ML, 50ML, ...) and is
+    # shared by every product of that size, see unit_formula_items in
+    # schema.sql. cogs_per_unit is computed live from each formula line ×
+    # its material's current cost_per_unit, same as the Formulas page —
+    # this is only a preview shown in the picker; the authoritative figure
+    # is recomputed and frozen server-side when a batch is actually logged.
+    formula_products = query(
+        """SELECT p.sku, p.item_name, p.variant, p.unit,
+                  COUNT(ufi.formula_item_id) AS material_count,
+                  COALESCE(SUM(ufi.qty_per_unit * rm.cost_per_unit), 0) AS cogs_per_unit
+           FROM products p
+           JOIN unit_formula_items ufi ON ufi.unit = p.unit
+           JOIN raw_materials rm ON rm.material_id = ufi.material_id
+           GROUP BY p.sku, p.item_name, p.variant, p.unit
+           ORDER BY p.item_name, p.unit"""
+    )
+    cogs_logs = query(
+        """SELECT cl.*, p.item_name, p.unit AS product_unit, pl.batch_code
+           FROM cogs_logs cl
+           JOIN products p ON cl.sku = p.sku
+           LEFT JOIN production_logs pl ON cl.production_log_id = pl.log_id
+           ORDER BY cl.created_at DESC LIMIT 40"""
+    )
+    # This is "capital" — see cogs_logs' comment in schema.sql and
+    # dashboard()/reports_data() below, which sum this same column.
+    total_cogs = query(
+        "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs", fetchone=True
+    )["v"]
+
     return render_template(
         "admin/materials.html",
         materials=materials_list,
@@ -1913,7 +2030,11 @@ def materials():
         recent_production=recent_production,
         usage_logs=usage_logs,
         totals=totals,
+        formula_products=formula_products,
+        cogs_logs=cogs_logs,
+        total_cogs=total_cogs,
         unit_choices=MATERIAL_UNITS,
+        usage_form_token=issue_form_token("log_material_usage"),
     )
 
 
@@ -1921,6 +2042,18 @@ def materials():
 @admin_required
 def edit_material():
     material_id = request.form.get("material_id")
+
+    # Checked up front, same convention as edit_product(): a stale or
+    # tampered material_id would otherwise let the UPDATE below silently
+    # match zero rows while this route still flashes a success message,
+    # as if the edit had actually landed somewhere.
+    existing = query(
+        "SELECT 1 FROM raw_materials WHERE material_id = %s", (material_id,), fetchone=True
+    )
+    if not existing:
+        flash("That material no longer exists.", "error")
+        return redirect(url_for("admin.materials"))
+
     material_name = request.form.get("material_name", "").strip()
     unit = request.form.get("unit")
     purchase_mode = request.form.get("purchase_mode", "Package")
@@ -1986,86 +2119,300 @@ def edit_material():
 @bp.route("/materials/log-usage", methods=["POST"])
 @admin_required
 def log_material_usage():
-    """Log that some quantity of a material was used — a plain
-    quantity record, nothing else. No cost is computed or stored here;
-    "total materials spent" is tracked purely at purchase time now (see
-    raw_materials.package_cost), not re-derived every time material is
-    withdrawn. The only side effect on raw_materials is stock_qty going
-    down by qty_used, same as a sale deducting branch_inventory.stock_qty.
+    """Log a production batch's cost of goods off the formula for the
+    SKU's packaging size (see unit_formula_items in schema.sql) — pick a
+    SKU whose `unit` has a formula on file, say how many units were
+    produced, and this:
+      1. Deducts every formula ingredient's raw_materials.stock_qty by
+         qty_per_unit x qty_produced (same reduce-on-withdrawal pattern
+         the old per-material picker used), writing one
+         material_usage_logs row per ingredient for the same per-material
+         ledger as before.
+      2. Freezes that unit's total cost per unit AT THIS MOMENT (each
+         ingredient's qty_per_unit x its current cost_per_unit, summed)
+         and writes one cogs_logs row for the batch as a whole —
+         total_cogs = cogs_per_unit x qty_produced. That figure is what
+         the business calls "capital" now; see dashboard()/reports_data(),
+         which sum cogs_logs.total_cogs instead of
+         raw_materials.package_cost.
     """
-    material_id = request.form.get("material_id")
+    if not consume_form_token("log_material_usage"):
+        flash(
+            "This usage was already logged, or the form expired — check the log below before resending.", "error")
+        return redirect(url_for("admin.materials"))
+
+    sku = request.form.get("sku")
     production_log_id = request.form.get("production_log_id") or None
     notes = request.form.get("notes", "").strip() or None
 
-    material = query(
-        "SELECT material_name, unit FROM raw_materials WHERE material_id = %s",
-        (material_id,), fetchone=True,
+    product = query(
+        "SELECT sku, item_name, unit FROM products WHERE sku = %s",
+        (sku,), fetchone=True,
     )
-    if not material:
-        flash("Select a valid material.", "error")
+    if not product:
+        flash("Select a valid product.", "error")
         return redirect(url_for("admin.materials"))
 
     try:
-        qty_used = parse_positive_decimal(
-            request.form.get("qty_used"), "Quantity used")
+        qty_produced = parse_positive_decimal(
+            request.form.get("qty_produced"), "Quantity produced")
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.materials"))
 
-    # Lock the material row for the check-then-deduct below, same
-    # pattern as stock deductions elsewhere in this file (e.g.
-    # dispatch_request) — so two usage entries logged for the same
-    # material at the same moment can't jointly push stock_qty negative.
-    #
+    formula_items = query(
+        "SELECT material_id, qty_per_unit FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
+        (product["unit"],),
+    )
+    if not formula_items:
+        flash(
+            f"{product['unit']} has no formula yet — add one on the Formulas page first.",
+            "error",
+        )
+        return redirect(url_for("admin.formulas"))
+
     # Wrapped in try/except like every other write transaction in this
-    # file (production(), record_sale(), dispatch_request(), ...) — this
-    # one was previously left unguarded, so any DB-level failure here
-    # (e.g. a stale/invalid production_log_id) would bubble up as a raw
-    # 500 instead of the same friendly flash+redirect every other route
-    # gives. transaction() itself still rolls back correctly either way;
-    # this only changes what the admin sees when it fails.
+    # file (production(), record_sale(), dispatch_request(), ...) so a
+    # DB-level failure surfaces as a friendly flash+redirect instead of a
+    # raw 500.
     try:
         with transaction() as conn:
             cur = conn.cursor(dictionary=True)
-            cur.execute(
-                "SELECT stock_qty FROM raw_materials WHERE material_id = %s FOR UPDATE",
-                (material_id,),
-            )
-            row = cur.fetchone()
-            if not row or qty_used > float(row["stock_qty"]):
-                cur.close()
-                on_hand = row["stock_qty"] if row else 0
-                flash(
-                    f"Only {on_hand:g} {material['unit'].lower()} of "
-                    f"{material['material_name']} is on hand — can't log more than that as used.",
-                    "error",
+
+            # Lock every ingredient's raw_materials row up front, in a
+            # stable order (material_id ASC — same order formula_items
+            # was already queried in), same reasoning as
+            # dispatch_request()'s lock-then-validate-then-write shape:
+            # two batches drawing on the same material can't jointly push
+            # its stock_qty negative, and a fixed lock order across
+            # batches avoids a deadlock when two batches share more than
+            # one ingredient.
+            lines = []
+            total_cogs = decimal.Decimal("0")
+            for item in formula_items:
+                cur.execute(
+                    """SELECT material_name, unit, cost_per_unit, stock_qty
+                       FROM raw_materials WHERE material_id = %s FOR UPDATE""",
+                    (item["material_id"],),
                 )
-                return redirect(url_for("admin.materials"))
+                material = cur.fetchone()
+                if not material:
+                    cur.close()
+                    raise TransactionAborted(
+                        "One of this formula's materials no longer exists — check the Formulas page.")
+
+                qty_used = (item["qty_per_unit"] * qty_produced).quantize(
+                    decimal.Decimal("0.001"))
+                if qty_used > material["stock_qty"]:
+                    cur.close()
+                    raise TransactionAborted(
+                        f"Only {material['stock_qty']:g} {material['unit'].lower()} of "
+                        f"{material['material_name']} is on hand — need {qty_used:g} "
+                        f"for {qty_produced:g} unit(s)."
+                    )
+                total_cogs += qty_used * material["cost_per_unit"]
+                lines.append(
+                    {"material_id": item["material_id"], "qty_used": qty_used})
+
+            total_cogs = total_cogs.quantize(decimal.Decimal("0.01"))
+            cogs_per_unit = (total_cogs / qty_produced).quantize(
+                decimal.Decimal("0.0001"))
 
             cur.execute(
-                """INSERT INTO material_usage_logs
-                   (material_id, production_log_id, qty_used, notes, created_by_user_id)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (material_id, production_log_id,
-                 qty_used, notes, session.get("user_id")),
+                """INSERT INTO cogs_logs
+                   (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
+                    notes, created_by_user_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
+                 notes, session.get("user_id")),
             )
-            cur.execute(
-                "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
-                (qty_used, material_id),
-            )
+            cogs_log_id = cur.lastrowid
+
+            for line in lines:
+                cur.execute(
+                    "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
+                    (line["qty_used"], line["material_id"]),
+                )
+                cur.execute(
+                    """INSERT INTO material_usage_logs
+                       (material_id, production_log_id, cogs_log_id, qty_used, notes, created_by_user_id)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (line["material_id"], production_log_id, cogs_log_id,
+                     line["qty_used"], notes, session.get("user_id")),
+                )
             cur.close()
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.materials"))
     except Exception:
         current_app.logger.exception(
-            "log_material_usage failed for material_id=%s", material_id)
+            "log_material_usage failed for sku=%s", sku)
         flash("Couldn't log this usage — please try again.", "error")
         return redirect(url_for("admin.materials"))
 
     notify_all(["materials"])
-    log_action("log_material_usage", target=material["material_name"],
-               details=f"{qty_used:g} {material['unit'].lower()}")
+    log_action("log_material_usage", target=product["item_name"],
+               details=f"{qty_produced:g} unit(s) — ₱{total_cogs:,.2f} COGS")
     flash(
-        f"Logged {qty_used:g} {material['unit'].lower()} of {material['material_name']} used.", "success")
+        f"Logged {qty_produced:g} unit(s) of {product['item_name']} ({product['unit']}) produced — "
+        f"₱{total_cogs:,.2f} in cost of goods.",
+        "success",
+    )
     return redirect(url_for("admin.materials"))
+
+
+# ---------------------------------------------------------------- unit formulas (COGS)
+@bp.route("/formulas")
+@admin_required
+def formulas():
+    """Bill-of-materials editor: for each PACKAGING SIZE (85ML, 50ML,
+    1L, 100ML, 10ML, 3ML Tester — see unit_formula_items in schema.sql),
+    which raw materials (and how much of each) go into producing ONE
+    unit of it. Deliberately keyed by unit, not by product — every scent
+    sold in, say, 85ML shares the same 85ML formula. This is what "Log
+    material usage" now runs off of (see log_material_usage() above)
+    instead of a raw-materials picker.
+    """
+    materials_list = query(
+        """SELECT material_id, material_name, unit, cost_per_unit, stock_qty
+           FROM raw_materials ORDER BY material_name"""
+    )
+    formula_rows = query(
+        """SELECT ufi.unit, ufi.material_id, ufi.qty_per_unit,
+                  rm.material_name, rm.unit AS material_unit, rm.cost_per_unit
+           FROM unit_formula_items ufi
+           JOIN raw_materials rm ON rm.material_id = ufi.material_id
+           ORDER BY ufi.unit, rm.material_name"""
+    )
+
+    items_by_unit = {}
+    for row in formula_rows:
+        row["line_cost"] = row["qty_per_unit"] * row["cost_per_unit"]
+        items_by_unit.setdefault(row["unit"], []).append(row)
+
+    # PRODUCT_UNITS is the same fixed 6-item list products.unit is
+    # validated against — every packaging size gets a row here whether
+    # or not it has a formula yet, so admins see the full picture (which
+    # sizes still need one) rather than only ever seeing sizes someone
+    # already set up.
+    units = []
+    for unit in PRODUCT_UNITS:
+        items = items_by_unit.get(unit, [])
+        units.append({
+            "unit": unit,
+            "formula_items": items,
+            "cogs_per_unit": sum(
+                (i["line_cost"] for i in items), decimal.Decimal("0")),
+            # [material_id, qty_per_unit] pairs, JSON-embedded on the
+            # "Edit formula" button (see formulas.html) to pre-fill its
+            # cart-style editor — Jinja has no built-in zip filter, so
+            # this is built here rather than in the template.
+            "formula_pairs": [[i["material_id"], i["qty_per_unit"]] for i in items],
+        })
+
+    return render_template(
+        "admin/formulas.html",
+        units=units,
+        materials=materials_list,
+    )
+
+
+@bp.route("/formulas/save", methods=["POST"])
+@admin_required
+def save_formula():
+    """Replace a packaging size's entire formula in one shot — comes
+    from the Formulas page's add/remove material rows (material_id[] /
+    qty_per_unit[] pairs), same shape as dispatch_request()'s
+    item_id[]/dispatched_qty[] form. Submitting with no rows clears the
+    formula for that size.
+
+    Each line's qty_per_unit is capped at that material's current
+    raw_materials.stock_qty — a recipe can't call for more of a material
+    per single unit produced than currently exists on hand at all (the
+    Formulas page's own JS enforces this too, for immediate feedback,
+    but this is the check that's actually authoritative).
+    """
+    unit = request.form.get("unit")
+    if unit not in PRODUCT_UNITS:
+        flash("Select a valid packaging size.", "error")
+        return redirect(url_for("admin.formulas"))
+
+    material_ids = request.form.getlist("material_id[]")
+    raw_qtys = request.form.getlist("qty_per_unit[]")
+
+    try:
+        items = []
+        seen_material_ids = set()
+        for raw_id, raw_qty in zip(material_ids, raw_qtys):
+            material_id = parse_optional_id(raw_id, "Material")
+            if material_id is None:
+                continue
+            qty_per_unit = parse_positive_decimal(
+                raw_qty, "Quantity per unit")
+            if material_id in seen_material_ids:
+                raise ValidationError(
+                    "Each material can only appear once in a formula.")
+            seen_material_ids.add(material_id)
+            items.append((material_id, qty_per_unit))
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.formulas"))
+
+    if items:
+        placeholders = ",".join(["%s"] * len(items))
+        material_rows = query(
+            f"""SELECT material_id, material_name, unit, stock_qty
+                FROM raw_materials WHERE material_id IN ({placeholders})""",
+            tuple(i[0] for i in items),
+        )
+        materials_by_id = {row["material_id"]: row for row in material_rows}
+        if any(i[0] not in materials_by_id for i in items):
+            flash("One of the selected materials no longer exists.", "error")
+            return redirect(url_for("admin.formulas"))
+
+        # A formula line can't call for more of a material per unit than
+        # is actually on hand right now — qty_per_unit is a recipe
+        # amount, but a value bigger than current stock_qty could never
+        # actually be fulfilled by even a single unit of production, so
+        # it's rejected here rather than only failing later when someone
+        # tries to log usage against it (see log_material_usage()).
+        for material_id, qty_per_unit in items:
+            material = materials_by_id[material_id]
+            if qty_per_unit > material["stock_qty"]:
+                flash(
+                    f"{qty_per_unit:g} {material['unit'].lower()} of {material['material_name']} per unit "
+                    f"exceeds what's on hand ({material['stock_qty']:g} {material['unit'].lower()}).",
+                    "error",
+                )
+                return redirect(url_for("admin.formulas"))
+
+    try:
+        with transaction() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM unit_formula_items WHERE unit = %s", (unit,))
+            for material_id, qty_per_unit in items:
+                cur.execute(
+                    """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit)
+                       VALUES (%s, %s, %s)""",
+                    (unit, material_id, qty_per_unit),
+                )
+            cur.close()
+        notify_all(["materials"])
+        log_action("save_formula", target=unit,
+                   details=f"{len(items)} material{'s' if len(items) != 1 else ''}")
+        if items:
+            flash(
+                f"Formula saved for {unit} — "
+                f"{len(items)} material{'s' if len(items) != 1 else ''}.",
+                "success",
+            )
+        else:
+            flash(f"Formula cleared for {unit}.", "success")
+    except Exception:
+        current_app.logger.exception("save_formula failed for unit=%s", unit)
+        flash("Couldn't save this formula — please try again.", "error")
+    return redirect(url_for("admin.formulas"))
 
 
 # ---------------------------------------------------------------- suppliers
@@ -2096,10 +2443,19 @@ def add_supplier():
         return redirect(url_for(return_endpoint))
 
     try:
+        # Lets a supplier that's been on hand for a while be logged as of
+        # when they were actually onboarded — blank defaults to today.
+        added_on = parse_past_date(
+            request.form.get("added_on"), "Date added")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for(return_endpoint))
+
+    try:
         execute(
-            """INSERT INTO suppliers (supplier_name, contact_person, phone, email, address, notes)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
-            (supplier_name, contact_person, phone, email, address, notes),
+            """INSERT INTO suppliers (supplier_name, contact_person, phone, email, address, notes, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (supplier_name, contact_person, phone, email, address, notes, added_on),
         )
         notify_all(["materials"])
         log_action("add_supplier", target=supplier_name,
@@ -2120,6 +2476,17 @@ def edit_supplier():
     return_endpoint = "admin.suppliers" if return_to == "suppliers" else "admin.materials"
 
     supplier_id = request.form.get("supplier_id")
+
+    # Same reasoning as edit_material()'s existence check: without this,
+    # a stale/tampered supplier_id makes the UPDATE below match zero
+    # rows while still flashing success, as if it had actually landed.
+    existing = query(
+        "SELECT 1 FROM suppliers WHERE supplier_id = %s", (supplier_id,), fetchone=True
+    )
+    if not existing:
+        flash("That supplier no longer exists.", "error")
+        return redirect(url_for(return_endpoint))
+
     supplier_name = request.form.get("supplier_name", "").strip()
     contact_person = request.form.get("contact_person", "").strip() or None
     phone = request.form.get("phone", "").strip() or None

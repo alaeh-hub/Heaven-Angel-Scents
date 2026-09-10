@@ -168,7 +168,7 @@
           {% for s in rows %}
           <tr
             data-search="{{ (s.supplier_name ~ ' ' ~ (s.contact_person or '') ~ ' ' ~ (s.phone or '') ~ ' ' ~ (s.email or ''))|lower }}">
-            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+            <td class="item-name mobile-inline-anchor" data-label="Supplier">{{ s.supplier_name }}</td>
             <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
             <td data-label="Reach">
               <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
@@ -178,7 +178,7 @@
             <td class="num mono" data-label="Total spend">{{ s.total_spent|peso }}</td>
             <td class="mono text-soft" data-label="Last purchase">{{ s.last_purchase_at.strftime('%b %d, %Y') if
               s.last_purchase_at else '—' }}</td>
-            <td data-label="" class="sup-col-actions">
+            <td data-label="" class="sup-col-actions mobile-inline-action">
               <div class="inline-form">
                 {% if s.materials_supplied %}
                 <button type="button" class="btn btn-ghost btn-sm" onclick="openSupplyHistory(this)"
@@ -256,6 +256,12 @@
       <div class="field">
         <label for="notes">Notes <span class="text-faint">(optional)</span></label>
         <input type="text" id="notes" name="notes" maxlength="255">
+      </div>
+      <div class="field">
+        <label for="added_on">Date added <span class="text-faint">(optional — logging a supplier from
+            before)</span></label>
+        <input type="date" id="added_on" name="added_on" max="{{ today }}">
+        <div class="help">Leave blank to use today's date.</div>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="addSupplierCancelBtn">Cancel</button>

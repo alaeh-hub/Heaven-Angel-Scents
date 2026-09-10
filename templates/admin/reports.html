@@ -265,7 +265,7 @@
   </form>
 </div>
 
-<div class="grid grid-4 stack">
+<div class="grid grid-3 stack">
   <div class="card stat-tile">
     <div class="stat-label">Total units sold</div>
     <div class="stat-value" id="totalUnits">—</div>
@@ -277,14 +277,26 @@
     <div class="stat-foot">combined, at each branch's actual selling price</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Total capital</div>
-    <div class="stat-value" id="totalCapital">—</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">from raw materials →</a></div>
-  </div>
-  <div class="card stat-tile">
     <div class="stat-label">Net profit</div>
     <div class="stat-value" id="totalProfit">—</div>
-    <div class="stat-foot" id="totalProfitFoot">revenue minus material cost</div>
+    <div class="stat-foot" id="totalProfitFoot">revenue minus cost of goods</div>
+  </div>
+</div>
+
+<!-- Capital (cost of goods produced) and raw materials bought sit side by
+     side deliberately — the whole point of splitting them is to compare
+     what's gone into produced goods against what's been spent buying the
+     ingredients for them. -->
+<div class="grid grid-2 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">Total capital (cost of goods)</div>
+    <div class="stat-value" id="totalCapital">—</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.formulas') }}" class="text-soft">from logged formulas →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Raw materials bought</div>
+    <div class="stat-value" id="totalRawMaterials">—</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">for comparison →</a></div>
   </div>
 </div>
 
@@ -307,7 +319,7 @@
   <div class="card chart-card">
     <div class="card-header" style="padding:0 0 14px; border:none;">
       <h2>Revenue vs. Capital</h2>
-      <span class="hint">capital invested vs. revenue earned, all-time</span>
+      <span class="hint">cost of goods vs. raw materials bought vs. revenue earned, all-time</span>
     </div>
     <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
   </div>
@@ -482,6 +494,7 @@
         document.getElementById('totalUnits').textContent = data.totals.units;
         document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
         document.getElementById('totalCapital').textContent = formatPeso(data.financials.capital);
+        document.getElementById('totalRawMaterials').textContent = formatPeso(data.financials.raw_materials_purchased);
 
         const profitEl = document.getElementById('totalProfit');
         const profitValue = Number(data.financials.profit);
@@ -489,7 +502,7 @@
         profitEl.classList.remove('success', 'danger');
         profitEl.classList.add(profitValue >= 0 ? 'success' : 'danger');
         document.getElementById('totalProfitFoot').textContent =
-          (profitValue >= 0 ? 'revenue minus material cost' : 'running at a loss this window') +
+          (profitValue >= 0 ? 'revenue minus cost of goods' : 'running at a loss this window') +
           ' \u00b7 ' + (TREND_WINDOW_LABELS[trendGranularity] || '');
 
         charts.variant = new Chart(document.getElementById('variantChart'), {
@@ -522,10 +535,10 @@
         charts.capital = new Chart(document.getElementById('capitalChart'), {
           type: 'bar',
           data: {
-            labels: ['Capital invested', 'Total revenue'],
+            labels: ['Capital (cost of goods)', 'Raw materials bought', 'Total revenue'],
             datasets: [{
-              data: [data.financials.capital, data.totals.revenue],
-              backgroundColor: [themeColor('--warning'), themeColor('--accent')],
+              data: [data.financials.capital, data.financials.raw_materials_purchased, data.totals.revenue],
+              backgroundColor: [themeColor('--warning'), themeColor('--ink-soft'), themeColor('--accent')],
               borderRadius: 4,
             }]
           },
@@ -541,7 +554,7 @@
         charts.profit = new Chart(document.getElementById('profitChart'), {
           type: 'bar',
           data: {
-            labels: ['Revenue', 'Material cost', 'Profit'],
+            labels: ['Revenue', 'Cost of goods', 'Profit'],
             datasets: [{
               data: [data.financials.revenue_windowed, data.financials.materials_cost, data.financials.profit],
               backgroundColor: [themeColor('--accent'), themeColor('--danger'), profitValue >= 0 ? themeColor('--success') : themeColor('--danger')],

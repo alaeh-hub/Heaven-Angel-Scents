@@ -4,13 +4,15 @@ Centralizing form-value parsing here means every route gets the same
 "bad input -> friendly flash message" behavior instead of a raw
 ValueError bubbling up into an unhandled 500.
 """
+import decimal
 import hashlib
 import hmac
 import re
 import secrets
 import string
+from datetime import date, datetime
 
-from flask import current_app
+from flask import current_app, request, session
 
 # Packaging sizes a product SKU can be. Kept here (rather than duplicated
 # in admin.py/branch.py/reports.py) so the one allow-list is what every
@@ -96,10 +98,27 @@ def parse_non_negative_int(raw, field_label="Value"):
 
 
 def parse_non_negative_decimal(raw, field_label="Value"):
-    """Parse a form value as a non-negative price/decimal."""
+    """Parse a form value as a non-negative price/decimal.
+
+    Returns a decimal.Decimal, not a float — money shouldn't round-trip
+    through binary floating point on its way from a form field into a
+    DECIMAL database column (a plain `float(str(raw))` can turn e.g.
+    "19.99" into something that no longer prints back as exactly
+    "19.99" once summed with other values).
+
+    Explicitly rejects NaN/Infinity via is_finite() rather than relying
+    on the < 0 check below to catch them: neither NaN nor Infinity is
+    ever "< 0", so a value of "nan" or "inf" would otherwise sail
+    straight through as a seemingly valid, non-negative price — and
+    unlike float, comparing a Decimal NaN with < raises
+    decimal.InvalidOperation, which would surface as a raw 500 instead
+    of the friendly ValidationError every other bad input gets here.
+    """
     try:
-        value = float(str(raw).strip())
-    except (TypeError, ValueError):
+        value = decimal.Decimal(str(raw).strip())
+    except (TypeError, ValueError, decimal.InvalidOperation):
+        raise ValidationError(f"{field_label} must be a valid number.")
+    if not value.is_finite():
         raise ValidationError(f"{field_label} must be a valid number.")
     if value < 0:
         raise ValidationError(f"{field_label} can't be negative.")
@@ -107,10 +126,16 @@ def parse_non_negative_decimal(raw, field_label="Value"):
 
 
 def parse_positive_decimal(raw, field_label="Value"):
-    """Parse a form value as a strictly positive (> 0) decimal."""
+    """Parse a form value as a strictly positive (> 0) decimal.Decimal.
+
+    See parse_non_negative_decimal() above for why this returns Decimal
+    and explicitly rejects NaN/Infinity rather than just checking <= 0.
+    """
     try:
-        value = float(str(raw).strip())
-    except (TypeError, ValueError):
+        value = decimal.Decimal(str(raw).strip())
+    except (TypeError, ValueError, decimal.InvalidOperation):
+        raise ValidationError(f"{field_label} must be a valid number.")
+    if not value.is_finite():
         raise ValidationError(f"{field_label} must be a valid number.")
     if value <= 0:
         raise ValidationError(f"{field_label} must be greater than zero.")
@@ -222,10 +247,77 @@ def parse_phone(raw, field_label="Phone number"):
     return value
 
 
+def parse_past_date(raw, field_label="Date"):
+    """Parse an optional 'YYYY-MM-DD' date from a <input type="date">
+    field — used to backdate a record (Record Sale, Add Material, Add
+    Supplier) to when it actually happened instead of when it was typed
+    in. Blank defaults to today, matching the old behavior of just
+    stamping "now". Combined with the current time-of-day rather than
+    midnight, so multiple records backdated to the same past date still
+    sort by entry order. Future dates are rejected — this is only ever
+    for logging something that already happened.
+    """
+    raw = str(raw or "").strip()
+    today = date.today()
+    if not raw:
+        picked = today
+    else:
+        try:
+            picked = datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValidationError(f"{field_label} isn't a valid date.")
+        if picked > today:
+            raise ValidationError(f"{field_label} can't be in the future.")
+    return datetime.combine(picked, datetime.now().time())
+
+
 def generate_temp_password(length=12):
     """Generate a random temporary password for admin-triggered resets."""
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+# ---------------------------------------------------------------------------
+# Single-use form submission tokens.
+#
+# Guards a "create a record" form (Record Sale, Request Stock, ...) against
+# a double-submit — a double-click before the page redirects, a browser
+# back-button resubmit, or a client retrying a request whose response was
+# lost — turning into two real writes (two sale rows quietly double-
+# charging a customer and double-decrementing stock, two delivery
+# requests, etc). Row-locking (see db.transaction()) already stops two
+# *concurrent* requests from corrupting shared state, but does nothing
+# about one browser legitimately sending the same "record this sale" POST
+# twice in a row — each one is a perfectly valid write on its own.
+#
+# Usage: call issue_form_token(key) every time the form is rendered (GET)
+# and put the result in a hidden field named "form_token"; call
+# consume_form_token(key) as the very first thing the POST handler does,
+# before any other validation, and stop (flash + redirect back to the GET
+# route, which issues a fresh token) if it returns False.
+# ---------------------------------------------------------------------------
+def issue_form_token(key):
+    """Generate a fresh single-use token for the form named `key`, stash
+    it in the session, and return it to embed as a hidden field.
+    """
+    token = secrets.token_urlsafe(16)
+    session[f"_form_token:{key}"] = token
+    return token
+
+
+def consume_form_token(key):
+    """Check the submitted form's token against the one issue_form_token()
+    stashed in the session, and remove it from the session either way —
+    so a given token can only ever be accepted once, whether it matched
+    or not. Every route calling this must re-render the form (and
+    therefore call issue_form_token() again) on every exit path, success
+    or failure, so the next attempt always carries a fresh token.
+    """
+    expected = session.pop(f"_form_token:{key}", None)
+    submitted = request.form.get("form_token", "")
+    if not expected or not submitted:
+        return False
+    return hmac.compare_digest(expected, submitted)
 
 
 # ---------------------------------------------------------------------------

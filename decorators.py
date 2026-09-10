@@ -18,13 +18,20 @@ def _current_account_or_none():
     Without this, an admin deactivating someone — or a forced password
     reset — wouldn't take effect until that user's cookie happened to
     expire or they logged out on their own. This makes both take
-    effect on the very next request instead.
+    effect on the very next request instead. branch_id/branch_name are
+    included here (and re-synced onto the session below) for the same
+    reason: if a Branch account's branch_id is ever reassigned, an
+    already-signed-in session should immediately start reading/writing
+    the new branch's data instead of the stale one from login time.
     """
     user_id = session.get("user_id")
     if user_id is None:
         return None
     return query(
-        "SELECT user_id, role, is_active, must_change_password FROM users WHERE user_id = %s",
+        """SELECT u.user_id, u.role, u.is_active, u.must_change_password,
+                  u.branch_id, b.branch_name
+           FROM users u LEFT JOIN branches b ON u.branch_id = b.branch_id
+           WHERE u.user_id = %s""",
         (user_id,), fetchone=True,
     )
 
@@ -44,6 +51,12 @@ def _require_session(required_role=None):
         session.clear()
         flash("This account is no longer active. Please contact HQ.", "error")
         return redirect(url_for("auth.login"))
+
+    # Keep the session's branch in sync with the database on every
+    # request, same reasoning as the role/is_active re-check above —
+    # see _current_account_or_none()'s docstring.
+    session["branch_id"] = account["branch_id"]
+    session["branch_name"] = account["branch_name"]
 
     if required_role is not None and account["role"] != required_role:
         abort(403)

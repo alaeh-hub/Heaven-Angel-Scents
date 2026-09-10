@@ -50,13 +50,13 @@
                 {{ m.product_thumb(row.image_path, row.item_name) }}
                 <div>
                   <div class="item-name">{{ row.item_name }}</div>
-                  <div class="item-sub mono">{{ row.sku }}</div>
+                  <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit"> · {{ row.unit }}</span></div>
                   <div class="item-sub item-sub-badge">{{ m.variant_badge(row.variant) }}</div>
                 </div>
               </div>
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
-            <td class="mono text-soft" data-label="Unit">{{ row.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit">{{ row.unit }}</td>
             <td class="num mono" data-label="Reference price">{{ row.price|peso }}</td>
             <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
           </tr>

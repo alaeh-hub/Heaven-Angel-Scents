@@ -65,15 +65,15 @@
   --info: var(--accent);
   --info-soft: var(--accent-soft);
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 18px;
+  --radius-sm: 0.375rem;
+  --radius: 0.625rem;
+  --radius-lg: 1.125rem;
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.06), 0 12px 28px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16), 0 4px 14px rgba(15, 23, 42, 0.1);
-  --sidebar-w: 264px;
-  --sidebar-w-collapsed: 84px;
+  --sidebar-w: 16.5rem;
+  --sidebar-w-collapsed: 5.25rem;
 
   color-scheme: light;
 }
@@ -188,6 +188,28 @@
   box-sizing: border-box;
 }
 
+/* Fluid root scale — everything below (sidebar width, spacing,
+   headings, icons, badges, form fields, ...) was converted from a flat
+   desktop design to rem, all relative to *this* element's font-size
+   rather than body's. Left alone, that just means every wide screen
+   gets the exact same fixed sizes regardless of whether "wide" is a
+   13" laptop panel or a 27" monitor — the whole design was tuned at
+   one resolution and stamped onto all of them. Scoped to 761px+ so the
+   already-tuned mobile layout below that is untouched; from there it
+   eases down smoothly toward the mobile handoff width and back up to
+   its original full size on a big display, with no breakpoint "jump"
+   in between — same idea as fluid type on a marketing site, just
+   applied to the one value everything else scales off of. rem+vw (not
+   plain vw) so a visitor's own browser zoom/font-size preference still
+   nudges the result instead of being overridden by it.
+   761px (14px) -> 1600px+ (16px, the original design size, unchanged
+   above this point). */
+@media (min-width: 761px) {
+  html {
+    font-size: clamp(0.875rem, 0.7616rem + 0.2384vw, 1rem);
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -195,16 +217,15 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 .product-thumb {
-  width: 40px;
-  height: 40px;
+  width: 2.5rem;
+  height: 2.5rem;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   border: var(--border-width-strong) solid var(--border-strong);
   display: block;
   flex-shrink: 0;
@@ -227,12 +248,12 @@ body {
 .item-thumb-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .product-thumb-empty svg {
-  width: 20px;
-  height: 20px;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 h1,
@@ -254,7 +275,7 @@ a {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 0.1875rem;
 }
 
 /* Off-screen until focused, then dropped into view at the top-left —
@@ -263,21 +284,21 @@ a {
    content. See base.html for the link and #main-content it targets. */
 .skip-link {
   position: absolute;
-  top: -48px;
-  left: 12px;
+  top: -3rem;
+  left: 0.75rem;
   z-index: 10000;
-  padding: 10px 16px;
+  padding: 0.625rem 1rem;
   background: var(--accent);
   color: var(--gold-contrast);
   border-radius: var(--radius-sm);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 0.8125rem;
   box-shadow: var(--shadow-md);
   transition: top 0.15s ease;
 }
 
 .skip-link:focus {
-  top: 12px;
+  top: 0.75rem;
 }
 
 .btn,
@@ -389,7 +410,7 @@ th.num {
 }
 
 .sidebar::-webkit-scrollbar {
-  width: 6px;
+  width: 0.375rem;
 }
 
 .sidebar::-webkit-scrollbar-track {
@@ -398,7 +419,7 @@ th.num {
 
 .sidebar::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 99px;
+  border-radius: 6.1875rem;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
@@ -406,7 +427,7 @@ th.num {
 }
 
 .brand {
-  padding: 24px 22px 20px;
+  padding: 1.5rem 1.375rem 1.25rem;
   position: relative;
   /* Same slow+delayed reveal choreography as .brand-wordmark/.brand-sub
      below — without this, left/right padding snapped instantly the
@@ -421,8 +442,8 @@ th.num {
 .brand::after {
   content: "";
   position: absolute;
-  left: 22px;
-  right: 22px;
+  left: 1.375rem;
+  right: 1.375rem;
   bottom: 0;
   height: 1px;
   background: var(--brand-gold);
@@ -477,10 +498,10 @@ th.num {
    .brand-wordmark) that both directions transition at the same fast
    speed — see the collapsed-rail rule's own comment. */
 .brand-logo {
-  width: 38px;
-  height: 38px;
+  width: 2.375rem;
+  height: 2.375rem;
   flex-shrink: 0;
-  border-radius: 11px;
+  border-radius: 0.6875rem;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -527,7 +548,7 @@ th.num {
   display: block;
   width: auto;
   height: auto;
-  max-width: 150px;
+  max-width: 9.375rem;
   flex-shrink: 0;
   transition: max-width 0.18s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
     opacity 0.14s ease 0.05s;
@@ -539,25 +560,25 @@ th.num {
    text. No collapse behavior to speak of there (the login page has no
    sidebar rail), so this is just a plain size override. */
 .brand-wordmark-lg {
-  height: 60px;
-  max-width: 220px;
+  height: 10rem;
+  max-width: 22rem;
 }
 
 .brand-sub {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
+  gap: 0.375rem;
+  font-size: 0.6563rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--ink-faint);
-  margin-top: 10px;
+  margin-top: 0.625rem;
   line-height: 1.6;
   font-weight: 600;
   min-width: 0;
   overflow: hidden;
   opacity: 1;
-  max-height: 22px;
+  max-height: 1.375rem;
   /* Same reveal choreography as .brand-wordmark just above: slow + delayed
      coming out, fast + immediate going in (collapsed-rail rule below). */
   transition: max-height 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
@@ -574,8 +595,8 @@ th.num {
 
 .brand-sub::before {
   content: "";
-  width: 5px;
-  height: 5px;
+  width: 0.3125rem;
+  height: 0.3125rem;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--success);
@@ -611,8 +632,8 @@ th.num {
      against .brand's real (possibly gutter-shrunk) box on every frame,
      so it centers the 38px logo correctly either way. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand {
-    padding-left: calc(50% - 19px);
-    padding-right: calc(50% - 19px);
+    padding-left: calc(50% - 1.1875rem);
+    padding-right: calc(50% - 1.1875rem);
     /* Fast + immediate (hide direction) — see the base .brand rule for
        the slower, delayed reveal-direction transition this overrides. */
     transition: padding 0.1s cubic-bezier(0.4, 0, 0.2, 1);
@@ -626,7 +647,7 @@ th.num {
      leave the rail looking briefly empty once .brand-wordmark below
      has already faded out) reads better than matching their delay. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-logo {
-    max-width: 38px;
+    max-width: 2.375rem;
     opacity: 1;
     transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
       opacity 0.07s ease;
@@ -650,20 +671,20 @@ th.num {
 }
 
 .nav-group {
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
 }
 
 .nav-group:not(:last-of-type) {
   position: relative;
-  padding-bottom: 14px;
+  padding-bottom: 0.875rem;
 }
 
 .nav-group:not(:last-of-type)::after {
   content: "";
   display: block;
   position: absolute;
-  left: 22px;
-  right: 22px;
+  left: 1.375rem;
+  right: 1.375rem;
   bottom: 0;
   height: 1px;
   background: var(--border);
@@ -671,16 +692,16 @@ th.num {
 }
 
 .nav-label {
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--ink-faint);
-  padding: 6px 10px 8px;
+  padding: 0.375rem 0.625rem 0.5rem;
   font-weight: 700;
   overflow: hidden;
   white-space: nowrap;
   opacity: 1;
-  max-height: 28px;
+  max-height: 1.75rem;
   /* Same slow+delayed-out/fast+immediate-in choreography as the brand
      wordmark above — see the collapsed-rail rule further down. */
   transition: max-height 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
@@ -691,11 +712,11 @@ th.num {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6.5px 10px;
+  gap: 0.625rem;
+  padding: 0.4063rem 0.625rem;
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   font-weight: 500;
   margin-bottom: 2px;
   position: relative;
@@ -726,7 +747,7 @@ th.num {
    Reserves space for it up front instead. Collapsed rail doesn't need
    the same guard: font-size: 0 there empties the label out regardless. */
 .nav-link:has(.nav-badge) {
-  padding-right: 34px;
+  padding-right: 2.125rem;
 }
 
 /* Icon grows a touch when the rail is collapsed (see the collapsed-rail
@@ -735,12 +756,12 @@ th.num {
    when the label returns, in step with .nav-link's own padding/gap
    transition above. */
 .nav-link svg {
-  width: 16px;
-  height: 16px;
-  padding: 6px;
+  width: 1rem;
+  height: 1rem;
+  padding: 0.375rem;
   box-sizing: content-box;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border-radius: 7px;
+  border-radius: 0.4375rem;
   flex-shrink: 0;
   opacity: 0.8;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease,
@@ -777,9 +798,9 @@ th.num {
   left: -1px;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
+  width: 0.1875rem;
   height: 56%;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 0.25rem 0.25rem 0;
   background: var(--accent);
   /* Reveal-direction transition for the collapsed-rail override below
      (hide direction there is fast + immediate) — same choreography as
@@ -806,18 +827,18 @@ th.num {
 .nav-badge {
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 0.625rem;
   transform: translateY(-50%);
   flex-shrink: 0;
   background: var(--red);
   color: #fff;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   font-weight: 700;
   line-height: 1;
-  padding: 3px 6.5px;
-  border-radius: 99px;
-  min-width: 18px;
+  padding: 0.1875rem 0.4063rem;
+  border-radius: 6.1875rem;
+  min-width: 1.125rem;
   text-align: center;
   box-shadow: 0 0 0 2px var(--surface);
   transition: font-size 0.14s ease 0.04s, padding 0.14s ease 0.04s,
@@ -871,7 +892,7 @@ th.num {
      real box on every frame instead, so it centers correctly either
      way. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link {
-    padding: 8px calc(50% - 16px);
+    padding: 0.5rem calc(50% - 1rem);
     font-size: 0;
     transition: padding 0.09s cubic-bezier(0.4, 0, 0.2, 1),
       font-size 0.07s ease;
@@ -903,9 +924,9 @@ th.num {
      slightly larger icon fills it better than the same size it is
      next to a label. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link svg {
-    width: 18px;
-    height: 18px;
-    padding: 7px;
+    width: 1.125rem;
+    height: 1.125rem;
+    padding: 0.4375rem;
     transition: width 0.09s cubic-bezier(0.4, 0, 0.2, 1),
       height 0.09s cubic-bezier(0.4, 0, 0.2, 1),
       padding 0.09s cubic-bezier(0.4, 0, 0.2, 1);
@@ -913,15 +934,15 @@ th.num {
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-badge {
     top: 2px;
-    right: 10px;
+    right: 0.625rem;
     /* Explicit translateY(0) rather than leaving transform to fall back
        to its unset value — animating between two translateY() calls
        interpolates smoothly; animating to/from "none" is the one case
        that doesn't reliably ease the same way. */
     transform: translateY(0);
-    font-size: 9px;
-    min-width: 14px;
-    padding: 1px 4px;
+    font-size: 0.5625rem;
+    min-width: 0.875rem;
+    padding: 1px 0.25rem;
     transition: font-size 0.08s ease, padding 0.08s ease,
       min-width 0.08s ease, top 0.08s ease, right 0.08s ease,
       transform 0.08s ease;
@@ -930,7 +951,7 @@ th.num {
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 14px 14px 16px;
+  padding: 0.875rem 0.875rem 1rem;
   border-top: 1px solid var(--border);
   box-shadow: 0 -8px 16px -14px rgba(15, 23, 42, 0.16);
   position: sticky;
@@ -942,9 +963,9 @@ th.num {
 .user-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 9px 10px;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+  padding: 0.5625rem 0.625rem;
   border-radius: var(--radius);
   border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface-2);
@@ -962,8 +983,8 @@ th.num {
 }
 
 .avatar {
-  width: 34px;
-  height: 34px;
+  width: 2.125rem;
+  height: 2.125rem;
   border-radius: 50%;
   background: var(--brand-gold);
   color: var(--gold-contrast);
@@ -971,20 +992,20 @@ th.num {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-family: 'Manrope', sans-serif;
   flex-shrink: 0;
   box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 calc(2px + var(--border-width-strong)) var(--border-strong);
 }
 
 .user-name {
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   font-weight: 600;
   line-height: 1.3;
 }
 
 .user-role {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--ink-faint);
   margin-top: 1px;
 }
@@ -997,18 +1018,18 @@ th.num {
   overflow: hidden;
   white-space: nowrap;
   opacity: 1;
-  max-width: 160px;
+  max-width: 10rem;
   transition: max-width 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
     opacity 0.13s ease 0.05s;
 }
 
 .logout-link {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-soft);
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .logout-link:hover {
@@ -1017,7 +1038,7 @@ th.num {
 
 .footer-actions {
   border-top: 1px solid var(--border);
-  padding-top: 8px;
+  padding-top: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1026,11 +1047,11 @@ th.num {
 .footer-action {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7.5px 8px;
+  gap: 0.5625rem;
+  padding: 0.4688rem 0.5rem;
   margin: 0 -2px;
   border-radius: var(--radius-sm);
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   font-weight: 500;
   color: var(--ink-soft);
   /* Reveal direction for the collapsed-rail padding override further
@@ -1072,18 +1093,18 @@ th.num {
   overflow: hidden;
   white-space: nowrap;
   opacity: 1;
-  max-width: 140px;
+  max-width: 8.75rem;
   transition: max-width 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
     opacity 0.14s ease 0.05s;
 }
 
 .footer-action svg {
-  width: 14px;
-  height: 14px;
-  padding: 5px;
+  width: 0.875rem;
+  height: 0.875rem;
+  padding: 0.3125rem;
   box-sizing: content-box;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border-radius: 6px;
+  border-radius: 0.375rem;
   flex-shrink: 0;
   opacity: 0.85;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.15s ease,
@@ -1143,8 +1164,8 @@ th.num {
      sidebar the instant collapse started rather than easing with the
      rest of the rail. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .user-chip {
-    padding-left: calc(50% - 18px);
-    padding-right: calc(50% - 18px);
+    padding-left: calc(50% - 1.125rem);
+    padding-right: calc(50% - 1.125rem);
     /* The chip's own card look (background + border) only makes sense
        around the name/role text next to the avatar — with that text
        gone, a bordered box this narrow just reads as an ill-fitting
@@ -1183,7 +1204,7 @@ th.num {
      scrollbar-gutter reservation shrinks the real box below that — see
      the .brand comment above for the fuller explanation. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action {
-    padding: 7.5px calc(50% - 12px);
+    padding: 0.4688rem calc(50% - 0.75rem);
     transition: padding 0.1s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -1196,9 +1217,9 @@ th.num {
 
   /* Same "bare icon reads bigger" bump as .nav-link svg above. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action svg {
-    width: 16px;
-    height: 16px;
-    padding: 6px;
+    width: 1rem;
+    height: 1rem;
+    padding: 0.375rem;
     transition: width 0.09s cubic-bezier(0.4, 0, 0.2, 1),
       height 0.09s cubic-bezier(0.4, 0, 0.2, 1),
       padding 0.09s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1214,7 +1235,7 @@ th.num {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 17px 32px;
+  padding: 1.0625rem 2rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   box-shadow: 0 2px 14px -10px rgba(15, 23, 42, 0.12);
@@ -1226,21 +1247,21 @@ th.num {
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 0.875rem;
 }
 
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .clock-chip {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 13px 7px 11px;
-  border-radius: 999px;
+  gap: 0.4375rem;
+  padding: 0.4375rem 0.8125rem 0.4375rem 0.6875rem;
+  border-radius: 62.4375rem;
   border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
@@ -1248,14 +1269,14 @@ th.num {
 }
 
 .clock-chip svg {
-  width: 14px;
-  height: 14px;
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--ink-faint);
   flex-shrink: 0;
 }
 
 .ph-clock {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--ink-soft);
   white-space: nowrap;
@@ -1263,7 +1284,7 @@ th.num {
 
 .topbar-divider {
   width: 1px;
-  height: 22px;
+  height: 1.375rem;
   background: var(--border);
   flex-shrink: 0;
   margin: 0 1px;
@@ -1271,8 +1292,8 @@ th.num {
 
 .theme-toggle {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 2.375rem;
+  height: 2.375rem;
   border-radius: 50%;
   border: var(--border-width-strong) solid var(--border-strong);
   background: var(--surface);
@@ -1292,8 +1313,8 @@ th.num {
 
 .theme-toggle svg {
   position: absolute;
-  width: 17px;
-  height: 17px;
+  width: 1.0625rem;
+  height: 1.0625rem;
   transition: opacity 0.3s ease, transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -1319,40 +1340,40 @@ th.num {
 
 .theme-toggle-fixed {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: 1.25rem;
+  right: 1.25rem;
   z-index: 20;
 }
 
 .topbar h1 {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 800;
 }
 
 .topbar .eyebrow {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 11px;
+  gap: 0.4375rem;
+  font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--ink-faint);
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
   font-weight: 700;
 }
 
 .topbar .eyebrow::before {
   content: "";
-  width: 3px;
-  height: 11px;
+  width: 0.1875rem;
+  height: 0.6875rem;
   border-radius: 2px;
   flex-shrink: 0;
   background: var(--brand-gold);
 }
 
 .content {
-  padding: 28px 32px 60px;
-  max-width: 1180px;
+  padding: 1.75rem 2rem 3.75rem;
+  max-width: 73.75rem;
 }
 
 /* .main fills the rest of the flex row next to .sidebar, and .content's
@@ -1381,31 +1402,31 @@ th.num {
 }
 
 .content>*+* {
-  margin-top: 22px;
+  margin-top: 1.375rem;
 }
 
 .flashes {
   position: fixed;
-  top: 18px;
-  right: 18px;
+  top: 1.125rem;
+  right: 1.125rem;
   z-index: 9999;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: min(360px, calc(100vw - 36px));
+  gap: 0.625rem;
+  width: min(22.5rem, calc(100vw - 2.25rem));
   pointer-events: none;
 }
 
 .flash {
   pointer-events: auto;
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   font-weight: 500;
   border: 1px solid transparent;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   background: var(--surface);
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.1);
   animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -1431,8 +1452,8 @@ th.num {
   from {
     opacity: 1;
     transform: translateY(0) scale(1);
-    max-height: 60px;
-    margin-bottom: 10px;
+    max-height: 3.75rem;
+    margin-bottom: 0.625rem;
   }
 
   to {
@@ -1471,29 +1492,29 @@ th.num {
 }
 
 .card-pad {
-  padding: 22px 24px;
+  padding: 1.375rem 1.5rem;
 }
 
 .card-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 18px 22px;
+  padding: 1.125rem 1.375rem;
   border-bottom: var(--border-width-strong) solid var(--border-strong);
 }
 
 .card-header h2 {
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .card-header .hint {
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   color: var(--ink-faint);
 }
 
 .grid {
   display: grid;
-  gap: 18px;
+  gap: 1.125rem;
 }
 
 /* Every dashboard chart card sits in a grid cell, and every chart card
@@ -1554,7 +1575,7 @@ th.num {
 }
 
 .stack {
-  margin-bottom: 22px;
+  margin-bottom: 1.375rem;
 }
 
 .bento-grid {
@@ -1562,7 +1583,7 @@ th.num {
   grid-template-columns: repeat(4, 1fr);
   grid-auto-rows: minmax(120px, auto);
   grid-auto-flow: dense;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .bento-grid .stat-tile {
@@ -1585,13 +1606,13 @@ th.num {
 }
 
 .bento-hero .stat-value {
-  font-size: 40px;
+  font-size: 2.5rem;
 }
 
 .bento-hero>div:first-child {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .bento-hero .stat-icon {
@@ -1636,23 +1657,23 @@ th.num {
 }
 
 .stat-tile {
-  padding: 20px 22px;
+  padding: 1.25rem 1.375rem;
 }
 
 .stat-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.625rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
+  margin-bottom: 0.875rem;
   flex-shrink: 0;
 }
 
 .stat-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 /* stat-icon-blue/-violet keep their old names (many templates already
@@ -1686,7 +1707,7 @@ th.num {
 .stat-tile:has(>.stat-icon) {
   display: grid;
   grid-template-columns: auto 1fr;
-  column-gap: 10px;
+  column-gap: 0.625rem;
 }
 
 .stat-tile:has(>.stat-icon) .stat-icon {
@@ -1705,27 +1726,27 @@ th.num {
 .stat-tile:has(>.stat-icon) .stat-value {
   grid-row: 2;
   grid-column: 1 / -1;
-  margin-top: 12px;
+  margin-top: 0.75rem;
 }
 
 .stat-tile:has(>.stat-icon) .stat-foot {
   grid-row: 3;
   grid-column: 1 / -1;
-  margin-top: 6px;
+  margin-top: 0.375rem;
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-faint);
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 
 .stat-value {
   font-family: 'Manrope', sans-serif;
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -1744,19 +1765,19 @@ th.num {
 }
 
 .stat-foot {
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   color: var(--ink-faint);
-  margin-top: 6px;
+  margin-top: 0.375rem;
 }
 
 .fill-track {
   position: relative;
-  height: 7px;
+  height: 0.4375rem;
   width: 100%;
-  min-width: 64px;
+  min-width: 4rem;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 99px;
+  border-radius: 6.1875rem;
   overflow: hidden;
 }
 
@@ -1764,7 +1785,7 @@ th.num {
   position: absolute;
   inset: 0 auto 0 0;
   height: 100%;
-  border-radius: 99px;
+  border-radius: 6.1875rem;
   background: var(--brand-gold);
 }
 
@@ -1775,7 +1796,7 @@ th.num {
 .fill-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .fill-row .fill-track {
@@ -1783,10 +1804,10 @@ th.num {
 }
 
 .fill-row .fill-qty {
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   color: var(--ink-soft);
   white-space: nowrap;
-  min-width: 58px;
+  min-width: 3.625rem;
   text-align: right;
 }
 
@@ -1799,19 +1820,19 @@ th.num {
    real job of separating the header/toolbar from the grid. */
 .table-wrap {
   overflow: auto;
-  max-height: 520px;
+  max-height: 32.5rem;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
 
 .table-wrap::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
 }
 
 .table-wrap::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 99px;
+  border-radius: 6.1875rem;
 }
 
 .table-wrap::-webkit-scrollbar-track {
@@ -1854,17 +1875,17 @@ th.num {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.8px;
+  font-size: 0.8625rem;
 }
 
 th {
   text-align: left;
-  font-size: 11px;
+  font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-faint);
   font-weight: 700;
-  padding: 10px 22px;
+  padding: 0.625rem 1.375rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1878,7 +1899,7 @@ th {
 }
 
 td {
-  padding: 14px 22px;
+  padding: 0.875rem 1.375rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -1908,16 +1929,16 @@ tbody tr:hover {
    for single-line rows, so stacked content reads as cramped without
    the extra breathing room and line-height here. */
 .table-airy th {
-  padding: 13px 24px;
+  padding: 0.8125rem 1.5rem;
 }
 
 .table-airy td {
-  padding: 17px 24px;
+  padding: 1.0625rem 1.5rem;
   line-height: 1.55;
 }
 
 .table-airy .item-name {
-  margin-bottom: 3px;
+  margin-bottom: 0.1875rem;
 }
 
 td.num,
@@ -1933,11 +1954,11 @@ th.num {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .item-sub {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-faint);
 }
 
@@ -1952,6 +1973,16 @@ th.num {
    .table-wrap td:has(.item-sub) already gives that class further
    down, instead of duplicating those rules for a second selector. */
 .item-sub-badge {
+  display: none;
+}
+
+/* Same idea as .item-sub-badge just above, but for a Unit column: a
+   mobile-only duplicate tacked onto the end of the SKU/code line
+   ("HA1-85ML · 85ml") instead of getting a stacked row of its own.
+   Hidden here (desktop keeps the real Unit column, unduplicated);
+   unhidden in the max-width: 680px block further down, where the
+   real column picks up .mobile-fold to disappear in its place. */
+.item-sub-unit {
   display: none;
 }
 
@@ -1970,10 +2001,10 @@ th.num {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 99px;
-  font-size: 11.5px;
+  gap: 0.3125rem;
+  padding: 0.1875rem 0.625rem;
+  border-radius: 6.1875rem;
+  font-size: 0.7188rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1994,8 +2025,8 @@ th.num {
 
 .badge::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: currentColor;
 }
@@ -2046,7 +2077,7 @@ th.num {
   text-overflow: ellipsis;
   display: inline-block;
   vertical-align: bottom;
-  max-width: 130px;
+  max-width: 8.125rem;
 }
 
 /* Male/Female/Unisex is a 3-way identity category, not a status — kept
@@ -2073,8 +2104,8 @@ th.num {
 .tag-dot {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 0.375rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -2083,8 +2114,8 @@ th.num {
 
 .tag-dot::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: currentColor;
   flex-shrink: 0;
@@ -2106,10 +2137,10 @@ th.num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 9px 16px;
+  gap: 0.4375rem;
+  padding: 0.5625rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
@@ -2181,8 +2212,8 @@ th.num {
 }
 
 .btn-sm {
-  padding: 6px 12px;
-  font-size: 12.5px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.7813rem;
 }
 
 .btn[disabled] {
@@ -2191,21 +2222,21 @@ th.num {
 }
 
 .field {
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
 }
 
 .field label {
   display: block;
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   font-weight: 600;
   color: var(--ink-soft);
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 
 .field .help {
-  font-size: 11.5px;
+  font-size: 0.7188rem;
   color: var(--ink-faint);
-  margin-top: 5px;
+  margin-top: 0.3125rem;
 }
 
 input[type="text"],
@@ -2220,11 +2251,11 @@ input[type="url"],
 select,
 textarea {
   width: 100%;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--surface);
   color: var(--ink);
 }
@@ -2278,15 +2309,15 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 0.5rem;
   width: 100%;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.3;
   text-align: left;
   cursor: pointer;
@@ -2316,8 +2347,8 @@ textarea:focus {
 
 .cs-chevron {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   color: var(--ink-faint);
   transition: transform 0.15s ease;
 }
@@ -2330,15 +2361,15 @@ textarea:focus {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + 0.375rem);
   z-index: 500;
-  max-height: min(280px, 55vh);
+  max-height: min(17.5rem, 55vh);
   overflow-y: auto;
   background: var(--surface);
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
-  padding: 4px;
+  padding: 0.25rem;
   display: none;
 }
 
@@ -2348,7 +2379,7 @@ textarea:focus {
    space, same reasoning as every other floating panel in the app. */
 .cs-select.cs-open-up .cs-panel {
   top: auto;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 0.375rem);
 }
 
 .cs-select.cs-open .cs-panel {
@@ -2371,9 +2402,9 @@ textarea:focus {
 }
 
 .cs-option {
-  padding: 9px 10px;
+  padding: 0.5625rem 0.625rem;
   border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   color: var(--ink);
   cursor: pointer;
   overflow-wrap: anywhere;
@@ -2399,8 +2430,8 @@ textarea:focus {
 }
 
 .cs-option-empty {
-  padding: 10px;
-  font-size: 12.5px;
+  padding: 0.625rem;
+  font-size: 0.7813rem;
   color: var(--ink-faint);
   text-align: center;
 }
@@ -2421,7 +2452,7 @@ textarea:focus {
    first place. */
 @media (max-width: 480px) {
   .cs-panel {
-    max-height: min(240px, 50vh);
+    max-height: min(15rem, 50vh);
   }
 }
 
@@ -2431,11 +2462,11 @@ textarea:focus {
    plus a themed "Choose file" button via ::file-selector-button. */
 input[type="file"] {
   width: 100%;
-  padding: 8px;
+  padding: 0.5rem;
   border: var(--border-width-strong) dashed var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   background: var(--surface-2);
   color: var(--ink-soft);
   cursor: pointer;
@@ -2456,12 +2487,12 @@ input[type="file"]:focus {
 
 input[type="file"]::file-selector-button,
 input[type="file"]::-webkit-file-upload-button {
-  margin-right: 12px;
-  padding: 8px 14px;
+  margin-right: 0.75rem;
+  padding: 0.5rem 0.875rem;
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   font-weight: 600;
   background: var(--surface);
   color: var(--ink);
@@ -2479,7 +2510,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 .form-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 0.875rem;
 }
 
 .form-row>* {
@@ -2488,7 +2519,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
 .inline-form {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
   /* Buttons here now refuse to shrink or break their own text (see
      .btn's white-space: nowrap above) — a good thing for a single
@@ -2520,19 +2551,19 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
 .empty-state {
   text-align: center;
-  padding: 48px 24px;
+  padding: 3rem 1.5rem;
   color: var(--ink-faint);
 }
 
 .empty-state .glyph {
-  font-size: 26px;
-  margin-bottom: 10px;
+  font-size: 1.625rem;
+  margin-bottom: 0.625rem;
 }
 
 .empty-state p {
-  font-size: 13.5px;
-  max-width: 320px;
-  margin: 4px auto 0;
+  font-size: 0.8438rem;
+  max-width: 20rem;
+  margin: 0.25rem auto 0;
 }
 
 .text-soft {
@@ -2544,14 +2575,14 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .mt-24 {
-  margin-top: 24px;
+  margin-top: 1.5rem;
 }
 
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 0.25rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 
 @media (max-width: 680px) {
@@ -2582,8 +2613,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 22px;
+  gap: 1rem;
+  padding: 1rem 1.375rem;
   border-bottom: var(--border-width-strong) solid var(--border-strong);
   flex-wrap: wrap;
 }
@@ -2591,48 +2622,48 @@ input[type="file"]:hover::-webkit-file-upload-button {
 .table-search {
   position: relative;
   flex: 1;
-  min-width: 200px;
-  max-width: 320px;
+  min-width: 12.5rem;
+  max-width: 20rem;
 }
 
 .table-search svg {
   position: absolute;
-  left: 11px;
+  left: 0.6875rem;
   top: 50%;
   transform: translateY(-50%);
-  width: 15px;
-  height: 15px;
+  width: 0.9375rem;
+  height: 0.9375rem;
   color: var(--ink-faint);
   pointer-events: none;
 }
 
 .table-search input {
   width: 100%;
-  padding: 9px 12px 9px 34px;
-  font-size: 13.5px;
+  padding: 0.5625rem 0.75rem 0.5625rem 2.125rem;
+  font-size: 0.8438rem;
 }
 
 .table-filter {
   flex-shrink: 0;
-  min-width: 150px;
+  min-width: 9.375rem;
 }
 
 .table-filter select {
-  padding: 9px 10px;
-  font-size: 13.5px;
+  padding: 0.5625rem 0.625rem;
+  font-size: 0.8438rem;
 }
 
 .smart-pagination {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 14px 22px;
+  gap: 1rem;
+  padding: 0.875rem 1.375rem;
   border-top: 1px solid var(--border);
 }
 
 .smart-page-info {
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   color: var(--ink-faint);
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
 }
@@ -2643,72 +2674,72 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .table-compact .table-wrap {
-  max-height: 400px;
+  max-height: 25rem;
 }
 
 .table-compact .table-toolbar {
-  padding: 12px 18px;
-  gap: 12px;
+  padding: 0.75rem 1.125rem;
+  gap: 0.75rem;
 }
 
 .table-compact .table-search input,
 .table-compact .table-filter select {
-  padding: 7px 10px 7px 32px;
-  font-size: 12.5px;
+  padding: 0.4375rem 0.625rem 0.4375rem 2rem;
+  font-size: 0.7813rem;
 }
 
 .table-compact .table-filter select {
-  padding: 7px 8px;
+  padding: 0.4375rem 0.5rem;
 }
 
 .table-compact .table-search svg {
-  width: 13px;
-  height: 13px;
-  left: 10px;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  left: 0.625rem;
 }
 
 .table-compact table.smart-table {
-  font-size: 12.5px;
+  font-size: 0.7813rem;
 }
 
 .table-compact table.smart-table th {
-  padding: 8px 18px;
-  font-size: 10px;
+  padding: 0.5rem 1.125rem;
+  font-size: 0.625rem;
 }
 
 .table-compact table.smart-table td {
-  padding: 8px 18px;
+  padding: 0.5rem 1.125rem;
 }
 
 .table-compact .item-name {
-  font-size: 12.8px;
+  font-size: 0.8rem;
 }
 
 .table-compact .item-sub {
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .table-compact .fill-track {
-  height: 6px;
-  min-width: 52px;
+  height: 0.375rem;
+  min-width: 3.25rem;
 }
 
 .table-compact .fill-row .fill-qty {
-  font-size: 11.5px;
-  min-width: 46px;
+  font-size: 0.7188rem;
+  min-width: 2.875rem;
 }
 
 .table-compact .badge {
-  padding: 2px 8px;
-  font-size: 10.5px;
+  padding: 2px 0.5rem;
+  font-size: 0.6563rem;
 }
 
 .table-compact .smart-pagination {
-  padding: 10px 18px;
+  padding: 0.625rem 1.125rem;
 }
 
 .table-compact .smart-page-info {
-  font-size: 11.5px;
+  font-size: 0.7188rem;
 }
 
 @media (max-width: 560px) {
@@ -2722,7 +2753,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   }
 
   .badge-credit-name {
-    max-width: 90px;
+    max-width: 5.625rem;
   }
 }
 
@@ -2757,7 +2788,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   }
 
   .table-wrap tbody tr {
-    margin-bottom: 12px;
+    margin-bottom: 0.75rem;
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius);
     overflow: hidden;
@@ -2772,11 +2803,11 @@ input[type="file"]:hover::-webkit-file-upload-button {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
-    padding: 10px 14px;
+    gap: 0.875rem;
+    padding: 0.625rem 0.875rem;
     border-bottom: 1px solid var(--border);
     text-align: right;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
 
   .table-wrap td:last-child {
@@ -2786,7 +2817,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   .table-wrap td[data-label]:not([data-label=""])::before {
     content: attr(data-label);
     flex-shrink: 0;
-    font-size: 10.5px;
+    font-size: 0.6563rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -2795,11 +2826,11 @@ input[type="file"]:hover::-webkit-file-upload-button {
   }
 
   .table-wrap .item-name {
-    font-size: 13.3px;
+    font-size: 0.8313rem;
   }
 
   .table-wrap .item-sub {
-    font-size: 11.5px;
+    font-size: 0.7188rem;
   }
 
   /* A td holding a main value plus a small .item-sub caption — a
@@ -2827,7 +2858,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
   .table-wrap td:has(.item-sub)::before {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 0.25rem;
   }
 
   .table-wrap td:has(.item-sub) .item-sub {
@@ -2842,7 +2873,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   .item-sub-badge {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
   }
 
   /* The column(s) .item-sub-badge duplicates — a badge/status/type
@@ -2855,11 +2886,64 @@ input[type="file"]:hover::-webkit-file-upload-button {
   .table-wrap td.mobile-fold {
     display: none;
   }
+
+  /* Unhides .item-sub-unit's duplicate of the Unit column (see its
+     own comment above) once the real Unit column below folds away. */
+  .item-sub-unit {
+    display: inline;
+  }
+
+  /* Row action button(s) (Edit / Delete / Receipt / etc.) — normally
+     their own trailing column — sit beside the item name instead of
+     becoming one more stacked row under everything else. The row
+     only becomes a 2-column grid when it actually has one of these
+     cells. Both the name cell (.mobile-inline-anchor, given
+     explicitly — the item cell isn't always the tr's literal
+     :first-child, e.g. a mobile-fold'ed date column often comes
+     first) and the action cell are pinned to row 1, one per column,
+     so they render side by side; every other cell (given no
+     grid-row/grid-column of its own) is forced to span the full
+     width, which pushes it out of row 1 (already full) and down
+     into row 2 onward via normal auto-flow — same stacked look the
+     plain layout gives a table with no action column at all. */
+  .table-wrap tr:has(> td.mobile-inline-action) {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+  }
+
+  .table-wrap tr:has(> td.mobile-inline-action) > td.mobile-inline-anchor {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .table-wrap tr:has(> td.mobile-inline-action) > td:not(.mobile-inline-anchor):not(.mobile-inline-action) {
+    grid-column: 1 / -1;
+  }
+
+  .table-wrap td.mobile-inline-action {
+    grid-row: 1;
+    grid-column: 2;
+    width: auto;
+    border-bottom: none;
+  }
+
+  /* Same classic grid-item min-width:auto gotcha .grid[style*=...] > *
+     already works around further up this file: every cell in one of
+     these rows is a grid item now, so a long unbreakable value (a
+     price, a badge row) would otherwise refuse to shrink below its own
+     content width and force the whole row — and the card around it —
+     to overflow sideways instead of wrapping/eliding like a normal
+     stacked row does. min-width: 0 lets each cell shrink to the
+     column it's actually been given. */
+  .table-wrap tr:has(> td.mobile-inline-action) > td {
+    min-width: 0;
+  }
 }
 
 .tab {
-  padding: 9px 14px;
-  font-size: 13px;
+  padding: 0.5625rem 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--ink-faint);
   border-bottom: 2px solid transparent;
@@ -2879,13 +2963,13 @@ input[type="file"]:hover::-webkit-file-upload-button {
   height: 1px;
   background: var(--border);
   border: none;
-  margin: 22px 0;
+  margin: 1.375rem 0;
 }
 
 .auth-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(360px, 42%) 1fr;
+  grid-template-columns: minmax(22.5rem, 42%) 1fr;
 }
 
 .auth-visual {
@@ -2895,7 +2979,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 56px 48px;
+  padding: 3.5rem 3rem;
 }
 
 .auth-blob {
@@ -2907,45 +2991,45 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .auth-blob-gold {
-  width: 360px;
-  height: 360px;
+  width: 22.5rem;
+  height: 22.5rem;
   background: var(--brand-gold);
-  top: -100px;
-  left: -80px;
+  top: -6.25rem;
+  left: -5rem;
 }
 
 .auth-blob-amber {
-  width: 320px;
-  height: 320px;
+  width: 20rem;
+  height: 20rem;
   background: var(--accent-ink);
-  bottom: -100px;
-  right: -60px;
+  bottom: -6.25rem;
+  right: -3.75rem;
 }
 
 .auth-visual-inner {
   position: relative;
   z-index: 2;
-  max-width: 360px;
+  max-width: 22.5rem;
   color: #fff;
 }
 
 .auth-visual-inner .brand-sub {
   color: rgba(255, 255, 255, 0.72);
-  margin-bottom: 28px;
+  margin-bottom: 1.75rem;
 }
 
 .auth-visual-tagline {
-  font-size: 21px;
+  font-size: 1.3125rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.4;
-  margin-bottom: 26px;
+  margin-bottom: 1.625rem;
 }
 
 .auth-visual-points {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0.875rem;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -2954,15 +3038,15 @@ input[type="file"]:hover::-webkit-file-upload-button {
 .auth-visual-points li {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  font-size: 13.5px;
+  gap: 0.625rem;
+  font-size: 0.8438rem;
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.88);
 }
 
 .auth-visual-points svg {
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   flex-shrink: 0;
   margin-top: 2px;
   opacity: 0.9;
@@ -2972,29 +3056,29 @@ input[type="file"]:hover::-webkit-file-upload-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 1.5rem;
   background: var(--bg);
   position: relative;
 }
 
 .auth-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 23.75rem;
   background: var(--surface);
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  padding: 40px 34px 32px;
+  padding: 2.5rem 2.125rem 2rem;
 }
 
 .auth-brand {
   text-align: center;
-  margin-bottom: 26px;
+  margin-bottom: 1.625rem;
 }
 
 .auth-brand .mark {
   font-family: 'Manrope', sans-serif;
-  font-size: 24px;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
@@ -3014,25 +3098,25 @@ input[type="file"]:hover::-webkit-file-upload-button {
 }
 
 .auth-brand .sub {
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--ink-faint);
-  margin-top: 6px;
+  margin-top: 0.375rem;
   font-weight: 600;
 }
 
 .auth-card .btn {
   width: 100%;
-  margin-top: 6px;
-  padding: 11px;
+  margin-top: 0.375rem;
+  padding: 0.6875rem;
 }
 
 .auth-hint {
   text-align: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-faint);
-  margin-top: 22px;
+  margin-top: 1.375rem;
   line-height: 1.6;
 }
 
@@ -3053,19 +3137,19 @@ input[type="file"]:hover::-webkit-file-upload-button {
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 10px;
-  padding: 24px;
+  gap: 0.625rem;
+  padding: 1.5rem;
 }
 
 .error-shell .code {
   font-family: 'Manrope', sans-serif;
   font-weight: 800;
-  font-size: 64px;
+  font-size: 4rem;
   color: var(--accent-ink);
 }
 
 .chart-card {
-  padding: 22px 24px;
+  padding: 1.375rem 1.5rem;
 }
 
 /* The old rule here was `.chart-card canvas { max-height: 280px; }`
@@ -3088,7 +3172,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
    keeps deriving height from width itself. */
 .chart-canvas-wrap {
   position: relative;
-  height: 280px;
+  height: 17.5rem;
   width: 100%;
 }
 
@@ -3130,8 +3214,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 2.25rem;
+    height: 2.25rem;
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface);
@@ -3141,8 +3225,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
   }
 
   .menu-toggle svg {
-    width: 18px;
-    height: 18px;
+    width: 1.125rem;
+    height: 1.125rem;
   }
 
   .sidebar-close {
@@ -3150,10 +3234,10 @@ input[type="file"]:hover::-webkit-file-upload-button {
     align-items: center;
     justify-content: center;
     position: absolute;
-    top: 20px;
-    right: 16px;
-    width: 30px;
-    height: 30px;
+    top: 1.25rem;
+    right: 1rem;
+    width: 1.875rem;
+    height: 1.875rem;
     border: none;
     background: transparent;
     color: var(--ink-faint);
@@ -3161,8 +3245,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
   }
 
   .sidebar-close svg {
-    width: 18px;
-    height: 18px;
+    width: 1.125rem;
+    height: 1.125rem;
   }
 
   .sidebar-close:hover {
@@ -3175,7 +3259,7 @@ input[type="file"]:hover::-webkit-file-upload-button {
     left: 0;
     height: 100vh;
     height: 100dvh;
-    width: min(280px, 84vw);
+    width: min(17.5rem, 84vw);
     z-index: 50;
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3207,8 +3291,8 @@ input[type="file"]:hover::-webkit-file-upload-button {
 
   .content,
   .topbar {
-    padding-left: 18px;
-    padding-right: 18px;
+    padding-left: 1.125rem;
+    padding-right: 1.125rem;
   }
 
   /* The eyebrow ("Catalog & Supply", "Admin Overview", etc.) and page
@@ -3217,17 +3301,17 @@ input[type="file"]:hover::-webkit-file-upload-button {
      page's header at once. Desktop sizes (22px heading / 11px eyebrow)
      read as oversized on a narrow phone screen — scaled both down here. */
   .topbar h1 {
-    font-size: 17px;
+    font-size: 1.0625rem;
   }
 
   .topbar .eyebrow {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
 
   .flashes {
-    top: 12px;
-    right: 12px;
-    left: 12px;
+    top: 0.75rem;
+    right: 0.75rem;
+    left: 0.75rem;
     width: auto;
   }
 }

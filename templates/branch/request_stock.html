@@ -380,6 +380,7 @@
 
     <form method="POST" id="requestForm" style="margin-top:16px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_token" value="{{ form_token }}">
       <div id="cartInputs"></div>
       <button type="submit" class="btn btn-accent" style="width:100%;" id="submitRequestBtn" disabled>Send
         request to HQ</button>
@@ -423,7 +424,7 @@
             {% for r in history %}
             <tr data-search="{{ (r.delivery_number ~ ' ' ~ r.status)|lower }}">
               <td class="mono text-soft mobile-fold" data-label="Requested">{{ r.requested_at.strftime('%b %d, %Y') }}</td>
-              <td class="mono item-name" data-label="Delivery #">
+              <td class="mono item-name mobile-inline-anchor" data-label="Delivery #">
                 {{ r.delivery_number }}
                 <div class="item-sub item-sub-badge">
                   {{ m.status_badge(r.status) }}
@@ -434,7 +435,7 @@
               <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
               <td class="num mono" data-label="Value">{{ r.total_value|peso }}</td>
               <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
-              <td data-label="">
+              <td data-label="" class="mobile-inline-action">
                 {% if r.status == 'Fulfilled' %}
                 <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
                 {% endif %}

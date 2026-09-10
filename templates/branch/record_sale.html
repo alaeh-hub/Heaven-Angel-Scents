@@ -51,6 +51,7 @@
   </p>
   <form method="POST" id="saleForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
 
     <div class="field">
       <label for="productName">Product</label>
@@ -77,6 +78,12 @@
       </div>
     </div>
     <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+
+    <div class="field">
+      <label for="sold_at">Sale date <span class="text-faint">(optional — logging a past sale)</span></label>
+      <input type="date" id="sold_at" name="sold_at" max="{{ today }}">
+      <div class="help">Leave blank to use today's date.</div>
+    </div>
 
     <div class="form-row">
       <div class="field">
@@ -188,7 +195,7 @@
           {% for s in recent_sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
             <td class="mono text-soft mobile-fold" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
-            <td data-label="Item">
+            <td data-label="Item" class="mobile-inline-anchor">
               <div class="item-name">{{ s.item_name }}</div>
               <div class="item-sub mono">{{ s.sku }}</div>
               <div class="item-sub item-sub-badge">
@@ -201,7 +208,7 @@
             <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
             </td>
           </tr>

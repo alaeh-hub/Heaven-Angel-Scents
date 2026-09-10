@@ -159,7 +159,7 @@
           {% for d in drafts %}
           <tr
             data-search="{{ ((d.branch_name if session.role == 'Admin' else '') ~ ' ' ~ (d.created_by_username or 'AI Assistant') ~ ' ' ~ (d.items|map(attribute='item_name')|join(' ')) ~ ' ' ~ (d.reasoning or d.note or ''))|lower }}">
-            <td class="mono text-soft" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="mono text-soft mobile-inline-anchor" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
             {% if session.role == 'Admin' %}<td data-label="Branch">{{ d.branch_name }}</td>{% endif %}
             <td data-label="Proposed by">{{ d.created_by_username or 'AI Assistant' }}</td>
             <td class="dr-col-items" data-label="Items">
@@ -176,7 +176,7 @@
                 d.status }}</span>
               {% if d.resulting_request_id %}<div class="item-sub">&rarr; delivery on file</div>{% endif %}
             </td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               {% if d.status == 'Pending Review' %}
               <div class="inline-form">
                 <form method="POST" action="{{ url_for('ai.approve_draft', draft_id=d.draft_id) }}">

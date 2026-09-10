@@ -145,12 +145,12 @@
           {% for p in catalog %}
           <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
             data-unit="{{ p.unit }}">
-            <td data-label="Item">
+            <td data-label="Item" class="mobile-inline-anchor">
               <div class="item-thumb-row">
                 {{ m.product_thumb(p.image_path, p.item_name) }}
                 <div>
                   <div class="item-name">{{ p.item_name }}</div>
-                  <div class="item-sub mono">{{ p.sku }}</div>
+                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ p.unit }}</span></div>
                   <div class="item-sub item-sub-badge">
                     {{ m.variant_badge(p.variant) }}
                   </div>
@@ -158,10 +158,10 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
-            <td class="mono text-soft" data-label="Unit">{{ p.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit">{{ p.unit }}</td>
             <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
             <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openEditProduct(this)"
                 data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
                 data-unit="{{ p.unit }}" data-price="{{ p.price }}"

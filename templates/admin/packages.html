@@ -142,7 +142,7 @@
         <tbody>
           {% for pkg in package_list %}
           <tr data-search="{{ (pkg.package_name ~ ' ' ~ (pkg.description or ''))|lower }}">
-            <td data-label="Package">
+            <td data-label="Package" class="mobile-inline-anchor">
               <div class="item-name">{{ pkg.package_name }}</div>
               {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
               <div class="item-sub item-sub-badge">
@@ -160,7 +160,7 @@
             <td class="mobile-fold" data-label="Status">
               <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
             </td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
             </td>
           </tr>

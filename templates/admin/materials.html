@@ -77,13 +77,21 @@
     .mat-usage-table th:nth-child(3), .mat-usage-table td:nth-child(3) { width: 10%; }
     .mat-usage-table th:nth-child(4), .mat-usage-table td:nth-child(4) { width: 18%; }
     .mat-usage-table th:nth-child(5), .mat-usage-table td:nth-child(5) { width: 30%; }
+
+    .mat-cogs-table th:nth-child(1), .mat-cogs-table td:nth-child(1) { width: 18%; }
+    .mat-cogs-table th:nth-child(2), .mat-cogs-table td:nth-child(2) { width: 24%; }
+    .mat-cogs-table th:nth-child(3), .mat-cogs-table td:nth-child(3) { width: 12%; }
+    .mat-cogs-table th:nth-child(4), .mat-cogs-table td:nth-child(4) { width: 16%; }
+    .mat-cogs-table th:nth-child(5), .mat-cogs-table td:nth-child(5) { width: 14%; }
+    .mat-cogs-table th:nth-child(6), .mat-cogs-table td:nth-child(6) { width: 16%; }
   }
 
   @media (max-width: 680px) {
     /* Same reasoning as Inventory Log's Notes column: a long usage
        note reads better stacked (label above value) than squeezed into
        the generic right-aligned mobile row. */
-    .mat-usage-table td[data-label="Notes"] {
+    .mat-usage-table td[data-label="Notes"],
+    .mat-cogs-table td[data-label="Notes"] {
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
@@ -100,7 +108,7 @@
      comparing every time something looked off. Materials tracked stays
      here since it's specific to this page (the cost list), not
      supplier-scoped. -->
-<div class="grid grid-2 stack">
+<div class="grid grid-3 stack">
   <div class="card stat-tile">
     <div class="stat-label">Materials tracked</div>
     <div class="stat-value">{{ materials|length }}</div>
@@ -110,6 +118,11 @@
     <div class="stat-label">Suppliers on file</div>
     <div class="stat-value accent">{{ suppliers|length }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.suppliers') }}" class="text-soft">full spend breakdown →</a></div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Total COGS logged</div>
+    <div class="stat-value">{{ total_cogs|peso }}</div>
+    <div class="stat-foot">this is "capital" on the dashboard now</div>
   </div>
 </div>
 
@@ -158,14 +171,14 @@
           {% for s in suppliers %}
           <tr
             data-search="{{ (s.supplier_name ~ ' ' ~ (s.contact_person or '') ~ ' ' ~ (s.phone or '') ~ ' ' ~ (s.email or ''))|lower }}">
-            <td class="item-name" data-label="Supplier">{{ s.supplier_name }}</td>
+            <td class="item-name mobile-inline-anchor" data-label="Supplier">{{ s.supplier_name }}</td>
             <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
             <td data-label="Reach">
               <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
               <div class="item-sub">{{ s.email or '—' }}</div>
             </td>
             <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
                 data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
                 data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
@@ -204,6 +217,7 @@
     <h2>Raw materials</h2>
     <div style="display:flex; align-items:center; gap:14px;">
       <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
+      <a href="{{ url_for('admin.formulas') }}" class="btn btn-ghost btn-sm">Manage formulas →</a>
       <button type="button" class="btn btn-accent btn-sm" id="openAddMaterialBtn">+ Add material</button>
     </div>
   </div>
@@ -237,7 +251,7 @@
         <tbody>
           {% for mat in materials %}
           <tr data-search="{{ (mat.material_name ~ ' ' ~ (mat.supplier_name or ''))|lower }}">
-            <td class="item-name" data-label="Material">
+            <td class="item-name mobile-inline-anchor" data-label="Material">
               {{ mat.material_name }}
               {% if mat.receipt_number %}<div class="item-sub mono">OR# {{ mat.receipt_number }}</div>{% endif %}
             </td>
@@ -265,7 +279,7 @@
                   }}</span>
               </div>
             </td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
                 data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
                 data-purchase-mode="{{ mat.purchase_mode }}" data-package-qty="{{ mat.package_qty }}"
@@ -303,12 +317,85 @@
 
 <div class="card mt-24">
   <div class="card-header">
-    <h2>Usage history</h2>
+    <h2>Cost of goods logged</h2>
     <div style="display:flex; align-items:center; gap:14px;">
-      <span class="hint" id="usageCount">{{ usage_logs|length }} entr{{ 'y' if usage_logs|length == 1 else 'ies'
-        }}</span>
+      <span class="hint" id="cogsCount">{{ cogs_logs|length }} batch{{ 'es' if cogs_logs|length != 1 }}</span>
       <button type="button" class="btn btn-accent btn-sm" id="openLogUsageBtn">+ Log usage</button>
     </div>
+  </div>
+  {% if cogs_logs %}
+  <div data-smart-table data-page-size="12" data-count-target="cogsCount" data-count-label="batch">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by product or notes…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed mat-cogs-table">
+        <colgroup>
+          <col style="width:18%"><col style="width:24%"><col style="width:12%">
+          <col style="width:16%"><col style="width:14%"><col style="width:16%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Product</th>
+            <th class="num">Qty produced</th>
+            <th class="num">Cost / unit</th>
+            <th class="num">Total (capital)</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cogs_logs %}
+          <tr data-search="{{ (c.item_name ~ ' ' ~ (c.notes or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ c.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name" data-label="Product">
+              {{ c.item_name }} ({{ c.product_unit }})
+              {% if c.batch_code %}<div class="item-sub">Batch {{ c.batch_code }}</div>{% endif %}
+            </td>
+            <td class="num mono" data-label="Qty produced">{{ c.qty_produced|round(3)|string|replace('.000','') }}</td>
+            <td class="num mono" data-label="Cost / unit">₱{{ '%.4f'|format(c.cogs_per_unit) }}</td>
+            <td class="num mono" data-label="Total (capital)">{{ c.total_cogs|peso }}</td>
+            <td class="text-soft" style="font-size:12.5px;" data-label="Notes">{{ c.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No batches match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Showing the latest 40 batches. Each row's total is that formula's cost
+      per unit (frozen at the moment it was logged) × quantity produced — this is "capital" on the dashboard now, kept
+      separate from what's been spent buying raw materials (see the stat tiles above).</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No cost of goods logged yet — <a href="{{ url_for('admin.formulas') }}">set up a formula</a> first, then log a
+      batch here.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Usage history</h2>
+    <span class="hint" id="usageCount">{{ usage_logs|length }} entr{{ 'y' if usage_logs|length == 1 else 'ies'
+      }}</span>
   </div>
   {% if usage_logs %}
   <div data-smart-table data-page-size="12" data-count-target="usageCount" data-count-label="entry">
@@ -362,8 +449,8 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Showing the latest 40 entries. Logging usage just records the quantity
-      and reduces what's on hand; it doesn't compute a cost.</p>
+    <p class="text-faint" style="font-size:12px;">Showing the latest 40 entries. One row per material a logged batch
+      drew on — the batch's own cost (capital) is on the Cost of goods logged table above, not here.</p>
   </div>
   {% else %}
   <div class="empty-state">
@@ -378,33 +465,36 @@
   <div class="card card-pad" style="max-width:440px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Log material usage</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      This just records the quantity and reduces what's on hand — it doesn't compute a cost. Linking it to a production
-      run is optional.
+      Pick a product and how many units were produced — the formula for its packaging size (see the Formulas page)
+      decides which ingredients get deducted and how much cost of goods (capital) gets logged.
     </p>
+    {% if formula_products %}
     <form method="POST" action="{{ url_for('admin.log_material_usage') }}" id="logUsageForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_token" value="{{ usage_form_token }}">
       <div class="field">
-        <label for="material_id">Material</label>
-        <select id="material_id" name="material_id" required>
+        <label for="usage_sku">Product</label>
+        <select id="usage_sku" name="sku" required>
           <option value="">Select…</option>
-          {% for mat in materials %}
-          <option value="{{ mat.material_id }}" data-unit="{{ mat.unit }}"
-            data-stock="{{ mat.stock_qty|round(3)|string|replace('.000','') }}">{{ mat.material_name }} ({{ mat.unit }})
+          {% for fp in formula_products %}
+          <option value="{{ fp.sku }}" data-cogs-per-unit="{{ fp.cogs_per_unit }}" data-item-name="{{ fp.item_name }}">
+            {{ fp.item_name }} ({{ fp.unit }}) — {{ fp.material_count }} material{{ 's' if fp.material_count != 1 }}
           </option>
           {% endfor %}
         </select>
       </div>
       <div class="field">
-        <label for="qty_used">Quantity used</label>
-        <input type="number" id="qty_used" name="qty_used" step="0.001" min="0.001" required>
-        <div class="help" id="usageUnitHint"></div>
+        <label for="qty_produced">Quantity produced</label>
+        <input type="number" id="qty_produced" name="qty_produced" step="0.001" min="0.001" required>
+        <div class="help" id="usageCogsHint"></div>
       </div>
       <div class="field">
         <label for="production_log_id">Link to a production run <span class="text-faint">(optional)</span></label>
         <select id="production_log_id" name="production_log_id">
           <option value="">Not linked</option>
           {% for p in recent_production %}
-          <option value="{{ p.log_id }}">{{ p.produced_at.strftime('%b %d') }} — {{ p.item_name }} ({{ p.unit }}){% if
+          <option value="{{ p.log_id }}" data-sku="{{ p.sku }}" data-qty="{{ p.qty_produced }}">{{
+            p.produced_at.strftime('%b %d') }} — {{ p.item_name }} ({{ p.unit }}){% if
             p.batch_code %} · {{ p.batch_code }}{% endif %}</option>
           {% endfor %}
         </select>
@@ -418,6 +508,11 @@
         <button type="submit" class="btn btn-accent" style="flex:1;">Log usage</button>
       </div>
     </form>
+    {% else %}
+    <p class="text-faint" style="font-size:12.5px;">No packaging size has a formula yet — <a
+        href="{{ url_for('admin.formulas') }}">set one up on the Formulas page</a> first.</p>
+    <button type="button" class="btn btn-ghost" style="width:100%; margin-top:6px;" id="logUsageCancelBtn">Close</button>
+    {% endif %}
   </div>
 </div>
 
@@ -476,6 +571,12 @@
           <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="field">
+        <label for="purchased_at">Purchase date <span class="text-faint">(optional — logging a past
+            purchase)</span></label>
+        <input type="date" id="purchased_at" name="purchased_at" max="{{ today }}">
+        <div class="help">Leave blank to use today's date.</div>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="addMaterialCancelBtn">Cancel</button>
@@ -656,23 +757,51 @@
       setMode(btn.dataset.value);
     });
 
-    var materialSelect = document.getElementById('material_id');
-    var usageUnitHint = document.getElementById('usageUnitHint');
-    var qtyUsedInput = document.getElementById('qty_used');
-    function updateUsageUnitHint() {
-      var opt = materialSelect.options[materialSelect.selectedIndex];
-      var unit = opt ? opt.dataset.unit : null;
-      var stock = opt ? opt.dataset.stock : null;
-      if (unit && stock) {
-        usageUnitHint.textContent = stock + ' ' + unit.toLowerCase() + ' on hand — enter the amount used in ' + unit.toLowerCase() + '.';
-        qtyUsedInput.max = stock;
-      } else {
-        usageUnitHint.textContent = '';
-        qtyUsedInput.removeAttribute('max');
+    // ---- Log material usage: formula picker preview + optional autofill ----
+    var usageSkuSelect = document.getElementById('usage_sku');
+    var usageCogsHint = document.getElementById('usageCogsHint');
+    var qtyProducedInput = document.getElementById('qty_produced');
+    var productionLogSelect = document.getElementById('production_log_id');
+
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateUsageCogsHint() {
+      if (!usageSkuSelect || !usageCogsHint) return;
+      var opt = usageSkuSelect.options[usageSkuSelect.selectedIndex];
+      var cogsPerUnit = opt ? parseFloat(opt.dataset.cogsPerUnit) : NaN;
+      var qty = parseFloat(qtyProducedInput.value);
+      if (!opt || !opt.value || isNaN(cogsPerUnit)) {
+        usageCogsHint.textContent = '';
+        return;
+      }
+      var totalText = (qty > 0)
+        ? formatPeso(cogsPerUnit * qty) + ' total cost of goods for ' + qty + ' unit(s).'
+        : '';
+      usageCogsHint.textContent = '₱' + cogsPerUnit.toFixed(4) + ' cost per unit' + (totalText ? ' — ' + totalText : '.');
+    }
+    if (usageSkuSelect) {
+      usageSkuSelect.addEventListener('change', updateUsageCogsHint);
+      qtyProducedInput.addEventListener('input', updateUsageCogsHint);
+      updateUsageCogsHint();
+
+      // Linking a production run for the same product it's already set
+      // to autofills the quantity produced from that run — purely a
+      // convenience (a batch doesn't have to match its linked run 1:1),
+      // never overwriting a quantity the admin already typed in.
+      if (productionLogSelect) {
+        productionLogSelect.addEventListener('change', function () {
+          var runOpt = productionLogSelect.options[productionLogSelect.selectedIndex];
+          var skuOpt = usageSkuSelect.options[usageSkuSelect.selectedIndex];
+          if (!runOpt || !runOpt.value || !skuOpt || !skuOpt.value) return;
+          if (runOpt.dataset.sku !== skuOpt.value) return;
+          if (qtyProducedInput.value) return;
+          qtyProducedInput.value = runOpt.dataset.qty;
+          updateUsageCogsHint();
+        });
       }
     }
-    materialSelect.addEventListener('change', updateUsageUnitHint);
-    updateUsageUnitHint();
   })();
 
   function wireOverlay(overlayId, openBtnId, cancelBtnId) {

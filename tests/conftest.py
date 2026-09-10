@@ -186,6 +186,19 @@ def sql():
     from the app's own per-request connection (flask.g) — used by tests
     to set up fixture rows and assert on the DB's actual state after
     hitting a route, independent of whatever the route itself renders.
+
+    autocommit=True deliberately, even though most callers (see
+    factories.py) already call conn.commit() themselves after a write:
+    without it, a bare SELECT with no matching commit/rollback (e.g. a
+    factories.py getter called between a setup write and the route
+    under test) leaves a REPEATABLE READ transaction open on this
+    connection — and a later read on that same still-open transaction
+    then sees the snapshot from *before* the route's own write
+    committed on its own separate connection, even though the write
+    genuinely happened. autocommit=True means every statement here
+    (read or write) starts and ends its own transaction, so this
+    connection is never left holding a stale snapshot across a route
+    call in between.
     """
     import mysql.connector
     conn = mysql.connector.connect(
@@ -194,6 +207,7 @@ def sql():
         user=os.environ.get("MYSQL_USER", "root"),
         password=os.environ.get("MYSQL_PASSWORD", ""),
         database=TEST_DB_NAME,
+        autocommit=True,
     )
     yield conn
     conn.close()

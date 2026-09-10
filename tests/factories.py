@@ -8,9 +8,28 @@ after itself, by design: the entire test database is dropped at the end
 of the session, so leftover rows are harmless as long as every test only
 ever looks at its own uniquely-named rows.
 """
+import re
 import uuid
 
 from werkzeug.security import generate_password_hash
+
+_FORM_TOKEN_RE = re.compile(rb'name="form_token" value="([^"]*)"')
+
+
+def get_form_token(client, endpoint):
+    """GET `endpoint` and pull out the hidden form_token field a route
+    protected by utils.issue_form_token()/consume_form_token() renders.
+
+    Needed before POSTing to any such route in a test: the token is
+    single-use and tied to the session by the GET that rendered it (see
+    utils.py's module docstring on single-use form tokens) — a POST
+    with no token, or last test's stale one, is now rejected the same
+    way a real double-submit would be.
+    """
+    resp = client.get(endpoint)
+    match = _FORM_TOKEN_RE.search(resp.data)
+    assert match, f"No form_token hidden field found on {endpoint}"
+    return match.group(1).decode("utf-8")
 
 
 def unique_suffix():
@@ -79,6 +98,123 @@ def make_user(sql, role, branch_id=None, password="Test-Passw0rd!",
     user_id = cur.lastrowid
     cur.close()
     return {"user_id": user_id, "username": username, "password": password, "role": role}
+
+
+def make_raw_material(sql, unit="Gram", package_qty="100.000", package_cost="100.00",
+                       stock_qty=None):
+    """Insert a raw material the way admin.py's materials() would —
+    cost_per_unit worked out from package_cost/package_qty, stock_qty
+    defaulting to the full package_qty (a freshly-added, unused material)
+    unless a test wants to start it partially drawn down.
+    """
+    name = f"Test Material {unique_suffix()}"
+    cost_per_unit = float(package_cost) / float(package_qty)
+    if stock_qty is None:
+        stock_qty = package_qty
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO raw_materials
+               (material_name, unit, purchase_mode, package_qty, package_cost, cost_per_unit, stock_qty)
+           VALUES (%s, %s, 'Package', %s, %s, %s, %s)""",
+        (name, unit, package_qty, package_cost, cost_per_unit, stock_qty),
+    )
+    sql.commit()
+    material_id = cur.lastrowid
+    cur.close()
+    return material_id
+
+
+def get_raw_material(sql, material_id):
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT * FROM raw_materials WHERE material_id = %s", (material_id,))
+    row = cur.fetchone()
+    cur.close()
+    return row
+
+
+def make_formula(sql, unit, items):
+    """Set a packaging size's formula directly (bypassing save_formula()'s
+    own route/CSRF/form plumbing, but matching its actual replace
+    semantics) — `items` is a list of (material_id, qty_per_unit) pairs.
+
+    Formulas are shared per unit (85ML, 50ML, ...), a small fixed set —
+    not a fresh, uniquely-named row per test the way make_product()'s
+    SKUs are. Always deleting this unit's existing rows before inserting
+    the new ones (same as save_formula() itself) keeps tests that reuse
+    a unit deterministic regardless of what an earlier test in the same
+    session left behind; passing an empty `items` list clears it back to
+    "no formula set" for a test that specifically needs that state.
+    """
+    cur = sql.cursor()
+    cur.execute("DELETE FROM unit_formula_items WHERE unit = %s", (unit,))
+    for material_id, qty_per_unit in items:
+        cur.execute(
+            """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit)
+               VALUES (%s, %s, %s)""",
+            (unit, material_id, qty_per_unit),
+        )
+    sql.commit()
+    cur.close()
+
+
+def get_cogs_logs(sql, sku):
+    cur = sql.cursor(dictionary=True)
+    cur.execute(
+        "SELECT * FROM cogs_logs WHERE sku = %s ORDER BY cogs_log_id", (sku,))
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def make_stock_request(sql, branch_id, items, status="Pending"):
+    """Insert a delivery header + line items directly (bypassing
+    request_stock() itself) so dispatch/receive/reject tests can set up
+    a request already in whatever state (and with whatever
+    dispatched_qty/received_qty already filled in) they need to exercise,
+    without going through the full multi-step request -> dispatch ->
+    receive flow just to get there.
+
+    Each entry in `items` is a dict with at least sku/requested_qty;
+    unit_price/dispatched_qty/received_qty/damaged_qty all default the
+    same way a fresh Pending request line would. Returns request_id.
+    """
+    cur = sql.cursor()
+    cur.execute(
+        "INSERT INTO stock_requests (branch_id, delivery_number, status) VALUES (%s, %s, %s)",
+        (branch_id, f"DR-TEST-{unique_suffix()}", status),
+    )
+    request_id = cur.lastrowid
+    for item in items:
+        cur.execute(
+            """INSERT INTO stock_request_items
+               (request_id, sku, requested_qty, unit_price, dispatched_qty, received_qty, damaged_qty)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (request_id, item["sku"], item["requested_qty"],
+             item.get("unit_price", "0.00"), item.get("dispatched_qty"),
+             item.get("received_qty"), item.get("damaged_qty", 0)),
+        )
+    sql.commit()
+    cur.close()
+    return request_id
+
+
+def get_request_status(sql, request_id):
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT status FROM stock_requests WHERE request_id = %s", (request_id,))
+    row = cur.fetchone()
+    cur.close()
+    return row["status"] if row else None
+
+
+def get_request_item(sql, request_id, sku):
+    cur = sql.cursor(dictionary=True)
+    cur.execute(
+        "SELECT * FROM stock_request_items WHERE request_id = %s AND sku = %s",
+        (request_id, sku),
+    )
+    row = cur.fetchone()
+    cur.close()
+    return row
 
 
 def count_sales(sql, branch_id, sku):

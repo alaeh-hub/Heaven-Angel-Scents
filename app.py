@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import logging
 import os
@@ -227,6 +228,13 @@ def create_app():
             return f"₱{decimal.Decimal(value):,.2f}"
         except (decimal.InvalidOperation, TypeError, ValueError):
             return f"₱{float(value):,.2f}"
+
+    @app.context_processor
+    def inject_today():
+        # ISO date string for capping date-picker inputs at "today" (e.g.
+        # Add material/supplier, Record sale's backdating field) — a
+        # picker shouldn't let someone log a record dated in the future.
+        return {"today": datetime.date.today().isoformat()}
 
     @app.context_processor
     def inject_sidebar_task_counts():

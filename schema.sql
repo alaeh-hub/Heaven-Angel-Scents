@@ -64,11 +64,12 @@ CREATE TABLE IF NOT EXISTS products (
     -- rendered anywhere with url_for('static', filename=image_path).
     -- NULL means no image has been uploaded for this SKU yet.
     image_path  VARCHAR(255) NULL,
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- No is_active column anymore: products are edited in place from the
     -- admin Products page rather than discontinued/reactivated. See the
     -- migration block below for the DROP COLUMN that removes it from an
     -- existing database.
+    CHECK (price >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -101,15 +102,19 @@ CREATE TABLE IF NOT EXISTS suppliers (
 --    migration block below for the DROP COLUMN that removes it from an
 --    existing database.
 --
---    package_cost is now also the ONLY figure "money spent on materials"
---    is ever computed from — see routes/admin.py's materials()/
---    dashboard()/reports_data(), which all do SUM(package_cost) over this
---    table. Usage (material_usage_logs below) no longer carries its own
---    cost at all; logging usage only records a quantity and reduces
---    stock_qty here. This intentionally replaces the old model where
---    "total materials spent" was derived from SUM(line_cost) over every
---    usage entry — that double-counted the same peso value on every
---    withdrawal instead of once, at purchase.
+--    package_cost is the figure "money spent buying raw materials" is
+--    computed from — see routes/admin.py's materials()/dashboard()/
+--    reports_data(), which do SUM(package_cost) over this table for the
+--    "Raw materials bought" figure. This is now a *comparison* figure
+--    only, shown alongside "Total Capital" — it no longer feeds capital/
+--    profit itself; see cogs_logs above for where that comes from
+--    instead (a batch's cost, computed from unit_formula_items ×
+--    cost_per_unit at the moment usage is logged, not from what was
+--    paid for the packages that usage draws down). Usage
+--    (material_usage_logs below) still carries no cost of its own at the
+--    per-material-row level; logging it only records a quantity and
+--    reduces stock_qty here — the cost side now lives one level up, on
+--    the cogs_logs batch that usage was written as part of.
 --
 --    stock_qty is the remaining quantity on hand, in `unit`. It starts
 --    at package_qty the moment a material is added (i.e. "I just bought
@@ -151,7 +156,10 @@ CREATE TABLE IF NOT EXISTS raw_materials (
     stock_qty      DECIMAL(10, 3) NOT NULL DEFAULT 0.000,   -- remaining on hand, in `unit`; reduced as usage is logged
     supplier_id    INT NULL,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
+    CHECK (package_qty > 0),
+    CHECK (package_cost >= 0),
+    CHECK (stock_qty >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -170,7 +178,9 @@ CREATE TABLE IF NOT EXISTS branch_inventory (
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
-    UNIQUE KEY unique_branch_sku (branch_id, sku)
+    UNIQUE KEY unique_branch_sku (branch_id, sku),
+    CHECK (stock_qty >= 0),
+    CHECK (reorder_level >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -182,16 +192,111 @@ CREATE TABLE IF NOT EXISTS production_logs (
     batch_code    VARCHAR(50),               -- lets branches sell FIFO by batch
     qty_produced  INT NOT NULL,
     produced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    CHECK (qty_produced > 0)
 );
 
 -- ----------------------------------------------------------------------------
--- 5b. Material Usage Logs
+-- 5a. Unit Formulas (Cost of Goods) — the recipe of raw materials that go
+--     into producing ONE unit of a given PACKAGING SIZE (85ML, 50ML, 1L,
+--     100ML, 10ML, 3ML Tester — the same fixed list as products.unit).
 --
---    A plain quantity log, nothing else — no cost is computed or stored
---    here anymore (see raw_materials above for why: money spent on
---    materials is now purely SUM(package_cost) at purchase time, so a
---    per-usage cost would just double-count it). Logging usage does two
+--     Deliberately keyed by `unit`, not by sku: every product of the same
+--     packaging size (e.g. every 85ML scent) shares one formula — there's
+--     no separate recipe per scent/variant, only per size. One row per
+--     material in a unit's formula — there's no separate header table
+--     since a unit has at most one formula, and its full set of rows
+--     here IS that formula, the same "the rows themselves are the
+--     record" shape stock_request_items uses for its own header.
+--
+--     qty_per_unit is how much of `material_id` (in raw_materials.unit)
+--     goes into producing exactly ONE bottle/piece of this packaging
+--     size — e.g. 2.5 grams of Fixative per 85ML bottle. Cost is
+--     deliberately NOT stored here: a formula is a standing recipe, and
+--     its cost (qty_per_unit × raw_materials.cost_per_unit) is always
+--     computed live wherever it's shown (see routes/admin.py's
+--     formulas()/materials()), so editing a material's price is
+--     reflected immediately without re-saving every formula that uses
+--     it. Cost is only ever frozen at the moment usage is actually
+--     logged against a production run — see cogs_logs below.
+--
+--     qty_per_unit is also capped at that material's current
+--     raw_materials.stock_qty at save time (see routes/admin.py's
+--     save_formula()) — not enforced as a CHECK/FK here since stock_qty
+--     moves independently afterward (a later withdrawal can legitimately
+--     leave stock below what an already-saved formula calls for), so
+--     this is a one-time sanity check on entry, not a standing
+--     constraint on the row.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS unit_formula_items (
+    formula_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    unit            ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL,
+    material_id     INT NOT NULL,
+    qty_per_unit    DECIMAL(10, 4) NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+    UNIQUE KEY unique_formula_unit_material (unit, material_id),
+    INDEX idx_formula_items_unit (unit),
+    CHECK (qty_per_unit > 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- 5b. Cost of Goods (COGS) Logs — one row per "Log material usage" batch
+--
+--     Log material usage no longer picks raw materials one at a time —
+--     it now runs off the formula for the SKU's packaging size (see
+--     unit_formula_items above): pick a SKU (its `unit` decides which
+--     formula applies), say how many units were produced, and this
+--     table records the result. Each formula line is still deducted
+--     from raw_materials.stock_qty and still gets its own
+--     material_usage_logs row (see that table's cogs_log_id column
+--     below) for the same per-material stock ledger as before — this
+--     table adds the cost side back on top, at the batch level.
+--
+--     cogs_per_unit is that unit's total cost per unit AT THE MOMENT
+--     this batch was logged (SUM of qty_per_unit × material
+--     cost_per_unit across every formula row for that unit) — frozen here
+--     the same "snapshot, don't recompute later" way
+--     stock_request_items.unit_price is, so a later material price
+--     change never rewrites the value of a past batch. total_cogs =
+--     cogs_per_unit × qty_produced, rounded to centavos — this is the
+--     figure the business calls "capital" now (see routes/admin.py's
+--     dashboard()/reports_data(), which sum this column instead of
+--     raw_materials.package_cost).
+--
+--     This is deliberately separate from what's spent buying raw
+--     material packages (raw_materials.package_cost) — that figure is
+--     still tracked and still shown (dashboard's "Raw materials bought"
+--     tile) purely so it can be compared against this one, not because
+--     it still feeds into capital/profit.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cogs_logs (
+    cogs_log_id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sku                 VARCHAR(50) NOT NULL,
+    production_log_id   INT NULL,
+    qty_produced        DECIMAL(10, 3) NOT NULL,
+    cogs_per_unit        DECIMAL(12, 4) NOT NULL,
+    total_cogs           DECIMAL(12, 2) NOT NULL,
+    notes                VARCHAR(255) NULL,
+    created_by_user_id   INT NULL,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
+    FOREIGN KEY (production_log_id) REFERENCES production_logs(log_id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_cogs_logs_sku (sku),
+    INDEX idx_cogs_logs_created_at (created_at),
+    CHECK (qty_produced > 0),
+    CHECK (total_cogs >= 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- 5c. Material Usage Logs
+--
+--    A plain quantity log at the per-material level — no cost of its
+--    own (see raw_materials above for why: money spent on materials is
+--    tracked purely at purchase time, SUM(package_cost), a separate
+--    figure from what usage actually costs). Logging usage does two
 --    things: inserts this row, and decrements the matching
 --    raw_materials.stock_qty by qty_used — the same "log an event, move
 --    the stock" pattern stock_movement_logs uses for products.
@@ -199,20 +304,30 @@ CREATE TABLE IF NOT EXISTS production_logs (
 --    specific run. See the migration block below for the DROP COLUMN
 --    that removes unit_cost_snapshot/line_cost from an existing
 --    database.
+--
+--    cogs_log_id links this row back to the cogs_logs batch it was
+--    written as part of (see cogs_logs above) — nullable and ON DELETE
+--    SET NULL, same "kept for traceability" pattern as
+--    production_log_id, so this row's own qty_used/stock-deduction
+--    history survives even if its batch header is ever removed.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS material_usage_logs (
     usage_id            INT AUTO_INCREMENT PRIMARY KEY,
     material_id         INT NOT NULL,
     production_log_id   INT NULL,
+    cogs_log_id         BIGINT NULL,
     qty_used            DECIMAL(10, 3) NOT NULL,
     notes               VARCHAR(255),
     created_by_user_id  INT NULL,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
     FOREIGN KEY (production_log_id) REFERENCES production_logs(log_id) ON DELETE SET NULL,
+    FOREIGN KEY (cogs_log_id) REFERENCES cogs_logs(cogs_log_id) ON DELETE SET NULL,
     FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_material_usage_material (material_id),
-    INDEX idx_material_usage_production (production_log_id)
+    INDEX idx_material_usage_production (production_log_id),
+    INDEX idx_material_usage_cogs_log (cogs_log_id),
+    CHECK (qty_used > 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -263,7 +378,17 @@ CREATE TABLE IF NOT EXISTS stock_request_items (
     damaged_qty     INT NOT NULL DEFAULT 0,    -- reported at receipt, logged as loss
     FOREIGN KEY (request_id) REFERENCES stock_requests(request_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
-    INDEX idx_sri_request (request_id)
+    INDEX idx_sri_request (request_id),
+    -- dispatched_qty/received_qty are nullable (not yet dispatched/
+    -- received) — a CHECK is only evaluated (and only blocks the row)
+    -- when the expression is actually FALSE; NULL counts as "unknown"
+    -- and passes, same as SQL's usual NULL-is-not-a-value handling, so
+    -- these don't need an explicit "OR ... IS NULL" to allow that.
+    CHECK (requested_qty > 0),
+    CHECK (unit_price >= 0),
+    CHECK (dispatched_qty >= 0),
+    CHECK (received_qty >= 0),
+    CHECK (damaged_qty >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -314,7 +439,9 @@ CREATE TABLE IF NOT EXISTS sales (
     FOREIGN KEY (buyer_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_sales_branch_sold_at (branch_id, sold_at),
     INDEX idx_sales_payment_method (payment_method),
-    INDEX idx_sales_customer_name (customer_name)
+    INDEX idx_sales_customer_name (customer_name),
+    CHECK (qty_sold > 0),
+    CHECK (unit_price >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -371,14 +498,19 @@ CREATE TABLE IF NOT EXISTS admin_actions (
 -- 10. Capital — no longer its own table.
 --
 --     There used to be a capital_contributions ledger here that an admin
---     logged entries into by hand. "Total Capital" is now a derived
---     number instead: SUM(package_cost) over raw_materials — i.e. capital
---     equals what has been spent buying material packages, computed on
---     the fly wherever it's shown (dashboard, reports), same as any
---     other rollup in this schema. See the migration block below for the
---     DROP TABLE that removes capital_contributions from an existing
---     database, and raw_materials above for where the figure now comes
---     from.
+--     logged entries into by hand, then later a phase where "Total
+--     Capital" was simply SUM(package_cost) over raw_materials (what's
+--     been spent buying material packages). It's a derived number again
+--     now, but from a different rollup: SUM(total_cogs) over cogs_logs —
+--     i.e. capital equals the cost of goods actually produced (each
+--     batch's packaging-size formula cost × how many units were logged
+--     as produced against it), computed on the fly wherever it's shown (dashboard,
+--     reports), same as any other rollup in this schema. See cogs_logs'
+--     own comment above for the full reasoning, and raw_materials above
+--     for the separate "money spent buying packages" figure that's kept
+--     alongside capital purely for comparison, not as its source anymore.
+--     See the migration block below for the DROP TABLE that removes the
+--     old capital_contributions table from an existing database.
 -- ----------------------------------------------------------------------------
 
 -- ----------------------------------------------------------------------------
@@ -462,7 +594,8 @@ CREATE TABLE IF NOT EXISTS packages (
     discount_percent DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_packages_active (is_active)
+    INDEX idx_packages_active (is_active),
+    CHECK (discount_percent >= 0 AND discount_percent <= 100)
 );
 
 -- ----------------------------------------------------------------------------
@@ -476,7 +609,8 @@ CREATE TABLE IF NOT EXISTS package_items (
     qty             INT NOT NULL,
     FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
-    UNIQUE KEY unique_package_sku (package_id, sku)
+    UNIQUE KEY unique_package_sku (package_id, sku),
+    CHECK (qty > 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -1163,3 +1297,119 @@ CREATE TABLE IF NOT EXISTS login_activity (
     INDEX idx_login_activity_username (username_attempted),
     INDEX idx_login_activity_success (success)
 );
+
+-- ----------------------------------------------------------------------------
+-- 22. Note — CHECK constraints added to several tables' quantity/price
+--     columns above (products.price, raw_materials.package_qty/
+--     package_cost/stock_qty, branch_inventory.stock_qty/reorder_level,
+--     production_logs.qty_produced, material_usage_logs.qty_used,
+--     stock_request_items.*_qty/unit_price, sales.qty_sold/unit_price,
+--     packages.discount_percent, package_items.qty) — defense-in-depth
+--     so a future application bug or race condition can't drive a
+--     quantity negative (or a discount outside 0–100%) with nothing at
+--     the database layer to reject it, on top of the row-locking and
+--     application-level validation that already guard these.
+--
+--     Deliberately NOT retrofitted here as a guarded ALTER TABLE ADD
+--     CONSTRAINT migration the way earlier numbered sections retrofit
+--     columns onto an existing database: unlike adding a column, adding
+--     a CHECK to a table that already has rows fails outright the
+--     moment ANY existing row violates it (e.g. a sale already on file
+--     at unit_price = 0), aborting the ALTER — and this schema file's
+--     own migration audit is exactly what surfaced that zero-price
+--     sales were previously accepted (see routes/branch.py and
+--     routes/admin.py's record_sale(), now fixed to require a price
+--     > 0). Silently running that ALTER against a real, already-
+--     populated production database here could break its next deploy
+--     with no warning. A fresh database (a new install, or the test
+--     suite's rebuilt-from-scratch schema) gets every constraint above
+--     automatically from the CREATE TABLE statements themselves.
+--
+--     Before adding these to an existing production database: audit
+--     each column for rows that would violate its new constraint (e.g.
+--     `SELECT * FROM sales WHERE unit_price <= 0`), decide what to do
+--     with any that turn up, and only then run the equivalent
+--     `ALTER TABLE ... ADD CONSTRAINT ... CHECK (...)` by hand.
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- 23. Migration — material_usage_logs.cogs_log_id
+--
+--     Adds the column to an existing database that predates it (a fresh
+--     install already has it from the CREATE TABLE above, and already
+--     has cogs_logs/unit_formula_items to reference). Guarded and
+--     re-run-safe like every other step in this file. No backfill is
+--     possible or needed — every existing usage row was logged before
+--     COGS batches existed, so it's correctly left NULL ("not part of a
+--     COGS batch"), same as it would be for a brand-new plain material
+--     withdrawal logged outside the formula flow.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_material_usage_logs_cogs_log_id()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'material_usage_logs' AND column_name = 'cogs_log_id'
+    ) THEN
+        ALTER TABLE material_usage_logs
+            ADD COLUMN cogs_log_id BIGINT NULL AFTER production_log_id;
+        ALTER TABLE material_usage_logs ADD CONSTRAINT fk_material_usage_cogs_log
+            FOREIGN KEY (cogs_log_id) REFERENCES cogs_logs(cogs_log_id) ON DELETE SET NULL;
+        ALTER TABLE material_usage_logs ADD INDEX idx_material_usage_cogs_log (cogs_log_id);
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_material_usage_logs_cogs_log_id();
+DROP PROCEDURE _migrate_material_usage_logs_cogs_log_id;
+
+-- ----------------------------------------------------------------------------
+-- 24. Migration — product_formula_items (sku-keyed) -> unit_formula_items
+--     (unit-keyed)
+--
+--     An earlier version of this feature keyed a product's formula by
+--     sku (one recipe per specific scent+variant+size). That's now
+--     unit_formula_items instead — one recipe shared by every product of
+--     the same packaging size (see unit_formula_items' own comment
+--     above for why). Only runs anything if it finds the OLD table;
+--     on a fresh install (unit_formula_items already created directly by
+--     the CREATE TABLE above) or a database that's already migrated,
+--     this is a cheap existence check and a no-op.
+--
+--     Best-effort data carry-over: each old sku-keyed row is folded into
+--     its product's `unit`, grouped so only one qty_per_unit survives
+--     per (unit, material) pair — MIN() is an arbitrary tiebreaker where
+--     two differently-sized-but-same-unit... no, where two SKUs of the
+--     SAME unit had disagreeing qty_per_unit for the same material (only
+--     possible if they'd been edited independently before this
+--     migration existed), since a single shared value is all the new
+--     shape can hold. Whichever value survives, admins can review and
+--     adjust it on the Formulas page afterward — nothing here is silently
+--     final. INSERT IGNORE (not INSERT) since two different old SKUs
+--     folding onto the same (unit, material) pair after the GROUP BY
+--     below would otherwise violate unit_formula_items' own UNIQUE KEY.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_product_formula_items_to_unit_formula_items()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'product_formula_items'
+    ) THEN
+        INSERT IGNORE INTO unit_formula_items (unit, material_id, qty_per_unit)
+        SELECT p.unit, pfi.material_id, MIN(pfi.qty_per_unit)
+        FROM product_formula_items pfi
+        JOIN products p ON p.sku = pfi.sku
+        GROUP BY p.unit, pfi.material_id;
+
+        DROP TABLE product_formula_items;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_product_formula_items_to_unit_formula_items();
+DROP PROCEDURE _migrate_product_formula_items_to_unit_formula_items;

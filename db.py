@@ -31,10 +31,15 @@ def query(sql, params=None, fetchone=False, dictionary=True):
     """Run a SELECT and return rows (list of dicts by default)."""
     conn = get_db()
     cur = conn.cursor(dictionary=dictionary)
-    cur.execute(sql, params or ())
-    result = cur.fetchone() if fetchone else cur.fetchall()
-    cur.close()
-    return result
+    try:
+        cur.execute(sql, params or ())
+        return cur.fetchone() if fetchone else cur.fetchall()
+    finally:
+        # Always close, even if execute()/fetch*() raised (bad SQL, a
+        # dropped connection, a deadlock) — otherwise the cursor is
+        # simply never closed on that path, and this request's
+        # connection lives on with it dangling until teardown.
+        cur.close()
 
 
 def execute(sql, params=None, commit=True):
@@ -46,12 +51,24 @@ def execute(sql, params=None, commit=True):
     """
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(sql, params or ())
-    lastrowid, rowcount = cur.lastrowid, cur.rowcount
-    if commit:
-        conn.commit()
-    cur.close()
-    return lastrowid, rowcount
+    try:
+        cur.execute(sql, params or ())
+        lastrowid, rowcount = cur.lastrowid, cur.rowcount
+        if commit:
+            conn.commit()
+        return lastrowid, rowcount
+    except Exception:
+        # Only roll back when this call owns the transaction (commit=
+        # True). With commit=False, an outer `with transaction():`
+        # block owns this connection's commit/rollback — rolling back
+        # here out from under it would silently discard writes that
+        # block already made earlier in the same transaction, instead
+        # of leaving the decision to its own except/rollback.
+        if commit:
+            conn.rollback()
+        raise
+    finally:
+        cur.close()
 
 
 class TransactionAborted(Exception):

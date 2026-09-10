@@ -811,12 +811,21 @@ function enhanceSelect(select) {
             panel.innerHTML = '<div class="cs-option-empty">No options</div>';
             return;
         }
-        panel.innerHTML = opts.map(function (opt, i) {
-            const classes = ['cs-option'];
-            if (opt.disabled) classes.push('cs-option-disabled');
-            return '<div class="' + classes.join(' ') + '" role="option" data-index="' + i + '">' +
-                (opt.textContent.trim() || ' ') + '</div>';
-        }).join('');
+        // Built as real DOM nodes with textContent (not an HTML string)
+        // so option text is never re-parsed as markup -- an option whose
+        // text came from user-entered data (a supplier/customer/material
+        // name, etc.) cannot inject HTML this way. Do not switch this
+        // back to panel.innerHTML = opts.map(...).join('') without
+        // escaping first.
+        panel.innerHTML = '';
+        opts.forEach(function (opt, i) {
+            const el = document.createElement('div');
+            el.className = 'cs-option' + (opt.disabled ? ' cs-option-disabled' : '');
+            el.setAttribute('role', 'option');
+            el.dataset.index = i;
+            el.textContent = opt.textContent.trim() || ' ';
+            panel.appendChild(el);
+        });
         optionEls().forEach(function (el) {
             el.addEventListener('click', function () {
                 const i = parseInt(el.dataset.index, 10);

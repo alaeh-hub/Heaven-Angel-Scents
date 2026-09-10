@@ -57,7 +57,7 @@
           <tbody>
             {% for a in accounts %}
             <tr data-search="{{ (a.username ~ ' ' ~ a.role ~ ' ' ~ (a.branch_name or ''))|lower }}" data-role="{{ a.role }}">
-              <td data-label="Username">
+              <td data-label="Username" class="mobile-inline-anchor">
                 <div class="item-name">{{ a.username }}</div>
                 <div class="item-sub item-sub-badge">
                   <span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span>
@@ -67,7 +67,7 @@
               <td class="mobile-fold" data-label="Role"><span class="badge badge-{{ 'unisex' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
               <td class="text-soft" data-label="Branch">{{ a.branch_name or '— Main Branch —' }}</td>
               <td class="mobile-fold" data-label="Status"><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
-              <td data-label="">
+              <td data-label="" class="mobile-inline-action">
                 <div class="inline-form">
                   <!-- Unified confirm pattern: form[data-confirm] is
                        picked up by main.js's delegated submit handler —

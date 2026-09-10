@@ -55,10 +55,10 @@
         <tbody>
           {% for row in low_stock %}
           <tr>
-            <td class="item-name" data-label="Item">{{ row.item_name }}</td>
+            <td class="item-name mobile-inline-anchor" data-label="Item">{{ row.item_name }}</td>
             <td class="num" style="min-width:150px;" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level
               * 3) }}</td>
-            <td data-label="">
+            <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('branch.request_stock', sku=row.sku, qty=row.suggested_qty) }}"
                 class="btn btn-ghost btn-sm">Reorder</a>
             </td>
