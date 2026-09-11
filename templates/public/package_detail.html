@@ -1066,12 +1066,90 @@
         return el;
       }
 
+      // ---- loading dialog ----
+      // This page doesn't load main.js, so — same reasoning as the
+      // flash-dismiss block above — it gets its own small copy of the
+      // shared centered "Loading…" dialog (see .loading-overlay in
+      // style.css, which this page does load) rather than the app's
+      // JS-driven one. Plain CSS animations (.loading-overlay-exit,
+      // also in style.css) rather than Motion — this dialog's own
+      // fetch-failure fallback below can fall back to a real
+      // inquireForm.submit(), a real navigation starting almost
+      // immediately, and Motion's animate() rejects its controls with
+      // an AbortError when a page unload cuts an animation short like
+      // that, unreliably enough that even always attaching a
+      // rejection handler didn't keep it from surfacing as an
+      // unhandled rejection. Toggling a class and letting CSS run the
+      // animation sidesteps that category of failure entirely —
+      // there's no promise to reject.
+      var loadingOverlayEl = null;
+      var loadingOverlayShownAt = 0;
+      var loadingOverlayToken = 0;
+      var LOADING_OVERLAY_MIN_VISIBLE_MS = 400;
+      // Must match .loading-overlay-exit's own animation-duration in
+      // style.css — this is how long hide() waits, after starting
+      // that class's exit animation, before actually setting
+      // hidden = true.
+      var LOADING_OVERLAY_EXIT_MS = 180;
+
+      function getLoadingOverlay() {
+        if (loadingOverlayEl) return loadingOverlayEl;
+        loadingOverlayEl = document.createElement('div');
+        loadingOverlayEl.className = 'loading-overlay';
+        loadingOverlayEl.hidden = true;
+        loadingOverlayEl.setAttribute('role', 'status');
+        loadingOverlayEl.setAttribute('aria-live', 'polite');
+        loadingOverlayEl.innerHTML =
+          '<div class="loading-dialog">' +
+          '<div class="loading-dialog-spinner"></div>' +
+          '<div class="loading-dialog-text">Loading…</div>' +
+          '</div>';
+        document.body.appendChild(loadingOverlayEl);
+        return loadingOverlayEl;
+      }
+
+      function showLoadingOverlay() {
+        loadingOverlayShownAt = Date.now();
+        loadingOverlayToken += 1;
+        var el = getLoadingOverlay();
+        el.classList.remove('loading-overlay-exit');
+        el.hidden = false;
+      }
+
+      function hideLoadingOverlay() {
+        if (!loadingOverlayEl || loadingOverlayEl.hidden) return;
+        var myToken = loadingOverlayToken;
+
+        function doHide() {
+          if (myToken !== loadingOverlayToken) return;
+          loadingOverlayEl.classList.add('loading-overlay-exit');
+          setTimeout(function () {
+            if (myToken === loadingOverlayToken) {
+              loadingOverlayEl.hidden = true;
+              loadingOverlayEl.classList.remove('loading-overlay-exit');
+            }
+          }, LOADING_OVERLAY_EXIT_MS);
+        }
+
+        // LOADING_OVERLAY_MIN_VISIBLE_MS is comfortably longer than the
+        // CSS entrance animation's own 0.25s duration (see
+        // .loading-dialog-in in style.css), so doHide() never fires
+        // before it has already finished on its own.
+        var remaining = LOADING_OVERLAY_MIN_VISIBLE_MS - (Date.now() - loadingOverlayShownAt);
+        if (remaining > 0) {
+          setTimeout(doHide, remaining);
+        } else {
+          doHide();
+        }
+      }
+
       if (inquireForm) {
         inquireForm.addEventListener('submit', function (e) {
           e.preventDefault();
           var formData = new FormData(inquireForm);
           var submitBtn = inquireForm.querySelector('button[type="submit"]');
           if (submitBtn) submitBtn.disabled = true;
+          showLoadingOverlay();
 
           fetch(inquireForm.action, {
             method: 'POST',
@@ -1115,6 +1193,7 @@
             })
             .then(function () {
               if (submitBtn) submitBtn.disabled = false;
+              hideLoadingOverlay();
             });
         });
       }

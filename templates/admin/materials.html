@@ -60,12 +60,11 @@
     .mat-sup-table th:nth-child(4), .mat-sup-table td:nth-child(4) { width: 12%; }
     .mat-sup-table th:nth-child(5), .mat-sup-table td:nth-child(5) { width: 18%; }
 
-    .mat-table th:nth-child(1), .mat-table td:nth-child(1) { width: 20%; }
-    .mat-table th:nth-child(2), .mat-table td:nth-child(2) { width: 16%; }
-    .mat-table th:nth-child(3), .mat-table td:nth-child(3) { width: 14%; }
-    .mat-table th:nth-child(4), .mat-table td:nth-child(4) { width: 14%; }
-    .mat-table th:nth-child(5), .mat-table td:nth-child(5) { width: 22%; }
-    .mat-table th:nth-child(6), .mat-table td:nth-child(6) { width: 14%; }
+    .mat-table th:nth-child(1), .mat-table td:nth-child(1) { width: 24%; }
+    .mat-table th:nth-child(2), .mat-table td:nth-child(2) { width: 20%; }
+    .mat-table th:nth-child(3), .mat-table td:nth-child(3) { width: 20%; }
+    .mat-table th:nth-child(4), .mat-table td:nth-child(4) { width: 18%; }
+    .mat-table th:nth-child(5), .mat-table td:nth-child(5) { width: 18%; }
 
     /* "When" here carries a full date+time stamp ("Sep 04, 2026
        02:33 PM"), noticeably longer than the date-only "When"
@@ -217,7 +216,6 @@
     <h2>Raw materials</h2>
     <div style="display:flex; align-items:center; gap:14px;">
       <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
-      <a href="{{ url_for('admin.formulas') }}" class="btn btn-ghost btn-sm">Manage formulas →</a>
       <button type="button" class="btn btn-accent btn-sm" id="openAddMaterialBtn">+ Add material</button>
     </div>
   </div>
@@ -235,8 +233,8 @@
     <div class="table-wrap table-airy">
       <table class="smart-table table-fixed mat-table">
         <colgroup>
-          <col style="width:20%"><col style="width:16%"><col style="width:14%">
-          <col style="width:14%"><col style="width:22%"><col style="width:14%">
+          <col style="width:24%"><col style="width:20%"><col style="width:20%">
+          <col style="width:18%"><col style="width:18%">
         </colgroup>
         <thead>
           <tr>
@@ -244,7 +242,6 @@
             <th>Purchased as</th>
             <th>Supplier</th>
             <th class="num">Cost per unit</th>
-            <th style="min-width:170px;">On hand</th>
             <th></th>
           </tr>
         </thead>
@@ -269,16 +266,6 @@
             <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
             <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{
               mat.unit.lower() }}</td>
-            <td data-label="On hand">
-              <div class="fill-row">
-                <div class="fill-track">
-                  <div class="fill-bar {{ 'low' if mat.stock_qty <= (mat.package_qty / 4) }}"
-                    data-pct="{{ [(mat.stock_qty / mat.package_qty * 100) if mat.package_qty else 0, 100]|min }}"></div>
-                </div>
-                <span class="fill-qty num">{{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower()
-                  }}</span>
-              </div>
-            </td>
             <td data-label="" class="mobile-inline-action">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
                 data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
@@ -303,9 +290,9 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">On hand starts at the package quantity the moment a material is added,
-      and goes down as usage is logged below — it isn't restocked automatically by editing a material's purchase
-      details. Total material spend (above) is what's been paid for packages, not what's been used.</p>
+    <p class="text-faint" style="font-size:12px;">This is a purchase log, not a stock count — adding or editing a
+      material just records what was bought and for how much; nothing here is deducted when usage is logged below.
+      Total material spend (above) is what's been paid for packages.</p>
   </div>
   {% else %}
   <div class="empty-state">
@@ -466,7 +453,7 @@
     <h2 style="font-size:16px; margin-bottom:4px;">Log material usage</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Pick a product and how many units were produced — the formula for its packaging size (see the Formulas page)
-      decides which ingredients get deducted and how much cost of goods (capital) gets logged.
+      decides how much cost of goods (capital) gets logged.
     </p>
     {% if formula_products %}
     <form method="POST" action="{{ url_for('admin.log_material_usage') }}" id="logUsageForm">
@@ -592,8 +579,8 @@
   <div class="card card-pad" style="max-width:420px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Changing this updates the reference cost per unit. It doesn't restock the material — on-hand quantity only moves
-      via Log material usage.
+      Changing this updates the reference cost per unit shown on this page only — it has no effect on any formula,
+      which sets its own line costs by hand on the Formulas page.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -804,22 +791,9 @@
     }
   })();
 
-  function wireOverlay(overlayId, openBtnId, cancelBtnId) {
-    var overlay = document.getElementById(overlayId);
-    var openBtn = document.getElementById(openBtnId);
-    var cancelBtn = document.getElementById(cancelBtnId);
-    if (!overlay || !openBtn) return;
-
-    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
-    if (cancelBtn) cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
-    });
-  }
-
+  // wireOverlay() is now shared, in main.js — animates open/close via
+  // anime.js instead of the plain instant display toggle this used to
+  // be (see its own comment there for why).
   wireOverlay('addMaterialOverlay', 'openAddMaterialBtn', 'addMaterialCancelBtn');
   wireOverlay('logUsageOverlay', 'openLogUsageBtn', 'logUsageCancelBtn');
 
@@ -893,15 +867,15 @@
       var mode = (btn.dataset.purchaseMode === 'Individual') ? 'individual' : 'package';
       setEditMode(mode);
       updateEditCostPreview();
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
   })();
 
@@ -925,15 +899,15 @@
       emailInput.value = btn.dataset.email;
       addressInput.value = btn.dataset.address;
       notesInput.value = btn.dataset.notes;
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
   })();
 </script>

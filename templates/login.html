@@ -48,6 +48,26 @@
 
     .auth-card {
       max-width: 380px;
+      /* Plain CSS instead of the Motion-driven version this used to
+         be — submitting the form navigates the page away almost
+         immediately, which could cancel a JS-driven animation
+         mid-flight and reject its promise with an AbortError
+         ("Transition was skipped"); despite always attaching a
+         rejection handler, that intermittently still surfaced as an
+         unhandled rejection in the console (Motion's controls object
+         doesn't reliably settle it when cut short like that). A CSS
+         animation has no promise to reject in the first place — the
+         browser just silently stops it when the document unloads.
+         prefers-reduced-motion is already handled globally (see the
+         animation-duration override in style.css). */
+      animation: auth-card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes auth-card-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
     }
 
     /* style.css styles .flashes as a fixed top-right (or, on narrow
@@ -287,36 +307,14 @@
       animation: auth-shake 0.4s;
     }
 
-    /* ---- inline button spinner shown while the sign-in request is
-       submitting, instead of a full-page takeover screen ---- */
-    /* Ring color matches the button's own text color (var(--gold-contrast))
-       rather than white — .btn-accent is a gold fill with dark text, so a
-       white spinner would barely show up against it. */
-    .btn-spinner {
-      display: none;
-      width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      border: 2px solid color-mix(in srgb, var(--gold-contrast) 35%, transparent);
-      border-top-color: var(--gold-contrast);
-      animation: btn-spin 0.7s linear infinite;
-      margin-right: 8px;
-      vertical-align: -2px;
-    }
-
+    /* Loading feedback while the sign-in request is submitting is the
+       same app-wide centered dialog every other form uses (see
+       .loading-overlay in style.css and initSubmitLoadingState() /
+       showLoadingOverlay() in main.js, both loaded on this page) —
+       just a plain disabled look here, not a spinner of its own. */
     .btn-accent[disabled] {
       opacity: 0.85;
       cursor: not-allowed;
-    }
-
-    .btn-accent[disabled] .btn-spinner {
-      display: inline-block;
-    }
-
-    @keyframes btn-spin {
-      to {
-        transform: rotate(360deg);
-      }
     }
 
     .auth-hint {
@@ -446,7 +444,6 @@
             </div>
           </div>
           <button type="submit" class="btn btn-accent" id="submit-btn">
-            <span class="btn-spinner" aria-hidden="true"></span>
             <span id="submit-btn-label">Sign in as <span id="submit-role-label">Branch</span></span>
           </button>
         </form>
@@ -460,27 +457,6 @@
 
   <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  <script>
-    (function () {
-      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (window.Motion && !reduceMotion) {
-        var card = document.getElementById('authCard');
-        var cardAnim = window.Motion.animate(
-          card,
-          { opacity: [0, 1], transform: ['translateY(10px)', 'translateY(0px)'] },
-          { duration: 0.4, easing: [0.16, 1, 0.3, 1] }
-        );
-        // Submitting the form navigates the page away, which can cancel
-        // this animation mid-flight and reject Motion's (thenable)
-        // controls with an AbortError. Swallow it — it's expected here,
-        // not a real failure — rather than leave an unhandled promise
-        // rejection in the console.
-        if (cardAnim && typeof cardAnim.then === 'function') {
-          cardAnim.then(null, function () {});
-        }
-      }
-    })();
-  </script>
   <script>
     (function () {
       var hint = document.getElementById('auth-hint');
@@ -528,7 +504,6 @@
       var form = document.getElementById('login-form');
       var card = document.getElementById('authCard');
       var submitBtn = document.getElementById('submit-btn');
-      var submitLabel = document.getElementById('submit-btn-label');
       var usernameInput = document.getElementById('username');
 
       var fields = [
@@ -594,17 +569,21 @@
           return;
         }
 
-        if (form.dataset.pendingSubmit === 'true') return;
-        e.preventDefault();
+        if (submitBtn.disabled) {
+          // Already submitting — a stray second submit event (e.g. a
+          // very fast double Enter) shouldn't send the form twice.
+          e.preventDefault();
+          return;
+        }
 
-        // Prevent double submission while the request is in flight —
-        // an inline spinner in the button itself, rather than a
-        // full-page takeover, keeps the transition understated.
+        // Don't preventDefault here — let this real submission proceed
+        // natively. main.js's global submit listener (see
+        // initSubmitLoadingState()) picks it up the same way it does
+        // for every other form in the app and shows the shared
+        // centered "Loading…" dialog; disabling the button is just a
+        // belt-and-suspenders guard against a second click/Enter
+        // while that request is in flight.
         submitBtn.disabled = true;
-        submitLabel.textContent = 'Signing in…';
-
-        form.dataset.pendingSubmit = 'true';
-        form.submit();
       });
     })();
   </script>

@@ -21,7 +21,7 @@
         <select class="smart-filter-select" data-filter-key="unit">
           <option value="">All units</option>
           {% for u in unit_choices %}
-          <option value="{{ u }}">{{ u }}</option>
+          <option value="{{ u }}" {{ 'selected' if u == '85ML' }}>{{ u }}</option>
           {% endfor %}
         </select>
       </div>

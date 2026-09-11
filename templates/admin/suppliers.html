@@ -345,22 +345,9 @@
 
 {% block scripts %}
 <script>
-  function wireOverlay(overlayId, openBtnId, cancelBtnId) {
-    var overlay = document.getElementById(overlayId);
-    var openBtn = document.getElementById(openBtnId);
-    var cancelBtn = document.getElementById(cancelBtnId);
-    if (!overlay || !openBtn) return;
-
-    openBtn.addEventListener('click', function () { overlay.style.display = 'flex'; });
-    if (cancelBtn) cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
-    });
-  }
-
+  // wireOverlay() is now shared, in main.js \u2014 animates open/close via
+  // anime.js instead of the plain instant display toggle this used to
+  // be (see its own comment there for why).
   wireOverlay('addSupplierOverlay', 'openAddSupplierBtn', 'addSupplierCancelBtn');
 
   (function () {
@@ -383,15 +370,15 @@
       emailInput.value = btn.dataset.email;
       addressInput.value = btn.dataset.address;
       notesInput.value = btn.dataset.notes;
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
   })();
 
@@ -423,15 +410,15 @@
           '<td class="num mono">' + peso(mat.total_cost) + '</td>' +
           '</tr>';
       }).join('');
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    closeBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    closeBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
   })();
 </script>

@@ -122,7 +122,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed pk-all-table">
+      <table class="smart-table table-fixed pk-all-table table-collapsible">
         <colgroup>
           <col style="width:23%"><col style="width:10%"><col style="width:8%"><col style="width:13%">
           <col style="width:11%"><col style="width:13%"><col style="width:10%"><col style="width:12%">
@@ -153,15 +153,26 @@
             <td class="mobile-fold" data-label="For">
               <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
             </td>
-            <td class="num mono" data-label="Items">{{ pkg.item_count }}</td>
-            <td class="num mono" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
-            <td class="num" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
-            <td class="num mono qty-up" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
+            <td class="num mono mobile-detail" data-label="Items">{{ pkg.item_count }}</td>
+            <td class="num mono mobile-detail" data-label="Reference value">{{ pkg.reference_total|peso }}</td>
+            <td class="num mobile-detail" data-label="Discount"><span class="pk-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span></td>
+            <td class="num mono qty-up mobile-detail" data-label="Order price">{{ pkg.discounted_total|peso }}</td>
             <td class="mobile-fold" data-label="Status">
               <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
             </td>
             <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('admin.package_detail', package_id=pkg.package_id) }}" class="btn btn-ghost btn-sm">Manage</a>
+            </td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
             </td>
           </tr>
           {% endfor %}

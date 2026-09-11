@@ -137,7 +137,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed ptn-table">
+      <table class="smart-table table-fixed ptn-table table-collapsible">
         <colgroup>
           <col style="width:22%"><col style="width:12%"><col style="width:22%">
           <col style="width:16%"><col style="width:16%"><col style="width:12%">
@@ -166,17 +166,17 @@
             <td class="mobile-fold" data-label="Type">
               <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
             </td>
-            <td class="text-soft" style="font-size:12.5px;" data-label="Contact">
+            <td class="text-soft mobile-detail" style="font-size:12.5px;" data-label="Contact">
               {% if p.contact_person %}{{ p.contact_person }}<br>{% endif %}
               {% if p.phone %}<span class="mono">{{ p.phone }}</span>{% endif %}
               {% if p.email %}{{ ' · ' if p.phone }}{{ p.email }}{% endif %}
               {% if not p.contact_person and not p.phone and not p.email %}—{% endif %}
             </td>
-            <td class="num mono" data-label="Package sales">
+            <td class="num mono mobile-detail" data-label="Package sales">
               {{ p.total_invested|peso }}
               {% if p.investment_count %}<div class="item-sub" style="text-align:right;">{{ p.investment_count }} closed order{{ 's' if p.investment_count != 1 }}</div>{% endif %}
             </td>
-            <td data-label="Last inquiry">
+            <td data-label="Last inquiry" class="mobile-detail">
               {% if p.last_inquiry_at %}
               <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="mono text-soft" style="font-size:12px;">{{ p.last_inquiry_at.strftime('%b %d, %Y') }}</a>
               <div class="item-sub" style="text-align:left;">{{ p.inquiry_count }} inquir{{ 'y' if p.inquiry_count == 1 else 'ies' }}</div>
@@ -185,6 +185,17 @@
               {% endif %}
             </td>
             <td class="mono text-soft mobile-fold" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

@@ -11,6 +11,7 @@ from flask_wtf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
+import utils
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
 from extensions import (limiter, ratelimit_storage_is_memory, socketio,
                         socketio_cors_is_wildcard, socketio_message_queue_is_unset)
@@ -228,6 +229,10 @@ def create_app():
             return f"₱{decimal.Decimal(value):,.2f}"
         except (decimal.InvalidOperation, TypeError, ValueError):
             return f"₱{float(value):,.2f}"
+
+    # Used by the product_thumb() macro (templates/_macros.html) to render
+    # a per-product initials avatar in place of a photo when none is set.
+    app.jinja_env.globals["product_avatar"] = utils.product_avatar
 
     @app.context_processor
     def inject_today():

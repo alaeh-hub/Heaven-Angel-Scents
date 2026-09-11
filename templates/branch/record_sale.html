@@ -168,7 +168,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed">
+      <table class="smart-table table-fixed table-collapsible">
         <colgroup>
           <col style="width:12%">
           <col style="width:22%">
@@ -204,12 +204,23 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
-            <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
-            <td class="num mono" data-label="Price">{{ s.unit_price|peso }}</td>
-            <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
-            <td data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
+            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono mobile-detail" data-label="Price">{{ s.unit_price|peso }}</td>
+            <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
             <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
+            </td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
             </td>
           </tr>
           {% endfor %}

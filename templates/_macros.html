@@ -19,13 +19,9 @@
   <img src="{{ url_for('static', filename=image_path) }}" alt="{{ alt }}" class="product-thumb" width="{{ size }}"
     height="{{ size }}">
   {% else %}
-  <div class="product-thumb product-thumb-empty">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="20" height="20">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <path d="M21 15l-5-5L5 21" />
-    </svg>
-  </div>
+  {% set av = product_avatar(alt) %}
+  <div class="product-thumb product-thumb-empty product-thumb-avatar" title="{{ alt }}" aria-label="{{ alt }}"
+    style="width:{{ size }}px; height:{{ size }}px; font-size:{{ (size * 0.4)|round(1) }}px; background:{{ av.bg }}; color:{{ av.fg }};">{{ av.initials }}</div>
   {% endif %}
   {% endmacro %}
 

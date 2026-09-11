@@ -232,12 +232,25 @@ body {
 }
 
 .product-thumb-empty {
-  border-style: dashed;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--ink-faint);
   flex-shrink: 0;
+}
+
+/* Generated initials avatar shown in place of a photo — background/color
+   are set inline per product (see product_avatar() in utils.py and the
+   product_thumb() macro), deterministic so the same product keeps the
+   same color identity everywhere its thumbnail appears. Solid border
+   (vs. the plain .product-thumb-empty dashed one) since this is a
+   finished fallback, not an "add a photo" prompt. */
+.product-thumb-avatar {
+  border-style: solid;
+  font-weight: 700;
+  font-family: 'Manrope', sans-serif;
+  letter-spacing: 0.02em;
+  user-select: none;
 }
 
 /* Wraps a product thumbnail and its name/SKU/badge stack in the same
@@ -249,11 +262,6 @@ body {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-}
-
-.product-thumb-empty svg {
-  width: 1.25rem;
-  height: 1.25rem;
 }
 
 h1,
@@ -1499,6 +1507,8 @@ th.num {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   padding: 1.125rem 1.375rem;
   border-bottom: var(--border-width-strong) solid var(--border-strong);
 }
@@ -2221,6 +2231,122 @@ th.num {
   cursor: not-allowed;
 }
 
+/* Shown the instant a form is actually submitted (see main.js's
+   initSubmitLoadingState()/showLoadingOverlay()) so a request that
+   takes a moment — a write to the DB, a receipt PDF, an email, a CSV
+   import — reads as "in progress" immediately, instead of the page
+   just sitting inert with no feedback until it eventually changes.
+   Built once by JS and appended straight to <body> (not .content),
+   so it survives a soft-nav content swap and works identically on
+   every page that loads main.js, including standalone ones like
+   login.html. z-index above every modal overlay in the app (9999) so
+   it always sits on top even if a modal was already open when the
+   form inside it was submitted. */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(28, 27, 25, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.loading-overlay[hidden] {
+  display: none;
+}
+
+/* Plain CSS animations rather than Motion (window.Motion — see
+   revealContent()/the theme-toggle bounce in main.js for where Motion
+   is used instead) — this dialog's own lifecycle can be cut short at
+   any moment by a real page navigation (a plain, non-soft-nav form
+   submit unloads the page almost immediately), and unlike those two,
+   which always run to completion on a page that's staying put,
+   Motion's animate() rejects its (thenable) controls with an
+   AbortError when an animation gets cancelled that way — and despite
+   always attaching a rejection handler, that intermittently still
+   surfaced as an unhandled rejection in the console (the controls
+   object doesn't reliably settle it when cut short like that). A CSS
+   animation has no promise to reject in the first place: the browser
+   just silently stops it when the document unloads, exactly like the
+   .flash toast system below already relies on for the same reason —
+   a flash can be dismissed/removed at any moment too. See main.js's
+   showLoadingOverlay()/hideLoadingOverlay() for how .loading-overlay-
+   exit gets toggled; prefers-reduced-motion is already handled
+   globally (the animation-duration override further up this file). */
+.loading-overlay {
+  animation: loading-overlay-in 0.18s ease-out;
+}
+
+.loading-overlay.loading-overlay-exit {
+  animation: loading-overlay-out 0.18s ease-in forwards;
+}
+
+@keyframes loading-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes loading-overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.loading-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1.75rem 2.25rem;
+  background: var(--surface);
+  border: var(--border-width-strong) solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: loading-dialog-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.loading-overlay.loading-overlay-exit .loading-dialog {
+  animation: loading-dialog-out 0.18s ease-in forwards;
+}
+
+@keyframes loading-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes loading-dialog-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.loading-dialog-spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: loading-dialog-spin 0.7s linear infinite;
+}
+
+.loading-dialog-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+@keyframes loading-dialog-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .field {
   margin-bottom: 1rem;
 }
@@ -2233,7 +2359,11 @@ th.num {
   margin-bottom: 0.375rem;
 }
 
-.field .help {
+/* Unscoped (not just .field .help) so a help note sitting outside a
+   .field — e.g. products.html's CSV column note under a .form-row,
+   scan/index.html's manual-entry hint — still gets the same small,
+   muted treatment instead of falling back to full-size body text. */
+.help {
   font-size: 0.7188rem;
   color: var(--ink-faint);
   margin-top: 0.3125rem;
@@ -2742,6 +2872,15 @@ input[type="file"]:hover::-webkit-file-upload-button {
   font-size: 0.7188rem;
 }
 
+/* .mobile-toggle-row (the "Details" expand/collapse bar — see the
+   @media (max-width: 680px) block below) only exists to give a
+   .table-collapsible row a collapsed mobile-card state; on a real
+   desktop table it would render as a stray extra column with nothing
+   in its <colgroup>, so it stays hidden outside that breakpoint. */
+.mobile-toggle-row {
+  display: none;
+}
+
 @media (max-width: 560px) {
   .table-toolbar {
     flex-direction: column;
@@ -2938,6 +3077,83 @@ input[type="file"]:hover::-webkit-file-upload-button {
      column it's actually been given. */
   .table-wrap tr:has(> td.mobile-inline-action) > td {
     min-width: 0;
+  }
+
+  /* Opt-in (table-collapsible) on top of the responsive-card layout
+     above: a row's .mobile-detail cells start hidden, so the card
+     collapses to just its .mobile-inline-anchor (name/date/badge) and
+     .mobile-inline-action (e.g. Receipt) — see Record Sale's "Recent
+     sales" list, where a long day's worth of sales otherwise dumps
+     Qty/Price/Total/Payment as four extra stacked lines per row. The
+     row's own .row-toggle-btn (in .mobile-toggle-row, forced visible
+     — see the base display:none rule further up this file) reveals
+     them again on tap by toggling .row-expanded on the <tr>. */
+  /* Animated via max-height/opacity/padding rather than display:none,
+     since display can't be transitioned — kept in the flex flow at
+     all times (see .table-wrap td's own display:flex) so it can
+     smoothly grow/shrink instead of popping in and out. max-height is
+     a hand-picked cap, not a measured value, so it has to comfortably
+     clear the tallest real .mobile-detail cell across every table
+     that opts in — most (Record Sale's Qty/Price/Total/Payment) are a
+     single ~13px line, but Customers' "Branches shopped" can wrap to
+     a couple of lines plus a badge underneath, hence the generous
+     6rem rather than trimming it to the common case. Overshooting the
+     cap just means a short cell visually finishes growing a little
+     before the transition's full duration elapses — harmless — while
+     undershooting it would clip a tall cell's content outright, which
+     wouldn't be. border stays constant width and only fades its
+     color, so the border itself never contributes a layout jump. */
+  .table-collapsible .mobile-detail {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    overflow: hidden;
+    border-bottom-color: transparent;
+    transition: max-height 0.22s ease, opacity 0.16s ease,
+      padding 0.22s ease, border-bottom-color 0.22s ease;
+  }
+
+  .table-collapsible tr.row-expanded .mobile-detail {
+    max-height: 6rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    opacity: 1;
+    border-bottom-color: var(--border);
+  }
+
+  .table-wrap td.mobile-toggle-row {
+    justify-content: center;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  .row-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.5rem 0.875rem;
+    background: none;
+    border: none;
+    border-top: var(--border-width-strong) solid var(--border);
+    color: var(--ink-faint);
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .row-toggle-btn svg {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    transition: transform 0.15s ease;
+  }
+
+  tr.row-expanded .row-toggle-btn svg {
+    transform: rotate(180deg);
   }
 }
 

@@ -72,7 +72,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed cust-table">
+      <table class="smart-table table-fixed cust-table table-collapsible">
         <colgroup>
           <col style="width:20%"><col style="width:22%"><col style="width:12%">
           <col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%">
@@ -95,15 +95,26 @@
               <div class="item-name">{{ r.name }}</div>
               {% if r.address %}<div class="item-sub">{{ r.address }}</div>{% endif %}
             </td>
-            <td class="text-soft" style="font-size:12.5px;" data-label="Branches shopped">
+            <td class="text-soft mobile-detail" style="font-size:12.5px;" data-label="Branches shopped">
               {{ r.branches }}
               {% if r.branch_count > 1 %}<div class="item-sub" style="margin-top:2px;"><span class="badge badge-pending">{{ r.branch_count }} branches</span></div>{% endif %}
             </td>
-            <td class="num mono" data-label="Purchases">{{ r.purchase_count }}</td>
-            <td class="num mono" data-label="Units">{{ r.total_units }}</td>
-            <td class="num mono" data-label="Total spent">{{ r.total_spent|peso }}</td>
-            <td class="mono text-soft" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
-            <td class="text-soft" data-label="Last at">{{ r.last_branch_name }}</td>
+            <td class="num mono mobile-detail" data-label="Purchases">{{ r.purchase_count }}</td>
+            <td class="num mono mobile-detail" data-label="Units">{{ r.total_units }}</td>
+            <td class="num mono mobile-detail" data-label="Total spent">{{ r.total_spent|peso }}</td>
+            <td class="mono text-soft mobile-detail" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
+            <td class="text-soft mobile-detail" data-label="Last at">{{ r.last_branch_name }}</td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

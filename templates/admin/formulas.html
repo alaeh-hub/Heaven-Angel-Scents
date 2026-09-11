@@ -20,8 +20,8 @@
   /* ---- Add-row + line-item cart, same shape as Request Stock's own
      cart-add-row/cart-table (see templates/branch/request_stock.html) —
      duplicated here rather than shared since the two pages' rows carry
-     different fields (material + qty/unit/price/total vs. product +
-     qty), and this is the only other page that needs the pattern. */
+     different fields (material + qty/line cost vs. product + qty), and
+     this is the only other page that needs the pattern. */
   .fm-add-row {
     display: flex;
     gap: 10px;
@@ -32,6 +32,7 @@
   .fm-add-row .field { margin-bottom: 0; }
   .fm-add-row .field-material { flex: 1.6; min-width: 180px; }
   .fm-add-row .field-qty { flex: 0 0 110px; }
+  .fm-add-row .field-linecost { flex: 0 0 130px; }
   .fm-add-row .btn { flex: 0 0 auto; }
 
   .fm-table-wrap {
@@ -62,6 +63,7 @@
   .fm-table tbody tr:last-child td { border-bottom: none; }
   .fm-table td.num, .fm-table th.num { text-align: right; white-space: nowrap; }
   .fm-qty-input { width: 90px; text-align: right; }
+  .fm-linecost-input { width: 100px; text-align: right; }
   .fm-remove {
     background: none; border: none; color: var(--danger);
     cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
@@ -92,11 +94,11 @@
     <h2>Unit formulas (cost of goods)</h2>
     <span class="hint">{{ units|length }} packaging size{{ 's' if units|length != 1 }}</span>
   </div>
-  <p class="text-faint" style="font-size:12.5px; padding: 0 22px 14px; margin:0;">
-    Each packaging size (85ML, 50ML, 1L, ...) has ONE formula — the recipe of raw materials, and how much of each,
-    that goes into producing a single unit of it — shared by every product sold in that size. Its cost per unit is
-    worked out live from every material's current cost per unit; logging a batch on Log Material Usage freezes that
-    figure at that moment as the batch's capital.
+  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
+    Each packaging size (85ML, 50ML, 1L, ...) has ONE formula — the recipe of raw materials, how much of each, and
+    what that line costs — shared by every product sold in that size. A fully custom recipe: qty per unit and line
+    cost are both just typed in below, with nothing calculated between them. Logging a batch on Log Material Usage
+    freezes the formula's cost per unit (the sum of every line cost) at that moment as the batch's capital.
   </p>
   <div class="table-wrap table-airy">
     <table class="table-fixed formula-table">
@@ -137,9 +139,9 @@
   <div class="card card-pad" style="max-width:640px; width:100%; max-height:90vh; overflow-y:auto;">
     <h2 style="font-size:16px; margin-bottom:4px;">Formula for <span id="fmUnitName"></span></h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Add every raw material (from the Materials list) that goes into producing ONE unit of this packaging size, and
-      how much of it. Every product sold in this size shares this formula. Cost per unit and total update live from
-      each material's current cost per unit.
+      Add every raw material (from the Materials list) that goes into producing ONE unit of this packaging size, how
+      much of it, and what that line costs — typed in directly, not worked out for you. Every product sold in this
+      size shares this formula.
     </p>
 
     <div class="fm-add-row">
@@ -148,17 +150,17 @@
         <select id="fmMaterialSelect">
           <option value="">Select…</option>
           {% for mat in materials %}
-          <option value="{{ mat.material_id }}" data-name="{{ mat.material_name }}" data-unit="{{ mat.unit }}"
-            data-cost="{{ mat.cost_per_unit }}"
-            data-stock="{{ mat.stock_qty|round(3)|string|replace('.000','') }}">{{ mat.material_name }} ({{ mat.unit
-            }}) — {{ mat.stock_qty|round(3)|string|replace('.000','') }} on hand</option>
+          <option value="{{ mat.material_id }}" data-name="{{ mat.material_name }}" data-unit="{{ mat.unit }}">{{ mat.material_name }} ({{ mat.unit }})</option>
           {% endfor %}
         </select>
       </div>
       <div class="field field-qty">
         <label for="fmQtyInput">Qty per unit</label>
         <input type="number" id="fmQtyInput" step="0.0001" min="0.0001" value="1">
-        <div class="help" id="fmStockHint"></div>
+      </div>
+      <div class="field field-linecost">
+        <label for="fmLineCostInput">Line cost (₱)</label>
+        <input type="number" id="fmLineCostInput" step="0.0001" min="0" value="0">
       </div>
       <button type="button" class="btn btn-ghost" id="fmAddBtn">Add</button>
     </div>
@@ -166,26 +168,24 @@
     <div class="fm-table-wrap">
       <table class="fm-table">
         <colgroup>
-          <col style="width:34%"><col style="width:18%"><col style="width:18%">
-          <col style="width:20%"><col style="width:40px">
+          <col style="width:40%"><col style="width:24%"><col style="width:26%"><col style="width:40px">
         </colgroup>
         <thead>
           <tr>
             <th>Material</th>
             <th class="num">Qty per unit</th>
-            <th class="num">Price</th>
             <th class="num">Line cost</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="fmBody">
           <tr class="fm-empty-row" id="fmEmptyRow">
-            <td colspan="5">No materials added yet — pick one above.</td>
+            <td colspan="4">No materials added yet — pick one above.</td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="fm-total-row" id="fmTotalRow">
-            <td colspan="3" class="fm-total-label">Cost per unit (COGS)</td>
+            <td colspan="2" class="fm-total-label">Cost per unit (COGS)</td>
             <td class="num mono" id="fmTotal">₱0.0000</td>
             <td></td>
           </tr>
@@ -212,6 +212,7 @@
     var overlay = document.getElementById('editFormulaOverlay');
     var materialSelect = document.getElementById('fmMaterialSelect');
     var qtyInput = document.getElementById('fmQtyInput');
+    var lineCostInput = document.getElementById('fmLineCostInput');
     var addBtn = document.getElementById('fmAddBtn');
     var body = document.getElementById('fmBody');
     var emptyRow = document.getElementById('fmEmptyRow');
@@ -222,40 +223,20 @@
     var cancelBtn = document.getElementById('fmCancelBtn');
     if (!overlay) return;
 
-    var stockHint = document.getElementById('fmStockHint');
-
     var materialsById = {};
     Array.prototype.forEach.call(materialSelect.options, function (opt) {
       if (!opt.value) return;
-      materialsById[opt.value] = {
-        name: opt.dataset.name, unit: opt.dataset.unit, cost: parseFloat(opt.dataset.cost) || 0,
-        stock: parseFloat(opt.dataset.stock) || 0,
-      };
+      materialsById[opt.value] = { name: opt.dataset.name, unit: opt.dataset.unit };
     });
 
-    // ---- formula state: material_id -> qty_per_unit ----
+    // ---- formula state: material_id -> { qty, cost } ----
+    // qty (qty_per_unit) and cost (line_cost) are two independently
+    // hand-typed values — nothing here multiplies one by the other.
     var formula = {};
 
     function formatPeso(n) {
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-
-    // A formula line can't call for more of a material per unit than is
-    // currently on hand (see save_formula()'s own server-side check,
-    // which is the one that's actually enforced — this is only for
-    // immediate feedback before that round-trip).
-    function updateStockHint() {
-      var mat = materialsById[materialSelect.value];
-      if (!mat) {
-        stockHint.textContent = '';
-        qtyInput.removeAttribute('max');
-        return;
-      }
-      qtyInput.max = mat.stock;
-      stockHint.textContent = mat.stock + ' ' + mat.unit.toLowerCase() + ' on hand.';
-    }
-    materialSelect.addEventListener('change', updateStockHint);
-    updateStockHint();
 
     function render() {
       var ids = Object.keys(formula);
@@ -269,9 +250,8 @@
         ids.forEach(function (id) {
           var mat = materialsById[id];
           if (!mat) return;
-          var qty = formula[id];
-          var lineCost = qty * mat.cost;
-          total += lineCost;
+          var line = formula[id];
+          total += line.cost;
 
           var tr = document.createElement('tr');
 
@@ -287,33 +267,34 @@
           qtyEl.type = 'number';
           qtyEl.step = '0.0001';
           qtyEl.min = '0.0001';
-          qtyEl.max = mat.stock;
-          qtyEl.value = qty;
+          qtyEl.value = line.qty;
           qtyEl.className = 'fm-qty-input mono';
           qtyEl.addEventListener('change', function () {
             var v = parseFloat(qtyEl.value);
             if (!v || v <= 0) v = 0.0001;
-            if (v > mat.stock) {
-              alert(mat.name + ': only ' + mat.stock + ' ' + mat.unit.toLowerCase() + ' on hand — can\'t use more than that per unit.');
-              v = mat.stock;
-            }
-            formula[id] = v;
+            formula[id].qty = v;
             render();
           });
           qtyTd.appendChild(qtyEl);
           tr.appendChild(qtyTd);
 
-          var priceTd = document.createElement('td');
-          priceTd.className = 'num mono';
-          priceTd.setAttribute('data-label', 'Price');
-          priceTd.textContent = '₱' + mat.cost.toFixed(4) + ' / ' + mat.unit.toLowerCase();
-          tr.appendChild(priceTd);
-
-          var lineTd = document.createElement('td');
-          lineTd.className = 'num mono';
-          lineTd.setAttribute('data-label', 'Line cost');
-          lineTd.textContent = formatPeso(lineCost);
-          tr.appendChild(lineTd);
+          var costTd = document.createElement('td');
+          costTd.className = 'num';
+          costTd.setAttribute('data-label', 'Line cost');
+          var costEl = document.createElement('input');
+          costEl.type = 'number';
+          costEl.step = '0.0001';
+          costEl.min = '0';
+          costEl.value = line.cost;
+          costEl.className = 'fm-linecost-input mono';
+          costEl.addEventListener('change', function () {
+            var v = parseFloat(costEl.value);
+            if (isNaN(v) || v < 0) v = 0;
+            formula[id].cost = v;
+            render();
+          });
+          costTd.appendChild(costEl);
+          tr.appendChild(costTd);
 
           var removeTd = document.createElement('td');
           var removeBtn = document.createElement('button');
@@ -344,24 +325,30 @@
         var qtyHidden = document.createElement('input');
         qtyHidden.type = 'hidden';
         qtyHidden.name = 'qty_per_unit[]';
-        qtyHidden.value = formula[id];
+        qtyHidden.value = formula[id].qty;
         inputsHolder.appendChild(qtyHidden);
+
+        var costHidden = document.createElement('input');
+        costHidden.type = 'hidden';
+        costHidden.name = 'line_cost[]';
+        costHidden.value = formula[id].cost;
+        inputsHolder.appendChild(costHidden);
       });
     }
 
     addBtn.addEventListener('click', function () {
       var id = materialSelect.value;
       if (!id) return;
-      var mat = materialsById[id];
       var qty = parseFloat(qtyInput.value);
       if (!qty || qty <= 0) qty = 1;
-      var newTotal = (formula[id] || 0) + qty;
-      if (mat && newTotal > mat.stock) {
-        alert(mat.name + ': only ' + mat.stock + ' ' + mat.unit.toLowerCase() + ' on hand — can\'t use more than that per unit.');
-        return;
-      }
-      formula[id] = newTotal;
+      var cost = parseFloat(lineCostInput.value);
+      if (isNaN(cost) || cost < 0) cost = 0;
+      // Adding the same material again just replaces its qty/cost with
+      // whatever's in the fields right now — there's only ever one row
+      // per material.
+      formula[id] = { qty: qty, cost: cost };
       qtyInput.value = 1;
+      lineCostInput.value = 0;
       render();
     });
 
@@ -371,19 +358,19 @@
       formula = {};
       var items = [];
       try { items = JSON.parse(btn.dataset.items || '[]'); } catch (e) { items = []; }
-      items.forEach(function (pair) {
-        formula[pair[0]] = parseFloat(pair[1]);
+      items.forEach(function (triple) {
+        formula[triple[0]] = { qty: parseFloat(triple[1]), cost: parseFloat(triple[2]) };
       });
       render();
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
 
     render();

@@ -62,7 +62,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed cu-table">
+      <table class="smart-table table-fixed cu-table table-collapsible">
         <colgroup>
           <col style="width:30%"><col style="width:14%"><col style="width:14%">
           <col style="width:18%"><col style="width:24%">
@@ -83,10 +83,21 @@
               <div class="item-name">{{ c.name }}</div>
               {% if c.address %}<div class="item-sub">{{ c.address }}</div>{% endif %}
             </td>
-            <td class="num mono" data-label="Purchases">{{ c.purchase_count }}</td>
-            <td class="num mono" data-label="Units">{{ c.total_units }}</td>
-            <td class="num mono" data-label="Total spent">{{ c.total_spent|peso }}</td>
-            <td class="mono text-soft" data-label="Last purchase">{{ c.last_purchase_at.strftime('%b %d, %Y') }}</td>
+            <td class="num mono mobile-detail" data-label="Purchases">{{ c.purchase_count }}</td>
+            <td class="num mono mobile-detail" data-label="Units">{{ c.total_units }}</td>
+            <td class="num mono mobile-detail" data-label="Total spent">{{ c.total_spent|peso }}</td>
+            <td class="mono text-soft mobile-detail" data-label="Last purchase">{{ c.last_purchase_at.strftime('%b %d, %Y') }}</td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

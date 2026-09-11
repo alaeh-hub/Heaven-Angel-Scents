@@ -62,6 +62,52 @@ def make_product(sql, price="100.00", unit="50ML", variant="Unisex"):
     return sku
 
 
+def make_partner(sql, partner_type="Distributor", name=None):
+    name = name or f"Test Partner {unique_suffix()}"
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO partners (partner_type, partner_name, contact_person, phone, email, address)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (partner_type, name, "Test Contact", "0917 000 0000", "test@example.com", "Test Address"),
+    )
+    sql.commit()
+    partner_id = cur.lastrowid
+    cur.close()
+    return partner_id
+
+
+def make_package(sql, name=None, discount_percent="10.00", partner_scope="Both"):
+    name = name or f"Test Package {unique_suffix()}"
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO packages (package_name, description, partner_scope, discount_percent)
+           VALUES (%s, %s, %s, %s)""",
+        (name, "Test description", partner_scope, discount_percent),
+    )
+    sql.commit()
+    package_id = cur.lastrowid
+    cur.close()
+    return package_id
+
+
+def make_partner_inquiry(sql, partner_type="Distributor", company_name=None,
+                         package_name_snapshot="Test Package", status="New"):
+    company_name = company_name or f"Test Company {unique_suffix()}"
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO partner_inquiries
+               (partner_type, company_name, contact_person, phone, email,
+                package_name_snapshot, status)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (partner_type, company_name, "Test Contact", "0917 000 0000",
+         "test@example.com", package_name_snapshot, status),
+    )
+    sql.commit()
+    inquiry_id = cur.lastrowid
+    cur.close()
+    return inquiry_id
+
+
 def make_inventory(sql, branch_id, sku, stock_qty, reorder_level=10):
     cur = sql.cursor()
     cur.execute(
@@ -100,23 +146,20 @@ def make_user(sql, role, branch_id=None, password="Test-Passw0rd!",
     return {"user_id": user_id, "username": username, "password": password, "role": role}
 
 
-def make_raw_material(sql, unit="Gram", package_qty="100.000", package_cost="100.00",
-                       stock_qty=None):
-    """Insert a raw material the way admin.py's materials() would —
-    cost_per_unit worked out from package_cost/package_qty, stock_qty
-    defaulting to the full package_qty (a freshly-added, unused material)
-    unless a test wants to start it partially drawn down.
+def make_raw_material(sql, unit="Gram", package_qty="100.000", package_cost="100.00"):
+    """Insert a raw material the way admin.py's materials() would — a
+    plain purchase log entry, cost_per_unit worked out from
+    package_cost/package_qty. No stock/on-hand quantity — raw_materials
+    isn't deducted by anything (see schema.sql's own comment on it).
     """
     name = f"Test Material {unique_suffix()}"
     cost_per_unit = float(package_cost) / float(package_qty)
-    if stock_qty is None:
-        stock_qty = package_qty
     cur = sql.cursor()
     cur.execute(
         """INSERT INTO raw_materials
-               (material_name, unit, purchase_mode, package_qty, package_cost, cost_per_unit, stock_qty)
-           VALUES (%s, %s, 'Package', %s, %s, %s, %s)""",
-        (name, unit, package_qty, package_cost, cost_per_unit, stock_qty),
+               (material_name, unit, purchase_mode, package_qty, package_cost, cost_per_unit)
+           VALUES (%s, %s, 'Package', %s, %s, %s)""",
+        (name, unit, package_qty, package_cost, cost_per_unit),
     )
     sql.commit()
     material_id = cur.lastrowid
@@ -135,7 +178,12 @@ def get_raw_material(sql, material_id):
 def make_formula(sql, unit, items):
     """Set a packaging size's formula directly (bypassing save_formula()'s
     own route/CSRF/form plumbing, but matching its actual replace
-    semantics) — `items` is a list of (material_id, qty_per_unit) pairs.
+    semantics) — `items` is a list of (material_id, qty_per_unit) pairs,
+    or (material_id, qty_per_unit, line_cost) triples when a test cares
+    about the formula's actual cost. qty_per_unit and line_cost are two
+    independently hand-entered values now (see unit_formula_items in
+    schema.sql) — nothing multiplies one by the other, so a 2-tuple just
+    defaults line_cost to 0 for tests that only care the row exists.
 
     Formulas are shared per unit (85ML, 50ML, ...), a small fixed set —
     not a fresh, uniquely-named row per test the way make_product()'s
@@ -147,11 +195,13 @@ def make_formula(sql, unit, items):
     """
     cur = sql.cursor()
     cur.execute("DELETE FROM unit_formula_items WHERE unit = %s", (unit,))
-    for material_id, qty_per_unit in items:
+    for item in items:
+        material_id, qty_per_unit = item[0], item[1]
+        line_cost = item[2] if len(item) > 2 else 0
         cur.execute(
-            """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit)
-               VALUES (%s, %s, %s)""",
-            (unit, material_id, qty_per_unit),
+            """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit, line_cost)
+               VALUES (%s, %s, %s, %s)""",
+            (unit, material_id, qty_per_unit, line_cost),
         )
     sql.commit()
     cur.close()

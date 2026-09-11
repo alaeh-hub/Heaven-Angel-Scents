@@ -95,7 +95,7 @@
       <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank">Export CSV</a>
     </div>
   </div>
-  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price.</div>
+  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price — same order as Export CSV.</div>
   <form method="POST" action="{{ url_for('admin.import_products') }}" enctype="multipart/form-data" id="importProductsForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
@@ -120,7 +120,7 @@
         <select class="smart-filter-select" data-filter-key="unit">
           <option value="">All units</option>
           {% for u in unit_choices %}
-          <option value="{{ u }}">{{ u }}</option>
+          <option value="{{ u }}" {{ 'selected' if u == '85ML' }}>{{ u }}</option>
           {% endfor %}
         </select>
       </div>
@@ -273,6 +273,36 @@
     }
   })();
 
+  // Mirrors utils.py's product_avatar()/_stable_hash() exactly (same
+  // palette, same djb2-style rolling hash folded mod 1e9+7 per char) so
+  // this live preview shows the exact same color the server renders for
+  // this product everywhere else, not a re-rolled one.
+  var PRODUCT_AVATAR_PALETTE = [
+    '#B5654A', '#9C4F5E', '#6E4C7D', '#4C5B8A', '#3F6E8E', '#3D8078',
+    '#4C7A54', '#6B7A3E', '#7A5A3E', '#8A5A73', '#45607A', '#82405A'
+  ];
+  var PRODUCT_AVATAR_FG = '#FBF8EF';
+
+  function productAvatar(name) {
+    var clean = String(name || '').trim().replace(/\s+/g, ' ');
+    var words = clean ? clean.split(' ') : [];
+    var initials;
+    if (words.length >= 2) {
+      initials = (words[0][0] + words[1][0]).toUpperCase();
+    } else if (words.length === 1) {
+      initials = words[0].slice(0, 2).toUpperCase();
+    } else {
+      initials = '?';
+    }
+    var lower = clean.toLowerCase();
+    var h = 0;
+    for (var i = 0; i < lower.length; i++) {
+      h = (h * 31 + lower.charCodeAt(i)) % 1000000007;
+    }
+    var bg = PRODUCT_AVATAR_PALETTE[h % PRODUCT_AVATAR_PALETTE.length];
+    return { initials: initials, bg: bg, fg: PRODUCT_AVATAR_FG };
+  }
+
   (function () {
     var overlay = document.getElementById('editProductOverlay');
     var skuLabel = document.getElementById('editProductSkuLabel');
@@ -299,23 +329,43 @@
       imageInput.value = '';
       removeImageCheckbox.checked = false;
       var imageUrl = btn.dataset.imageUrl;
+      // Built via DOM APIs rather than innerHTML string concatenation —
+      // item_name is admin-editable free text, and interpolating it
+      // straight into HTML (even just an attribute) would let a name
+      // containing a quote or angle bracket break out and inject markup.
+      imagePreviewWrap.innerHTML = '';
       if (imageUrl) {
-        imagePreviewWrap.innerHTML = '<img src="' + imageUrl + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:var(--border-width-strong) solid var(--border-strong);">';
+        var img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = '';
+        img.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:var(--border-width-strong) solid var(--border-strong);';
+        imagePreviewWrap.appendChild(img);
         removeImageField.style.display = '';
       } else {
-        imagePreviewWrap.innerHTML = '<span class="text-faint" style="font-size:12.5px;">No image set yet.</span>';
+        var av = productAvatar(nameInput.value);
+        var avatarDiv = document.createElement('div');
+        avatarDiv.className = 'product-thumb product-thumb-empty product-thumb-avatar';
+        avatarDiv.style.cssText = 'width:64px;height:64px;font-size:25.6px;background:' + av.bg + ';color:' + av.fg + ';';
+        avatarDiv.setAttribute('aria-label', nameInput.value);
+        avatarDiv.textContent = av.initials;
+        imagePreviewWrap.appendChild(avatarDiv);
+        var note = document.createElement('div');
+        note.className = 'text-faint';
+        note.style.cssText = 'font-size:12.5px;margin-top:6px;';
+        note.textContent = 'No image set — showing the generated avatar.';
+        imagePreviewWrap.appendChild(note);
         removeImageField.style.display = 'none';
       }
 
-      overlay.style.display = 'flex';
+      openOverlay(overlay);
     };
 
-    cancelBtn.addEventListener('click', function () { overlay.style.display = 'none'; });
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.style.display = 'none';
+      if (e.target === overlay) closeOverlay(overlay);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') overlay.style.display = 'none';
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
     });
   })();
 </script>

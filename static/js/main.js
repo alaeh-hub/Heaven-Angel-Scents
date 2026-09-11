@@ -202,6 +202,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initSmartLists();
     initDispatchQtyWarnings();
     initCustomSelects();
+    // Registered BEFORE initSoftNav() — both are delegated on
+    // `document` in the bubble phase, and listeners on the same node
+    // fire in registration order, so this must run first. initSoftNav()'s
+    // own submit handler calls e.preventDefault() on every soft-nav-
+    // eligible form (i.e. nearly every form in the app) to take over
+    // with its own fetch — that's a legitimate interception, not a
+    // cancelled submission, but e.defaultPrevented can't tell the two
+    // apart. Running first means this only ever sees defaultPrevented
+    // from something that actually meant to cancel the submit (a
+    // capture-phase confirm() dialog, a form's own validation
+    // listener) by the time it checks, never from initSoftNav()'s own
+    // preventDefault() a moment later.
+    initSubmitLoadingState();
     initSoftNav();
     const notifBell = initNotificationBell();
     initRealtime(notifBell);
@@ -575,6 +588,9 @@ function initSoftNav() {
                 // and drop this now-stale response instead of clobbering
                 // whatever it already rendered.
                 if (myToken !== navToken) return;
+                // Harmless no-op if a form submit never showed it (a
+                // plain link navigation, say) — see showLoadingOverlay().
+                hideLoadingOverlay();
 
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
                 if (!swapContent(fresh)) {
@@ -601,6 +617,7 @@ function initSoftNav() {
             })
             .catch(() => {
                 if (myToken !== navToken) return;
+                hideLoadingOverlay();
                 window.location.href = url;
             });
     }
@@ -964,6 +981,224 @@ function initConfirmDialogs() {
     }, true);
 }
 
+// A full-screen, centered "Loading…" dialog (see .loading-overlay in
+// style.css) shown for the duration of a form submission. Built once,
+// lazily, and appended straight to <body> — not .content — so it
+// works identically on every page that loads this file (including
+// standalone ones like login.html that don't extend base.html) and,
+// more importantly, survives a soft-nav content swap: swapContent()
+// (see initSoftNav() above) only ever replaces .content, so an
+// overlay living outside it isn't torn down and rebuilt by that swap
+// the way anything inside .content would be.
+let loadingOverlayEl = null;
+
+function getLoadingOverlay() {
+    if (loadingOverlayEl) return loadingOverlayEl;
+    const el = document.createElement('div');
+    el.className = 'loading-overlay';
+    el.hidden = true;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML =
+        '<div class="loading-dialog">' +
+        '<div class="loading-dialog-spinner"></div>' +
+        '<div class="loading-dialog-text">Loading…</div>' +
+        '</div>';
+    document.body.appendChild(el);
+    loadingOverlayEl = el;
+    return el;
+}
+
+// Local/fast requests can resolve in well under a frame, which made
+// the dialog flash on and immediately back off — too quick to
+// register as having happened at all. Enforcing a small minimum
+// visible time fixes that without slowing down anything: a request
+// that's genuinely slower than this just isn't affected (hide already
+// runs past the minimum by the time it's called), only a fast one
+// gets held open a beat longer than strictly necessary. Also long
+// enough to comfortably clear the CSS entrance animation's own 0.25s
+// duration (see .loading-dialog-in in style.css) before a hide() can
+// ever be applied.
+const LOADING_OVERLAY_MIN_VISIBLE_MS = 400;
+// Must match .loading-overlay-exit's own animation-duration in
+// style.css — this is how long hide() waits, after starting that
+// class's exit animation, before actually setting hidden = true.
+const LOADING_OVERLAY_EXIT_MS = 180;
+let loadingOverlayShownAt = 0;
+// Bumped on every show, checked before a delayed hide actually applies
+// — the overlay visually blocks clicks to everything under it, so two
+// overlapping submissions can't happen from a mouse click, but a
+// keyboard-triggered back/forward navigation still could while an
+// earlier hide is mid-delay. Without this, that stale timeout would
+// close the dialog a newer request just reopened.
+let loadingOverlayToken = 0;
+
+// Plain CSS animations (see .loading-overlay/.loading-overlay-exit in
+// style.css) rather than Motion (window.Motion — still used above for
+// the sidebar theme-toggle bounce and revealContent(), where nothing
+// ever cuts the animation short) — this dialog's own lifecycle can
+// end at any moment via a real page navigation (a plain, non-soft-nav
+// form submit unloads the page almost immediately), and Motion's
+// animate() rejects its controls with an AbortError when that
+// happens, unreliably enough that even always attaching a rejection
+// handler didn't keep it from surfacing as an unhandled rejection.
+// Toggling a class and letting CSS run the animation sidesteps that
+// category of failure entirely — there's no promise to reject.
+function showLoadingOverlay() {
+    loadingOverlayShownAt = Date.now();
+    loadingOverlayToken += 1;
+    const el = getLoadingOverlay();
+    el.classList.remove('loading-overlay-exit');
+    el.hidden = false;
+}
+
+function hideLoadingOverlay() {
+    if (!loadingOverlayEl || loadingOverlayEl.hidden) return;
+    const myToken = loadingOverlayToken;
+
+    const doHide = () => {
+        // Superseded by a newer show() while this was mid-delay —
+        // leave it alone, that newer call owns the overlay's state now.
+        if (myToken !== loadingOverlayToken) return;
+        loadingOverlayEl.classList.add('loading-overlay-exit');
+        setTimeout(() => {
+            if (myToken === loadingOverlayToken) {
+                loadingOverlayEl.hidden = true;
+                loadingOverlayEl.classList.remove('loading-overlay-exit');
+            }
+        }, LOADING_OVERLAY_EXIT_MS);
+    };
+
+    // LOADING_OVERLAY_MIN_VISIBLE_MS > LOADING_OVERLAY_ENTER_MS by
+    // construction, so doHide() never fires before the CSS entrance
+    // animation (see style.css) has already finished on its own.
+    const remaining = LOADING_OVERLAY_MIN_VISIBLE_MS - (Date.now() - loadingOverlayShownAt);
+    if (remaining > 0) {
+        setTimeout(doHide, remaining);
+    } else {
+        doHide();
+    }
+}
+
+// ---------------------------------------------------------------
+// Modal overlays (Add material, Edit product, Log usage, Remarks,
+// etc.) — every one across the admin app shares the same shape: a
+// position:fixed backdrop toggled via inline style.display, wrapping
+// one .card panel, dismissed by a Cancel button, clicking the
+// backdrop, or Escape. These two functions are the one place that
+// actually shows/hides one, so every page gets the same animated
+// open/close instead of each hand-rolling its own — see
+// wireOverlay() below for the common "one open button, one cancel
+// button" case, and openOverlay()/closeOverlay() directly for pages
+// whose open trigger needs to run its own logic first (populating an
+// edit form from a clicked row, say).
+//
+// anime.js (window.anime — see static/js/anime.js) rather than
+// Motion here, same as the loading dialog's original version — but
+// unlike that dialog, an overlay is only ever opened/closed by a
+// stable, in-page interaction (a button click), never by something
+// that might unload the page mid-animation the way a form submission
+// could, so animate()'s own promise isn't a reliability concern here.
+// It's still never awaited below regardless — the close delay is a
+// plain setTimeout matching the exit duration, exactly like the
+// loading dialog, so there's nothing to go wrong even if that changes
+// later.
+// Attached to window (not just a local const) so a page needing to
+// sequence its own follow-up work after a close animation finishes —
+// see users.html's tempPasswordOverlay, which removes itself from the
+// DOM entirely once closed, not just hides — can time it against the
+// same duration closeOverlay() itself uses, rather than a second
+// independently-maintained number that could drift out of sync.
+window.OVERLAY_EXIT_MS = 140;
+const OVERLAY_EXIT_MS = window.OVERLAY_EXIT_MS;
+
+function openOverlay(overlay) {
+    if (typeof overlay === 'string') overlay = document.getElementById(overlay);
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const panel = overlay.querySelector('.card, .pi-modal');
+    // anime.js's animate(targets, params) takes ONE params object with
+    // the property keyframes and settings (duration, ease, …) merged
+    // together — unlike Motion's animate(target, keyframes, options)
+    // three-argument shape used elsewhere in this file. A duration/
+    // ease passed as a separate third argument here is silently
+    // ignored (falls back to anime's own 1000ms default) rather than
+    // erroring, which is what actually happened here originally.
+    window.anime.animate(overlay, { opacity: [0, 1], duration: 160, ease: 'outQuad' });
+    if (panel) {
+        window.anime.animate(panel, { opacity: [0, 1], scale: [0.94, 1], duration: 220, ease: 'outBack' });
+    }
+}
+
+function closeOverlay(overlay) {
+    if (typeof overlay === 'string') overlay = document.getElementById(overlay);
+    if (!overlay || overlay.style.display === 'none') return;
+    if (window.anime && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const panel = overlay.querySelector('.card, .pi-modal');
+        window.anime.animate(overlay, { opacity: [1, 0], duration: OVERLAY_EXIT_MS, ease: 'inQuad' });
+        if (panel) {
+            window.anime.animate(panel, { opacity: [1, 0], scale: [1, 0.94], duration: OVERLAY_EXIT_MS, ease: 'inQuad' });
+        }
+        setTimeout(() => { overlay.style.display = 'none'; }, OVERLAY_EXIT_MS);
+    } else {
+        overlay.style.display = 'none';
+    }
+}
+
+// The common case: one button opens the overlay as-is (no per-click
+// setup needed) and one Cancel button, the backdrop, or Escape closes
+// it. Previously duplicated verbatim in materials.html and
+// suppliers.html (each defining its own copy, and each registering
+// its own document-level Escape listener) — now the one shared
+// version, called the same way from either page.
+function wireOverlay(overlayId, openBtnId, cancelBtnId) {
+    const overlay = document.getElementById(overlayId);
+    const openBtn = openBtnId ? document.getElementById(openBtnId) : null;
+    const cancelBtn = cancelBtnId ? document.getElementById(cancelBtnId) : null;
+    if (!overlay || !openBtn) return;
+
+    openBtn.addEventListener('click', () => openOverlay(overlay));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => closeOverlay(overlay));
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeOverlay(overlay);
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
+    });
+}
+
+// Shows the loading overlay the instant a form is actually submitted,
+// app-wide — no per-form opt-in needed. Delegated on `document` in
+// the bubble phase, so a capture-phase listener that cancels the
+// submission first (initConfirmDialogs()'s confirm() dialog) or a
+// form's own bubble-phase listener closer to it in the tree (login.html's
+// field validation, initDispatchQtyWarnings()'s over/under-limit
+// checks) has already had its chance to call preventDefault() by the
+// time this runs — checking e.defaultPrevented here means a cancelled
+// submit never shows a dialog for a request that was never actually
+// sent.
+//
+// MUST be registered before initSoftNav() (see the DOMContentLoaded
+// call site) — initSoftNav()'s own submit listener also calls
+// e.preventDefault() on nearly every form in the app, to take over
+// with its own fetch, which e.defaultPrevented can't tell apart from
+// an actual cancellation. Running first means that hasn't happened
+// yet by the time this checks it.
+//
+// Hiding it again is initSoftNav()'s job (see go() above): a plain,
+// non-soft-nav submission just lets the browser's own navigation tear
+// the whole page — overlay included — down on its own, but a
+// successful soft-nav swap only replaces .content, so go() explicitly
+// hides this once its response comes back.
+function initSubmitLoadingState() {
+    document.addEventListener('submit', (e) => {
+        if (e.defaultPrevented) return;
+        if (!(e.target instanceof HTMLFormElement)) return;
+        showLoadingOverlay();
+    });
+}
+
 function initDispatchQtyWarnings() {
     document.querySelectorAll('.dispatch-qty-input').forEach((input) => {
         const requested = parseInt(input.dataset.requestedQty, 10);
@@ -1029,6 +1264,23 @@ function initSmartTables() {
             const extra = (r.dataset.search || '').toLowerCase();
             rowText.set(r, extra && extra !== visible ? visible + ' ' + extra : visible);
         });
+
+        // Opt-in (table-collapsible, see style.css's @media (max-width:
+        // 680px) rules) — each row's mobile card starts collapsed to
+        // just its .mobile-inline-anchor/.mobile-inline-action, with a
+        // "Details" bar at the bottom to reveal its .mobile-detail
+        // cells (Qty/Price/Total/Payment on Record Sale's recent-sales
+        // list) instead of dumping all of them at once.
+        if (table.classList.contains('table-collapsible')) {
+            rows.forEach((row) => {
+                const toggleBtn = row.querySelector('.row-toggle-btn');
+                if (!toggleBtn) return;
+                toggleBtn.addEventListener('click', () => {
+                    const expanded = row.classList.toggle('row-expanded');
+                    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                });
+            });
+        }
 
         let filtered = rows.slice();
         let page = 1;

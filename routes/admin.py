@@ -1939,10 +1939,10 @@ def materials():
             execute(
                 """INSERT INTO raw_materials
                        (material_name, unit, purchase_mode, package_qty, package_cost,
-                        receipt_number, cost_per_unit, stock_qty, supplier_id, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        receipt_number, cost_per_unit, supplier_id, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (material_name, unit, purchase_mode, package_qty, package_cost,
-                 receipt_number, cost_per_unit, package_qty, supplier_id, purchased_at),
+                 receipt_number, cost_per_unit, supplier_id, purchased_at),
             )
             notify_all(["materials"])
             log_action("add_material", target=material_name,
@@ -1996,17 +1996,16 @@ def materials():
     # log_material_usage() below). Joined on p.unit, not p.sku — a
     # formula belongs to a packaging size (85ML, 50ML, ...) and is
     # shared by every product of that size, see unit_formula_items in
-    # schema.sql. cogs_per_unit is computed live from each formula line ×
-    # its material's current cost_per_unit, same as the Formulas page —
-    # this is only a preview shown in the picker; the authoritative figure
-    # is recomputed and frozen server-side when a batch is actually logged.
+    # schema.sql. cogs_per_unit is a plain sum of each formula line's own
+    # hand-entered line_cost, same as the Formulas page — this is only a
+    # preview shown in the picker; the authoritative figure is recomputed
+    # and frozen server-side when a batch is actually logged.
     formula_products = query(
         """SELECT p.sku, p.item_name, p.variant, p.unit,
                   COUNT(ufi.formula_item_id) AS material_count,
-                  COALESCE(SUM(ufi.qty_per_unit * rm.cost_per_unit), 0) AS cogs_per_unit
+                  COALESCE(SUM(ufi.line_cost), 0) AS cogs_per_unit
            FROM products p
            JOIN unit_formula_items ufi ON ufi.unit = p.unit
-           JOIN raw_materials rm ON rm.material_id = ufi.material_id
            GROUP BY p.sku, p.item_name, p.variant, p.unit
            ORDER BY p.item_name, p.unit"""
     )
@@ -2090,8 +2089,6 @@ def edit_material():
     # a reference figure shown on the page — usage entries no longer
     # carry any cost of their own (see log_material_usage()), so this
     # recompute has no effect on past usage history the way it used to.
-    # stock_qty is deliberately left untouched here: editing a material's
-    # purchase details isn't the same as restocking it.
     cost_per_unit = package_cost / package_qty
 
     try:
@@ -2123,18 +2120,18 @@ def log_material_usage():
     SKU's packaging size (see unit_formula_items in schema.sql) — pick a
     SKU whose `unit` has a formula on file, say how many units were
     produced, and this:
-      1. Deducts every formula ingredient's raw_materials.stock_qty by
-         qty_per_unit x qty_produced (same reduce-on-withdrawal pattern
-         the old per-material picker used), writing one
-         material_usage_logs row per ingredient for the same per-material
-         ledger as before.
-      2. Freezes that unit's total cost per unit AT THIS MOMENT (each
-         ingredient's qty_per_unit x its current cost_per_unit, summed)
-         and writes one cogs_logs row for the batch as a whole —
-         total_cogs = cogs_per_unit x qty_produced. That figure is what
-         the business calls "capital" now; see dashboard()/reports_data(),
-         which sum cogs_logs.total_cogs instead of
-         raw_materials.package_cost.
+      1. Freezes that unit's total cost per unit AT THIS MOMENT (a plain
+         sum of every ingredient's own hand-entered line_cost — no
+         multiplication) and writes one cogs_logs row for the batch as a
+         whole — total_cogs = cogs_per_unit x qty_produced. That figure
+         is what the business calls "capital" now; see
+         dashboard()/reports_data(), which sum cogs_logs.total_cogs
+         instead of raw_materials.package_cost.
+      2. Writes one material_usage_logs row per ingredient (qty_per_unit
+         x qty_produced), purely as an audit trail of how much of each
+         material this batch used — unrelated to cost now, and
+         raw_materials itself is never touched (it's a purchase log
+         only; see its own comment in schema.sql).
     """
     if not consume_form_token("log_material_usage"):
         flash(
@@ -2161,7 +2158,7 @@ def log_material_usage():
         return redirect(url_for("admin.materials"))
 
     formula_items = query(
-        "SELECT material_id, qty_per_unit FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
+        "SELECT material_id, qty_per_unit, line_cost FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
         (product["unit"],),
     )
     if not formula_items:
@@ -2171,6 +2168,24 @@ def log_material_usage():
         )
         return redirect(url_for("admin.formulas"))
 
+    # cogs_per_unit is a plain sum of every ingredient's own hand-entered
+    # line_cost — no per-material lookup against raw_materials, and no
+    # multiplication against qty_per_unit, needed to compute this batch's
+    # cost. qty_used (for material_usage_logs below) is tracked
+    # separately and purely as a quantity audit trail — it plays no part
+    # in cost.
+    lines = []
+    cogs_per_unit = decimal.Decimal("0")
+    for item in formula_items:
+        qty_used = (item["qty_per_unit"] * qty_produced).quantize(
+            decimal.Decimal("0.001"))
+        cogs_per_unit += item["line_cost"]
+        lines.append(
+            {"material_id": item["material_id"], "qty_used": qty_used})
+    cogs_per_unit = cogs_per_unit.quantize(decimal.Decimal("0.0001"))
+    total_cogs = (cogs_per_unit * qty_produced).quantize(
+        decimal.Decimal("0.01"))
+
     # Wrapped in try/except like every other write transaction in this
     # file (production(), record_sale(), dispatch_request(), ...) so a
     # DB-level failure surfaces as a friendly flash+redirect instead of a
@@ -2178,45 +2193,6 @@ def log_material_usage():
     try:
         with transaction() as conn:
             cur = conn.cursor(dictionary=True)
-
-            # Lock every ingredient's raw_materials row up front, in a
-            # stable order (material_id ASC — same order formula_items
-            # was already queried in), same reasoning as
-            # dispatch_request()'s lock-then-validate-then-write shape:
-            # two batches drawing on the same material can't jointly push
-            # its stock_qty negative, and a fixed lock order across
-            # batches avoids a deadlock when two batches share more than
-            # one ingredient.
-            lines = []
-            total_cogs = decimal.Decimal("0")
-            for item in formula_items:
-                cur.execute(
-                    """SELECT material_name, unit, cost_per_unit, stock_qty
-                       FROM raw_materials WHERE material_id = %s FOR UPDATE""",
-                    (item["material_id"],),
-                )
-                material = cur.fetchone()
-                if not material:
-                    cur.close()
-                    raise TransactionAborted(
-                        "One of this formula's materials no longer exists — check the Formulas page.")
-
-                qty_used = (item["qty_per_unit"] * qty_produced).quantize(
-                    decimal.Decimal("0.001"))
-                if qty_used > material["stock_qty"]:
-                    cur.close()
-                    raise TransactionAborted(
-                        f"Only {material['stock_qty']:g} {material['unit'].lower()} of "
-                        f"{material['material_name']} is on hand — need {qty_used:g} "
-                        f"for {qty_produced:g} unit(s)."
-                    )
-                total_cogs += qty_used * material["cost_per_unit"]
-                lines.append(
-                    {"material_id": item["material_id"], "qty_used": qty_used})
-
-            total_cogs = total_cogs.quantize(decimal.Decimal("0.01"))
-            cogs_per_unit = (total_cogs / qty_produced).quantize(
-                decimal.Decimal("0.0001"))
 
             cur.execute(
                 """INSERT INTO cogs_logs
@@ -2230,10 +2206,6 @@ def log_material_usage():
 
             for line in lines:
                 cur.execute(
-                    "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
-                    (line["qty_used"], line["material_id"]),
-                )
-                cur.execute(
                     """INSERT INTO material_usage_logs
                        (material_id, production_log_id, cogs_log_id, qty_used, notes, created_by_user_id)
                        VALUES (%s, %s, %s, %s, %s, %s)""",
@@ -2241,9 +2213,6 @@ def log_material_usage():
                      line["qty_used"], notes, session.get("user_id")),
                 )
             cur.close()
-    except TransactionAborted as err:
-        flash(str(err), "error")
-        return redirect(url_for("admin.materials"))
     except Exception:
         current_app.logger.exception(
             "log_material_usage failed for sku=%s", sku)
@@ -2274,12 +2243,12 @@ def formulas():
     instead of a raw-materials picker.
     """
     materials_list = query(
-        """SELECT material_id, material_name, unit, cost_per_unit, stock_qty
+        """SELECT material_id, material_name, unit
            FROM raw_materials ORDER BY material_name"""
     )
     formula_rows = query(
-        """SELECT ufi.unit, ufi.material_id, ufi.qty_per_unit,
-                  rm.material_name, rm.unit AS material_unit, rm.cost_per_unit
+        """SELECT ufi.unit, ufi.material_id, ufi.qty_per_unit, ufi.line_cost,
+                  rm.material_name, rm.unit AS material_unit
            FROM unit_formula_items ufi
            JOIN raw_materials rm ON rm.material_id = ufi.material_id
            ORDER BY ufi.unit, rm.material_name"""
@@ -2287,7 +2256,6 @@ def formulas():
 
     items_by_unit = {}
     for row in formula_rows:
-        row["line_cost"] = row["qty_per_unit"] * row["cost_per_unit"]
         items_by_unit.setdefault(row["unit"], []).append(row)
 
     # PRODUCT_UNITS is the same fixed 6-item list products.unit is
@@ -2301,13 +2269,15 @@ def formulas():
         units.append({
             "unit": unit,
             "formula_items": items,
+            # A plain sum — no multiplication — of every line's own
+            # hand-entered line_cost (see unit_formula_items in schema.sql).
             "cogs_per_unit": sum(
                 (i["line_cost"] for i in items), decimal.Decimal("0")),
-            # [material_id, qty_per_unit] pairs, JSON-embedded on the
-            # "Edit formula" button (see formulas.html) to pre-fill its
-            # cart-style editor — Jinja has no built-in zip filter, so
+            # [material_id, qty_per_unit, line_cost] triples, JSON-embedded
+            # on the "Edit formula" button (see formulas.html) to pre-fill
+            # its cart-style editor — Jinja has no built-in zip filter, so
             # this is built here rather than in the template.
-            "formula_pairs": [[i["material_id"], i["qty_per_unit"]] for i in items],
+            "formula_pairs": [[i["material_id"], i["qty_per_unit"], i["line_cost"]] for i in items],
         })
 
     return render_template(
@@ -2322,15 +2292,14 @@ def formulas():
 def save_formula():
     """Replace a packaging size's entire formula in one shot — comes
     from the Formulas page's add/remove material rows (material_id[] /
-    qty_per_unit[] pairs), same shape as dispatch_request()'s
-    item_id[]/dispatched_qty[] form. Submitting with no rows clears the
-    formula for that size.
+    qty_per_unit[] / line_cost[] triples), same shape as
+    dispatch_request()'s item_id[]/dispatched_qty[] form. Submitting with
+    no rows clears the formula for that size.
 
-    Each line's qty_per_unit is capped at that material's current
-    raw_materials.stock_qty — a recipe can't call for more of a material
-    per single unit produced than currently exists on hand at all (the
-    Formulas page's own JS enforces this too, for immediate feedback,
-    but this is the check that's actually authoritative).
+    line_cost[] is hand-typed by the admin on the Formulas page — a
+    line's total cost, not multiplied against qty_per_unit and not read
+    from raw_materials.cost_per_unit — see unit_formula_items in
+    schema.sql for why a formula is a fully custom recipe now.
     """
     unit = request.form.get("unit")
     if unit not in PRODUCT_UNITS:
@@ -2339,21 +2308,24 @@ def save_formula():
 
     material_ids = request.form.getlist("material_id[]")
     raw_qtys = request.form.getlist("qty_per_unit[]")
+    raw_costs = request.form.getlist("line_cost[]")
 
     try:
         items = []
         seen_material_ids = set()
-        for raw_id, raw_qty in zip(material_ids, raw_qtys):
+        for raw_id, raw_qty, raw_cost in zip(material_ids, raw_qtys, raw_costs):
             material_id = parse_optional_id(raw_id, "Material")
             if material_id is None:
                 continue
             qty_per_unit = parse_positive_decimal(
                 raw_qty, "Quantity per unit")
+            line_cost = parse_non_negative_decimal(
+                raw_cost, "Line cost")
             if material_id in seen_material_ids:
                 raise ValidationError(
                     "Each material can only appear once in a formula.")
             seen_material_ids.add(material_id)
-            items.append((material_id, qty_per_unit))
+            items.append((material_id, qty_per_unit, line_cost))
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.formulas"))
@@ -2361,41 +2333,24 @@ def save_formula():
     if items:
         placeholders = ",".join(["%s"] * len(items))
         material_rows = query(
-            f"""SELECT material_id, material_name, unit, stock_qty
-                FROM raw_materials WHERE material_id IN ({placeholders})""",
+            f"""SELECT material_id FROM raw_materials WHERE material_id IN ({placeholders})""",
             tuple(i[0] for i in items),
         )
-        materials_by_id = {row["material_id"]: row for row in material_rows}
-        if any(i[0] not in materials_by_id for i in items):
+        existing_material_ids = {row["material_id"] for row in material_rows}
+        if any(i[0] not in existing_material_ids for i in items):
             flash("One of the selected materials no longer exists.", "error")
             return redirect(url_for("admin.formulas"))
-
-        # A formula line can't call for more of a material per unit than
-        # is actually on hand right now — qty_per_unit is a recipe
-        # amount, but a value bigger than current stock_qty could never
-        # actually be fulfilled by even a single unit of production, so
-        # it's rejected here rather than only failing later when someone
-        # tries to log usage against it (see log_material_usage()).
-        for material_id, qty_per_unit in items:
-            material = materials_by_id[material_id]
-            if qty_per_unit > material["stock_qty"]:
-                flash(
-                    f"{qty_per_unit:g} {material['unit'].lower()} of {material['material_name']} per unit "
-                    f"exceeds what's on hand ({material['stock_qty']:g} {material['unit'].lower()}).",
-                    "error",
-                )
-                return redirect(url_for("admin.formulas"))
 
     try:
         with transaction() as conn:
             cur = conn.cursor()
             cur.execute(
                 "DELETE FROM unit_formula_items WHERE unit = %s", (unit,))
-            for material_id, qty_per_unit in items:
+            for material_id, qty_per_unit, line_cost in items:
                 cur.execute(
-                    """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit)
-                       VALUES (%s, %s, %s)""",
-                    (unit, material_id, qty_per_unit),
+                    """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit, line_cost)
+                       VALUES (%s, %s, %s, %s)""",
+                    (unit, material_id, qty_per_unit, line_cost),
                 )
             cur.close()
         notify_all(["materials"])

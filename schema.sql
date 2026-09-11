@@ -109,24 +109,12 @@ CREATE TABLE IF NOT EXISTS suppliers (
 --    only, shown alongside "Total Capital" — it no longer feeds capital/
 --    profit itself; see cogs_logs above for where that comes from
 --    instead (a batch's cost, computed from unit_formula_items ×
---    cost_per_unit at the moment usage is logged, not from what was
---    paid for the packages that usage draws down). Usage
---    (material_usage_logs below) still carries no cost of its own at the
---    per-material-row level; logging it only records a quantity and
---    reduces stock_qty here — the cost side now lives one level up, on
---    the cogs_logs batch that usage was written as part of.
---
---    stock_qty is the remaining quantity on hand, in `unit`. It starts
---    at package_qty the moment a material is added (i.e. "I just bought
---    this package") and is decremented by qty_used every time usage is
---    logged (see material_usage_logs below) — the same
---    reduce-on-withdrawal pattern branch_inventory.stock_qty already
---    uses for finished products, just applied to raw materials instead.
---    It is NOT recomputed from package_qty on every edit — editing a
---    material's purchase details (e.g. a new price for the next batch)
---    does not restock it; use Log material usage in reverse (or a
---    future restock action) for that. See the migration block below for
---    the ADD COLUMN + backfill that adds this to an existing database.
+--    cost_per_unit at the moment usage is logged, not from anything on
+--    this table). This whole table is purely a purchase log now — adding
+--    or editing a row records what was bought and for how much, nothing
+--    more; it has no stock/on-hand quantity and formula usage never
+--    writes back to it (see material_usage_logs and cogs_logs below —
+--    both read cost_per_unit from here but never deduct from it).
 --
 --    supplier_id is nullable — a material can exist before its supplier
 --    is on record — and set to NULL (not cascaded) if its supplier is
@@ -153,13 +141,11 @@ CREATE TABLE IF NOT EXISTS raw_materials (
     -- purchases logged before this existed won't have one on file.
     receipt_number VARCHAR(60) NULL,
     cost_per_unit  DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
-    stock_qty      DECIMAL(10, 3) NOT NULL DEFAULT 0.000,   -- remaining on hand, in `unit`; reduced as usage is logged
     supplier_id    INT NULL,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
     CHECK (package_qty > 0),
-    CHECK (package_cost >= 0),
-    CHECK (stock_qty >= 0)
+    CHECK (package_cost >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -211,34 +197,42 @@ CREATE TABLE IF NOT EXISTS production_logs (
 --
 --     qty_per_unit is how much of `material_id` (in raw_materials.unit)
 --     goes into producing exactly ONE bottle/piece of this packaging
---     size — e.g. 2.5 grams of Fixative per 85ML bottle. Cost is
---     deliberately NOT stored here: a formula is a standing recipe, and
---     its cost (qty_per_unit × raw_materials.cost_per_unit) is always
---     computed live wherever it's shown (see routes/admin.py's
---     formulas()/materials()), so editing a material's price is
---     reflected immediately without re-saving every formula that uses
---     it. Cost is only ever frozen at the moment usage is actually
---     logged against a production run — see cogs_logs below.
+--     size — e.g. 2.5 grams of Fixative per 85ML bottle. It's a plain
+--     logged quantity now (used only for material_usage_logs' own
+--     qty_used audit trail when a batch is logged — see cogs_logs
+--     below) — it plays no part in cost anymore.
 --
---     qty_per_unit is also capped at that material's current
---     raw_materials.stock_qty at save time (see routes/admin.py's
---     save_formula()) — not enforced as a CHECK/FK here since stock_qty
---     moves independently afterward (a later withdrawal can legitimately
---     leave stock below what an already-saved formula calls for), so
---     this is a one-time sanity check on entry, not a standing
---     constraint on the row.
+--     line_cost is simply typed in by hand on the Formulas page when the
+--     line is added (or edited) — NOT computed from qty_per_unit × any
+--     price, and NOT read from raw_materials.cost_per_unit. A formula is
+--     a fully custom recipe: material_id only identifies which material
+--     this line is (for its name/unit on the Formulas page); qty_per_unit
+--     and line_cost are two independently hand-entered values with no
+--     arithmetic relationship between them. The packaging size's total
+--     cost per unit is just the SUM of every line's line_cost (see
+--     routes/admin.py's formulas()/materials()) — editing a raw
+--     material's own cost_per_unit has no effect on any formula that
+--     references it. Cost is only ever frozen into a batch total at the
+--     moment usage is actually logged against a production run — see
+--     cogs_logs below.
+--
+--     qty_per_unit carries no upper bound tied to raw_materials — that
+--     table is just a purchase log now (see its own comment above), with
+--     nothing on it to check a recipe amount against.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS unit_formula_items (
     formula_item_id INT AUTO_INCREMENT PRIMARY KEY,
     unit            ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL,
     material_id     INT NOT NULL,
     qty_per_unit    DECIMAL(10, 4) NOT NULL,
+    line_cost       DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,   -- hand-entered total cost for this line; independent of qty_per_unit and raw_materials.cost_per_unit
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
     UNIQUE KEY unique_formula_unit_material (unit, material_id),
     INDEX idx_formula_items_unit (unit),
-    CHECK (qty_per_unit > 0)
+    CHECK (qty_per_unit > 0),
+    CHECK (line_cost >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -248,16 +242,17 @@ CREATE TABLE IF NOT EXISTS unit_formula_items (
 --     it now runs off the formula for the SKU's packaging size (see
 --     unit_formula_items above): pick a SKU (its `unit` decides which
 --     formula applies), say how many units were produced, and this
---     table records the result. Each formula line is still deducted
---     from raw_materials.stock_qty and still gets its own
+--     table records the result. Each formula line still gets its own
 --     material_usage_logs row (see that table's cogs_log_id column
---     below) for the same per-material stock ledger as before — this
---     table adds the cost side back on top, at the batch level.
+--     below) as a per-ingredient audit trail of what the batch was
+--     costed from — but nothing on raw_materials is touched by this;
+--     that table is purchase-only (see its own comment above).
 --
 --     cogs_per_unit is that unit's total cost per unit AT THE MOMENT
---     this batch was logged (SUM of qty_per_unit × material
---     cost_per_unit across every formula row for that unit) — frozen here
---     the same "snapshot, don't recompute later" way
+--     this batch was logged (plain SUM of line_cost across every
+--     unit_formula_items row for that unit — hand-entered on the
+--     Formulas page, see that table's own comment; no multiplication
+--     involved) — frozen here the same "snapshot, don't recompute later" way
 --     stock_request_items.unit_price is, so a later material price
 --     change never rewrites the value of a past batch. total_cogs =
 --     cogs_per_unit × qty_produced, rounded to centavos — this is the
@@ -296,14 +291,14 @@ CREATE TABLE IF NOT EXISTS cogs_logs (
 --    A plain quantity log at the per-material level — no cost of its
 --    own (see raw_materials above for why: money spent on materials is
 --    tracked purely at purchase time, SUM(package_cost), a separate
---    figure from what usage actually costs). Logging usage does two
---    things: inserts this row, and decrements the matching
---    raw_materials.stock_qty by qty_used — the same "log an event, move
---    the stock" pattern stock_movement_logs uses for products.
---    production_log_id is optional — usage doesn't have to be tied to a
---    specific run. See the migration block below for the DROP COLUMN
---    that removes unit_cost_snapshot/line_cost from an existing
---    database.
+--    figure from what usage actually costs). Logging usage inserts one
+--    row per formula ingredient purely as an audit trail of what a
+--    cogs_logs batch was costed from — it does NOT touch
+--    raw_materials in any way; that table has no stock/on-hand quantity
+--    to move (see its own comment above). production_log_id is optional
+--    — usage doesn't have to be tied to a specific run. See the
+--    migration block below for the DROP COLUMN that removes
+--    unit_cost_snapshot/line_cost from an existing database.
 --
 --    cogs_log_id links this row back to the cogs_logs batch it was
 --    written as part of (see cogs_logs above) — nullable and ON DELETE
@@ -1301,7 +1296,7 @@ CREATE TABLE IF NOT EXISTS login_activity (
 -- ----------------------------------------------------------------------------
 -- 22. Note — CHECK constraints added to several tables' quantity/price
 --     columns above (products.price, raw_materials.package_qty/
---     package_cost/stock_qty, branch_inventory.stock_qty/reorder_level,
+--     package_cost, branch_inventory.stock_qty/reorder_level,
 --     production_logs.qty_produced, material_usage_logs.qty_used,
 --     stock_request_items.*_qty/unit_price, sales.qty_sold/unit_price,
 --     packages.discount_percent, package_items.qty) — defense-in-depth
@@ -1413,3 +1408,111 @@ DELIMITER ;
 
 CALL _migrate_product_formula_items_to_unit_formula_items();
 DROP PROCEDURE _migrate_product_formula_items_to_unit_formula_items;
+
+-- ----------------------------------------------------------------------------
+-- 25. Migration — raw_materials: drop stock_qty
+--
+--     Raw materials are decoupled from formula usage entirely now — the
+--     Materials page is a pure purchase log (material, unit, package
+--     qty/cost, supplier, receipt), and logging a batch off a formula
+--     only computes cost of goods (see cogs_logs/material_usage_logs
+--     above); it never deducts anything from raw_materials. That leaves
+--     stock_qty with nothing left to track, so it's dropped here.
+--
+--     Runs unconditionally after migration 15 above, which still ADDs
+--     this column back on a database that predates it (that migration
+--     is left as historical record, not rewritten) — so this step is
+--     what actually removes it, on both a freshly-migrated database and
+--     one that's carried the column since before this feature existed.
+--     Guarded and re-run-safe like every other step in this file.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_drop_raw_materials_stock_qty()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'stock_qty'
+    ) THEN
+        ALTER TABLE raw_materials DROP COLUMN stock_qty;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_drop_raw_materials_stock_qty();
+DROP PROCEDURE _migrate_drop_raw_materials_stock_qty;
+
+-- ----------------------------------------------------------------------------
+-- 26. Migration — unit_formula_items.unit_cost
+--
+--     Formula lines now carry their own hand-entered price per unit of
+--     material, instead of always costing off raw_materials.cost_per_unit
+--     live (see unit_formula_items' own comment above) — a formula is a
+--     fully custom recipe now, admin-priced rather than tied to whatever
+--     a material's last purchase happened to cost.
+--
+--     Backfill: existing formula rows get unit_cost seeded from their
+--     material's current cost_per_unit — the same figure they were
+--     effectively costing at before this column existed — so nothing
+--     already saved silently changes price the moment this migration
+--     runs; admins can retype any of them afterward on the Formulas page.
+--     Guarded and re-run-safe like every other step in this file.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_unit_formula_items_unit_cost()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items' AND column_name = 'unit_cost'
+    ) THEN
+        ALTER TABLE unit_formula_items
+            ADD COLUMN unit_cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000 AFTER qty_per_unit;
+
+        UPDATE unit_formula_items ufi
+        JOIN raw_materials rm ON rm.material_id = ufi.material_id
+        SET ufi.unit_cost = rm.cost_per_unit;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_unit_formula_items_unit_cost();
+DROP PROCEDURE _migrate_unit_formula_items_unit_cost;
+
+-- ----------------------------------------------------------------------------
+-- 27. Migration — unit_formula_items.unit_cost -> line_cost
+--
+--     A formula line's cost is now typed in directly as a flat line
+--     total (line_cost), with no multiplication against qty_per_unit —
+--     replacing the previous unit_cost ("price per unit of material",
+--     multiplied by qty_per_unit to get a line's cost). Renaming in
+--     place keeps whatever was already saved under migration 25 above
+--     as this line's starting line_cost value (previously that value
+--     WAS the per-unit price; admins can retype any line's cost on the
+--     Formulas page afterward now that it means something different).
+--     Guarded and re-run-safe like every other step in this file — a
+--     no-op on a fresh install, which already gets line_cost straight
+--     from the CREATE TABLE above.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_unit_formula_items_unit_cost_to_line_cost()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items' AND column_name = 'unit_cost'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items' AND column_name = 'line_cost'
+    ) THEN
+        ALTER TABLE unit_formula_items
+            CHANGE COLUMN unit_cost line_cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_unit_formula_items_unit_cost_to_line_cost();
+DROP PROCEDURE _migrate_unit_formula_items_unit_cost_to_line_cost;

@@ -37,16 +37,32 @@
     white-space: nowrap;
   }
 
-  .pi-col-company {
-    max-width: 220px;
-  }
+  /* These four max-widths only bite when they're on the actual data
+     cell, not just its header — table-layout: auto sizes a column
+     from the widest cell across the whole column, so a <th> capped at
+     220px did nothing to stop a long company name/email/package name
+     in the <td> below it from stretching the column (and the table)
+     past that on desktop. Applied to both th and td below.
 
-  .pi-col-contact {
-    max-width: 240px;
-  }
+     Scoped to min-width: 681px (desktop table layout) only — left
+     unscoped, these same caps also squeezed the mobile card down to a
+     narrow ~150-240px-wide column (instead of the full card width),
+     which is what left every field's label+value bunched up on the
+     left with a big dead gap on the right instead of using the row's
+     full width. Same fix shape as Partners'/Packages'/Branches' own
+     desktop-only nth-child width rules. */
+  @media (min-width: 681px) {
+    .pi-col-company {
+      max-width: 220px;
+    }
 
-  .pi-col-package {
-    max-width: 150px;
+    .pi-col-contact {
+      max-width: 240px;
+    }
+
+    .pi-col-package {
+      max-width: 150px;
+    }
   }
 
   .pi-table .mono.text-soft {
@@ -258,8 +274,15 @@
   }
 
   /* ---- Remarks column + modal ---- */
-  .pi-col-remarks {
-    max-width: 180px;
+  /* Desktop-only for the same reason as the .pi-col-company/-contact/
+     -package caps above — left unscoped, this also squeezed the
+     mobile Remarks card down to 180px wide regardless of the
+     .pi-remarks-cell max-width:none override further below, since a
+     child can never exceed its own parent td's max-width. */
+  @media (min-width: 681px) {
+    .pi-col-remarks {
+      max-width: 180px;
+    }
   }
 
   .pi-remarks-cell {
@@ -328,23 +351,24 @@
     /* Same approach used to fix the Partners table on mobile: leave
        the generic .table-wrap behavior in place (every <td> is its
        own full-width "LABEL value" row), and only override the
-       columns whose content is more than one piece — When, Company,
+       columns whose content is more than one piece — Company,
        Contact, Status, Remarks — switching those from a flex row to
        a stacked block so their pieces read top-to-bottom instead of
-       being forced onto one line together. Type and Package are a
-       single value each, so the generic row already handles them. */
+       being forced onto one line together. Package is a single value,
+       so the generic row already handles it; When is mobile-fold
+       (duplicated in Company's own badge row, see the markup) and
+       Type is mobile-fold too, so neither renders here at all. */
     /* Tightened from the generic 10px/14px .table-wrap td padding —
-       with 7 stacked fields per card, that padding plus each label's
-       own margin added up to noticeably more breathing room between
-       fields here than on the Partners card. !important guards this
-       against the unrelated 12px/14px .pi-table td rule declared
-       above (outside this media query) and anything else in the
-       cascade that could otherwise still win on specificity. */
+       with several stacked fields per card, that padding plus each
+       label's own margin added up to noticeably more breathing room
+       between fields here than on the Partners card. !important
+       guards this against the unrelated 12px/14px .pi-table td rule
+       declared above (outside this media query) and anything else in
+       the cascade that could otherwise still win on specificity. */
     .pi-table td {
       padding: 5px 14px !important;
     }
 
-    .pi-table td[data-label="When"],
     .pi-table td[data-label="Company"],
     .pi-table td[data-label="Contact"],
     .pi-table td[data-label="Status"],
@@ -353,18 +377,12 @@
       text-align: left;
     }
 
-    .pi-table td[data-label="When"]::before,
     .pi-table td[data-label="Company"]::before,
     .pi-table td[data-label="Contact"]::before,
     .pi-table td[data-label="Status"]::before,
     .pi-table td[data-label="Remarks"]::before {
       display: block;
       margin-bottom: 2px;
-    }
-
-    .pi-table td[data-label="When"] .pi-when-time {
-      display: block;
-      margin-top: 0;
     }
 
     .pi-table td[data-label="Company"] .pi-company {
@@ -386,6 +404,42 @@
       overflow: visible;
       text-overflow: clip;
       max-width: 100%;
+    }
+
+    /* Collapsible mobile cards — reuses the same .table-collapsible/
+       .mobile-detail/.row-toggle-btn mechanism (and JS) as Record
+       Sale/Customers/Partners/Packages (see style.css), but tuned to
+       this page's own tighter 5px vertical rhythm above rather than
+       the shared default, and !important for the same reason that
+       rule needs it: beating the unrelated 12px/14px .pi-table td
+       rule that would otherwise still win on specificity alone. */
+    .pi-table.table-collapsible .mobile-detail {
+      max-height: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      opacity: 0;
+      overflow: hidden;
+      border-bottom-color: transparent;
+      transition: max-height 0.22s ease, opacity 0.16s ease,
+        padding 0.22s ease, border-bottom-color 0.22s ease;
+    }
+
+    /* 24rem (not the shared 6rem default) — Remarks can hold up to
+       1000 characters of free text (see the Remarks modal below),
+       nowhere near guaranteed to be a couple of short lines the way
+       every other collapsible cell on this table is, so the cap has
+       to clear a realistically long note rather than clip it. */
+    .pi-table.table-collapsible tr.row-expanded .mobile-detail {
+      max-height: 24rem !important;
+      padding-top: 5px !important;
+      padding-bottom: 5px !important;
+      opacity: 1;
+      border-bottom-color: var(--border);
+    }
+
+    .pi-table.table-collapsible td.mobile-toggle-row {
+      padding: 0 !important;
+      border-bottom: none !important;
     }
   }
 </style>
@@ -449,7 +503,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table pi-table">
+      <table class="smart-table pi-table table-collapsible">
         <thead>
           <tr>
             <th class="pi-col-when">When</th>
@@ -465,9 +519,9 @@
           {% for inq in inquiries %}
           <tr
             data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or '') ~ ' ' ~ (inq.remarks or ''))|lower }}">
-            <td class="mono text-soft" data-label="When"><span class="pi-when-date">{{ inq.created_at.strftime('%b %d, %Y') }}</span><br><span class="pi-when-time">{{
+            <td class="mono text-soft mobile-fold" data-label="When"><span class="pi-when-date">{{ inq.created_at.strftime('%b %d, %Y') }}</span><br><span class="pi-when-time">{{
               inq.created_at.strftime('%I:%M %p') }}</span></td>
-            <td data-label="Company">
+            <td data-label="Company" class="pi-col-company">
               <div class="pi-company">
                 <div class="pi-avatar">{{ inq.company_name[:2]|upper }}</div>
                 <div>
@@ -480,6 +534,7 @@
                   <div class="item-sub item-sub-badge">
                     <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
                       inq.partner_type }}</span>
+                    <span class="mono">{{ inq.created_at.strftime('%b %d') }}</span>
                   </div>
                 </div>
               </div>
@@ -488,7 +543,7 @@
               <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
                 inq.partner_type }}</span>
             </td>
-            <td data-label="Contact">
+            <td data-label="Contact" class="pi-col-contact mobile-detail">
               {% if inq.phone %}
               <div class="pi-contact-row">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -510,9 +565,9 @@
               {% endif %}
               {% if not inq.phone and not inq.email %}<span class="text-faint">—</span>{% endif %}
             </td>
-            <td data-label="Package"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
+            <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
             </td>
-            <td data-label="Status">
+            <td data-label="Status" class="mobile-detail">
               <div class="pi-status-cell">
                 <div class="pi-status-wrap">
                   <div class="pi-status-dot status-{{ inq.status|lower|replace(' ', '-') }}"
@@ -548,7 +603,7 @@
                 {% endif %}
               </div>
             </td>
-            <td data-label="Remarks">
+            <td data-label="Remarks" class="pi-col-remarks mobile-detail">
               <div class="pi-remarks-cell">
                 {% if inq.remarks %}
                 <span class="pi-remarks-preview" title="{{ inq.remarks }}">{{ inq.remarks }}</span>
@@ -562,6 +617,18 @@
                   {{ 'Edit' if inq.remarks else 'Add remarks' }}
                 </button>
               </div>
+            </td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css, and this page's own .pi-table.table-collapsible
+                 overrides above. Hidden on desktop, where every cell
+                 above is already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
             </td>
           </tr>
           {% endfor %}
@@ -627,10 +694,15 @@
       textarea.value = btn.dataset.remarks || '';
       companyLabel.textContent = btn.dataset.company || 'this';
       returnStatusInput.value = btn.dataset.returnStatus || 'all';
-      overlay.classList.add('open');
+      // Was overlay.classList.add('open') — .pi-modal-overlay.open only
+      // ever controlled display (see the CSS above), so this animates
+      // via the same shared openOverlay()/closeOverlay() (main.js,
+      // inline style) every other overlay in the app uses, with no
+      // other change in behavior.
+      openOverlay(overlay);
       textarea.focus();
     }
-    function close() { overlay.classList.remove('open'); }
+    function close() { closeOverlay(overlay); }
 
     document.querySelectorAll('.pi-remarks-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { open(btn); });
@@ -638,7 +710,9 @@
 
     cancelBtn.addEventListener('click', close);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') close();
+    });
   })();
 </script>
 {% endblock %}

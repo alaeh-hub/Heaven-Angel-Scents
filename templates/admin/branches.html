@@ -40,7 +40,7 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="smart-table table-fixed br-table">
+        <table class="smart-table table-fixed br-table table-collapsible">
           <colgroup>
             <col style="width:26%"><col style="width:40%"><col style="width:14%"><col style="width:20%">
           </colgroup>
@@ -49,9 +49,20 @@
             {% for b in branch_list %}
             <tr data-search="{{ (b.branch_name ~ ' ' ~ (b.location or ''))|lower }}">
               <td class="item-name" data-label="Branch">{{ b.branch_name }}</td>
-              <td class="text-soft" data-label="Location">{{ b.location or '—' }}</td>
-              <td class="num mono" data-label="Accounts">{{ b.user_count }}</td>
-              <td class="mono text-soft" data-label="Added">{{ b.created_at.strftime('%b %d, %Y') }}</td>
+              <td class="text-soft mobile-detail" data-label="Location">{{ b.location or '—' }}</td>
+              <td class="num mono mobile-detail" data-label="Accounts">{{ b.user_count }}</td>
+              <td class="mono text-soft mobile-detail" data-label="Added">{{ b.created_at.strftime('%b %d, %Y') }}</td>
+              <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                   style.css. Hidden on desktop, where every cell above is
+                   already visible in the real table row. -->
+              <td data-label="" class="mobile-toggle-row">
+                <button type="button" class="row-toggle-btn" aria-expanded="false">
+                  <span>Details</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
