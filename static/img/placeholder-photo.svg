@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Photo placeholder">
+  <title>Photo placeholder</title>
+  <defs>
+    <radialGradient id="ppPhBg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#2A2211"/>
+      <stop offset="100%" stop-color="#14110A"/>
+    </radialGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#ppPhBg)"/>
+  <rect x="14" y="14" width="452" height="452" rx="14" fill="none" stroke="#D4AF37" stroke-opacity="0.45" stroke-width="2" stroke-dasharray="7 8"/>
+
+  <!-- simple perfume-bottle glyph, standing in for real product photography -->
+  <g transform="translate(240,196)" fill="none" stroke="#D4AF37" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-16" y="-72" width="32" height="18" rx="4"/>
+    <path d="M-10 -54 L-10 -40 L-38 -20 L-38 62 A10 10 0 0 0 -28 72 L28 72 A10 10 0 0 0 38 62 L38 -20 L10 -40 L10 -54"/>
+    <path d="M-24 8 L24 8"/>
+    <circle cx="0" cy="34" r="9" fill="#D4AF37" stroke="none" fill-opacity="0.5"/>
+  </g>
+
+  <text x="240" y="330" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="22" font-weight="600" fill="#E8D9A8">Photo placeholder</text>
+  <text x="240" y="358" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="13" fill="#9C9078">Product photography goes here</text>
+</svg>

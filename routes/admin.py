@@ -186,7 +186,7 @@ def dashboard():
     # capital_contributions being removed) — it's now the cost of goods
     # actually produced: SUM(total_cogs) over cogs_logs, i.e. each
     # formula's cost per unit x how many units were logged as produced
-    # against it (see log_material_usage()). "Raw materials bought" is
+    # against it (see production()). "Raw materials bought" is
     # tracked alongside it (SUM(package_cost) over raw_materials) purely
     # as a comparison figure now — what's been paid for material
     # packages vs. what's actually gone into produced goods — it no
@@ -638,7 +638,26 @@ def import_products():
 @bp.route("/production", methods=["GET", "POST"])
 @admin_required
 def production():
+    """Logging a production run now also logs its cost of goods in the
+    same step — no separate "Log material usage" action anymore (that
+    used to live on the Materials page; see cogs_logs/material_usage_logs
+    in schema.sql). The SKU's packaging size (`unit`) decides which
+    formula applies (see unit_formula_items in schema.sql): if one is on
+    file, this freezes that unit's total cost per unit AT THIS MOMENT
+    (a plain sum of every ingredient's hand-entered line_cost) into one
+    cogs_logs row — total_cogs = cogs_per_unit x qty_produced, the figure
+    the business calls "capital" (see dashboard()/reports_data()) — plus
+    one material_usage_logs row per ingredient as a quantity audit trail.
+    A run with no formula on file yet is still logged (stock still
+    moves) — it just carries no cost of goods until one is added on the
+    Formulas page.
+    """
     if request.method == "POST":
+        if not consume_form_token("log_production"):
+            flash(
+                "This run was already logged, or the form expired — check the log below before resending.", "error")
+            return redirect(url_for("admin.production"))
+
         sku = request.form.get("sku")
         batch_code = request.form.get("batch_code", "").strip() or None
         try:
@@ -648,6 +667,31 @@ def production():
             flash(str(err), "error")
             return redirect(url_for("admin.production"))
 
+        product = query(
+            "SELECT sku, item_name, unit FROM products WHERE sku = %s",
+            (sku,), fetchone=True,
+        )
+        if not product:
+            flash("Select a valid product.", "error")
+            return redirect(url_for("admin.production"))
+
+        # cogs_per_unit is a plain sum of every formula line's own
+        # hand-entered line_cost — no per-material lookup against
+        # raw_materials, and no multiplication against qty_per_unit,
+        # needed to compute this batch's cost (see unit_formula_items in
+        # schema.sql). qty_used (for material_usage_logs below) is
+        # tracked separately and purely as a quantity audit trail.
+        formula_items = query(
+            "SELECT material_id, qty_per_unit, line_cost FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
+            (product["unit"],),
+        )
+        cogs_per_unit = total_cogs = None
+        if formula_items:
+            cogs_per_unit = sum(
+                (i["line_cost"] for i in formula_items), decimal.Decimal("0")
+            ).quantize(decimal.Decimal("0.0001"))
+            total_cogs = (cogs_per_unit * qty).quantize(decimal.Decimal("0.01"))
+
         try:
             with transaction() as conn:
                 cur = conn.cursor()
@@ -655,6 +699,7 @@ def production():
                     "INSERT INTO production_logs (sku, batch_code, qty_produced) VALUES (%s, %s, %s)",
                     (sku, batch_code, qty),
                 )
+                log_id = cur.lastrowid
                 cur.execute(
                     """INSERT INTO branch_inventory (branch_id, sku, stock_qty)
                        VALUES (%s, %s, %s)
@@ -677,21 +722,82 @@ def production():
                     (HQ_BRANCH_ID, sku, qty, f"Batch {batch_code}" if batch_code else "Production run",
                      session.get("user_id"), before_qty, after_qty),
                 )
+
+                if formula_items:
+                    cur.execute(
+                        """INSERT INTO cogs_logs
+                           (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
+                            created_by_user_id)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (sku, log_id, qty, cogs_per_unit, total_cogs,
+                         session.get("user_id")),
+                    )
+                    cogs_log_id = cur.lastrowid
+                    for item in formula_items:
+                        qty_used = (item["qty_per_unit"] * qty).quantize(
+                            decimal.Decimal("0.001"))
+                        cur.execute(
+                            """INSERT INTO material_usage_logs
+                               (material_id, production_log_id, cogs_log_id, qty_used, created_by_user_id)
+                               VALUES (%s, %s, %s, %s, %s)""",
+                            (item["material_id"], log_id, cogs_log_id,
+                             qty_used, session.get("user_id")),
+                        )
                 cur.close()
             notify_admin(["production", "inventory", "movement_logs"])
-            flash(
-                f"Logged {qty} units produced and added to HQ warehouse stock.", "success")
+            if formula_items:
+                notify_all(["materials"])
+                flash(
+                    f"Logged {qty} units produced — ₱{total_cogs:,.2f} in cost of goods — and added to HQ warehouse stock.",
+                    "success",
+                )
+            else:
+                flash(
+                    f"Logged {qty} units produced and added to HQ warehouse stock. "
+                    f"{product['unit']} has no formula yet — set one up on the Formulas page to track cost of goods.",
+                    "warning",
+                )
         except Exception:
             current_app.logger.exception(
                 "production logging failed for sku=%s", sku)
             flash("Couldn't log this production run — please try again.", "error")
         return redirect(url_for("admin.production"))
 
+    # Each product carries its packaging size's cost per unit (a plain
+    # sum of every formula line's hand-entered line_cost, see
+    # unit_formula_items in schema.sql) so the form can preview the cost
+    # of goods a run will log before it's submitted — has_formula tells
+    # the JS whether that preview (and the run itself) has a formula to
+    # draw from at all.
     products_list = query(
-        "SELECT sku, item_name, unit FROM products ORDER BY item_name")
+        """SELECT p.sku, p.item_name, p.unit,
+                  COALESCE(f.cogs_per_unit, 0) AS cogs_per_unit,
+                  (f.unit IS NOT NULL) AS has_formula
+           FROM products p
+           LEFT JOIN (
+               SELECT unit, SUM(line_cost) AS cogs_per_unit
+               FROM unit_formula_items GROUP BY unit
+           ) f ON f.unit = p.unit
+           ORDER BY p.item_name"""
+    )
+    # cogs_logs.production_log_id is one-to-one with a production run
+    # going forward (this route writes at most one per run — see above),
+    # but is grouped/summed here rather than joined plain in case an
+    # older run picked up more than one batch back when "Log material
+    # usage" let an admin link any run by hand.
     logs = query(
-        """SELECT pl.*, p.item_name, p.unit FROM production_logs pl
+        """SELECT pl.*, p.item_name, p.unit,
+                  cogs.cogs_per_unit, cogs.total_cogs
+           FROM production_logs pl
            JOIN products p ON pl.sku = p.sku
+           LEFT JOIN (
+               SELECT production_log_id,
+                      SUM(total_cogs) AS total_cogs,
+                      AVG(cogs_per_unit) AS cogs_per_unit
+               FROM cogs_logs
+               WHERE production_log_id IS NOT NULL
+               GROUP BY production_log_id
+           ) cogs ON cogs.production_log_id = pl.log_id
            ORDER BY pl.produced_at DESC LIMIT 40"""
     )
     hq_stock = query(
@@ -700,7 +806,23 @@ def production():
            WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
-    return render_template("admin/production.html", products=products_list, logs=logs, hq_stock=hq_stock)
+    # Per-ingredient audit trail of what every logged run actually drew
+    # on — this used to live on the Materials page ("Usage history")
+    # alongside the manual "Log material usage" form it was replaced by;
+    # it belongs here now that logging usage isn't a separate step.
+    usage_logs = query(
+        """SELECT mul.*, rm.material_name, rm.unit,
+                  pl.batch_code, p.item_name AS production_item_name
+           FROM material_usage_logs mul
+           JOIN raw_materials rm ON mul.material_id = rm.material_id
+           LEFT JOIN production_logs pl ON mul.production_log_id = pl.log_id
+           LEFT JOIN products p ON pl.sku = p.sku
+           ORDER BY mul.created_at DESC LIMIT 40"""
+    )
+    return render_template(
+        "admin/production.html", products=products_list, logs=logs, hq_stock=hq_stock,
+        usage_logs=usage_logs, form_token=issue_form_token("log_production"),
+    )
 
 
 # ---------------------------------------------------------------- branches
@@ -1824,7 +1946,7 @@ def reports_data():
     #   capital_contributions being removed) — it's SUM(total_cogs) over
     #   cogs_logs, i.e. the cost of goods actually produced (each
     #   formula's cost per unit x units logged as produced against it —
-    #   see log_material_usage()). Always all-time, paired with all-time
+    #   see production()). Always all-time, paired with all-time
     #   revenue on the Revenue vs. Capital chart, same as before.
     # - raw_materials_purchased: SUM(package_cost) over raw_materials,
     #   all-time — everything ever spent buying material packages. Kept
@@ -1963,77 +2085,66 @@ def materials():
            LEFT JOIN suppliers s ON rm.supplier_id = s.supplier_id
            ORDER BY rm.material_name"""
     )
+
+    # Suppliers directory — merged onto this same page (Materials and
+    # Suppliers used to be separate tabs, but there was nothing on
+    # either that the other didn't already need: the Materials form's
+    # supplier picker duplicated this exact list, and this table is
+    # purely rolled up from raw_materials rows entered above). `suppliers`
+    # doubles as the Add/Edit material modals' supplier <select> options.
     suppliers_list = query(
-        """SELECT s.*, COUNT(rm.material_id) AS material_count
-           FROM suppliers s LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
-           GROUP BY s.supplier_id ORDER BY s.supplier_name"""
+        """SELECT s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
+                  s.address, s.notes, s.created_at,
+                  COUNT(rm.material_id) AS material_count,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_spent,
+                  MAX(rm.created_at) AS last_purchase_at
+           FROM suppliers s
+           LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+           GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
+                    s.address, s.notes, s.created_at
+           ORDER BY total_spent DESC, s.supplier_name"""
     )
-    recent_production = query(
-        """SELECT pl.log_id, pl.sku, pl.produced_at, pl.batch_code, pl.qty_produced,
-                  p.item_name, p.unit
-           FROM production_logs pl JOIN products p ON pl.sku = p.sku
-           ORDER BY pl.produced_at DESC LIMIT 40"""
+    # What each supplier has actually supplied, and at what volume — one
+    # row per (supplier, material), rolled up across every purchase
+    # logged for that pair. Grouped in Python onto each supplier row
+    # below rather than queried once per supplier.
+    material_rows = query(
+        """SELECT rm.supplier_id, rm.material_name, rm.unit,
+                  COUNT(*) AS purchase_count,
+                  COALESCE(SUM(rm.package_qty), 0) AS total_qty,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_cost
+           FROM raw_materials rm
+           WHERE rm.supplier_id IS NOT NULL
+           GROUP BY rm.supplier_id, rm.material_name, rm.unit
+           ORDER BY rm.material_name"""
     )
-    usage_logs = query(
-        """SELECT mul.*, rm.material_name, rm.unit,
-                  pl.batch_code, p.item_name AS production_item_name
-           FROM material_usage_logs mul
-           JOIN raw_materials rm ON mul.material_id = rm.material_id
-           LEFT JOIN production_logs pl ON mul.production_log_id = pl.log_id
-           LEFT JOIN products p ON pl.sku = p.sku
-           ORDER BY mul.created_at DESC LIMIT 40"""
-    )
-    # Total spent on materials is now purely what's been paid for material
-    # packages — SUM(package_cost) over raw_materials — not anything
-    # derived from usage. See schema.sql's note on raw_materials for why.
-    totals = query(
-        "SELECT COALESCE(SUM(package_cost), 0) AS total_spent FROM raw_materials",
+    materials_by_supplier = {}
+    for row in material_rows:
+        materials_by_supplier.setdefault(row["supplier_id"], []).append({
+            "material_name": row["material_name"],
+            "unit": row["unit"],
+            "purchase_count": row["purchase_count"],
+            "total_qty": float(row["total_qty"]),
+            "total_cost": float(row["total_cost"]),
+        })
+    for s in suppliers_list:
+        s["materials_supplied"] = materials_by_supplier.get(
+            s["supplier_id"], [])
+
+    supplier_totals = query(
+        """SELECT (SELECT COUNT(*) FROM suppliers) AS supplier_count,
+                  COALESCE(SUM(rm.package_cost), 0) AS total_supplied_spend,
+                  (SELECT COUNT(*) FROM raw_materials WHERE supplier_id IS NULL) AS unassigned_material_count
+           FROM raw_materials rm WHERE rm.supplier_id IS NOT NULL""",
         fetchone=True,
     )
-
-    # Products whose packaging size actually has a formula on file — the
-    # only ones "Log material usage" can be logged against now (see
-    # log_material_usage() below). Joined on p.unit, not p.sku — a
-    # formula belongs to a packaging size (85ML, 50ML, ...) and is
-    # shared by every product of that size, see unit_formula_items in
-    # schema.sql. cogs_per_unit is a plain sum of each formula line's own
-    # hand-entered line_cost, same as the Formulas page — this is only a
-    # preview shown in the picker; the authoritative figure is recomputed
-    # and frozen server-side when a batch is actually logged.
-    formula_products = query(
-        """SELECT p.sku, p.item_name, p.variant, p.unit,
-                  COUNT(ufi.formula_item_id) AS material_count,
-                  COALESCE(SUM(ufi.line_cost), 0) AS cogs_per_unit
-           FROM products p
-           JOIN unit_formula_items ufi ON ufi.unit = p.unit
-           GROUP BY p.sku, p.item_name, p.variant, p.unit
-           ORDER BY p.item_name, p.unit"""
-    )
-    cogs_logs = query(
-        """SELECT cl.*, p.item_name, p.unit AS product_unit, pl.batch_code
-           FROM cogs_logs cl
-           JOIN products p ON cl.sku = p.sku
-           LEFT JOIN production_logs pl ON cl.production_log_id = pl.log_id
-           ORDER BY cl.created_at DESC LIMIT 40"""
-    )
-    # This is "capital" — see cogs_logs' comment in schema.sql and
-    # dashboard()/reports_data() below, which sum this same column.
-    total_cogs = query(
-        "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs", fetchone=True
-    )["v"]
 
     return render_template(
         "admin/materials.html",
         materials=materials_list,
         suppliers=suppliers_list,
-        recent_production=recent_production,
-        usage_logs=usage_logs,
-        totals=totals,
-        formula_products=formula_products,
-        cogs_logs=cogs_logs,
-        total_cogs=total_cogs,
+        supplier_totals=supplier_totals,
         unit_choices=MATERIAL_UNITS,
-        usage_form_token=issue_form_token("log_material_usage"),
     )
 
 
@@ -2087,8 +2198,8 @@ def edit_material():
 
     # cost_per_unit is recomputed from the new package figures purely as
     # a reference figure shown on the page — usage entries no longer
-    # carry any cost of their own (see log_material_usage()), so this
-    # recompute has no effect on past usage history the way it used to.
+    # carry any cost of their own (see production()), so this recompute
+    # has no effect on past usage history the way it used to.
     cost_per_unit = package_cost / package_qty
 
     try:
@@ -2113,123 +2224,6 @@ def edit_material():
     return redirect(url_for("admin.materials"))
 
 
-@bp.route("/materials/log-usage", methods=["POST"])
-@admin_required
-def log_material_usage():
-    """Log a production batch's cost of goods off the formula for the
-    SKU's packaging size (see unit_formula_items in schema.sql) — pick a
-    SKU whose `unit` has a formula on file, say how many units were
-    produced, and this:
-      1. Freezes that unit's total cost per unit AT THIS MOMENT (a plain
-         sum of every ingredient's own hand-entered line_cost — no
-         multiplication) and writes one cogs_logs row for the batch as a
-         whole — total_cogs = cogs_per_unit x qty_produced. That figure
-         is what the business calls "capital" now; see
-         dashboard()/reports_data(), which sum cogs_logs.total_cogs
-         instead of raw_materials.package_cost.
-      2. Writes one material_usage_logs row per ingredient (qty_per_unit
-         x qty_produced), purely as an audit trail of how much of each
-         material this batch used — unrelated to cost now, and
-         raw_materials itself is never touched (it's a purchase log
-         only; see its own comment in schema.sql).
-    """
-    if not consume_form_token("log_material_usage"):
-        flash(
-            "This usage was already logged, or the form expired — check the log below before resending.", "error")
-        return redirect(url_for("admin.materials"))
-
-    sku = request.form.get("sku")
-    production_log_id = request.form.get("production_log_id") or None
-    notes = request.form.get("notes", "").strip() or None
-
-    product = query(
-        "SELECT sku, item_name, unit FROM products WHERE sku = %s",
-        (sku,), fetchone=True,
-    )
-    if not product:
-        flash("Select a valid product.", "error")
-        return redirect(url_for("admin.materials"))
-
-    try:
-        qty_produced = parse_positive_decimal(
-            request.form.get("qty_produced"), "Quantity produced")
-    except ValidationError as err:
-        flash(str(err), "error")
-        return redirect(url_for("admin.materials"))
-
-    formula_items = query(
-        "SELECT material_id, qty_per_unit, line_cost FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
-        (product["unit"],),
-    )
-    if not formula_items:
-        flash(
-            f"{product['unit']} has no formula yet — add one on the Formulas page first.",
-            "error",
-        )
-        return redirect(url_for("admin.formulas"))
-
-    # cogs_per_unit is a plain sum of every ingredient's own hand-entered
-    # line_cost — no per-material lookup against raw_materials, and no
-    # multiplication against qty_per_unit, needed to compute this batch's
-    # cost. qty_used (for material_usage_logs below) is tracked
-    # separately and purely as a quantity audit trail — it plays no part
-    # in cost.
-    lines = []
-    cogs_per_unit = decimal.Decimal("0")
-    for item in formula_items:
-        qty_used = (item["qty_per_unit"] * qty_produced).quantize(
-            decimal.Decimal("0.001"))
-        cogs_per_unit += item["line_cost"]
-        lines.append(
-            {"material_id": item["material_id"], "qty_used": qty_used})
-    cogs_per_unit = cogs_per_unit.quantize(decimal.Decimal("0.0001"))
-    total_cogs = (cogs_per_unit * qty_produced).quantize(
-        decimal.Decimal("0.01"))
-
-    # Wrapped in try/except like every other write transaction in this
-    # file (production(), record_sale(), dispatch_request(), ...) so a
-    # DB-level failure surfaces as a friendly flash+redirect instead of a
-    # raw 500.
-    try:
-        with transaction() as conn:
-            cur = conn.cursor(dictionary=True)
-
-            cur.execute(
-                """INSERT INTO cogs_logs
-                   (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
-                    notes, created_by_user_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
-                 notes, session.get("user_id")),
-            )
-            cogs_log_id = cur.lastrowid
-
-            for line in lines:
-                cur.execute(
-                    """INSERT INTO material_usage_logs
-                       (material_id, production_log_id, cogs_log_id, qty_used, notes, created_by_user_id)
-                       VALUES (%s, %s, %s, %s, %s, %s)""",
-                    (line["material_id"], production_log_id, cogs_log_id,
-                     line["qty_used"], notes, session.get("user_id")),
-                )
-            cur.close()
-    except Exception:
-        current_app.logger.exception(
-            "log_material_usage failed for sku=%s", sku)
-        flash("Couldn't log this usage — please try again.", "error")
-        return redirect(url_for("admin.materials"))
-
-    notify_all(["materials"])
-    log_action("log_material_usage", target=product["item_name"],
-               details=f"{qty_produced:g} unit(s) — ₱{total_cogs:,.2f} COGS")
-    flash(
-        f"Logged {qty_produced:g} unit(s) of {product['item_name']} ({product['unit']}) produced — "
-        f"₱{total_cogs:,.2f} in cost of goods.",
-        "success",
-    )
-    return redirect(url_for("admin.materials"))
-
-
 # ---------------------------------------------------------------- unit formulas (COGS)
 @bp.route("/formulas")
 @admin_required
@@ -2238,9 +2232,9 @@ def formulas():
     1L, 100ML, 10ML, 3ML Tester — see unit_formula_items in schema.sql),
     which raw materials (and how much of each) go into producing ONE
     unit of it. Deliberately keyed by unit, not by product — every scent
-    sold in, say, 85ML shares the same 85ML formula. This is what "Log
-    material usage" now runs off of (see log_material_usage() above)
-    instead of a raw-materials picker.
+    sold in, say, 85ML shares the same 85ML formula. This is what logging
+    a production run now runs off of automatically (see production()
+    above) instead of a separate raw-materials picker.
     """
     materials_list = query(
         """SELECT material_id, material_name, unit
@@ -2371,18 +2365,13 @@ def save_formula():
 
 
 # ---------------------------------------------------------------- suppliers
+# Suppliers no longer has its own tab/page — it's merged onto the
+# Materials page (see materials() above), which was the only place these
+# add/edit forms were ever posted from anyway once the two pages became
+# one. Both routes always redirect back to admin.materials now.
 @bp.route("/materials/suppliers/add", methods=["POST"])
 @admin_required
 def add_supplier():
-    # return_to lets this same endpoint be posted to from either the
-    # Materials page (its long-standing inline supplier table) or the
-    # standalone Suppliers directory — see suppliers() below — without
-    # duplicating the insert logic. Defaults to materials so any
-    # existing form that doesn't send this field keeps working exactly
-    # as before.
-    return_to = request.form.get("return_to", "materials")
-    return_endpoint = "admin.suppliers" if return_to == "suppliers" else "admin.materials"
-
     supplier_name = request.form.get("supplier_name", "").strip()
     contact_person = request.form.get("contact_person", "").strip() or None
     phone = request.form.get("phone", "").strip() or None
@@ -2392,10 +2381,10 @@ def add_supplier():
 
     if not supplier_name:
         flash("Supplier name is required.", "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
     if len(supplier_name) > 100:
         flash("Supplier name is too long (max 100 characters).", "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
 
     try:
         # Lets a supplier that's been on hand for a while be logged as of
@@ -2404,7 +2393,7 @@ def add_supplier():
             request.form.get("added_on"), "Date added")
     except ValidationError as err:
         flash(str(err), "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
 
     try:
         execute(
@@ -2420,16 +2409,12 @@ def add_supplier():
         current_app.logger.exception(
             "add supplier failed for supplier_name=%s", supplier_name)
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
-    return redirect(url_for(return_endpoint))
+    return redirect(url_for("admin.materials"))
 
 
 @bp.route("/materials/suppliers/edit", methods=["POST"])
 @admin_required
 def edit_supplier():
-    # See add_supplier()'s comment on return_to — same reasoning here.
-    return_to = request.form.get("return_to", "materials")
-    return_endpoint = "admin.suppliers" if return_to == "suppliers" else "admin.materials"
-
     supplier_id = request.form.get("supplier_id")
 
     # Same reasoning as edit_material()'s existence check: without this,
@@ -2440,7 +2425,7 @@ def edit_supplier():
     )
     if not existing:
         flash("That supplier no longer exists.", "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
 
     supplier_name = request.form.get("supplier_name", "").strip()
     contact_person = request.form.get("contact_person", "").strip() or None
@@ -2451,10 +2436,10 @@ def edit_supplier():
 
     if not supplier_name:
         flash("Supplier name is required.", "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
     if len(supplier_name) > 100:
         flash("Supplier name is too long (max 100 characters).", "error")
-        return redirect(url_for(return_endpoint))
+        return redirect(url_for("admin.materials"))
 
     try:
         execute(
@@ -2472,75 +2457,16 @@ def edit_supplier():
         current_app.logger.exception(
             "edit supplier failed for supplier_id=%s supplier_name=%s", supplier_id, supplier_name)
         flash(f"'{supplier_name}' already exists in the suppliers list.", "error")
-    return redirect(url_for(return_endpoint))
+    return redirect(url_for("admin.materials"))
 
 
-# ---------------------------------------------------------------- suppliers (standalone directory)
 @bp.route("/suppliers")
 @admin_required
 def suppliers():
-    """Standalone supplier directory.
-
-    `suppliers` has existed as a table with add/edit routes for a while,
-    but the only place to see them was the inline table on the
-    Materials page (and the dropdown on its add-material form) — there
-    was no single place to see every supplier with what they've
-    actually supplied and at what volume, without cross-referencing the
-    material log by hand. This page is that place; the add/edit forms
-    are the same ones from Materials (add_supplier()/edit_supplier()
-    above), just also reachable from here via return_to=suppliers so
-    editing a supplier from this page comes back to this page instead
-    of jumping over to Materials.
-    """
-    rows = query(
-        """SELECT s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
-                  s.address, s.notes, s.created_at,
-                  COUNT(rm.material_id) AS material_count,
-                  COALESCE(SUM(rm.package_cost), 0) AS total_spent,
-                  MAX(rm.created_at) AS last_purchase_at
-           FROM suppliers s
-           LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
-           GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
-                    s.address, s.notes, s.created_at
-           ORDER BY total_spent DESC, s.supplier_name"""
-    )
-
-    # What each supplier has actually supplied, and at what volume —
-    # one row per (supplier, material), rolled up across every purchase
-    # logged for that pair. Grouped in Python onto each supplier row
-    # below rather than queried once per supplier.
-    material_rows = query(
-        """SELECT rm.supplier_id, rm.material_name, rm.unit,
-                  COUNT(*) AS purchase_count,
-                  COALESCE(SUM(rm.package_qty), 0) AS total_qty,
-                  COALESCE(SUM(rm.package_cost), 0) AS total_cost
-           FROM raw_materials rm
-           WHERE rm.supplier_id IS NOT NULL
-           GROUP BY rm.supplier_id, rm.material_name, rm.unit
-           ORDER BY rm.material_name"""
-    )
-    materials_by_supplier = {}
-    for row in material_rows:
-        materials_by_supplier.setdefault(row["supplier_id"], []).append({
-            "material_name": row["material_name"],
-            "unit": row["unit"],
-            "purchase_count": row["purchase_count"],
-            "total_qty": float(row["total_qty"]),
-            "total_cost": float(row["total_cost"]),
-        })
-    for r in rows:
-        r["materials_supplied"] = materials_by_supplier.get(
-            r["supplier_id"], [])
-
-    totals = query(
-        """SELECT (SELECT COUNT(*) FROM suppliers) AS supplier_count,
-                  COALESCE(SUM(rm.package_cost), 0) AS total_supplied_spend,
-                  (SELECT COUNT(*) FROM raw_materials WHERE supplier_id IS NULL) AS unassigned_material_count
-           FROM raw_materials rm WHERE rm.supplier_id IS NOT NULL""",
-        fetchone=True,
-    )
-
-    return render_template("admin/suppliers.html", rows=rows, totals=totals)
+    """Old standalone Suppliers tab — now merged onto the Materials page
+    (see materials() above). Kept as a redirect so any old bookmark or
+    link still lands somewhere sensible instead of 404ing."""
+    return redirect(url_for("admin.materials"))
 
 
 # ---------------------------------------------------------------- capital

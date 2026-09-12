@@ -23,7 +23,7 @@
    --------------------------------------------------------------------- */
 
 :root {
-  --brand-black: #1C170D;
+  --brand-black: #14110A;
   --brand-gold: #D4AF37;
   --gold-contrast: #14110A;
 
@@ -239,14 +239,15 @@ body {
   flex-shrink: 0;
 }
 
-/* Generated initials avatar shown in place of a photo — background/color
-   are set inline per product (see product_avatar() in utils.py and the
-   product_thumb() macro), deterministic so the same product keeps the
-   same color identity everywhere its thumbnail appears. Solid border
-   (vs. the plain .product-thumb-empty dashed one) since this is a
-   finished fallback, not an "add a photo" prompt. */
+/* Generated initials avatar shown in place of a photo — one flat,
+   on-brand accent tone for every product (not a color hashed per product
+   name), the same treatment .pi-avatar uses on the partner inquiries
+   page. No border, unlike a real photo's .product-thumb frame — a solid
+   accent chip reads as a finished fallback on its own. */
 .product-thumb-avatar {
-  border-style: solid;
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-weight: 700;
   font-family: 'Manrope', sans-serif;
   letter-spacing: 0.02em;

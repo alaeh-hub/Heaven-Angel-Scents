@@ -273,16 +273,11 @@
     }
   })();
 
-  // Mirrors utils.py's product_avatar()/_stable_hash() exactly (same
-  // palette, same djb2-style rolling hash folded mod 1e9+7 per char) so
-  // this live preview shows the exact same color the server renders for
-  // this product everywhere else, not a re-rolled one.
-  var PRODUCT_AVATAR_PALETTE = [
-    '#B5654A', '#9C4F5E', '#6E4C7D', '#4C5B8A', '#3F6E8E', '#3D8078',
-    '#4C7A54', '#6B7A3E', '#7A5A3E', '#8A5A73', '#45607A', '#82405A'
-  ];
-  var PRODUCT_AVATAR_FG = '#FBF8EF';
-
+  // Mirrors utils.py's product_avatar() exactly — just the initials;
+  // color comes from the shared .product-thumb-avatar CSS class (same
+  // flat accent tone every generated avatar uses, not one hashed per
+  // product name), so this live preview already matches what the
+  // server renders without needing to duplicate a palette/hash here.
   function productAvatar(name) {
     var clean = String(name || '').trim().replace(/\s+/g, ' ');
     var words = clean ? clean.split(' ') : [];
@@ -294,13 +289,7 @@
     } else {
       initials = '?';
     }
-    var lower = clean.toLowerCase();
-    var h = 0;
-    for (var i = 0; i < lower.length; i++) {
-      h = (h * 31 + lower.charCodeAt(i)) % 1000000007;
-    }
-    var bg = PRODUCT_AVATAR_PALETTE[h % PRODUCT_AVATAR_PALETTE.length];
-    return { initials: initials, bg: bg, fg: PRODUCT_AVATAR_FG };
+    return { initials: initials };
   }
 
   (function () {
@@ -345,7 +334,7 @@
         var av = productAvatar(nameInput.value);
         var avatarDiv = document.createElement('div');
         avatarDiv.className = 'product-thumb product-thumb-empty product-thumb-avatar';
-        avatarDiv.style.cssText = 'width:64px;height:64px;font-size:25.6px;background:' + av.bg + ';color:' + av.fg + ';';
+        avatarDiv.style.cssText = 'width:64px;height:64px;font-size:25.6px;';
         avatarDiv.setAttribute('aria-label', nameInput.value);
         avatarDiv.textContent = av.initials;
         imagePreviewWrap.appendChild(avatarDiv);

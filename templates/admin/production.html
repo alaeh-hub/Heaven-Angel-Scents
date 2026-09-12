@@ -90,11 +90,32 @@
        in the app — 20% was wrapping it onto a second line at
        ordinary desktop widths, so it gets extra room here at the
        other columns' expense. */
-    .ph-table th:nth-child(1), .ph-table td:nth-child(1) { width: 26%; }
-    .ph-table th:nth-child(2), .ph-table td:nth-child(2) { width: 28%; }
-    .ph-table th:nth-child(3), .ph-table td:nth-child(3) { width: 12%; }
-    .ph-table th:nth-child(4), .ph-table td:nth-child(4) { width: 16%; }
-    .ph-table th:nth-child(5), .ph-table td:nth-child(5) { width: 18%; }
+    .ph-table th:nth-child(1), .ph-table td:nth-child(1) { width: 17%; }
+    .ph-table th:nth-child(2), .ph-table td:nth-child(2) { width: 22%; }
+    .ph-table th:nth-child(3), .ph-table td:nth-child(3) { width: 9%; }
+    .ph-table th:nth-child(4), .ph-table td:nth-child(4) { width: 12%; }
+    .ph-table th:nth-child(5), .ph-table td:nth-child(5) { width: 10%; }
+    .ph-table th:nth-child(6), .ph-table td:nth-child(6) { width: 14%; }
+    .ph-table th:nth-child(7), .ph-table td:nth-child(7) { width: 16%; }
+
+    /* Same reasoning as .ph-table's own "When" column above. */
+    .pu-table th:nth-child(1), .pu-table td:nth-child(1) { width: 22%; }
+    .pu-table th:nth-child(2), .pu-table td:nth-child(2) { width: 18%; }
+    .pu-table th:nth-child(3), .pu-table td:nth-child(3) { width: 10%; }
+    .pu-table th:nth-child(4), .pu-table td:nth-child(4) { width: 18%; }
+    .pu-table th:nth-child(5), .pu-table td:nth-child(5) { width: 32%; }
+  }
+
+  @media (max-width: 680px) {
+    /* Same reasoning as Inventory Log's Notes column: a long usage
+       note reads better stacked (label above value) than squeezed into
+       the generic right-aligned mobile row. */
+    .pu-table td[data-label="Notes"] {
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      gap: 4px;
+    }
   }
 </style>
 {% endblock %}
@@ -134,6 +155,7 @@
     </p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_token" value="{{ form_token }}">
       <div class="field">
         <label for="productNameInput">Product</label>
         <div class="ac-combo" id="productCombo" data-products='{{ products | tojson }}'>
@@ -160,6 +182,12 @@
           <input type="text" id="batch_code" name="batch_code" placeholder="B-2026-08-A">
         </div>
       </div>
+      <!-- Cost of goods is computed automatically from the formula for
+           the selected packaging size (see unit_formula_items in
+           schema.sql) — this is only a live preview; the authoritative
+           figure is recomputed and frozen server-side in production()
+           when the run is actually logged. -->
+      <div class="help" id="cogsPreview" style="margin-bottom:14px;"></div>
       <button type="submit" class="btn btn-accent" style="width:100%;">Log production</button>
     </form>
   </div>
@@ -252,8 +280,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed ph-table">
         <colgroup>
-          <col style="width:26%"><col style="width:28%"><col style="width:12%">
-          <col style="width:16%"><col style="width:18%">
+          <col style="width:17%"><col style="width:22%"><col style="width:9%">
+          <col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:16%">
         </colgroup>
         <thead>
           <tr>
@@ -262,6 +290,8 @@
             <th>Unit</th>
             <th>Batch</th>
             <th class="num">Qty</th>
+            <th class="num">Cost / unit</th>
+            <th class="num">Total (capital)</th>
           </tr>
         </thead>
         <tbody>
@@ -289,6 +319,13 @@
               {% endif %}
             </td>
             <td class="num mono qty-up" data-label="Qty">+{{ l.qty_produced }}</td>
+            {% if l.total_cogs is not none %}
+            <td class="num mono" data-label="Cost / unit">₱{{ '%.4f'|format(l.cogs_per_unit) }}</td>
+            <td class="num mono" data-label="Total (capital)">{{ l.total_cogs|peso }}</td>
+            {% else %}
+            <td class="num text-faint" data-label="Cost / unit">—</td>
+            <td class="num text-faint" data-label="Total (capital)" title="No cost of goods was logged for this run — {{ l.unit }} may not have had a formula on file yet.">not costed</td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -304,10 +341,84 @@
       <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
     </div>
   </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Cost of goods is computed automatically off the formula for each
+      run's packaging size (see the <a href="{{ url_for('admin.formulas') }}">Formulas page</a>) the moment it's
+      logged — a run's total is "capital" on the dashboard, kept separate from what's been spent buying raw
+      materials.</p>
+  </div>
   {% else %}
   <div class="empty-state">
     <div class="glyph">—</div>
     <p>No production runs logged yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Materials used</h2>
+    <span class="hint" id="usageCount">{{ usage_logs|length }} entr{{ 'y' if usage_logs|length == 1 else 'ies' }}</span>
+  </div>
+  {% if usage_logs %}
+  <div data-smart-table data-page-size="12" data-count-target="usageCount" data-count-label="entry">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by material…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed pu-table">
+        <colgroup>
+          <col style="width:22%"><col style="width:18%"><col style="width:10%">
+          <col style="width:18%"><col style="width:32%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Material</th>
+            <th class="num">Qty used</th>
+            <th>Run</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in usage_logs %}
+          <tr data-search="{{ (u.material_name ~ ' ' ~ (u.notes or ''))|lower }}">
+            <td class="mono text-soft" data-label="When">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="item-name" data-label="Material">{{ u.material_name }}</td>
+            <td class="num mono qty-down" data-label="Qty used">-{{ u.qty_used|round(3)|string|replace('.000','') }} {{
+              u.unit.lower() }}</td>
+            <td class="text-soft" data-label="Run">{% if u.production_item_name %}{{ u.production_item_name }}{%
+              if u.batch_code %} · {{ u.batch_code }}{% endif %}{% else %}—{% endif %}</td>
+            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ u.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No usage entries match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Showing the latest 40 entries — one row per ingredient a logged run
+      drew on, purely a quantity audit trail (its cost is on the run's own row above, not here).</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No usage entries logged yet.</p>
   </div>
   {% endif %}
 </div>
@@ -457,6 +568,34 @@
       preview.style.display = 'block';
     }
 
+    // ---- Cost of goods preview: computed off the formula for the
+    // selected packaging size (see unit_formula_items in schema.sql) —
+    // purely a live preview here; production() recomputes and freezes
+    // the real figure server-side when the run is actually logged. ----
+    var qtyProducedInput = document.getElementById('qty_produced');
+    var cogsPreview = document.getElementById('cogsPreview');
+
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateCogsPreview() {
+      if (!cogsPreview) return;
+      var opt = skuSelect.options[skuSelect.selectedIndex];
+      if (!opt || !opt.value) {
+        cogsPreview.textContent = '';
+        return;
+      }
+      if (opt.dataset.hasFormula !== '1') {
+        cogsPreview.textContent = opt.dataset.unit + ' has no formula yet — this run will be logged with no cost of goods.';
+        return;
+      }
+      var cogsPerUnit = parseFloat(opt.dataset.cogsPerUnit);
+      var qty = parseFloat(qtyProducedInput.value);
+      var totalText = (qty > 0) ? formatPeso(cogsPerUnit * qty) + ' total cost of goods for ' + qty + ' unit(s).' : '';
+      cogsPreview.textContent = formatPeso(cogsPerUnit) + ' cost per unit' + (totalText ? ' — ' + totalText : '.');
+    }
+
     function populateUnits(productName) {
       skuSelect.innerHTML = '';
       var rows = byProduct[productName] || [];
@@ -467,6 +606,7 @@
         placeholder.textContent = 'Select a product first…';
         skuSelect.appendChild(placeholder);
         updatePreview();
+        updateCogsPreview();
         return;
       }
       skuSelect.disabled = false;
@@ -474,9 +614,13 @@
         var opt = document.createElement('option');
         opt.value = row.sku;
         opt.textContent = row.unit;
+        opt.dataset.unit = row.unit;
+        opt.dataset.hasFormula = row.has_formula ? '1' : '0';
+        opt.dataset.cogsPerUnit = row.cogs_per_unit;
         skuSelect.appendChild(opt);
       });
       updatePreview();
+      updateCogsPreview();
     }
 
     input.addEventListener('input', function () {
@@ -535,6 +679,8 @@
     });
 
     skuSelect.addEventListener('change', updatePreview);
+    skuSelect.addEventListener('change', updateCogsPreview);
+    if (qtyProducedInput) qtyProducedInput.addEventListener('input', updateCogsPreview);
 
     if (productNames.length) {
       selectProduct(productNames[0]);

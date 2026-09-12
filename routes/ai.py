@@ -34,7 +34,7 @@ GEMINI_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 # instead of answering.
 MAX_TOOL_ROUNDS = 6
 
-SYSTEM_PROMPT = """You are the "H&A Assistant", a helper built into the internal inventory \
+SYSTEM_PROMPT = """You are "Halo", a helper built into the internal inventory \
 system for Heaven & Angel Scents, a perfume brand with an HQ warehouse and retail branches.
 
 Who you're talking to right now: {scope_label}
@@ -99,7 +99,7 @@ def _call_gemini_raw(payload):
     if not api_key:
         return None, "The AI assistant isn't configured yet — ask an admin to set GEMINI_API_KEY."
 
-    model = current_app.config.get("GEMINI_MODEL", "gemini-3.5-flash")
+    model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
     try:
         # requests' json= kwarg calls json.dumps() internally with no way
         # to pass a custom `default=`, so anything not natively
@@ -289,7 +289,13 @@ def list_drafts():
     ctx = _ctx()
     drafts = _visible_drafts(ctx)
     for d in drafts:
-        d["items"] = query(
+        # Not stored under the key "items": d is a plain dict, and Jinja's
+        # attribute lookup (`d.items`) would resolve to dict.items (the
+        # built-in bound method) before ever falling back to `d["items"]`,
+        # silently shadowing it instead of raising — the template would
+        # then crash on `d.items|map(...)` with "not iterable". draft_items
+        # doesn't collide with anything dict provides.
+        d["draft_items"] = query(
             """SELECT sdi.sku, sdi.suggested_qty, p.item_name, p.unit
                FROM ai_stock_draft_items sdi JOIN products p ON sdi.sku = p.sku
                WHERE sdi.draft_id = %s""",

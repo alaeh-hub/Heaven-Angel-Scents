@@ -6,10 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
+    <!-- The tab icon is icon.svg alone now — the PNG/.ico rel="icon"
+         links that used to sit after it here were what actually won in
+         most Chromium browsers (with several same-priority rel="icon"
+         links and no disambiguating media query, the browser tends to
+         use the last one in document order, not the first/best match),
+         so the tab kept showing the old raster favicon instead of this
+         one despite it being declared first. apple-touch-icon is
+         unrelated to the browser tab — only iOS's "Add to Home Screen"
+         icon — so it stays. -->
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_16.png') }}">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
     <script>
         // Set the theme attribute before the stylesheet even loads, so
@@ -192,6 +198,401 @@
             color: var(--ink-faint);
             margin-top: 2px;
         }
+
+        /* ---- Halo (floating AI assistant widget) ----
+           Lives here (base.html's own shared <style>, like .notif-* above)
+           rather than in ai/chat.html's own page-head block, since it's
+           now global chrome rendered on every signed-in page — not tied to
+           a page a soft nav ever swaps out. Its DOM node is never
+           destroyed/recreated by swapContent() (see main.js), only
+           .content is, so the panel's open/closed state and message log
+           survive navigating around the app exactly like the notification
+           bell already does. */
+        .halo-widget {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 900;
+        }
+
+        .halo-fab {
+            position: relative;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent);
+            color: var(--gold-contrast);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.1s ease;
+        }
+
+        .halo-fab:hover {
+            background: var(--accent-ink);
+        }
+
+        .halo-fab:active {
+            transform: scale(0.94);
+        }
+
+        .halo-fab-icon {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+
+        .halo-fab-icon-close {
+            opacity: 0;
+            transform: rotate(-45deg) scale(0.6);
+        }
+
+        .halo-widget.open .halo-fab-icon-chat {
+            opacity: 0;
+            transform: rotate(45deg) scale(0.6);
+        }
+
+        .halo-widget.open .halo-fab-icon-close {
+            opacity: 1;
+            transform: rotate(0) scale(1);
+        }
+
+        /* A small unread-style dot, reusing .notif-badge's own look,
+           shown on the closed bubble the first time Halo has something
+           to say that the user hasn't opened the panel to see yet — same
+           idea as the notification bell's badge, scoped to this widget's
+           own open/closed state rather than a server-computed count. */
+        .halo-fab-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 0 2px var(--surface);
+            display: none;
+        }
+
+        .halo-widget.has-unread:not(.open) .halo-fab-badge {
+            display: block;
+        }
+
+        .halo-panel {
+            position: absolute;
+            right: 0;
+            bottom: calc(100% + 14px);
+            width: min(23.75rem, calc(100vw - 2.5rem));
+            height: min(35rem, calc(100vh - 7.5rem));
+            background: var(--surface);
+            border: var(--border-width-strong) solid var(--border-strong);
+            border-radius: var(--radius, 14px);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform-origin: bottom right;
+        }
+
+        .halo-panel[hidden] {
+            display: none;
+        }
+
+        @keyframes halo-panel-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px) scale(0.97);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .halo-panel.opening {
+            animation: halo-panel-in 0.16s ease-out;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .halo-panel.opening {
+                animation: none;
+            }
+        }
+
+        .halo-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: var(--border-width-strong) solid var(--border-strong);
+            background: var(--surface-2);
+            flex-shrink: 0;
+        }
+
+        .halo-panel-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .halo-avatar {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent-soft);
+            color: var(--accent-ink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .halo-avatar svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .halo-panel-name {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        .halo-panel-sub {
+            font-size: 11px;
+            color: var(--ink-faint);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .halo-panel-expand {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            color: var(--ink-faint);
+            transition: color 0.12s ease, background 0.12s ease;
+        }
+
+        .halo-panel-expand:hover {
+            color: var(--accent-ink);
+            background: var(--surface);
+        }
+
+        .halo-panel-expand svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .halo-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+        }
+
+        .halo-empty {
+            margin: auto;
+            text-align: center;
+            padding: 6px;
+        }
+
+        .halo-empty p {
+            font-size: 12.5px;
+            color: var(--ink-faint);
+            line-height: 1.55;
+            margin: 0 0 14px;
+        }
+
+        .halo-suggestions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .halo-suggestion {
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--ink-soft);
+            background: var(--surface-2);
+            border: var(--border-width-strong) solid var(--border-strong);
+            border-radius: 999px;
+            padding: 7px 13px;
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+        }
+
+        .halo-suggestion:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            color: var(--accent-ink);
+        }
+
+        .halo-row {
+            display: flex;
+            max-width: 88%;
+        }
+
+        .halo-row.user {
+            align-self: flex-end;
+        }
+
+        .halo-row.assistant,
+        .halo-row.error {
+            align-self: flex-start;
+        }
+
+        .halo-msg {
+            padding: 9px 12px;
+            border-radius: 12px;
+            font-size: 12.8px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .halo-row.user .halo-msg {
+            background: var(--accent);
+            color: var(--gold-contrast);
+            border-bottom-right-radius: 3px;
+        }
+
+        .halo-row.assistant .halo-msg {
+            background: var(--surface-2);
+            border: var(--border-width-strong) solid var(--border-strong);
+            border-bottom-left-radius: 3px;
+        }
+
+        .halo-row.error .halo-msg {
+            background: var(--danger-soft);
+            color: var(--danger);
+            border: 1px solid var(--danger-border);
+            border-bottom-left-radius: 3px;
+        }
+
+        .halo-typing-dots {
+            display: inline-flex;
+            gap: 4px;
+            padding: 2px;
+        }
+
+        .halo-typing-dots span {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--ink-faint);
+            animation: typing-bounce 1.2s infinite ease-in-out;
+        }
+
+        .halo-typing-dots span:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .halo-typing-dots span:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        @keyframes typing-bounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.5;
+            }
+
+            30% {
+                transform: translateY(-4px);
+                opacity: 1;
+            }
+        }
+
+        .halo-form {
+            display: flex;
+            gap: 8px;
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+            background: var(--surface-2);
+            flex-shrink: 0;
+            align-items: flex-end;
+        }
+
+        .halo-form textarea {
+            flex: 1;
+            resize: none;
+            min-height: 38px;
+            max-height: 100px;
+            font-family: inherit;
+            font-size: 12.8px;
+            padding: 9px 13px;
+            border-radius: 19px;
+            background: var(--surface);
+        }
+
+        .halo-send {
+            flex-shrink: 0;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent);
+            color: var(--gold-contrast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.12s ease, transform 0.1s ease, opacity 0.12s ease;
+        }
+
+        .halo-send svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .halo-send:hover:not(:disabled) {
+            background: var(--accent-ink);
+        }
+
+        .halo-send:active:not(:disabled) {
+            transform: scale(0.94);
+        }
+
+        .halo-send:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        /* Below the app's shared 680px mobile breakpoint, anchoring the
+           panel to a fixed size above the bubble (like desktop) would
+           either overflow the screen or leave it cramped — sized to the
+           viewport instead, same bottom-right anchor. */
+        @media (max-width: 680px) {
+            .halo-widget {
+                right: 14px;
+                bottom: 14px;
+            }
+
+            .halo-panel {
+                width: calc(100vw - 1.75rem);
+                height: calc(100vh - 6.5rem);
+            }
+        }
     </style>
     <!--page-head-start-->
     {% block head %}{% endblock %}
@@ -269,15 +670,7 @@
                         <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
                         <path d="M9 13h6" />
                     </svg>
-                    Materials
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'admin.suppliers' }}"
-                    href="{{ url_for('admin.suppliers') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                        <path d="M3 9l2-6h14l2 6M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M5 9h14" />
-                        <path d="M9 21v-6h6v6" />
-                    </svg>
-                    Suppliers
+                    Materials &amp; Suppliers
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.low_stock' }}"
                     href="{{ url_for('admin.low_stock') }}">
@@ -546,18 +939,21 @@
                     </svg>
                     Scan Receipt
                 </a>
-            </nav>
-
-            <nav class="nav-group">
-                <div class="nav-label">Assistant</div>
-                <a class="nav-link {{ 'active' if request.endpoint == 'ai.chat_page' }}"
-                    href="{{ url_for('ai.chat_page') }}">
+                <!-- Halo itself (the chat) moved to the floating widget in
+                     the bottom-right corner (see #haloWidget below) — no
+                     longer a sidebar page of its own. Its Drafts review
+                     page stays a real page, since approving/rejecting a
+                     draft needs a proper table, not a chat bubble. -->
+                <a class="nav-link {{ 'active' if request.endpoint == 'ai.list_drafts' }}"
+                    href="{{ url_for('ai.list_drafts') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                        <path
-                            d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
-                        <path d="M10 21h4" />
+                        <path d="M9 3h6l3 3v15H6V6l3-3z" />
+                        <path d="M9 12h6M9 16h4" />
                     </svg>
-                    AI Assistant
+                    AI Drafts
+                    {% if pending_ai_drafts_count %}
+                    <span class="nav-badge">{{ pending_ai_drafts_count }}</span>
+                    {% endif %}
                 </a>
             </nav>
 
@@ -693,6 +1089,88 @@
             </main>
         </div>
     </div>
+
+    {% if session.user_id %}
+    <!-- Halo, the floating AI assistant widget — global chrome, outside
+         .app-shell/.content so a soft nav (see main.js's swapContent())
+         never touches it: it's initialized once in main.js's
+         DOMContentLoaded handler, the same as the notification bell, and
+         its open/closed state + message log persist across every page you
+         navigate to in the same session. The full chat page (ai.chat_page)
+         is still there too — the panel's expand icon opens it — for
+         anyone who wants Halo in a full-size window. -->
+    <div class="halo-widget" id="haloWidget">
+        <div class="halo-panel" id="haloPanel" hidden role="dialog" aria-label="Halo, the AI assistant" aria-modal="false">
+            <div class="halo-panel-header">
+                <div class="halo-panel-title">
+                    <div class="halo-avatar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path
+                                d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
+                            <path d="M10 21h4" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="halo-panel-name">Halo</div>
+                        <div class="halo-panel-sub">{{ 'Admin overview' if session.role == 'Admin' else session.branch_name }}</div>
+                    </div>
+                </div>
+                <a href="{{ url_for('ai.chat_page') }}" class="halo-panel-expand" title="Open in full page"
+                    aria-label="Open Halo in full page">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                    </svg>
+                </a>
+            </div>
+            <div class="halo-log" id="haloLog">
+                <div class="halo-empty" id="haloEmpty">
+                    <p>Hi, I'm Halo. Ask about {{ 'company-wide' if session.role == 'Admin' else 'your branch' }}
+                        stock, requests, or sales — I can also draft a reorder for you to review.</p>
+                    <div class="halo-suggestions">
+                        {% if session.role == 'Admin' %}
+                        <button type="button" class="halo-suggestion"
+                            data-q="Which branches are lowest on stock right now?">Which branches are lowest on
+                            stock?</button>
+                        <button type="button" class="halo-suggestion"
+                            data-q="What stock requests are still pending my approval?">Any requests pending my
+                            approval?</button>
+                        {% else %}
+                        <button type="button" class="halo-suggestion"
+                            data-q="What items are running low at my branch?">What's running low here?</button>
+                        <button type="button" class="halo-suggestion" data-q="How much have I sold today?">How much
+                            have I sold today?</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <form class="halo-form" id="haloForm">
+                <textarea id="haloInput" aria-label="Message Halo" placeholder="Ask Halo…" rows="1" required></textarea>
+                <button type="submit" class="halo-send" id="haloSend" aria-label="Send message">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+        <button type="button" class="halo-fab" id="haloFabBtn" aria-haspopup="dialog" aria-expanded="false"
+            aria-controls="haloPanel" aria-label="Ask Halo, the AI assistant" title="Ask Halo">
+            <span class="halo-fab-badge" aria-hidden="true"></span>
+            <svg class="halo-fab-icon halo-fab-icon-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.8">
+                <path
+                    d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
+                <path d="M10 21h4" />
+            </svg>
+            <svg class="halo-fab-icon halo-fab-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+    {% endif %}
+
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
     <script src="{{ url_for('static', filename='js/anime.js') }}"></script>

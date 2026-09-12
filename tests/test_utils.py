@@ -10,8 +10,7 @@ import decimal
 import pytest
 from flask import request
 
-from utils import (PRODUCT_AVATAR_PALETTE, ValidationError,
-                    consume_form_token, issue_form_token,
+from utils import (ValidationError, consume_form_token, issue_form_token,
                     parse_non_negative_decimal, parse_non_negative_int,
                     parse_past_date, parse_positive_decimal,
                     parse_positive_int, product_avatar)
@@ -103,19 +102,19 @@ def test_parse_past_date_rejects_an_invalid_date_string():
 # ---------------------------------------------------------------- product_avatar
 def test_product_avatar_is_deterministic_for_the_same_name():
     """Same product, looked up on two different pages (catalog vs.
-    inventory) — must get the exact same color both times, not a fresh
-    random one per render."""
+    inventory) — must get the exact same initials both times, not a
+    freshly re-derived one per render."""
     first = product_avatar("Black Opium")
     second = product_avatar("Black Opium")
     assert first == second
 
 
-def test_product_avatar_color_is_stable_regardless_of_casing_or_spacing():
+def test_product_avatar_initials_stable_regardless_of_casing_or_spacing():
     """The same product name typed/stored with different whitespace or
     casing (e.g. trailing space from a form) should still resolve to the
-    same color identity, not a different one."""
-    assert product_avatar("Black Opium")["bg"] == product_avatar(
-        "  black   opium  ")["bg"]
+    same initials."""
+    assert product_avatar("Black Opium")["initials"] == product_avatar(
+        "  black   opium  ")["initials"]
 
 
 def test_product_avatar_uses_initials_from_two_words():
@@ -129,15 +128,6 @@ def test_product_avatar_uses_first_two_letters_of_a_single_word():
 def test_product_avatar_handles_blank_name():
     av = product_avatar("")
     assert av["initials"] == "?"
-    assert av["bg"] in PRODUCT_AVATAR_PALETTE
-
-
-def test_product_avatar_different_names_can_get_different_colors():
-    """Not a strict guarantee for every possible pair (it's a hash into
-    a fixed palette), but two ordinary distinct product names shouldn't
-    collide into looking like the same product."""
-    assert product_avatar("Black Opium")["bg"] != product_avatar(
-        "Rose Noire")["bg"]
 
 
 # ---------------------------------------------------------------- single-use form tokens

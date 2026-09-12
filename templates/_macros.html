@@ -21,7 +21,7 @@
   {% else %}
   {% set av = product_avatar(alt) %}
   <div class="product-thumb product-thumb-empty product-thumb-avatar" title="{{ alt }}" aria-label="{{ alt }}"
-    style="width:{{ size }}px; height:{{ size }}px; font-size:{{ (size * 0.4)|round(1) }}px; background:{{ av.bg }}; color:{{ av.fg }};">{{ av.initials }}</div>
+    style="width:{{ size }}px; height:{{ size }}px; font-size:{{ (size * 0.4)|round(1) }}px;">{{ av.initials }}</div>
   {% endif %}
   {% endmacro %}
 

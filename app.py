@@ -255,16 +255,27 @@ def create_app():
                 inquiries_row = db.query(
                     "SELECT COUNT(*) c FROM partner_inquiries WHERE status = 'New'", fetchone=True
                 )
+                drafts_row = db.query(
+                    "SELECT COUNT(*) c FROM ai_stock_drafts WHERE status = 'Pending Review'", fetchone=True
+                )
                 return {
                     "pending_requests_count": row["c"] if row else 0,
                     "new_inquiries_count": inquiries_row["c"] if inquiries_row else 0,
+                    "pending_ai_drafts_count": drafts_row["c"] if drafts_row else 0,
                 }
             if role == "Branch":
                 row = db.query(
                     "SELECT COUNT(*) c FROM stock_requests WHERE branch_id = %s AND status = 'In Transit'",
                     (session.get("branch_id"),), fetchone=True,
                 )
-                return {"in_transit_count": row["c"] if row else 0}
+                drafts_row = db.query(
+                    "SELECT COUNT(*) c FROM ai_stock_drafts WHERE branch_id = %s AND status = 'Pending Review'",
+                    (session.get("branch_id"),), fetchone=True,
+                )
+                return {
+                    "in_transit_count": row["c"] if row else 0,
+                    "pending_ai_drafts_count": drafts_row["c"] if drafts_row else 0,
+                }
         except Exception:
             app.logger.exception("Failed to compute sidebar task-count badges")
         return {}

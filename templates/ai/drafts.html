@@ -94,6 +94,16 @@
     }
   }
 
+  /* Mobile-only duplicate of the real Status cell's "delivery on file"
+     note, folded into the anchor cell's badge row (see .item-sub-badge's
+     own comment in style.css for the same pattern) — hidden here by
+     default since the desktop table already shows the real Status
+     column right next to it; unhidden below once that column folds
+     away on mobile. */
+  .dr-resulting-note {
+    display: none;
+  }
+
   @media (max-width: 680px) {
 
     /* Same reasoning as Admin Log's Details column and Inventory Log's
@@ -109,6 +119,24 @@
       text-align: left;
       gap: 4px;
     }
+
+    /* Collapsible mobile cards — same .table-collapsible/.mobile-detail/
+       .row-toggle-btn mechanism (and JS) as Record Sale/Customers/
+       Partners/Packages/Partner Inquiries (see style.css): each card
+       collapses to just its .mobile-inline-anchor (Proposed by, with
+       When/Status folded into its own badge row) and .mobile-inline-action
+       (Approve/Reject), with Items/Reasoning tucked behind "Details".
+       Only the expanded max-height needs its own override here — 6rem
+       (style.css's shared default) comfortably fits one short cell but
+       not a several-item list plus a free-text Reasoning paragraph
+       stacked in the same card. */
+    .dr-table.table-collapsible tr.row-expanded .mobile-detail {
+      max-height: 18rem;
+    }
+
+    .dr-resulting-note {
+      display: block;
+    }
   }
 </style>
 {% endblock %}
@@ -116,7 +144,7 @@
 {% block content %}
 <div class="card card-pad">
   <p class="text-faint" style="font-size:12.5px; margin:0;">
-    The AI assistant can draft a stock request when you ask it to, or when it spots low stock —
+    Halo can draft a stock request when you ask it to, or when it spots low stock —
     but nothing here is real until you approve it. Approving turns a draft into a normal
     Pending delivery on the <a
       href="{{ url_for('admin.requests_list') if session.role == 'Admin' else url_for('branch.request_stock') }}">Stock
@@ -143,7 +171,7 @@
     </div>
     <div class="table-wrap">
       <table
-        class="smart-table table-fixed dr-table {{ 'dr-table-admin' if session.role == 'Admin' else 'dr-table-branch' }}">
+        class="smart-table table-fixed table-collapsible dr-table {{ 'dr-table-admin' if session.role == 'Admin' else 'dr-table-branch' }}">
         <thead>
           <tr>
             <th>When</th>
@@ -157,23 +185,30 @@
         </thead>
         <tbody>
           {% for d in drafts %}
+          {% set status_class = 'pending' if d.status == 'Pending Review' else ('fulfilled' if d.status == 'Approved' else 'rejected') %}
           <tr
-            data-search="{{ ((d.branch_name if session.role == 'Admin' else '') ~ ' ' ~ (d.created_by_username or 'AI Assistant') ~ ' ' ~ (d.items|map(attribute='item_name')|join(' ')) ~ ' ' ~ (d.reasoning or d.note or ''))|lower }}">
-            <td class="mono text-soft mobile-inline-anchor" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            {% if session.role == 'Admin' %}<td data-label="Branch">{{ d.branch_name }}</td>{% endif %}
-            <td data-label="Proposed by">{{ d.created_by_username or 'AI Assistant' }}</td>
-            <td class="dr-col-items" data-label="Items">
-              {% for item in d.items %}
+            data-search="{{ ((d.branch_name if session.role == 'Admin' else '') ~ ' ' ~ (d.created_by_username or 'Halo') ~ ' ' ~ (d.draft_items|map(attribute='item_name')|join(' ')) ~ ' ' ~ (d.reasoning or d.note or ''))|lower }}">
+            <td class="mono text-soft mobile-fold" data-label="When">{{ d.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            {% if session.role == 'Admin' %}<td class="mobile-fold" data-label="Branch">{{ d.branch_name }}</td>{% endif %}
+            <td data-label="Proposed by" class="mobile-inline-anchor">
+              <div class="item-name">{{ d.created_by_username or 'Halo' }}</div>
+              {% if session.role == 'Admin' %}<div class="item-sub">{{ d.branch_name }}</div>{% endif %}
+              <div class="item-sub item-sub-badge">
+                <span class="badge badge-{{ status_class }}">{{ d.status }}</span>
+                <span class="mono">{{ d.created_at.strftime('%b %d') }}</span>
+              </div>
+              {% if d.resulting_request_id %}<div class="item-sub dr-resulting-note">&rarr; delivery on file</div>{% endif %}
+            </td>
+            <td class="dr-col-items mobile-detail" data-label="Items">
+              {% for item in d.draft_items %}
               <div class="item-sub">{{ item.suggested_qty }}&times; {{ item.item_name }} <span
                   class="mono text-faint">({{ item.unit }})</span></div>
               {% endfor %}
             </td>
-            <td class="text-soft dr-col-reasoning" style="font-size:12.5px;" data-label="Reasoning">{{ d.reasoning or
-              d.note or '—' }}</td>
-            <td data-label="Status">
-              <span
-                class="badge badge-{{ 'pending' if d.status == 'Pending Review' else ('fulfilled' if d.status == 'Approved' else 'rejected') }}">{{
-                d.status }}</span>
+            <td class="text-soft dr-col-reasoning mobile-detail" style="font-size:12.5px;" data-label="Reasoning">{{
+              d.reasoning or d.note or '—' }}</td>
+            <td class="mobile-fold" data-label="Status">
+              <span class="badge badge-{{ status_class }}">{{ d.status }}</span>
               {% if d.resulting_request_id %}<div class="item-sub">&rarr; delivery on file</div>{% endif %}
             </td>
             <td data-label="" class="mobile-inline-action">
@@ -193,6 +228,17 @@
               <span class="text-faint" style="font-size:12.5px;">—</span>
               {% endif %}
             </td>
+            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+                 style.css. Hidden on desktop, where every cell above is
+                 already visible in the real table row. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -211,7 +257,7 @@
   {% else %}
   <div class="empty-state">
     <div class="glyph">—</div>
-    <p>No AI-proposed drafts yet — ask the assistant to put together a reorder.</p>
+    <p>No AI-proposed drafts yet — ask Halo to put together a reorder.</p>
   </div>
   {% endif %}
 </div>

@@ -14,19 +14,16 @@ approach in ai.py). Each tool is:
     that HQ can dispatch. This is the "human-in-the-loop" boundary:
     the agent can *draft*, never *commit*.
 
-ASSUMPTIONS — please verify against your actual schema/branch.py before
-deploying, since neither was available while writing this:
+Schema notes (confirmed against schema.sql / routes/ai.py):
   - stock_requests(request_id, branch_id, delivery_number, status,
     requested_at) and stock_request_items(item_id, request_id, sku,
-    requested_qty, unit_price) — inferred from routes/ai.py's existing
-    queries.
+    requested_qty, unit_price).
   - products.sku is VARCHAR(50) (per utils.py's build_sku() comment).
   - branches(branch_id, branch_name, is_hq).
-  - The real delivery_number format used by branch.request_stock() is
-    NOT known here — draft approval below generates a placeholder
-    ("AI-<draft_id>") that you should swap for whatever convention
-    branch.py already uses, so AI-originated deliveries look identical
-    to normal ones in the Stock Requests list.
+  - Draft approval (routes/ai.py's approve_draft) generates the real
+    delivery_number as "DR-<request_id zero-padded to 6 digits>" — the
+    same convention branch.request_stock() uses — so AI-originated
+    deliveries look identical to normal ones in the Stock Requests list.
 """
 import datetime
 

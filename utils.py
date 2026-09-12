@@ -276,57 +276,22 @@ def parse_past_date(raw, field_label="Date"):
 #
 # Every product thumbnail (catalog, inventory, low-stock report, the public
 # package gallery) falls back to a generated initials avatar when a product
-# has no uploaded photo, instead of a broken/empty-image icon. The color is
-# deterministic per product name — hashed the same way here and in the
-# admin "edit product" modal's live JS preview (see templates/admin/
-# products.html) — so a given product wears the same color identity
-# everywhere its thumbnail shows up, without ever needing to store one.
+# has no uploaded photo, instead of a broken/empty-image icon. Styled the
+# same flat accent tone everywhere (see .product-thumb-avatar in style.css,
+# matching .pi-avatar on the partner inquiries page) rather than a color
+# hashed per product name — one consistent on-brand look instead of a
+# per-item rainbow.
 # ---------------------------------------------------------------------------
-
-# Curated, muted tones — deliberately outside the gold/amber hue range so a
-# generated avatar is never mistaken for --brand-gold/--accent, which mean
-# "interactive" elsewhere in the UI — paired with one shared light
-# foreground that reads clearly against all of them.
-PRODUCT_AVATAR_PALETTE = (
-    "#B5654A",  # terracotta
-    "#9C4F5E",  # rosewood
-    "#6E4C7D",  # plum
-    "#4C5B8A",  # indigo
-    "#3F6E8E",  # slate blue
-    "#3D8078",  # teal
-    "#4C7A54",  # forest
-    "#6B7A3E",  # olive
-    "#7A5A3E",  # umber
-    "#8A5A73",  # mauve
-    "#45607A",  # denim
-    "#82405A",  # berry
-)
-PRODUCT_AVATAR_FG = "#FBF8EF"
-
-
-def _stable_hash(text):
-    """Deterministic string hash, mirrored exactly by the JS helper in
-    templates/admin/products.html. A plain djb2-style rolling hash,
-    folded with a modulus at every step (rather than left to grow and
-    modded once at the end) so it never needs bignum/int64 handling to
-    match between Python (arbitrary-precision ints) and JS (float64,
-    safe only up to 2**53) for names of any length.
-    """
-    h = 0
-    for ch in text:
-        h = (h * 31 + ord(ch)) % 1_000_000_007
-    return h
 
 
 def product_avatar(name):
-    """Build the fallback avatar for a product with no photo: initials
-    plus a color picked deterministically from its name, so the same
-    product always gets the same color wherever its thumbnail appears
-    (catalog, inventory, low-stock, package gallery, ...) — its own
-    color identity, not a random one re-rolled per page.
+    """Build the fallback avatar for a product with no photo: just the
+    initials to display — color comes from the shared
+    .product-thumb-avatar CSS class (accent-soft/accent-ink, same as
+    every other generated avatar in the app), not from here.
 
-    Returns {"initials", "bg", "fg"}, ready to drop into the
-    product_thumb() Jinja macro's inline style.
+    Returns {"initials"}, ready to drop into the product_thumb() Jinja
+    macro.
     """
     clean = re.sub(r"\s+", " ", str(name or "").strip())
     words = clean.split(" ") if clean else []
@@ -336,9 +301,7 @@ def product_avatar(name):
         initials = words[0][:2].upper()
     else:
         initials = "?"
-    color = PRODUCT_AVATAR_PALETTE[_stable_hash(
-        clean.lower()) % len(PRODUCT_AVATAR_PALETTE)]
-    return {"initials": initials, "bg": color, "fg": PRODUCT_AVATAR_FG}
+    return {"initials": initials}
 
 
 def generate_temp_password(length=12):

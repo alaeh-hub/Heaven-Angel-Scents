@@ -1,16 +1,19 @@
-"""routes/admin.py's formula editor (save_formula) and log_material_usage()
-— logging a production batch off the formula for a product's PACKAGING
-SIZE (85ML, 50ML, 1L, 100ML, 10ML, 3ML Tester) instead of picking raw
-materials one by one. A formula belongs to a size, not a specific
-product — every scent sold in, say, 85ML shares the one 85ML formula
-(see unit_formula_items in schema.sql) — so these tests also cover that
-sharing directly, not just the single-product path.
+"""routes/admin.py's formula editor (save_formula) and production() —
+logging a production run now automatically computes and logs its cost of
+goods off the formula for the SKU's PACKAGING SIZE (85ML, 50ML, 1L,
+100ML, 10ML, 3ML Tester) in the same step, instead of a separate "Log
+material usage" action picking raw materials one by one (that used to
+live on the Materials page — see production.html/admin.production()). A
+formula belongs to a size, not a specific product — every scent sold in,
+say, 85ML shares the one 85ML formula (see unit_formula_items in
+schema.sql) — so these tests also cover that sharing directly, not just
+the single-product path.
 
 Covers the core financial guarantee this feature exists for: total_cogs
 (== "capital" on the dashboard) is computed from that size's cost per
-unit at the moment a batch is logged, kept separate from what's been
-spent buying raw material packages. A formula line's qty_per_unit and
-line_cost are two independently hand-entered values — nothing ever
+unit at the moment a production run is logged, kept separate from what's
+been spent buying raw material packages. A formula line's qty_per_unit
+and line_cost are two independently hand-entered values — nothing ever
 multiplies one by the other, and neither is read from
 raw_materials.cost_per_unit; raw materials themselves are a pure
 purchase log, untouched by any of this.
@@ -29,7 +32,7 @@ from factories import (get_cogs_logs, get_form_token, get_raw_material,
                         make_user)
 
 SAVE_FORMULA_URL = "/admin/formulas/save"
-LOG_USAGE_URL = "/admin/materials/log-usage"
+PRODUCTION_URL = "/admin/production"
 MATERIALS_URL = "/admin/materials"
 
 
@@ -59,6 +62,18 @@ def _usage_logs_for_cogs(sql, cogs_log_id):
     return rows
 
 
+def _log_production(client, sku, qty_produced, batch_code=None, **kwargs):
+    """POST to admin.production() the way the combined "Log a production
+    run" form does — cost of goods is computed automatically server-side
+    off the formula for the SKU's packaging size, with no separate step."""
+    token = get_form_token(client, PRODUCTION_URL)
+    data = {"form_token": token, "sku": sku,
+            "qty_produced": str(qty_produced)}
+    if batch_code:
+        data["batch_code"] = batch_code
+    return client.post(PRODUCTION_URL, data=data, **kwargs)
+
+
 def test_formulas_page_renders_before_and_after_a_formula_exists(client, sql):
     _signed_in_admin(client, sql)
     resp = client.get("/admin/formulas")
@@ -72,15 +87,26 @@ def test_formulas_page_renders_before_and_after_a_formula_exists(client, sql):
     assert resp.status_code == 200
 
 
-def test_materials_page_renders_before_and_after_a_formula_product_exists(client, sql):
+def test_materials_page_no_longer_carries_cost_of_goods(client, sql):
+    """Cost of goods (and its own history) moved to the Production Log
+    page — Materials is just the raw materials purchase list now (see
+    admin.production() and templates/admin/materials.html)."""
     _signed_in_admin(client, sql)
     resp = client.get(MATERIALS_URL)
+    assert resp.status_code == 200
+    assert b"Log material usage" not in resp.data
+    assert b"Cost of goods logged" not in resp.data
+
+
+def test_production_page_renders_before_and_after_a_formula_product_exists(client, sql):
+    _signed_in_admin(client, sql)
+    resp = client.get(PRODUCTION_URL)
     assert resp.status_code == 200
 
     sku = make_product(sql, unit="50ML")
     mat_a = make_raw_material(sql)
     make_formula(sql, "50ML", [(mat_a, "2", "5.00")])
-    resp = client.get(MATERIALS_URL)
+    resp = client.get(PRODUCTION_URL)
     assert resp.status_code == 200
     assert sku.encode() in resp.data
 
@@ -170,12 +196,11 @@ def test_save_formula_line_cost_is_hand_entered_not_calculated(client, sql):
     assert Decimal(items[0]["line_cost"]) == Decimal("9.9900")
 
     # And that hand-typed line cost — not qty × anything — is what
-    # actually gets logged as cost of goods.
+    # actually gets logged as cost of goods the moment a production run
+    # is logged against this unit.
     sku = make_product(sql, unit="50ML")
-    token = get_form_token(client, MATERIALS_URL)
-    client.post(LOG_USAGE_URL, data={
-        "form_token": token, "sku": sku, "qty_produced": "1",
-    })
+    resp = _log_production(client, sku, 1)
+    assert resp.status_code == 302
     logs = get_cogs_logs(sql, sku)
     assert Decimal(logs[0]["cogs_per_unit"]) == Decimal("9.9900")
 
@@ -191,29 +216,25 @@ def test_formula_is_shared_by_every_product_of_the_same_unit(client, sql):
     sku_1 = make_product(sql, unit="1L")
     sku_2 = make_product(sql, unit="1L")
 
-    resp = client.get(MATERIALS_URL)
+    resp = client.get(PRODUCTION_URL)
     assert resp.status_code == 200
     # Both SKUs are offered in the picker, both priced off the same formula.
     assert sku_1.encode() in resp.data
     assert sku_2.encode() in resp.data
 
-    token = get_form_token(client, MATERIALS_URL)
-    client.post(LOG_USAGE_URL, data={
-        "form_token": token, "sku": sku_1, "qty_produced": "2",
-    })
+    resp = _log_production(client, sku_1, 2)
+    assert resp.status_code == 302
     logs = get_cogs_logs(sql, sku_1)
     assert Decimal(logs[0]["cogs_per_unit"]) == Decimal("6.0000")
 
-    token = get_form_token(client, MATERIALS_URL)
-    client.post(LOG_USAGE_URL, data={
-        "form_token": token, "sku": sku_2, "qty_produced": "5",
-    })
+    resp = _log_production(client, sku_2, 5)
+    assert resp.status_code == 302
     logs = get_cogs_logs(sql, sku_2)
     # Same formula, same cost per unit, even though it's a different SKU.
     assert Decimal(logs[0]["cogs_per_unit"]) == Decimal("6.0000")
 
 
-def test_log_material_usage_computes_cogs_and_logs_every_ingredient(client, sql):
+def test_production_run_computes_cogs_and_logs_every_ingredient(client, sql):
     _signed_in_admin(client, sql)
     sku = make_product(sql, unit="100ML")
     mat_a = make_raw_material(sql, unit="Gram")
@@ -223,12 +244,7 @@ def test_log_material_usage_computes_cogs_and_logs_every_ingredient(client, sql)
     # purely what material_usage_logs tracks per batch).
     make_formula(sql, "100ML", [(mat_a, "2.5", "5.00"), (mat_b, "1", "0.50")])
 
-    token = get_form_token(client, MATERIALS_URL)
-    resp = client.post(LOG_USAGE_URL, data={
-        "form_token": token,
-        "sku": sku,
-        "qty_produced": "4",
-    })
+    resp = _log_production(client, sku, 4)
     assert resp.status_code == 302
 
     logs = get_cogs_logs(sql, sku)
@@ -239,8 +255,8 @@ def test_log_material_usage_computes_cogs_and_logs_every_ingredient(client, sql)
     # 5.50 * 4 = 22.00 — this is "capital"
     assert Decimal(batch["total_cogs"]) == Decimal("22.00")
 
-    # Raw materials are a purchase log only — logging usage never
-    # deducts from or otherwise changes them.
+    # Raw materials are a purchase log only — logging a production run
+    # never deducts from or otherwise changes them.
     mat_a_row = get_raw_material(sql, mat_a)
     mat_b_row = get_raw_material(sql, mat_b)
     assert Decimal(mat_a_row["package_qty"]) == Decimal("100.000")
@@ -255,17 +271,16 @@ def test_log_material_usage_computes_cogs_and_logs_every_ingredient(client, sql)
     assert Decimal(by_material[mat_b]) == Decimal("4.000")
 
 
-def test_log_material_usage_without_a_formula_is_rejected(client, sql):
+def test_production_run_without_a_formula_still_logs_with_no_cogs(client, sql):
+    """Unlike the old standalone "Log material usage" step this
+    replaced (which refused to log anything at all without a formula),
+    a production run always logs and moves stock — it just carries no
+    cost of goods until a formula is added for its packaging size."""
     _signed_in_admin(client, sql)
     make_formula(sql, "3ML Tester", [])  # explicitly no formula
     sku = make_product(sql, unit="3ML Tester")
 
-    token = get_form_token(client, MATERIALS_URL)
-    resp = client.post(LOG_USAGE_URL, data={
-        "form_token": token,
-        "sku": sku,
-        "qty_produced": "1",
-    }, follow_redirects=True)
+    resp = _log_production(client, sku, 1, follow_redirects=True)
     assert resp.status_code == 200
     assert b"no formula" in resp.data.lower()
     assert get_cogs_logs(sql, sku) == []
@@ -287,8 +302,8 @@ def test_dashboard_capital_is_cogs_not_raw_material_purchases(client, sql):
     make_formula(sql, "10ML", [(mat_a, "1", "10.00")])  # ₱10.00/unit
 
     # Buying the material alone moves "raw materials bought" but not
-    # "capital" — only logging a batch against the formula should move
-    # capital.
+    # "capital" — only logging a production run against the formula
+    # should move capital.
     after_purchase = client.get(
         "/admin/api/reports-data").get_json()["financials"]
     assert Decimal(str(after_purchase["capital"])) == Decimal(
@@ -296,16 +311,14 @@ def test_dashboard_capital_is_cogs_not_raw_material_purchases(client, sql):
     assert Decimal(str(after_purchase["raw_materials_purchased"])) - Decimal(
         str(before["raw_materials_purchased"])) == Decimal("1000.00")
 
-    token = get_form_token(client, MATERIALS_URL)
-    client.post(LOG_USAGE_URL, data={
-        "form_token": token, "sku": sku, "qty_produced": "3",
-    })
+    resp = _log_production(client, sku, 3)
+    assert resp.status_code == 302
 
     after_batch = client.get("/admin/api/reports-data").get_json()["financials"]
     assert Decimal(str(after_batch["capital"])) - Decimal(
         str(before["capital"])) == Decimal("30.00")
-    # Raw materials bought is unchanged by logging usage — the two
-    # figures move independently.
+    # Raw materials bought is unchanged by logging a production run — the
+    # two figures move independently.
     assert Decimal(str(after_batch["raw_materials_purchased"])) == Decimal(
         str(after_purchase["raw_materials_purchased"]))
 

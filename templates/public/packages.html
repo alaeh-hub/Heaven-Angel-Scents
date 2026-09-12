@@ -6,17 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Business Partners · Heaven &amp; Angel Scents</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
-  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}">
-  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_16.png') }}">
-  <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script>
     (function () {
-      try {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || 'dark';
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch (e) { }
+      // This page is light-mode only — no theme toggle, and it never
+      // reads/writes the shared 'theme' localStorage key, so switching
+      // dark mode on the admin app or another public page can't leak a
+      // dark data-theme in here on a shared browser profile.
+      document.documentElement.setAttribute('data-theme', 'light');
 
       // The filter tabs reload the page with an ?anchor=packages query
       // param so we land back on the grid instead of the very top. This
@@ -46,7 +43,23 @@
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* Headings on this page (and package_detail.html) use Cinzel — a
+       carved, Roman-inscription serif that reads as jewelry/perfume-
+       house luxury — instead of the site-wide Manrope, which stays for
+       body copy, nav, and buttons so text stays crisp and readable.
+       Scoped to this page only (not style.css), so the admin
+       app/login are untouched. */
+    h1,
+    h2,
+    h3,
+    h4 {
+      font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+    }
+
     html {
       scroll-behavior: smooth;
     }
@@ -158,19 +171,60 @@
     }
 
     /* ================= header ================= */
+    /* Transparent, floating over the dark hero image — like the
+       reference video's nav bar — rather than a solid sticky bar.
+       position: fixed (not sticky) takes it out of flow entirely so the
+       hero band's own dark background shows through underneath it
+       instead of the header reserving its own row above the hero, and
+       keeps it pinned to the viewport as you scroll (see .pp-scrolled
+       below: JS toggles that class once you scroll past the hero, at
+       which point the header picks up a normal solid background so it
+       stays legible over the lighter page content). */
     .pp-header {
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 0;
+      right: 0;
       z-index: 40;
-      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      background: transparent;
+      transition: background 0.2s ease, border-color 0.2s ease, backdrop-filter 0.2s ease;
+    }
+
+    .pp-header.pp-scrolled {
+      background: color-mix(in srgb, #14110A 65%, transparent);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
     }
+
+    .pp-header .pp-brand .sub {
+      color: rgba(251, 246, 230, .58);
+    }
+
+    .pp-header .pp-nav {
+      color: rgba(251, 246, 230, .85);
+    }
+
+    .pp-header .pp-nav a:hover {
+      color: #fff;
+      background: rgba(251, 246, 230, .12);
+    }
+
+    .pp-header .pp-header-tag {
+      color: var(--brand-gold);
+      background: rgba(212, 175, 55, .16);
+    }
+
+    /* The scrolled header's background is now the same dark brand
+       black (just a low-opacity, blurred wash of it) as the transparent
+       state over the hero, not the light --bg surface — so it keeps
+       the same light/cream text in both states instead of switching to
+       the theme's dark ink, which would go illegible here. */
 
     .pp-header-inner {
       max-width: 1160px;
       margin: 0 auto;
-      padding: 14px 20px;
+      padding: 20px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -193,15 +247,15 @@
        natural width. */
     .pp-wordmark {
       display: block;
-      height: 40px;
+      height: 56px;
       width: auto;
-      max-width: 220px;
+      max-width: 280px;
       object-fit: contain;
       flex-shrink: 0;
     }
 
     .pp-brand .sub {
-      font-size: 11px;
+      font-size: 13px;
       color: var(--ink-faint);
       margin-top: 1px;
     }
@@ -210,14 +264,14 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      font-size: 12.5px;
+      font-size: 14.5px;
       font-weight: 600;
       color: var(--ink-soft);
     }
 
     .pp-nav a {
       color: inherit;
-      padding: 7px 12px;
+      padding: 9px 14px;
       border-radius: 999px;
       transition: color 0.15s ease, background-color 0.15s ease;
     }
@@ -251,6 +305,207 @@
     .pp-inner {
       max-width: 1160px;
       margin: 0 auto;
+    }
+
+    /* ================= full-bleed dark bands =================
+       Hero / stats / footer break out of .pp-shell's max-width and
+       always use the FIXED black+gold brand tokens (not --bg/--ink,
+       which flip with the theme toggle) so these banners read as the
+       same rich black-and-gold as the brand mark in both themes —
+       inspired by the reference video's photographic dark sections.
+
+       The background is a "minimal golden grid matrix" — a faint gold
+       grid of hairlines over the brand black, with a radial vignette
+       darkening the edges for depth. Built entirely from gradients
+       (no image asset) so it stays crisp at any size/zoom and never
+       needs a file to ship — color-mix keeps the grid tied to
+       --brand-gold rather than a duplicated hex. */
+    .pp-band {
+      position: relative;
+      background-color: var(--brand-black);
+      background-image:
+        radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, .4) 100%),
+        repeating-linear-gradient(to right,
+          color-mix(in srgb, var(--brand-gold) 9%, transparent) 0 1px,
+          transparent 1px 44px),
+        repeating-linear-gradient(to bottom,
+          color-mix(in srgb, var(--brand-gold) 9%, transparent) 0 1px,
+          transparent 1px 44px);
+      background-size: cover, 44px 44px, 44px 44px;
+      background-position: center;
+    }
+
+    .pp-band-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* .pp-band-dark is the subset of .pp-band sections that are ALWAYS
+       black (hero, stats) — as opposed to .pp-band-soft, which is a
+       theme-aware tinted surface and must keep the normal --ink text
+       colors. Scoping these text overrides to .pp-band-dark (not the
+       bare .pp-band every full-bleed section shares) keeps them from
+       leaking into the soft band and turning its text invisible. */
+    .pp-band-dark .pp-eyebrow {
+      color: var(--brand-gold);
+      background: rgba(212, 175, 55, .14);
+    }
+
+    .pp-band-dark h1 {
+      color: #FBF6E6;
+    }
+
+    .pp-band-dark h1 .grad-text {
+      color: var(--brand-gold);
+    }
+
+    .pp-band-dark p {
+      color: rgba(251, 246, 230, .68);
+    }
+
+    .pp-band-dark .btn-ghost {
+      color: #FBF6E6;
+      border-color: rgba(251, 246, 230, .32);
+    }
+
+    .pp-band-dark .btn-ghost:hover {
+      background: rgba(251, 246, 230, .1);
+      color: #fff;
+    }
+
+    .pp-band-dark .pp-hero-panel {
+      background: rgba(251, 246, 230, .04);
+      border-color: rgba(212, 175, 55, .28);
+    }
+
+    .pp-band-dark .pp-hero-panel::before {
+      background: rgba(212, 175, 55, .06);
+    }
+
+    .pp-band-dark .pp-hero-stat+.pp-hero-stat {
+      border-top-color: rgba(251, 246, 230, .12);
+    }
+
+    .pp-band-dark .pp-hero-stat .num {
+      color: #FBF6E6;
+    }
+
+    .pp-band-dark .pp-hero-stat .label {
+      color: rgba(251, 246, 230, .58);
+    }
+
+    .pp-band-dark .pp-hero-panel-foot {
+      color: rgba(251, 246, 230, .72);
+      border-top-color: rgba(212, 175, 55, .28);
+    }
+
+    /* ---- torn-paper edge: a jagged strip reading as one section's
+       color torn away to reveal whatever comes right after it ---- */
+    .pp-tear-wrap {
+      position: relative;
+      height: 0;
+    }
+
+    .pp-tear {
+      display: block;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 40px;
+    }
+
+    /* ---- stats band ---- */
+    .pp-stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      padding: 40px 0;
+    }
+
+    .pp-stat-tile {
+      text-align: center;
+    }
+
+    .pp-stat-tile .num {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--brand-gold);
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+    }
+
+    .pp-stat-tile .label {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(251, 246, 230, .68);
+    }
+
+    /* ---- soft tinted band behind the packages grid, echoing the
+       reference video's patterned product-grid section — same faint
+       gold hairline grid as the dark .pp-band bands (see above), just
+       laid over --surface-2 instead of the brand black, so the pattern
+       reads as one consistent motif across both light and dark bands. */
+    .pp-band-soft {
+      background-color: var(--surface-2);
+      background-image:
+        repeating-linear-gradient(to right,
+          color-mix(in srgb, var(--brand-gold) 12%, transparent) 0 1px,
+          transparent 1px 44px),
+        repeating-linear-gradient(to bottom,
+          color-mix(in srgb, var(--brand-gold) 12%, transparent) 0 1px,
+          transparent 1px 44px);
+      background-size: 44px 44px, 44px 44px;
+      padding: 48px 0;
+    }
+
+    /* ---- dark footer band ---- */
+    .pp-band-footer {
+      padding: 48px 0 26px;
+    }
+
+    .pp-band-footer .pp-wordmark {
+      filter: brightness(0) invert(1);
+    }
+
+    .pp-band-footer .pp-footer-cols {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+
+    .pp-band-footer h4 {
+      font-size: 13.5px;
+      color: #FBF6E6;
+      margin: 0 0 10px;
+    }
+
+    .pp-band-footer .col p {
+      font-size: 12px;
+      line-height: 1.65;
+      margin: 0;
+      color: rgba(251, 246, 230, .68);
+    }
+
+    .pp-band-footer .legal {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(251, 246, 230, .12);
+      font-size: 11px;
+      color: rgba(251, 246, 230, .48);
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .pp-stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .pp-band-footer .pp-footer-cols {
+        grid-template-columns: 1fr;
+        gap: 22px;
+      }
     }
 
     /* ================= reveal-on-scroll ================= */
@@ -337,8 +592,15 @@
       box-shadow: var(--shadow-sm);
     }
 
-    .pp-dot-nav a:hover .pp-dot-label,
-    .pp-dot-nav a.active .pp-dot-label {
+    .pp-dot-nav a:hover .pp-dot-label {
+      opacity: 1;
+    }
+
+    /* The active dot's label only shows while the page is actively
+       being scrolled (see the .is-scrolling toggle in the script
+       below) — otherwise it would sit permanently on-screen next to
+       whichever dot matches the current section. */
+    .pp-dot-nav.is-scrolling a.active .pp-dot-label {
       opacity: 1;
     }
 
@@ -359,8 +621,8 @@
       display: grid;
       grid-template-columns: 1.35fr 1fr;
       gap: 28px;
-      align-items: stretch;
-      padding: 48px 0 40px;
+      align-items: center;
+      padding: 28px 0;
       scroll-margin-top: 108px;
     }
 
@@ -385,10 +647,10 @@
     }
 
     .pp-hero h1 {
-      font-size: 34px;
-      margin: 0 0 14px;
+      font-size: 62px;
+      margin: 0 0 18px;
       letter-spacing: -0.02em;
-      line-height: 1.15;
+      line-height: 1.1;
     }
 
     .pp-hero h1 .grad-text {
@@ -396,11 +658,18 @@
     }
 
     .pp-hero p {
-      font-size: 14.5px;
+      font-size: 19px;
       color: var(--ink-soft);
-      max-width: 520px;
-      line-height: 1.7;
+      max-width: 560px;
+      line-height: 1.6;
       margin: 0 0 22px;
+      font-weight: 500;
+    }
+
+    .pp-hero-cta {
+      padding: 16px 30px;
+      font-size: 17px;
+      border-radius: var(--radius);
     }
 
     .pp-hero-badges {
@@ -427,6 +696,36 @@
 
     .pp-hero-ctas a:hover svg {
       transform: translateX(3px);
+    }
+
+    /* ---- hero product photos ----
+       Two cutout product shots (tall and narrow, transparent
+       background), not landscape photo tiles. Always side by side
+       (nowrap) — each image is sized as a % of the row so the pair
+       shrinks together to fit rather than ever wrapping to stacked. */
+    .pp-hero-side {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .pp-hero-visual {
+      display: block;
+      /* width as a % of .pp-hero-side (not a fixed px) is what keeps
+         two of these from ever needing to wrap — they shrink together
+         to fit the row instead. aspect-ratio holds the photo's real
+         proportions since height is no longer set directly. 260px is
+         just a ceiling for wide columns; hero-perfume-male.png/
+         hero-perfume-female.png are 512x917 native, well above it, so
+         this stays a clean downscale (never blurry — that only risks
+         happening on an upscale). */
+      width: 42%;
+      max-width: 260px;
+      height: auto;
+      aspect-ratio: 512 / 917;
     }
 
     /* ---- hero side panel ---- */
@@ -517,7 +816,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 14px;
-      margin: 8px 0 48px;
+      margin: 8px 0 64px;
     }
 
     .pp-why-card {
@@ -571,6 +870,146 @@
       margin: 0;
     }
 
+    /* ================= media placeholders =================
+       .pp-media-slot is the shared look for every stand-in image/video
+       tile on this page (placeholder-photo.svg / placeholder-video.svg)
+       — a fixed aspect box, rounded to match the rest of the cards, so
+       swapping the <img> src for real photography/video later needs no
+       layout changes. */
+    .pp-media-slot {
+      width: 100%;
+      border-radius: var(--radius-lg);
+      display: block;
+      object-fit: cover;
+    }
+
+    .pp-process {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      align-items: center;
+      margin: 0 0 40px;
+    }
+
+    .pp-process-media .pp-media-slot {
+      aspect-ratio: 16 / 9;
+    }
+
+    .pp-process-copy .pp-eyebrow {
+      margin-bottom: 12px;
+    }
+
+    .pp-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--ink-faint);
+      margin: 0 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pp-section-label::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Two auto-scrolling rows, each an infinite marquee: the track holds
+       the tile set TWICE back-to-back (see the markup) and animates
+       from 0 to exactly -50% of its own width, so the moment the first
+       copy scrolls fully offscreen the second copy is sitting exactly
+       where the first one started — a seamless loop with no jump cut.
+       Top row drifts left, bottom row drifts right (reversed keyframe),
+       so the two rows read as moving opposite ways. */
+    /* Full-bleed breakout: the strip lives inside .pp-inner (max-width
+       1160px, centered), but should span edge-to-edge of the viewport
+       regardless — 100vw pulled back to center via negative margins,
+       rather than moving it out of that container in the markup. */
+    .pp-lifestyle-strip {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      margin: 36px 0 8px;
+      width: 100vw;
+      position: relative;
+      left: 50%;
+      right: 50%;
+      margin-left: -50vw;
+      margin-right: -50vw;
+    }
+
+    .pp-lifestyle-row {
+      overflow: hidden;
+      width: 100%;
+    }
+
+    .pp-lifestyle-track {
+      display: flex;
+      width: max-content;
+      gap: 24px;
+      animation: pp-lifestyle-scroll-left 100s linear infinite;
+    }
+
+    .pp-lifestyle-row-right .pp-lifestyle-track {
+      animation-name: pp-lifestyle-scroll-right;
+      /* offsets the bottom loop mid-cycle so the two rows never mirror
+         each other's position — reads as two independent loops rather
+         than one synchronized back-and-forth */
+      animation-delay: -50s;
+    }
+
+    @keyframes pp-lifestyle-scroll-left {
+      from {
+        transform: translateX(0);
+      }
+
+      to {
+        transform: translateX(-50%);
+      }
+    }
+
+    @keyframes pp-lifestyle-scroll-right {
+      from {
+        transform: translateX(-50%);
+      }
+
+      to {
+        transform: translateX(0);
+      }
+    }
+
+    .pp-lifestyle-strip .pp-media-slot {
+      flex: 0 0 auto;
+      /* matches .pp-hero-visual's size exactly, so the male/female
+         product shots read as the same size in both places */
+      width: 260px;
+      height: 470px;
+      border-radius: var(--radius);
+      /* the shared .pp-media-slot default is object-fit: cover, which
+         zooms in to fill the tile — fine for a wide placeholder graphic,
+         but it crops a real product photo in tight and makes it read as
+         "too big". contain shrinks the whole image to fit inside the
+         tile instead, with the surface color + padding filling the rest
+         so it doesn't look like bare empty space around it. */
+      object-fit: contain;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-lifestyle-track {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .pp-process {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* ================= how-it-works timeline ================= */
     .pp-section-head {
       display: flex;
@@ -585,6 +1024,16 @@
       font-size: 18px;
       margin: 0;
       letter-spacing: -0.01em;
+    }
+
+    /* Bigger heading treatment just for the packages section's own
+       head, matching its wider band. */
+    #packages .pp-section-head h2 {
+      font-size: 30px;
+    }
+
+    #packages .pp-section-head p {
+      font-size: 16px !important;
     }
 
     .pp-steps {
@@ -798,11 +1247,35 @@
       gap: 12px;
     }
 
+    .pp-card-head-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* title + price on one row, like the reference video's product
+       cards ("Cappuccino ... $49") — the price up front instead of
+       buried at the bottom of the card */
+    .pp-card-title-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
     .pp-card-head-text h3 {
       font-size: 16.5px;
       margin: 0 0 6px;
       font-weight: 700;
       letter-spacing: -0.005em;
+    }
+
+    .pp-card-price-tag {
+      flex-shrink: 0;
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--accent-ink);
+      letter-spacing: -0.01em;
+      white-space: nowrap;
     }
 
     .pp-card-desc {
@@ -995,8 +1468,25 @@
         padding-top: 32px;
       }
 
+      .pp-hero-visual {
+        max-width: 170px;
+      }
+
+      .pp-lifestyle-strip .pp-media-slot {
+        width: 170px;
+        height: 305px;
+      }
+
       .pp-hero h1 {
-        font-size: 26px;
+        font-size: 38px;
+      }
+
+      .pp-hero p {
+        font-size: 16.5px;
+      }
+
+      .pp-process {
+        margin-top: 120px !important;
       }
 
       .pp-nav {
@@ -1073,22 +1563,35 @@
         <a href="#how-it-works">How it works</a>
         <a href="#faq">FAQ</a>
       </nav>
-      <div class="pp-header-actions">
-        <span class="pp-header-tag">For Distributors &amp; Resellers</span>
-        <a href="#packages" class="btn btn-accent btn-sm">Browse packages</a>
-        <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme">
-          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="12" r="4.2" />
-            <path
-              d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
-          </svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" />
-          </svg>
-        </button>
-      </div>
     </div>
   </header>
+
+  {% set active_count = package_list|length %}
+  {% set max_discount = (package_list|map(attribute='discount_percent')|list)|max if package_list else 0 %}
+
+  <section class="pp-band pp-band-dark pp-fullsection pp-hero-band" id="hero" style="padding:0;">
+    <div class="pp-band-inner" style="padding:104px 0 240px;">
+      <div class="pp-hero">
+        <div>
+          <h1>Grow with <span class="grad-text">Heaven &amp; Angel Scents</span></h1>
+          <p>Curated fragrance bundles, priced below our regular list.</p>
+          <a href="#packages" class="btn btn-accent pp-hero-cta">Browse packages</a>
+        </div>
+        <div class="pp-hero-side">
+          <img class="pp-hero-visual" src="{{ url_for('static', filename='img/hero-perfume-male.png') }}"
+            alt="Heaven &amp; Angel Scents — men's fragrance">
+          <img class="pp-hero-visual" src="{{ url_for('static', filename='img/hero-perfume-female.png') }}"
+            alt="Heaven &amp; Angel Scents — women's fragrance">
+        </div>
+      </div>
+    </div>
+    <div class="pp-tear-wrap" aria-hidden="true">
+      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--bg);">
+        <path
+          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+      </svg>
+    </div>
+  </section>
 
   <div class="pp-shell">
     <div class="pp-inner">
@@ -1102,360 +1605,390 @@
       {% endif %}
       {% endwith %}
 
-      <section class="pp-fullsection pp-fullsection--center" id="hero">
-      <div class="pp-hero">
-        <div>
+      <div class="pp-process pp-reveal" style="margin-top:180px;">
+        <div class="pp-process-media">
+          <video class="pp-media-slot" src="{{ url_for('static', filename='video/behind-the-scent.mp4') }}" controls
+            preload="metadata" playsinline></video>
+        </div>
+        <div class="pp-process-copy">
           <span class="pp-eyebrow">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M12 2 14.6 9h7.4l-6 4.4 2.3 7.1L12 16l-6.3 4.5 2.3-7.1L2 9h7.4z" />
+              <circle cx="12" cy="12" r="9" />
+              <path d="M10 8.5 16 12 10 15.5z" />
             </svg>
-            Partner Program
+            Behind the scent
           </span>
-          <h1>Grow with <span class="grad-text">Heaven &amp; Angel Scents</span></h1>
-          <p>
-            Curated fragrance bundles at a discount off our regular price list — built for
-            distributors reselling further down a chain, and resellers selling directly to
-            end customers. Open a package to see exactly what's in it, then send us an
-            inquiry and our team will reach out to get you set up.
+          <h2 style="font-size:20px; margin:0 0 10px;">See how each fragrance comes together</h2>
+          <p style="margin:0; font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
+            From blending to bottling, every batch is made in small runs so quality stays consistent across every
+            package you order. A short walkthrough of our process will go here.
           </p>
-          <div class="pp-hero-badges">
-            <span class="badge badge-transit">Distributor pricing</span>
-            <span class="badge badge-unisex">Reseller pricing</span>
-          </div>
-          <div class="pp-hero-ctas">
-            <a href="#packages" class="btn btn-accent">
-              Browse packages
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </a>
-            <a href="#how-it-works" class="btn btn-ghost">How it works</a>
-          </div>
-        </div>
-        <div class="pp-hero-panel">
-          <div class="pp-hero-stat">
-            <div class="pp-hero-stat-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <rect x="2" y="6" width="20" height="13" rx="2" />
-                <path d="M2 10h20" />
-                <path d="M6 15h4" />
-              </svg>
-            </div>
-            <div>
-              <div class="num">{{ package_list|length }}</div>
-              <div class="label">Package{{ 's' if package_list|length != 1 }} available</div>
-            </div>
-          </div>
-          <div class="pp-hero-stat">
-            <div class="pp-hero-stat-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
-              </svg>
-            </div>
-            <div>
-              <div class="num">2</div>
-              <div class="label">Partner types welcomed</div>
-            </div>
-          </div>
-          <div class="pp-hero-panel-foot">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            Every bundle is priced below our regular list
-          </div>
         </div>
       </div>
+    </div>
+  </div>
 
-      <div class="pp-why-grid">
-        <div class="card pp-why-card pp-reveal" style="--rd:0s;">
-          <div class="pp-why-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="2" y="6" width="20" height="13" rx="2" />
-              <path d="M2 10h20" />
-              <path d="M6 15h4" />
-            </svg>
-          </div>
-          <h3>Wholesale pricing</h3>
-          <p>Every package is discounted off our regular price list — the more you commit to, the better it is to build
-            a business on.</p>
-        </div>
-        <div class="card pp-why-card pp-reveal" style="--rd:.08s;">
-          <div class="pp-why-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
-            </svg>
-          </div>
-          <h3>Dedicated support</h3>
-          <p>Send an inquiry and our team follows up directly by phone or email to get your account set up.</p>
-        </div>
-        <div class="card pp-why-card pp-reveal" style="--rd:.16s;">
-          <div class="pp-why-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M3 17l6-6 4 4 8-8" />
-              <path d="M15 7h6v6" />
-            </svg>
-          </div>
-          <h3>Built to resell</h3>
-          <p>Bundles are put together for distributors reselling further down a chain, and resellers selling straight to
-            customers.</p>
-        </div>
+  <section class="pp-band pp-band-soft pp-fullsection" id="packages" style="padding:0;">
+    <div class="pp-band-inner" style="padding:44px 0 100px;">
+      <div class="pp-section-head pp-reveal" style="text-align:center; flex-direction:column; gap:6px;">
+        <h2>What kind of Perfume we serve for you</h2>
+        <p style="margin:0; font-size:13px; color:var(--ink-faint);">Who are in extremely love with quality fragrance
+          at wholesale prices.</p>
       </div>
-      </section>
-
-      <section class="pp-fullsection pp-fullsection--center" id="packages">
-      <div class="pp-section-glow" aria-hidden="true"></div>
-      {% set active_count = package_list|length %}
-      {% set max_discount = (package_list|map(attribute='discount_percent')|list)|max if package_list else 0 %}
-      <div class="pp-section-head pp-reveal">
-        <h2>Browse packages</h2>
+      <div class="pp-section-head pp-reveal" style="justify-content:center; margin-top:28px;">
         <div class="pp-filter-bar">
-          <a class="{{ 'active' if scope_filter == 'all' }}" href="{{ url_for('portal.packages', slug=slug) }}?anchor=packages">All
+          <a class="{{ 'active' if scope_filter == 'all' }}"
+            href="{{ url_for('portal.packages', slug=slug) }}?anchor=packages">All
             packages</a>
           {% for t in partner_types %}
-          <a class="{{ 'active' if scope_filter == t }}" href="{{ url_for('portal.packages', slug=slug, scope=t) }}&anchor=packages">{{
+          <a class="{{ 'active' if scope_filter == t }}"
+            href="{{ url_for('portal.packages', slug=slug, scope=t) }}&anchor=packages">{{
             t }}s</a>
           {% endfor %}
         </div>
       </div>
 
-      {% if package_list %}
-      <div class="pp-grid">
-        {% for pkg in package_list %}
-        <div class="card pp-card pp-reveal" style="--rd: {{ (loop.index0 * 0.06)|round(2) }}s;">
-          {% if active_count > 1 and pkg.discount_percent == max_discount and max_discount > 0 %}
-          <span class="pp-best-value">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2 14.6 9h7.4l-6 4.4 2.3 7.1L12 16l-6.3 4.5 2.3-7.1L2 9h7.4z" />
-            </svg>
-            Best value
-          </span>
-          {% endif %}
-          <div class="pp-card-head">
-            <div class="pp-card-icon">
-              {% if pkg.partner_scope == 'Distributor' %}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <rect x="1" y="9" width="14" height="9" rx="1.5" />
-                <path d="M15 12h3.5L21 15v3h-6" />
-                <circle cx="6" cy="19.5" r="1.7" />
-                <circle cx="17.5" cy="19.5" r="1.7" />
+      <div id="pp-packages-grid">
+        {% if package_list %}
+        <div class="pp-grid" style="margin-top:28px;">
+          {% for pkg in package_list %}
+          <div class="card pp-card pp-reveal" style="--rd: {{ (loop.index0 * 0.06)|round(2) }}s;">
+            {% if active_count > 1 and pkg.discount_percent == max_discount and max_discount > 0 %}
+            <span class="pp-best-value">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2 14.6 9h7.4l-6 4.4 2.3 7.1L12 16l-6.3 4.5 2.3-7.1L2 9h7.4z" />
               </svg>
-              {% elif pkg.partner_scope == 'Reseller' %}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M3 9.5 4.5 4h15L21 9.5" />
-                <path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3-.5" />
-                <path d="M5 9.8V20h14V9.8" />
-                <path d="M10 20v-5.5h4V20" />
-              </svg>
-              {% else %}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M8 12l2.5 2.5L15 9" />
-                <path d="M3 7.5 8 5l4 2-4 2.3-5-1.8z" />
-                <path d="M21 7.5 16 5l-4 2 4 2.3 5-1.8z" />
-                <path d="M3 7.5v9L8 19l0-9" />
-                <path d="M21 7.5v9L16 19l0-9" />
-              </svg>
-              {% endif %}
+              Best value
+            </span>
+            {% endif %}
+            <div class="pp-card-head">
+              <div class="pp-card-icon">
+                {% if pkg.partner_scope == 'Distributor' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <rect x="1" y="9" width="14" height="9" rx="1.5" />
+                  <path d="M15 12h3.5L21 15v3h-6" />
+                  <circle cx="6" cy="19.5" r="1.7" />
+                  <circle cx="17.5" cy="19.5" r="1.7" />
+                </svg>
+                {% elif pkg.partner_scope == 'Reseller' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 9.5 4.5 4h15L21 9.5" />
+                  <path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 3-.5" />
+                  <path d="M5 9.8V20h14V9.8" />
+                  <path d="M10 20v-5.5h4V20" />
+                </svg>
+                {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M8 12l2.5 2.5L15 9" />
+                  <path d="M3 7.5 8 5l4 2-4 2.3-5-1.8z" />
+                  <path d="M21 7.5 16 5l-4 2 4 2.3 5-1.8z" />
+                  <path d="M3 7.5v9L8 19l0-9" />
+                  <path d="M21 7.5v9L16 19l0-9" />
+                </svg>
+                {% endif %}
+              </div>
+              <div class="pp-card-head-text">
+                <div class="pp-card-title-row">
+                  <h3>{{ pkg.package_name }}</h3>
+                  <span class="pp-card-price-tag">{{ pkg.discounted_total|peso }}</span>
+                </div>
+                <span
+                  class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{
+                  pkg.partner_scope }}</span>
+              </div>
             </div>
-            <div class="pp-card-head-text">
-              <h3>{{ pkg.package_name }}</h3>
-              <span
-                class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{
-                pkg.partner_scope }}</span>
+            <div class="pp-card-desc">{{ pkg.description or 'A curated set of our fragrances.' }}</div>
+            <div class="pp-card-meta">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+              {{ pkg.item_count }} product{{ 's' if pkg.item_count != 1 }} in this bundle
             </div>
+            <div class="pp-price-row">
+              <span class="pp-price-ref">{{ pkg.reference_total|peso }}</span>
+              <span class="pp-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span>
+            </div>
+            <a href="{{ url_for('portal.package_detail', slug=slug, package_id=pkg.package_id) }}"
+              class="btn btn-accent pp-card-cta">
+              View Package
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
           </div>
-          <div class="pp-card-desc">{{ pkg.description or 'A curated set of our fragrances.' }}</div>
-          <div class="pp-card-meta">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-            {{ pkg.item_count }} product{{ 's' if pkg.item_count != 1 }} in this bundle
-          </div>
-          <div class="pp-price-row">
-            <span class="pp-price-order">{{ pkg.discounted_total|peso }}</span>
-            <span class="pp-price-ref">{{ pkg.reference_total|peso }}</span>
-            <span class="pp-discount-chip">{{ pkg.discount_percent|round(2) }}% off</span>
-          </div>
-          <a href="{{ url_for('portal.package_detail', slug=slug, package_id=pkg.package_id) }}"
-            class="btn btn-accent pp-card-cta">
-            View Package
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </a>
+          {% endfor %}
         </div>
-        {% endfor %}
+        {% else %}
+        <div class="empty-state" style="margin-top:24px;">
+          <div class="glyph">—</div>
+          <p>No packages are available in this view right now — check back soon.</p>
+        </div>
+        {% endif %}
       </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="glyph">—</div>
-        <p>No packages are available in this view right now — check back soon.</p>
+    </div>
+    <div class="pp-tear-wrap" aria-hidden="true">
+      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--brand-black);">
+        <path
+          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+      </svg>
+    </div>
+  </section>
+
+  <section class="pp-band pp-band-dark">
+    <div class="pp-band-inner">
+      <div class="pp-stats-row">
+        <div class="pp-stat-tile">
+          <div class="num">{{ package_list|length }}</div>
+          <div class="label">Package{{ 's' if package_list|length != 1 }} available</div>
+        </div>
+        <div class="pp-stat-tile">
+          <div class="num">{{ max_discount|round(1) if max_discount else 0 }}%</div>
+          <div class="label">Best discount available</div>
+        </div>
+        <div class="pp-stat-tile">
+          <div class="num">{{ partner_types|length }}</div>
+          <div class="label">Partner types welcomed</div>
+        </div>
+        <div class="pp-stat-tile">
+          <div class="num">100%</div>
+          <div class="label">Priced below list price</div>
+        </div>
       </div>
-      {% endif %}
-      </section>
+    </div>
+    <div class="pp-tear-wrap" aria-hidden="true">
+      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--bg);">
+        <path
+          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+      </svg>
+    </div>
+  </section>
+
+  <div class="pp-shell" style="padding-bottom:0;">
+    <div class="pp-inner">
+      <div class="pp-section-label pp-reveal" style="margin-top:8px;">In the wild</div>
+      <!-- Real product shots now: top row is hero-perfume-male.png,
+           bottom row is hero-perfume-female.png. Two independent,
+           always-running loops: top drifts left, bottom drifts right
+           (offset with a negative animation-delay so the two don't move
+           in visual lockstep). Each row repeats its one photo
+           REPEAT_COUNT times, then duplicates that whole run
+           back-to-back — that's what makes the loop seamless (the
+           animation travels exactly one run's width) AND gapless even
+           on an ultra-wide/full-bleed screen (one run alone is wide
+           enough to fill it). -->
+      {% set lifestyle_repeat_count = 8 %}
+      <div class="pp-lifestyle-strip pp-reveal">
+        <div class="pp-lifestyle-row pp-lifestyle-row-left">
+          <div class="pp-lifestyle-track">
+            {% for half in range(2) %}{% for rep in range(lifestyle_repeat_count) %}
+            <img class="pp-media-slot" src="{{ url_for('static', filename='img/hero-perfume-male.png') }}"
+              alt="Heaven &amp; Angel Scents — men's fragrance">
+            {% endfor %}{% endfor %}
+          </div>
+        </div>
+        <div class="pp-lifestyle-row pp-lifestyle-row-right">
+          <div class="pp-lifestyle-track">
+            {% for half in range(2) %}{% for rep in range(lifestyle_repeat_count) %}
+            <img class="pp-media-slot" src="{{ url_for('static', filename='img/hero-perfume-female.png') }}"
+              alt="Heaven &amp; Angel Scents — women's fragrance">
+            {% endfor %}{% endfor %}
+          </div>
+        </div>
+      </div>
 
       <section class="pp-fullsection" id="how-it-works">
-      <div class="pp-section-glow" aria-hidden="true"></div>
-      <div class="pp-section-head pp-reveal">
-        <h2>How it works</h2>
-      </div>
-      <div class="pp-steps">
-        <div class="card pp-step pp-reveal" style="--rd:0s;">
-          <span class="pp-step-num">1</span>
-          <h3>Browse packages</h3>
-          <p>Look through the bundles below — each one lists exactly what's inside, with photos, variants, and
-            quantities.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
+        <div class="pp-section-glow" aria-hidden="true"></div>
+        <div class="pp-section-head pp-reveal">
+          <h2>How it works</h2>
         </div>
-        <div class="card pp-step pp-reveal" style="--rd:.08s;">
-          <span class="pp-step-num">2</span>
-          <h3>Send an inquiry</h3>
-          <p>Open a package and tell us a bit about your business — takes under a minute, no account needed.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
+        <div class="pp-steps">
+          <div class="card pp-step pp-reveal" style="--rd:0s;">
+            <span class="pp-step-num">1</span>
+            <h3>Browse packages</h3>
+            <p>Look through the bundles below — each one lists exactly what's inside, with photos, variants, and
+              quantities.</p>
+            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="card pp-step pp-reveal" style="--rd:.08s;">
+            <span class="pp-step-num">2</span>
+            <h3>Send an inquiry</h3>
+            <p>Open a package and tell us a bit about your business — takes under a minute, no account needed.</p>
+            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="card pp-step pp-reveal" style="--rd:.16s;">
+            <span class="pp-step-num">3</span>
+            <h3>We follow up</h3>
+            <p>Our team reaches out by phone or email to confirm details and get your order moving.</p>
+            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="card pp-step pp-reveal" style="--rd:.24s;">
+            <span class="pp-step-num">4</span>
+            <h3>We confirm your account</h3>
+            <p>Once details check out, we set you up as a Distributor or Reseller so future orders move even faster.</p>
+            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </div>
+          <div class="card pp-step pp-reveal" style="--rd:.32s;">
+            <span class="pp-step-num">5</span>
+            <h3>Reorder anytime</h3>
+            <p>Come back and browse whenever you're ready to restock — no need to start the conversation from scratch.
+            </p>
+          </div>
         </div>
-        <div class="card pp-step pp-reveal" style="--rd:.16s;">
-          <span class="pp-step-num">3</span>
-          <h3>We follow up</h3>
-          <p>Our team reaches out by phone or email to confirm details and get your order moving.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </div>
-        <div class="card pp-step pp-reveal" style="--rd:.24s;">
-          <span class="pp-step-num">4</span>
-          <h3>We confirm your account</h3>
-          <p>Once details check out, we set you up as a Distributor or Reseller so future orders move even faster.</p>
-          <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </div>
-        <div class="card pp-step pp-reveal" style="--rd:.32s;">
-          <span class="pp-step-num">5</span>
-          <h3>Reorder anytime</h3>
-          <p>Come back and browse whenever you're ready to restock — no need to start the conversation from scratch.</p>
-        </div>
-      </div>
       </section>
 
       <section class="pp-fullsection" id="faq">
-      <div class="pp-section-glow" aria-hidden="true"></div>
-      <div class="pp-faq pp-reveal">
-        <div class="pp-section-head" style="margin-bottom:16px;">
-          <h2>Frequently asked</h2>
+        <div class="pp-section-glow" aria-hidden="true"></div>
+        <div class="pp-faq pp-reveal">
+          <div class="pp-section-head" style="margin-bottom:16px;">
+            <h2>Frequently asked</h2>
+          </div>
+          <details class="pp-faq-item">
+            <summary>What's the difference between a Distributor and a Reseller?<svg class="chev" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">A Distributor resells further down a chain of their own — think other stores or
+                  sub-resellers. A Reseller sells directly to end customers. Both are bulk buyers, and some packages are
+                  open
+                  to either.</div>
+              </div>
+            </div>
+          </details>
+          <details class="pp-faq-item">
+            <summary>How does the discount work?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">Each package's discount is applied to the combined reference price of
+                  everything
+                  inside it. The price shown on each card and package page is exactly what you'd pay if the order goes
+                  through.</div>
+              </div>
+            </div>
+          </details>
+          <details class="pp-faq-item">
+            <summary>Do I need an account to inquire?<svg class="chev" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">No — open any package and send an inquiry with your contact details. There's no
+                  login
+                  required; our team reaches out directly once we receive it.</div>
+              </div>
+            </div>
+          </details>
+          <details class="pp-faq-item">
+            <summary>How long until someone follows up?<svg class="chev" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">Our team is notified as soon as an inquiry comes in and follows up by phone or
+                  email
+                  using the details you provide.</div>
+              </div>
+            </div>
+          </details>
+          <details class="pp-faq-item">
+            <summary>Is there a minimum order for a package?<svg class="chev" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">Each package is already sized as a bundle, so there's no separate minimum on
+                  top
+                  of it — the quantities and item count shown on the card are exactly what you'd receive.</div>
+              </div>
+            </div>
+          </details>
+          <details class="pp-faq-item">
+            <summary>Can I ask for a custom mix of products?<svg class="chev" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg></summary>
+            <div class="pp-faq-body-wrap">
+              <div class="pp-faq-body-inner">
+                <div class="pp-faq-body">Start by sending an inquiry on the package closest to what you have in mind —
+                  mention what you'd like adjusted, and our team will let you know what's possible.</div>
+              </div>
+            </div>
+          </details>
         </div>
-        <details class="pp-faq-item">
-          <summary>What's the difference between a Distributor and a Reseller?<svg class="chev" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">A Distributor resells further down a chain of their own — think other stores or
-                sub-resellers. A Reseller sells directly to end customers. Both are bulk buyers, and some packages are
-                open
-                to either.</div>
-            </div>
-          </div>
-        </details>
-        <details class="pp-faq-item">
-          <summary>How does the discount work?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">Each package's discount is applied to the combined reference price of everything
-                inside it. The price shown on each card and package page is exactly what you'd pay if the order goes
-                through.</div>
-            </div>
-          </div>
-        </details>
-        <details class="pp-faq-item">
-          <summary>Do I need an account to inquire?<svg class="chev" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">No — open any package and send an inquiry with your contact details. There's no
-                login
-                required; our team reaches out directly once we receive it.</div>
-            </div>
-          </div>
-        </details>
-        <details class="pp-faq-item">
-          <summary>How long until someone follows up?<svg class="chev" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">Our team is notified as soon as an inquiry comes in and follows up by phone or
-                email
-                using the details you provide.</div>
-            </div>
-          </div>
-        </details>
-        <details class="pp-faq-item">
-          <summary>Is there a minimum order for a package?<svg class="chev" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">Each package is already sized as a bundle, so there's no separate minimum on top
-                of it — the quantities and item count shown on the card are exactly what you'd receive.</div>
-            </div>
-          </div>
-        </details>
-        <details class="pp-faq-item">
-          <summary>Can I ask for a custom mix of products?<svg class="chev" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6" />
-            </svg></summary>
-          <div class="pp-faq-body-wrap">
-            <div class="pp-faq-body-inner">
-              <div class="pp-faq-body">Start by sending an inquiry on the package closest to what you have in mind —
-                mention what you'd like adjusted, and our team will let you know what's possible.</div>
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <div class="pp-footer">
-        <div>
-          <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
-            alt="Heaven &amp; Angel Scents">
-          <div class="pp-footer-note">Have a question that's not answered above? Open any package and send an inquiry —
-            that's the fastest way to reach our team.</div>
-        </div>
-        <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
-      </div>
       </section>
+
+      <div class="pp-tear-wrap" aria-hidden="true">
+        <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--brand-black);">
+          <path
+            d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+        </svg>
+      </div>
     </div>
   </div>
+
+  <section class="pp-band pp-band-footer">
+    <div class="pp-band-inner">
+      <div class="pp-footer-cols">
+        <div class="col">
+          <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+            alt="Heaven &amp; Angel Scents">
+          <p style="margin-top:10px;">Curated fragrance bundles for distributors and resellers — priced below our
+            regular list.</p>
+        </div>
+        <div class="col">
+          <h4>Have a question?</h4>
+          <p>Open any package and send an inquiry — that's the fastest way to reach our team. Our team follows up by
+            phone or email.</p>
+        </div>
+        <div class="col">
+          <h4>Private link</h4>
+          <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
+        </div>
+      </div>
+      <div class="legal">Heaven &amp; Angel Scents · Partner Program</div>
+    </div>
+  </section>
 
   <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
   <script>
     (function () {
-      var toggle = document.getElementById('themeToggle');
-      if (toggle) {
-        toggle.addEventListener('click', function () {
-          var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-          var next = current === 'dark' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', next);
-          try { localStorage.setItem('theme', next); } catch (e) { }
-        });
+      // No theme toggle on this page — it's light-mode only (see the
+      // head script above), so there's nothing to wire up here.
+
+      // ---- solidify the transparent header once you scroll past the
+      // hero — it starts transparent (floating over the dark hero
+      // photo/placeholder), then picks up a normal solid background so
+      // it stays legible over the lighter content underneath. ----
+      var header = document.querySelector('.pp-header');
+      if (header) {
+        var HEADER_SOLID_AT = 40;
+        var setHeaderScrolled = function () {
+          header.classList.toggle('pp-scrolled', window.scrollY > HEADER_SOLID_AT);
+        };
+        setHeaderScrolled();
+        window.addEventListener('scroll', setHeaderScrolled, { passive: true });
       }
 
       // ---- auto-dismiss flash messages ----
@@ -1470,6 +2003,59 @@
           el.addEventListener('animationend', function () { el.remove(); }, { once: true });
         }, 5000);
       });
+
+      // ---- filter tabs: swap the grid in place via fetch instead of a
+      // full page reload. A real navigation is what was causing the
+      // "reloads from top, then jumps back down to the section" feel —
+      // even hidden-until-scrolled, the browser still unloads the page
+      // and reloads everything (header, hero, video, fonts) before
+      // landing back here. Fetching just re-renders the same route
+      // server-side (so scope filtering/best-value logic stays correct)
+      // and only the grid markup is swapped in, with the scroll
+      // position never moving. Falls back to a normal link navigation
+      // (the anchor-scroll dance below still handles that gracefully)
+      // if fetch fails or something looks unexpected in the response. ----
+      var filterBar = document.querySelector('.pp-filter-bar');
+      var packagesGrid = document.getElementById('pp-packages-grid');
+      if (filterBar && packagesGrid && window.fetch) {
+        filterBar.addEventListener('click', function (e) {
+          var link = e.target.closest('a');
+          if (!link || !filterBar.contains(link) || link.classList.contains('active')) return;
+          e.preventDefault();
+
+          var href = link.getAttribute('href');
+          fetch(href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (res) { if (!res.ok) throw new Error('bad response'); return res.text(); })
+            .then(function (html) {
+              var freshGrid = new DOMParser().parseFromString(html, 'text/html')
+                .getElementById('pp-packages-grid');
+              if (!freshGrid) throw new Error('grid not found in response');
+
+              packagesGrid.innerHTML = freshGrid.innerHTML;
+              // Cards just swapped in are already "on screen" — skip the
+              // fade-up scroll-reveal treatment for them so switching
+              // tabs feels instant rather than replaying an animation.
+              packagesGrid.querySelectorAll('.pp-reveal').forEach(function (el) {
+                el.classList.add('pp-in');
+              });
+
+              filterBar.querySelectorAll('a').forEach(function (a) {
+                a.classList.toggle('active', a === link);
+              });
+
+              // Keep the ?anchor=packages query param (not a #hash) in
+              // the pushed URL — a raw hash here would make a later
+              // reload/share of this URL jump via the browser's native
+              // (unhideable) hash behavior, which is exactly what the
+              // anchor-param + pp-pending-scroll approach below exists
+              // to avoid.
+              history.pushState(null, '', href);
+            })
+            .catch(function () {
+              window.location.href = href;
+            });
+        });
+      }
 
       // ---- land already close to the packages grid on a filter-tab
       // reload (the page stays hidden via .pp-pending-scroll until this
@@ -1542,6 +2128,20 @@
       } else {
         sections.forEach(function (el) { el.classList.add('pp-section-active'); });
         if (sections[0]) setActiveDot(sections[0].id);
+      }
+
+      // ---- dot-nav label: only shows while the user is actually
+      // scrolling, not permanently on the active dot ----
+      var dotNav = document.querySelector('.pp-dot-nav');
+      if (dotNav) {
+        var scrollIdleTimer = null;
+        window.addEventListener('scroll', function () {
+          dotNav.classList.add('is-scrolling');
+          clearTimeout(scrollIdleTimer);
+          scrollIdleTimer = setTimeout(function () {
+            dotNav.classList.remove('is-scrolling');
+          }, 900);
+        }, { passive: true });
       }
     })();
   </script>

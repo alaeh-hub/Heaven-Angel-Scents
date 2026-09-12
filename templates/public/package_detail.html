@@ -8,9 +8,6 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ pkg.package_name }} · Heaven &amp; Angel Scents</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
-  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_32.png') }}">
-  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_16.png') }}">
-  <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script>
     (function () {
@@ -22,7 +19,18 @@
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* Headings on this page (and packages.html) use Cinzel — a carved,
+       Roman-inscription serif that reads as jewelry/perfume-house
+       luxury — instead of the site-wide Manrope, which stays for body
+       copy, nav, and buttons so text stays crisp and readable. Scoped
+       to this page only (not style.css), so the admin app/login are
+       untouched. */
+    h1, h2, h3, h4 { font-family: 'Cinzel', Georgia, 'Times New Roman', serif; }
+
     body { min-height: 100vh; background: var(--bg); overflow-x: hidden; }
 
     /* ================= ambient backdrop ================= */
@@ -47,14 +55,52 @@
       50% { transform: translate(24px, -18px) scale(1.06); }
     }
 
-    /* ================= header ================= */
+    /* ================= header =================
+       Transparent, floating over the dark hero band — like the
+       reference video's nav bar — rather than a solid sticky bar.
+       position: fixed takes it out of flow so the hero's own dark
+       background shows through underneath it instead of the header
+       reserving its own row above the hero, and keeps it pinned to the
+       viewport as you scroll (see .pp-scrolled below: JS toggles that
+       class once you scroll past the hero, at which point the header
+       picks up a normal solid background so it stays legible over the
+       lighter page content). */
     .pp-header {
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 0;
+      right: 0;
       z-index: 40;
-      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      background: transparent;
+      transition: background 0.2s ease, border-color 0.2s ease, backdrop-filter 0.2s ease;
+    }
+
+    .pp-header.pp-scrolled {
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .pp-header .pp-brand .sub {
+      color: rgba(251, 246, 230, .58);
+    }
+
+    .pp-header .pp-header-tag {
+      color: var(--brand-gold);
+      background: rgba(212, 175, 55, .16);
+    }
+
+    /* Once solid, the header sits on the normal theme background
+       instead of the dark hero band, so its text goes back to the
+       same theme-aware colors the rest of the page uses. */
+    .pp-header.pp-scrolled .pp-brand .sub {
+      color: var(--ink-faint);
+    }
+
+    .pp-header.pp-scrolled .pp-header-tag {
+      color: var(--accent-ink);
+      background: var(--accent-soft);
     }
 
     .pp-header-inner {
@@ -103,6 +149,60 @@
     .pp-shell { padding: 0 20px 72px; }
     .pp-inner { max-width: 1160px; margin: 0 auto; }
 
+    /* ================= full-bleed dark bands =================
+       Same device as packages.html: hero and footer break out of
+       .pp-shell's max-width and always use the FIXED black+gold brand
+       tokens (not --bg/--ink, which flip with the theme toggle), so
+       they read as the same rich black-and-gold as the brand mark in
+       both themes — inspired by the reference video's dark sections. */
+    .pp-band {
+      position: relative;
+      background: var(--brand-black);
+    }
+
+    .pp-band-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .pp-band-dark .pp-eyebrow {
+      color: var(--brand-gold);
+      background: rgba(212, 175, 55, .14);
+    }
+
+    .pp-band-dark h1 { color: #FBF6E6; }
+    .pp-band-dark p.desc { color: rgba(251, 246, 230, .68); }
+    .pp-band-dark .pp-head-meta { color: rgba(251, 246, 230, .8); }
+    .pp-band-dark .pp-head-meta svg { color: rgba(251, 246, 230, .5); }
+    .pp-band-dark .pp-head-meta .dot-sep { color: rgba(251, 246, 230, .4); }
+    .pp-band-dark .pp-back { color: rgba(251, 246, 230, .6); }
+    .pp-band-dark .pp-back:hover { color: #fff; }
+
+    /* ---- torn-paper edge: a jagged strip reading as one section's
+       color torn away to reveal whatever comes right after it ---- */
+    .pp-tear-wrap { position: relative; height: 0; }
+    .pp-tear { display: block; position: absolute; bottom: 0; left: 0; width: 100%; height: 40px; }
+
+    /* ---- dark footer band ---- */
+    .pp-band-footer { padding: 48px 0 26px; }
+    .pp-band-footer .pp-wordmark { filter: brightness(0) invert(1); }
+    .pp-band-footer .pp-footer-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+    .pp-band-footer h4 { font-size: 13.5px; color: #FBF6E6; margin: 0 0 10px; }
+    .pp-band-footer .col p { font-size: 12px; line-height: 1.65; margin: 0; color: rgba(251, 246, 230, .68); }
+    .pp-band-footer .legal {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(251, 246, 230, .12);
+      font-size: 11px;
+      color: rgba(251, 246, 230, .48);
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .pp-band-footer .pp-footer-cols { grid-template-columns: 1fr; gap: 22px; }
+    }
+
     .pp-back {
       display: inline-flex;
       align-items: center;
@@ -127,6 +227,25 @@
     }
     .pp-head h1 { font-size: 27px; margin: 0 0 8px; letter-spacing: -0.015em; }
     .pp-head p.desc { font-size: 13.5px; color: var(--ink-soft); max-width: 600px; line-height: 1.65; margin: 0; }
+
+    /* ---- hero visual placeholder — see .pp-media-slot's own comment
+       in packages.html for the shared idea: a fixed-size stand-in that
+       needs no layout change once a real photo replaces the src. ---- */
+    .pp-head-side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .pp-head-visual {
+      width: 96px;
+      height: 96px;
+      border-radius: var(--radius);
+      object-fit: cover;
+      display: block;
+    }
 
     /* ---- eyebrow ---- */
     .pp-eyebrow {
@@ -510,8 +629,11 @@
       transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
     }
     .pp-other-card:hover { translate: 0 -3px; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+    .pp-other-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .pp-other-card h3 { font-size: 14.5px; margin: 0; }
+    .pp-other-price-tag { flex-shrink: 0; font-size: 15px; font-weight: 800; color: var(--accent-ink); white-space: nowrap; }
     .pp-other-meta { font-size: 11.5px; color: var(--ink-faint); }
+    .pp-other-meta .ref { text-decoration: line-through; }
     .pp-other-price { display: flex; align-items: baseline; gap: 6px; }
     .pp-other-price .order { font-size: 15.5px; font-weight: 800; color: var(--accent-ink); }
     .pp-other-price .ref { font-size: 11.5px; color: var(--ink-faint); text-decoration: line-through; }
@@ -636,24 +758,14 @@
     </div>
   </header>
 
-  <div class="pp-shell">
-    <div class="pp-inner">
+  <section class="pp-band pp-band-dark" style="padding:0;">
+    <div class="pp-band-inner" style="padding-top:88px; padding-bottom:44px;">
       <a class="pp-back" href="{{ url_for('portal.packages', slug=slug) }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
         All packages
       </a>
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-      <div class="flashes" style="margin-bottom:18px;">
-        {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
-      {% endwith %}
-
-      <div class="pp-head">
+      <div class="pp-head" style="margin-bottom:0;">
         <div>
           <span class="pp-eyebrow">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2 14.6 9h7.4l-6 4.4 2.3 7.1L12 16l-6.3 4.5 2.3-7.1L2 9h7.4z"/></svg>
@@ -667,10 +779,36 @@
             <span>{{ pkg.discount_percent|round(2) }}% off list price</span>
           </div>
         </div>
-        <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+        <div class="pp-head-side">
+          <!-- PLACEHOLDER — swap src for a real hero shot of this
+               package (or its lead product) when it's ready. -->
+          <img class="pp-head-visual" src="{{ url_for('static', filename='img/placeholder-photo.svg') }}"
+            alt="Photo placeholder — swap this for a real package/product photo">
+          <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+        </div>
       </div>
+    </div>
+    <div class="pp-tear-wrap" aria-hidden="true">
+      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--bg);">
+        <path
+          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+      </svg>
+    </div>
+  </section>
 
-      <div class="pp-layout">
+  <div class="pp-shell" style="padding-bottom:0;">
+    <div class="pp-inner">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flashes" style="margin-top:20px;">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="pp-layout" style="margin-top:32px;">
         <div class="pp-main">
           {% if items %}
           <div class="pp-gallery pp-reveal">
@@ -764,15 +902,12 @@
           <div class="pp-other-grid pp-reveal">
             {% for op in other_packages %}
             <div class="card pp-other-card">
-              <div>
+              <div class="pp-other-title-row">
                 <h3>{{ op.package_name }}</h3>
-                <span class="badge badge-{{ 'pending' if op.partner_scope == 'Both' else ('transit' if op.partner_scope == 'Distributor' else 'unisex') }}">{{ op.partner_scope }}</span>
+                <span class="pp-other-price-tag">{{ op.discounted_total|peso }}</span>
               </div>
-              <div class="pp-other-meta">{{ op.item_count }} product{{ 's' if op.item_count != 1 }}</div>
-              <div class="pp-other-price">
-                <span class="order">{{ op.discounted_total|peso }}</span>
-                <span class="ref">{{ op.reference_total|peso }}</span>
-              </div>
+              <span class="badge badge-{{ 'pending' if op.partner_scope == 'Both' else ('transit' if op.partner_scope == 'Distributor' else 'unisex') }}">{{ op.partner_scope }}</span>
+              <div class="pp-other-meta">{{ op.item_count }} product{{ 's' if op.item_count != 1 }} · <span class="ref">{{ op.reference_total|peso }} ref.</span></div>
               <a href="{{ url_for('portal.package_detail', slug=slug, package_id=op.package_id) }}" class="btn btn-ghost btn-sm" style="width:100%; text-align:center;">View Package
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
@@ -852,16 +987,36 @@
         </aside>
       </div>
 
-      <div class="pp-footer">
-        <div>
-          <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
-            alt="Heaven &amp; Angel Scents">
-          <div class="pp-footer-note">Have a question? Send an inquiry above — that's the fastest way to reach our team.</div>
-        </div>
-        <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
+      <div class="pp-tear-wrap" aria-hidden="true">
+        <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--brand-black);">
+          <path
+            d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
+        </svg>
       </div>
     </div>
   </div>
+
+  <section class="pp-band pp-band-footer">
+    <div class="pp-band-inner">
+      <div class="pp-footer-cols">
+        <div class="col">
+          <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+            alt="Heaven &amp; Angel Scents">
+          <p style="margin-top:10px;">Curated fragrance bundles for distributors and resellers — priced below our
+            regular list.</p>
+        </div>
+        <div class="col">
+          <h4>Have a question?</h4>
+          <p>Send an inquiry above — that's the fastest way to reach our team. We follow up by phone or email.</p>
+        </div>
+        <div class="col">
+          <h4>Private link</h4>
+          <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
+        </div>
+      </div>
+      <div class="legal">Heaven &amp; Angel Scents · Partner Program</div>
+    </div>
+  </section>
 
   <div class="pp-modal-overlay" id="inquireOverlay">
     <div class="card pp-modal">
@@ -937,6 +1092,20 @@
           document.documentElement.setAttribute('data-theme', next);
           try { localStorage.setItem('theme', next); } catch (e) {}
         });
+      }
+
+      // ---- solidify the transparent header once you scroll past the
+      // hero — it starts transparent (floating over the dark hero
+      // band), then picks up a normal solid background so it stays
+      // legible over the lighter content underneath. ----
+      var header = document.querySelector('.pp-header');
+      if (header) {
+        var HEADER_SOLID_AT = 40;
+        var setHeaderScrolled = function () {
+          header.classList.toggle('pp-scrolled', window.scrollY > HEADER_SOLID_AT);
+        };
+        setHeaderScrolled();
+        window.addEventListener('scroll', setHeaderScrolled, { passive: true });
       }
 
       // ---- auto-dismiss flash messages ----

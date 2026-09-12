@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}AI Assistant{% endblock %}
+{% block title %}Halo{% endblock %}
 {% block eyebrow %}{{ 'Admin Overview' if session.role == 'Admin' else session.branch_name }}{% endblock %}
-{% block heading %}AI Assistant{% endblock %}
+{% block heading %}Halo{% endblock %}
 
 {% block head %}
 <style>
@@ -408,6 +408,15 @@
 {% endblock %}
 
 {% block content %}
+<!-- Halo's full-page view isn't in the sidebar anymore (only reachable
+     via the floating widget's expand icon — see base.html), so it needs
+     its own way back, same "← back to X" pattern already used by every
+     other page reached by click-through rather than the sidebar (e.g.
+     Package detail). -->
+<div style="padding: 0 0 4px;">
+  <a href="{{ url_for('admin.dashboard') if session.role == 'Admin' else url_for('branch.dashboard') }}"
+    class="hint">&larr; back to Dashboard</a>
+</div>
 <div class="card chat-shell">
   <div class="chat-log-fade"></div>
   <div class="chat-log" id="chatLog">
@@ -418,7 +427,7 @@
           <path d="M10 21h4" />
         </svg>
       </div>
-      <h3>Ask the H&amp;A Assistant</h3>
+      <h3>Ask Halo</h3>
       <p>
         Ask about {{ 'company-wide' if session.role == 'Admin' else 'branch' }} stock, requests, or sales.
         It only sees what you can see, and can't make changes.

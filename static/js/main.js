@@ -218,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSoftNav();
     const notifBell = initNotificationBell();
     initRealtime(notifBell);
+    initHaloWidget();
 });
 
 // Fades a flash/toast out and removes it from the DOM 5s after it
@@ -1148,10 +1149,12 @@ function closeOverlay(overlay) {
 
 // The common case: one button opens the overlay as-is (no per-click
 // setup needed) and one Cancel button, the backdrop, or Escape closes
-// it. Previously duplicated verbatim in materials.html and
-// suppliers.html (each defining its own copy, and each registering
-// its own document-level Escape listener) — now the one shared
-// version, called the same way from either page.
+// it. Previously duplicated verbatim across pages (each defining its
+// own copy, and each registering its own document-level Escape
+// listener) — now the one shared version, called the same way from
+// any page (materials.html alone now wires four separate overlays:
+// add/edit material, add supplier, plus Suppliers' own edit/history
+// modals since the two pages merged into one).
 function wireOverlay(overlayId, openBtnId, cancelBtnId) {
     const overlay = document.getElementById(overlayId);
     const openBtn = openBtnId ? document.getElementById(openBtnId) : null;
@@ -1505,6 +1508,187 @@ function initNotificationBell() {
     return { add };
 }
 
+// Halo — the floating AI assistant widget (see its markup + CSS in
+// base.html). Self-contained like initNotificationBell() above: its DOM
+// lives outside .content, so this only ever runs once per real page load
+// (DOMContentLoaded), and the closure state below (history, open/closed,
+// unread) survives every soft nav in between exactly the way the
+// notification bell's own state does.
+function initHaloWidget() {
+    const widget = document.getElementById('haloWidget');
+    const fab = document.getElementById('haloFabBtn');
+    const panel = document.getElementById('haloPanel');
+    const log = document.getElementById('haloLog');
+    const form = document.getElementById('haloForm');
+    const input = document.getElementById('haloInput');
+    const sendBtn = document.getElementById('haloSend');
+    if (!widget || !fab || !panel || !log || !form || !input || !sendBtn) return;
+
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? csrfMeta.content : '';
+    const history = [];
+    let empty = document.getElementById('haloEmpty');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Same light markdown subset as the full chat page (ai/chat.html) —
+    // the model occasionally uses **/* despite being told to write plain
+    // text. Escaped first, so this never introduces real HTML/script
+    // injection, it only turns already-escaped markers into tags.
+    function formatAssistantText(text) {
+        let escaped = escapeHtml(text);
+        escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        escaped = escaped.replace(/(^|\s)\*([^*\s][^*]*?)\*(?=\s|$)/g, '$1<em>$2</em>');
+        escaped = escaped.replace(/\n/g, '<br>');
+        return escaped;
+    }
+
+    function isOpen() {
+        return widget.classList.contains('open');
+    }
+
+    function openPanel() {
+        widget.classList.add('open');
+        widget.classList.remove('has-unread');
+        panel.hidden = false;
+        panel.classList.add('opening');
+        window.setTimeout(() => panel.classList.remove('opening'), 200);
+        fab.setAttribute('aria-expanded', 'true');
+        input.focus();
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function closePanel() {
+        widget.classList.remove('open');
+        panel.hidden = true;
+        fab.setAttribute('aria-expanded', 'false');
+    }
+
+    fab.addEventListener('click', () => {
+        if (isOpen()) closePanel(); else openPanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isOpen()) closePanel();
+    });
+
+    function addMessage(role, text) {
+        if (empty) { empty.remove(); empty = null; }
+
+        const row = document.createElement('div');
+        row.className = 'halo-row ' + role;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'halo-msg';
+        if (role === 'user') {
+            bubble.textContent = text;
+        } else {
+            bubble.innerHTML = formatAssistantText(text);
+        }
+        row.appendChild(bubble);
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+
+        if (window.Motion && !reduceMotion) {
+            const anim = window.Motion.animate(
+                row,
+                { opacity: [0, 1], transform: ['translateY(6px)', 'translateY(0px)'] },
+                { duration: 0.22, easing: [0.16, 1, 0.3, 1] }
+            );
+            if (anim && typeof anim.then === 'function') anim.then(null, () => { });
+        }
+
+        // Only reachable for an assistant/error reply that arrives after
+        // the user closed the panel while a request was in flight — the
+        // panel has to be open to send a message in the first place.
+        if (role !== 'user' && !isOpen()) {
+            widget.classList.add('has-unread');
+        }
+
+        return row;
+    }
+
+    function addTypingIndicator() {
+        if (empty) { empty.remove(); empty = null; }
+        const row = document.createElement('div');
+        row.className = 'halo-row assistant';
+        row.innerHTML = '<div class="halo-msg"><div class="halo-typing-dots"><span></span><span></span><span></span></div></div>';
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+        return row;
+    }
+
+    function sendMessage(message) {
+        if (!message) return;
+
+        addMessage('user', message);
+        const sentHistory = history.slice();
+        history.push({ role: 'user', text: message });
+
+        input.value = '';
+        input.style.height = 'auto';
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        const thinking = addTypingIndicator();
+
+        fetch('/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ message: message, history: sentHistory })
+        })
+            .then((r) => r.json().then((data) => ({ ok: r.ok, data: data })))
+            .then((res) => {
+                thinking.remove();
+                if (res.ok && res.data.reply) {
+                    addMessage('assistant', res.data.reply);
+                    history.push({ role: 'model', text: res.data.reply });
+                } else {
+                    addMessage('error', res.data.error || 'Something went wrong.');
+                }
+            })
+            .catch(() => {
+                thinking.remove();
+                addMessage('error', 'Could not reach Halo. Check your connection and try again.');
+            })
+            .finally(() => {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                if (isOpen()) input.focus();
+            });
+    }
+
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            form.requestSubmit();
+        }
+    });
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendMessage(input.value.trim());
+    });
+
+    if (empty) {
+        empty.addEventListener('click', (e) => {
+            const btn = e.target.closest('.halo-suggestion');
+            if (!btn) return;
+            sendMessage(btn.dataset.q);
+        });
+    }
+}
+
 function initRealtime(notifBell) {
     if (typeof io === 'undefined') return;
 
@@ -1519,6 +1703,7 @@ function initRealtime(notifBell) {
         { match: /^\/admin\/packages(\/\d+)?\/?$/, scopes: ['packages'] },
         { match: /^\/admin\/partners\/inquiries\/?$/, scopes: ['partner_inquiries'] },
         { match: /^\/admin\/users\/?$/, scopes: ['users'] },
+        { match: /^\/ai\/drafts\/?$/, scopes: ['ai_drafts'] },
         { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production'] },
         { match: /^\/branch\/inventory\/?$/, scopes: ['inventory'] },
         { match: /^\/branch\/request-stock\/?$/, scopes: ['requests'] },
@@ -1624,7 +1809,7 @@ function initRealtime(notifBell) {
         const mine = currentScopes();
         if (scopes.some((s) => mine.includes(s))) {
             softRefresh();
-        } else if (scopes.includes('requests') || scopes.includes('partner_inquiries')) {
+        } else if (scopes.includes('requests') || scopes.includes('partner_inquiries') || scopes.includes('ai_drafts')) {
             refreshBadgesOnly();
         }
     });
