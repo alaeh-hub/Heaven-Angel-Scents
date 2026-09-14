@@ -142,6 +142,11 @@ XL_TITLE_FILL = PatternFill("solid", fgColor="E7ECFE")
 XL_BORDER = Border(*(Side(style="thin", color="E5E8EF"),) * 4)
 XL_MONEY_FMT = '"₱"#,##0.00'
 XL_DATE_FMT = "mmm dd, yyyy hh:mm AM/PM"
+# Up to 3 decimals, trailing zeros trimmed by Excel's own "#" placeholders
+# (2.500 shows as "2.5", 10.000 shows as "10") — for fractional quantity
+# columns (see the "num" column type), which range from whole numbers up
+# to schema's DECIMAL(10,3)/DECIMAL(10,4) precision.
+XL_NUM_FMT = "#,##0.###"
 
 # ---------------------------------------------------------------- registry
 # admin / branch: whether that role can generate this report at all.
@@ -149,6 +154,16 @@ XL_DATE_FMT = "mmm dd, yyyy hh:mm AM/PM"
 REPORT_TYPES = {
     "products":        {"label": "Products",        "admin": True, "branch": False, "windowed": False},
     "production_log":  {"label": "Production Log",  "admin": True, "branch": False, "windowed": True},
+    # Materials/Suppliers/Formulas/Cost of Goods Log — admin-only (raw
+    # materials and cost of goods are HQ-side bookkeeping; branch
+    # accounts never see the Materials/Formulas pages either). Materials
+    # and Cost of Goods Log are dated logs (windowed); Suppliers and
+    # Formulas are catalog-style snapshots, same reasoning as Products/
+    # Accounts/Partners/Packages above.
+    "materials":       {"label": "Materials",        "admin": True, "branch": False, "windowed": True},
+    "suppliers":       {"label": "Suppliers",        "admin": True, "branch": False, "windowed": False},
+    "formulas":        {"label": "Formulas (Cost of Goods)", "admin": True, "branch": False, "windowed": False},
+    "cogs_logs":       {"label": "Cost of Goods Log", "admin": True, "branch": False, "windowed": True},
     "branch_stock":    {"label": "Branch Stock",     "admin": True, "branch": True,  "windowed": False,
                         "branch_label": "My Inventory"},
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
@@ -306,14 +321,25 @@ def _window_note(filters, truncated):
     return note
 
 
-# Column keys that are money/int but shouldn't be summed into a
+# Column keys that are money/int/num but shouldn't be summed into a
 # report's totals row — a per-unit price summed across rows produces a
 # meaningless number (e.g. three ₱85 sales don't total to "₱255 of
 # unit price"), unlike qty/line-total columns where a sum is a genuine
 # total. Kept as a small denylist rather than an opt-in flag on every
-# column definition, since every other money/int column across every
-# report *is* meant to total.
-NO_TOTAL_COLUMNS = {"unit_price"}
+# column definition, since every other money/int/num column across
+# every report *is* meant to total.
+#
+# cost_per_unit/cogs_per_unit are the same "per-unit price" shape as
+# unit_price (raw_materials/cogs_logs' own per-unit cost, not a line
+# total). qty_per_unit (unit_formula_items) and package_qty
+# (raw_materials) are both a quantity in whatever unit that particular
+# material happens to use (grams, mL, pieces, ...) — unlike a plain
+# piece-count like qty_sold/qty_produced (always "how many bottles",
+# regardless of which product), summing these across rows for different
+# materials on the same report would add incompatible units together
+# (e.g. grams + milliliters) into a number that means nothing.
+NO_TOTAL_COLUMNS = {"unit_price", "cost_per_unit",
+                    "cogs_per_unit", "qty_per_unit", "package_qty"}
 
 
 def _compute_totals(columns, rows):
@@ -334,7 +360,7 @@ def _compute_totals(columns, rows):
     totals = {}
     for col in columns:
         key, _, ctype = col[0], col[1], col[2]
-        if ctype not in ("money", "int") or key in NO_TOTAL_COLUMNS:
+        if ctype not in ("money", "int", "num") or key in NO_TOTAL_COLUMNS:
             continue
         total = 0
         has_value = False
@@ -422,6 +448,189 @@ def _report_production_log(filters, branch_scope):
                                                   "SKU", "str"), ("item_name", "Item", "str"),
         ("unit", "Unit", "str"), ("batch_code", "Batch",
                                   "str"), ("qty_produced", "Qty Produced", "int"),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
+
+
+def _report_materials(filters, branch_scope):
+    """One row per raw-materials purchase — Materials is a pure purchase
+    log now (see schema.sql's raw_materials comment), so this windows by
+    the same purchased-at date shown on the Materials page, same as
+    production_log windows by produced_at above. branch_scope is unused
+    (materials aren't branch-scoped) but every builder is called with it.
+    """
+    where, params = "", []
+    if filters["search"]:
+        where += " AND (rm.material_name LIKE %s OR rm.receipt_number LIKE %s OR s.supplier_name LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like]
+    # raw_materials.created_at actually holds the purchase date entered
+    # on the Materials page (see routes/admin.py's materials(), which
+    # inserts parse_past_date(...) into this column) — not necessarily
+    # when the row was saved, so "Purchased" below is accurate either way.
+    time_where, order, limit_n, truncated = _time_window(
+        "rm.created_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT rm.created_at AS purchased_at, rm.material_name, s.supplier_name, rm.unit,
+                   rm.purchase_mode, rm.package_qty, rm.package_cost, rm.cost_per_unit, rm.receipt_number
+            FROM raw_materials rm
+            LEFT JOIN suppliers s ON rm.supplier_id = s.supplier_id
+            WHERE 1=1 {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["supplier_name"] = r["supplier_name"] or "— none on file —"
+        r["package_qty"] = float(r["package_qty"])
+        r["package_cost"] = float(r["package_cost"])
+        r["cost_per_unit"] = float(r["cost_per_unit"])
+        r["receipt_number"] = r["receipt_number"] or "—"
+
+    columns = [
+        ("purchased_at", "Purchased", "datetime"),
+        ("material_name", "Material", "str"),
+        ("supplier_name", "Supplier", "str"),
+        ("unit", "Unit", "str"),
+        ("purchase_mode", "Purchase Mode", "str"),
+        ("package_qty", "Quantity", "num"),
+        ("package_cost", "Cost", "money"),
+        ("cost_per_unit", "Cost / Unit", "money"),
+        ("receipt_number", "Receipt #", "str"),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
+
+
+def _report_suppliers(filters, branch_scope):
+    """One row per supplier, rolled up the same way the Materials page's
+    merged Suppliers directory is (see routes/admin.py's materials()) —
+    a catalog-style snapshot, not windowed, same reasoning as Products/
+    Accounts/Partners above.
+    """
+    where, params = "", []
+    if filters["search"]:
+        where += " AND (s.supplier_name LIKE %s OR s.contact_person LIKE %s OR s.phone LIKE %s OR s.email LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like, like]
+
+    rows = query(
+        f"""SELECT s.supplier_name, s.contact_person, s.phone, s.email, s.created_at,
+                   COUNT(rm.material_id) AS material_count,
+                   COALESCE(SUM(rm.package_cost), 0) AS total_spent,
+                   MAX(rm.created_at) AS last_purchase_at
+            FROM suppliers s
+            LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+            WHERE 1=1 {where}
+            GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email, s.created_at
+            ORDER BY total_spent DESC, s.supplier_name LIMIT {MAX_ROWS}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["total_spent"] = float(r["total_spent"])
+        r["contact"] = " · ".join(
+            p for p in (r.pop("contact_person"), r.pop("phone"), r.pop("email")) if p
+        ) or "—"
+
+    columns = [
+        ("supplier_name", "Supplier", "str"),
+        ("contact", "Contact", "str"),
+        ("material_count", "Materials Supplied", "int"),
+        ("total_spent", "Total Spent", "money"),
+        ("last_purchase_at", "Last Purchase", "datetime"),
+        ("created_at", "On File Since", "datetime"),
+    ]
+    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now"
+
+
+def _report_formulas(filters, branch_scope):
+    """One row per formula line (unit_formula_items) — the bill-of-
+    materials recipe behind each packaging size's cost of goods (see
+    the Formulas page / schema.sql's unit_formula_items comment). A
+    snapshot like Products/Packages, not windowed — a formula has no
+    "when it happened" the way a purchase or a production run does, it's
+    just whatever recipe is on file right now. `unit` here is the same
+    packaging-size enum (85ML, 50ML, ...) the unit filter everywhere
+    else in this module already validates against, so it's reused as-is
+    rather than needing its own filter.
+    """
+    where, params = "", []
+    if filters["unit"] != "all":
+        where += " AND ufi.unit = %s"
+        params.append(filters["unit"])
+    if filters["search"]:
+        where += " AND rm.material_name LIKE %s"
+        params.append(f"%{filters['search']}%")
+
+    rows = query(
+        f"""SELECT ufi.unit, rm.material_name, rm.unit AS material_unit,
+                   ufi.qty_per_unit, ufi.line_cost
+            FROM unit_formula_items ufi
+            JOIN raw_materials rm ON rm.material_id = ufi.material_id
+            WHERE 1=1 {where}
+            ORDER BY ufi.unit, rm.material_name LIMIT {MAX_ROWS}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["qty_per_unit"] = float(r["qty_per_unit"])
+        r["line_cost"] = float(r["line_cost"])
+
+    columns = [
+        ("unit", "Packaging Size", "str"),
+        ("material_name", "Material", "str"),
+        ("qty_per_unit", "Qty per Unit", "num"),
+        ("material_unit", "Material Unit", "str"),
+        ("line_cost", "Line Cost", "money"),
+    ]
+    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now — the recipe behind each packaging size's cost of goods"
+
+
+def _report_cogs_logs(filters, branch_scope):
+    """One row per cost-of-goods batch (cogs_logs) — every time a
+    production run was costed off a formula (see routes/admin.py's
+    production()). This is the line-item detail behind the dashboard's
+    "Total Capital" tile and the Reports page's Revenue vs. Capital
+    chart, both of which are just SUM(total_cogs) over this same table
+    — so "All time" on this report reconciles exactly to that figure.
+    """
+    where, params = "", []
+    if filters["unit"] != "all":
+        where += " AND p.unit = %s"
+        params.append(filters["unit"])
+    if filters["search"]:
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR pl.batch_code LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like]
+    time_where, order, limit_n, truncated = _time_window(
+        "c.created_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT c.created_at, p.sku, p.item_name, p.unit, pl.batch_code,
+                   c.qty_produced, c.cogs_per_unit, c.total_cogs, u.username
+            FROM cogs_logs c
+            JOIN products p ON c.sku = p.sku
+            LEFT JOIN production_logs pl ON c.production_log_id = pl.log_id
+            LEFT JOIN users u ON c.created_by_user_id = u.user_id
+            WHERE 1=1 {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["batch_code"] = r["batch_code"] or "—"
+        r["qty_produced"] = float(r["qty_produced"])
+        r["cogs_per_unit"] = float(r["cogs_per_unit"])
+        r["total_cogs"] = float(r["total_cogs"])
+        r["username"] = r["username"] or "—"
+
+    columns = [
+        ("created_at", "Logged", "datetime"),
+        ("sku", "SKU", "str"), ("item_name", "Item", "str"),
+        ("unit", "Unit", "str"), ("batch_code", "Batch", "str"),
+        ("qty_produced", "Qty Produced", "num"),
+        ("cogs_per_unit", "Cost / Unit", "money"),
+        ("total_cogs", "Total Cost of Goods", "money"),
+        ("username", "Logged By", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -899,6 +1108,10 @@ def _report_partner_inquiries(filters, branch_scope):
 _BUILDERS = {
     "products": _report_products,
     "production_log": _report_production_log,
+    "materials": _report_materials,
+    "suppliers": _report_suppliers,
+    "formulas": _report_formulas,
+    "cogs_logs": _report_cogs_logs,
     "branch_stock": _report_branch_stock,
     "stock_requests": _report_stock_requests,
     "inventory_log": _report_inventory_log,
@@ -985,6 +1198,14 @@ def _fmt_cell(value, ctype):
         return f"₱{float(value):,.2f}"
     if ctype == "int":
         return f"{int(value):,}"
+    if ctype == "num":
+        # A fractional quantity (raw_materials.package_qty, cogs_logs.
+        # qty_produced, unit_formula_items.qty_per_unit — all DECIMAL
+        # columns, unlike the plain-INT qty columns "int" above covers)
+        # — shown to 3 decimal places (matches their schema precision)
+        # rather than forced through int(), which would silently
+        # truncate e.g. 2.5 grams down to 2.
+        return f"{float(value):,.3f}"
     if ctype == "datetime":
         return value.strftime("%b %d, %Y %I:%M %p") if isinstance(value, (datetime.date, datetime.datetime)) else str(value)
     return str(value)
@@ -1042,7 +1263,7 @@ def render_report_pdf(report):
         story.append(
             Paragraph("No data matches the selected filters.", s["footer"]))
     else:
-        num_types = ("money", "int")
+        num_types = ("money", "int", "num")
         header_row = [Paragraph(label, s["th"]) for _, label, _, _ in columns]
         data = [header_row]
         # Collect (row, col, bg_hex) for every badge-kind cell that
@@ -1237,6 +1458,13 @@ def render_report_excel(report):
             elif ctype == "int":
                 cell.value = int(value)
                 cell.alignment = Alignment(horizontal="right")
+            elif ctype == "num":
+                # A fractional quantity (see _fmt_cell's own "num"
+                # branch) — real number with a number format, not
+                # int()'d, so e.g. 2.5 grams isn't silently truncated.
+                cell.value = float(value)
+                cell.number_format = XL_NUM_FMT
+                cell.alignment = Alignment(horizontal="right")
             elif ctype == "datetime" and isinstance(value, (datetime.date, datetime.datetime)):
                 cell.value = value
                 cell.number_format = XL_DATE_FMT
@@ -1285,6 +1513,9 @@ def render_report_excel(report):
                 if ctype == "money":
                     cell.value = float(totals[key])
                     cell.number_format = XL_MONEY_FMT
+                elif ctype == "num":
+                    cell.value = float(totals[key])
+                    cell.number_format = XL_NUM_FMT
                 else:
                     cell.value = int(totals[key])
                 cell.alignment = Alignment(horizontal="right")

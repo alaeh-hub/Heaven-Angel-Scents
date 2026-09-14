@@ -1194,10 +1194,24 @@ function wireOverlay(overlayId, openBtnId, cancelBtnId) {
 // the whole page — overlay included — down on its own, but a
 // successful soft-nav swap only replaces .content, so go() explicitly
 // hides this once its response comes back.
+//
+// That "the browser tears the whole page down" assumption doesn't hold
+// for a form (or submit button) targeting a new tab/window — e.g. the
+// Reports page's Download PDF/Excel buttons, formtarget="_blank" so the
+// file opens in a new tab while this one stays put. isSoftSubmittableForm()
+// above already excludes those from soft-nav (target !== '_self'), which
+// used to leave them showing the overlay here with nothing left to ever
+// hide it again: the current page never navigates, so it just sat there
+// reading "Loading…" forever after every report download. Skipped with
+// the same target-resolution isSoftSubmittableForm() uses, so only a
+// submit that's actually about to navigate *this* tab shows it.
 function initSubmitLoadingState() {
     document.addEventListener('submit', (e) => {
         if (e.defaultPrevented) return;
         if (!(e.target instanceof HTMLFormElement)) return;
+        const form = e.target;
+        const target = (e.submitter && e.submitter.formTarget) || form.target;
+        if (target && target !== '_self') return;
         showLoadingOverlay();
     });
 }

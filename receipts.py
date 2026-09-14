@@ -278,7 +278,17 @@ def build_receipt_pdf(request_id, branch_id=None):
     story.append(info_grid)
 
     # ---- Line items ----
+    # Every section heading below gets the same thin full-width rule
+    # right under it that the letterhead already has (see the accent
+    # HRFlowable right after the header table above) — previously only
+    # the letterhead had one and every section after it relied purely on
+    # its own table's borders, which made the page feel like a stack of
+    # separate boxes rather than one continuous document. This ties
+    # Items/Quantities/Timeline together with the same visual language,
+    # end to end, instead of just the top.
     story.append(Paragraph("Items", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=0.75,
+                 color=BORDER, spaceBefore=2, spaceAfter=8))
 
     def th(text, num=False):
         return Paragraph(text.upper(), s["th_cell_num"] if num else s["th_cell"])
@@ -339,6 +349,8 @@ def build_receipt_pdf(request_id, branch_id=None):
 
     # ---- Quantities (aggregate across every item on the delivery) ----
     story.append(Paragraph("Quantities", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=0.75,
+                 color=BORDER, spaceBefore=2, spaceAfter=8))
 
     def qty_cell(label, value, color=INK):
         style = ParagraphStyle(
@@ -386,6 +398,8 @@ def build_receipt_pdf(request_id, branch_id=None):
 
     # ---- Timeline ----
     story.append(Paragraph("Timeline", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=0.75,
+                 color=BORDER, spaceBefore=2, spaceAfter=8))
     timeline_rows = [
         ("Requested", req["requested_at"], None),
         ("Dispatched by HQ", dispatch_mv["created_at"] if dispatch_mv else None,

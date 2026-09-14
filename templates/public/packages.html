@@ -43,23 +43,7 @@
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* Headings on this page (and package_detail.html) use Cinzel — a
-       carved, Roman-inscription serif that reads as jewelry/perfume-
-       house luxury — instead of the site-wide Manrope, which stays for
-       body copy, nav, and buttons so text stays crisp and readable.
-       Scoped to this page only (not style.css), so the admin
-       app/login are untouched. */
-    h1,
-    h2,
-    h3,
-    h4 {
-      font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
-    }
-
     html {
       scroll-behavior: smooth;
     }
@@ -142,13 +126,6 @@
       top: 10%;
       left: -120px;
       animation-delay: -4s;
-    }
-
-    #how-it-works .pp-section-glow {
-      background: var(--brand-gold);
-      top: 15%;
-      right: -140px;
-      animation-delay: -12s;
     }
 
     #faq .pp-section-glow {
@@ -341,6 +318,36 @@
       padding: 0 20px;
     }
 
+    /* ---- hero band photo backdrop ----
+       Replaces the generic gold-grid .pp-band pattern with the real
+       product photo for just this section — no gradient scrim on top
+       needed since the photo's own dark fabric on the left already
+       reads fine under the heading/CTA.
+
+       aspect-ratio locks the section's height to its own (full-bleed)
+       width using the photo's exact ratio, so background-size: cover
+       never actually crops anything — the whole image always shows,
+       one single section, instead of being sized off the text content
+       and having cover cut off the top or the torn-edge bottom on
+       viewports that don't match the photo's ratio. min-height is
+       just a floor so narrow phones don't collapse the hero too short
+       to read; only there does cover trim the photo's edges. */
+    .pp-hero-band {
+      aspect-ratio: 1920 / 920;
+      min-height: 420px;
+      background-image: url("{{ url_for('static', filename='img/background.png') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    .pp-hero-band .pp-band-inner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+    }
+
     /* .pp-band-dark is the subset of .pp-band sections that are ALWAYS
        black (hero, stats) — as opposed to .pp-band-soft, which is a
        theme-aware tinted surface and must keep the normal --ink text
@@ -400,23 +407,21 @@
       border-top-color: rgba(212, 175, 55, .28);
     }
 
-    /* ---- torn-paper edge: a jagged strip reading as one section's
-       color torn away to reveal whatever comes right after it ---- */
-    .pp-tear-wrap {
-      position: relative;
-      height: 0;
+
+    /* ---- stats band ----
+       Swaps out .pp-band's generic gold-grid pattern for the same
+       package-bg.png photo used behind the packages grid, full-bleed —
+       the two-class selector (.pp-band.pp-stats-band) outweighs the
+       single-class .pp-band rule regardless of source order, so this
+       cleanly replaces its background instead of layering on top. */
+    .pp-stats-band {
+      background-color: var(--brand-black);
+      background-image: url("{{ url_for('static', filename='img/package-bg.png') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
     }
 
-    .pp-tear {
-      display: block;
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 40px;
-    }
-
-    /* ---- stats band ---- */
     .pp-stats-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -442,22 +447,61 @@
       color: rgba(251, 246, 230, .68);
     }
 
-    /* ---- soft tinted band behind the packages grid, echoing the
-       reference video's patterned product-grid section — same faint
-       gold hairline grid as the dark .pp-band bands (see above), just
-       laid over --surface-2 instead of the brand black, so the pattern
-       reads as one consistent motif across both light and dark bands. */
+    /* ---- soft tinted band behind the packages grid ----
+       Static photo backdrop (package-bg.png) instead of the looping
+       package-bg.mp4 video — background-color stays as a fallback for
+       while the (large) photo is still loading in. */
     .pp-band-soft {
       background-color: var(--surface-2);
-      background-image:
-        repeating-linear-gradient(to right,
-          color-mix(in srgb, var(--brand-gold) 12%, transparent) 0 1px,
-          transparent 1px 44px),
-        repeating-linear-gradient(to bottom,
-          color-mix(in srgb, var(--brand-gold) 12%, transparent) 0 1px,
-          transparent 1px 44px);
-      background-size: 44px 44px, 44px 44px;
+      background-image: url("{{ url_for('static', filename='img/package-bg.png') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
       padding: 48px 0;
+      overflow: hidden;
+    }
+
+    .pp-band-soft .pp-band-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Jumping to #packages from the header nav (or the hero's "Browse
+       packages" CTA) should land on a section that fills the rest of
+       the screen below the fixed header, not a short band — scroll-
+       margin-top (from .pp-fullsection) already offsets the landing
+       spot by the header's height, so min-height only needs to cover
+       what's left of the viewport. Content taller than that (many
+       packages) still grows the section past 100vh as normal; the
+       flex centering only kicks in when it's short. */
+    #packages {
+      min-height: calc(100vh - var(--pp-header-h));
+      display: flex;
+      align-items: center;
+    }
+
+    #packages .pp-band-inner {
+      width: 100%;
+    }
+
+    /* .pp-band-soft's heading/copy/empty-state still default to the
+       theme's --ink colors (dark, per the .pp-band-dark note above) —
+       fine back when this band was just a pale tint, but package-bg.mp4
+       now plays full-bleed behind it, so dark text goes unreadable
+       against the footage. Give just this text the same light cream
+       treatment the dark bands use, without touching the package cards
+       themselves (they sit on their own opaque --surface background,
+       so their --ink text is already legible). */
+    .pp-band-soft .pp-section-head h2 {
+      color: #FBF6E6;
+    }
+
+    .pp-band-soft .pp-section-head p {
+      color: rgba(251, 246, 230, .68);
+    }
+
+    .pp-band-soft .empty-state {
+      color: rgba(251, 246, 230, .68);
     }
 
     /* ---- dark footer band ---- */
@@ -528,14 +572,43 @@
        here is data-driven (package count, FAQ items), so section height
        is left to flow naturally instead of being forced to fill the
        viewport — that's what was causing the big empty gaps. */
+    /* Measured from the actual rendered .pp-header (20px vertical
+       padding + the 56px-tall wordmark), and constant across every
+       viewport width — the mobile override this used to have (72px)
+       didn't match reality at all, so #packages/scroll-margin-top
+       landings undershot the real header by up to ~24px, leaving a
+       sliver of whatever came before it (the "Behind the scent"
+       section) visible above it. */
     :root {
-      --pp-header-h: 108px;
+      --pp-header-h: 96px;
     }
 
     .pp-fullsection {
       position: relative;
       padding: 56px 0;
       scroll-margin-top: var(--pp-header-h);
+    }
+
+    /* #about (the "Behind the scent" block) isn't a .pp-fullsection —
+       it keeps .pp-shell's own padding instead of that class's 56px 0 —
+       but still needs the same header-offset so jumping to it from the
+       nav lands right below the fixed header, not partly under it.
+       padding-top (not margin) adds real breathing room *inside* the
+       section's own box: .pp-process's existing margin-top collapses
+       straight through .pp-shell/.pp-inner and out above #about, so
+       without this, clicking "About" landed the video/heading flush
+       against the header with nothing left to show for that margin. */
+    #about {
+      position: relative;
+      scroll-margin-top: var(--pp-header-h);
+      padding-top: 48px;
+    }
+
+    /* Wider than the site's usual 1160px content column, just for this
+       section, so the bigger video/copy pairing below has more room to
+       spread out instead of feeling capped at the standard width. */
+    #about .pp-inner {
+      max-width: 1400px;
     }
 
     .pp-fullsection--center {
@@ -610,20 +683,23 @@
       }
     }
 
-    @media (max-width: 760px) {
-      :root {
-        --pp-header-h: 72px;
-      }
-    }
 
     /* ================= hero ================= */
     .pp-hero {
       display: grid;
-      grid-template-columns: 1.35fr 1fr;
+      grid-template-columns: 1fr;
       gap: 28px;
       align-items: center;
       padding: 28px 0;
       scroll-margin-top: 108px;
+    }
+
+    /* Keeps the heading/copy/CTA column pinned to the left half of the
+       full-bleed photo instead of stretching edge to edge — the photo's
+       bottle sits right-of-center, so text needs a hard cap here or a
+       long heading (like the current one) runs into it. */
+    .pp-hero>div {
+      max-width: 620px;
     }
 
     .pp-eyebrow {
@@ -669,7 +745,29 @@
     .pp-hero-cta {
       padding: 16px 30px;
       font-size: 17px;
+      font-weight: 700;
       border-radius: var(--radius);
+      box-shadow: 0 10px 28px -10px rgba(212, 175, 55, .6);
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, background 0.15s ease;
+    }
+
+    .pp-hero-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 32px -8px rgba(212, 175, 55, .75);
+    }
+
+    .pp-hero-cta:active {
+      transform: translateY(0);
+    }
+
+    .pp-hero-cta svg {
+      width: 15px;
+      height: 15px;
+      transition: transform 0.2s ease;
+    }
+
+    .pp-hero-cta:hover svg {
+      transform: translateX(3px);
     }
 
     .pp-hero-badges {
@@ -696,36 +794,6 @@
 
     .pp-hero-ctas a:hover svg {
       transform: translateX(3px);
-    }
-
-    /* ---- hero product photos ----
-       Two cutout product shots (tall and narrow, transparent
-       background), not landscape photo tiles. Always side by side
-       (nowrap) — each image is sized as a % of the row so the pair
-       shrinks together to fit rather than ever wrapping to stacked. */
-    .pp-hero-side {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      align-items: flex-end;
-      justify-content: center;
-      gap: 20px;
-    }
-
-    .pp-hero-visual {
-      display: block;
-      /* width as a % of .pp-hero-side (not a fixed px) is what keeps
-         two of these from ever needing to wrap — they shrink together
-         to fit the row instead. aspect-ratio holds the photo's real
-         proportions since height is no longer set directly. 260px is
-         just a ceiling for wide columns; hero-perfume-male.png/
-         hero-perfume-female.png are 512x917 native, well above it, so
-         this stays a clean downscale (never blurry — that only risks
-         happening on an upscale). */
-      width: 42%;
-      max-width: 260px;
-      height: auto;
-      aspect-ratio: 512 / 917;
     }
 
     /* ---- hero side panel ---- */
@@ -885,8 +953,8 @@
 
     .pp-process {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 56px;
       align-items: center;
       margin: 0 0 40px;
     }
@@ -896,7 +964,8 @@
     }
 
     .pp-process-copy .pp-eyebrow {
-      margin-bottom: 12px;
+      margin-bottom: 14px;
+      font-size: 13.5px;
     }
 
     .pp-section-label {
@@ -945,6 +1014,13 @@
     .pp-lifestyle-row {
       overflow: hidden;
       width: 100%;
+      cursor: pointer;
+    }
+
+    /* Click either row to pause just that row's marquee — toggled by
+       JS below — while the other row keeps drifting independently. */
+    .pp-lifestyle-row.is-paused .pp-lifestyle-track {
+      animation-play-state: paused;
     }
 
     .pp-lifestyle-track {
@@ -1029,66 +1105,96 @@
     /* Bigger heading treatment just for the packages section's own
        head, matching its wider band. */
     #packages .pp-section-head h2 {
-      font-size: 30px;
+      font-size: 38px;
     }
 
     #packages .pp-section-head p {
-      font-size: 16px !important;
+      font-size: 18.5px !important;
+    }
+
+    /* Full-bleed solid-gold band — the same 100vw breakout
+       .pp-lifestyle-strip uses, since #how-it-works lives inside
+       .pp-shell's max-width container but should paint edge-to-edge
+       like the site's other bands. .pp-inner (reused inside it) puts
+       the actual content back to the normal centered width. */
+    #how-it-works {
+      background: #D4AF37;
+      width: 100vw;
+      position: relative;
+      left: 50%;
+      right: 50%;
+      margin-left: -50vw;
+      margin-right: -50vw;
+      padding: 64px 0;
+    }
+
+    #how-it-works .pp-inner {
+      padding: 0 20px;
+    }
+
+    /* Dark text reads far better than white on this mid-tone gold —
+       same --gold-contrast used everywhere else gold is a background
+       (buttons, badges). */
+    #how-it-works .pp-section-head h2 {
+      color: var(--gold-contrast);
     }
 
     .pp-steps {
       position: relative;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin: 6px 0 50px;
+      gap: 20px;
+      margin: 6px 0 8px;
       scroll-margin-top: 108px;
     }
 
     .pp-step {
       position: relative;
-      padding: 24px 20px 20px;
+      padding: 34px 28px 30px;
       translate: 0 0;
       transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
     }
 
     .pp-step:hover {
-      translate: 0 -3px;
-      box-shadow: var(--shadow-md);
+      translate: 0 -6px;
+      box-shadow: var(--shadow-lg);
     }
 
     .pp-step-num {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: var(--accent);
       color: var(--gold-contrast);
-      font-size: 12.5px;
+      font-size: 16px;
       font-weight: 800;
-      margin-bottom: 14px;
+      margin-bottom: 18px;
       box-shadow: 0 0 0 4px var(--accent-soft);
     }
 
     .pp-step h3 {
-      font-size: 14.5px;
-      margin: 0 0 6px;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      margin: 0 0 10px;
     }
 
     .pp-step p {
-      font-size: 12.5px;
+      font-size: 15px;
       color: var(--ink-faint);
-      line-height: 1.6;
+      line-height: 1.65;
       margin: 0;
     }
 
     .pp-step-arrow {
       position: absolute;
-      top: 36px;
-      right: -22px;
-      color: var(--border-strong);
+      top: 46px;
+      right: -25px;
+      color: var(--gold-contrast);
+      opacity: 0.55;
       display: none;
       z-index: 1;
     }
@@ -1097,20 +1203,14 @@
       .pp-step:not(:last-child) .pp-step-arrow {
         display: block;
       }
-
-      /* with 5 steps in a 3-column grid, the 3rd card ends a row —
-         its arrow would point at nothing above the next row, so hide it */
-      .pp-step:nth-child(3n) .pp-step-arrow {
-        display: none;
-      }
     }
 
     /* ================= filter tabs ================= */
     .pp-filter-bar {
       display: inline-flex;
       align-items: center;
-      gap: 2px;
-      padding: 4px;
+      gap: 3px;
+      padding: 6px;
       background: var(--surface);
       border: var(--border-width-strong) solid var(--border-strong);
       border-radius: 999px;
@@ -1119,20 +1219,31 @@
 
     .pp-filter-bar a {
       position: relative;
-      font-size: 12.5px;
+      font-size: 14.5px;
       font-weight: 600;
       color: var(--ink-soft);
-      padding: 7px 15px;
+      padding: 10px 20px;
       border-radius: 999px;
       white-space: nowrap;
-      transition: color 0.2s ease, background-color 0.2s ease;
+      transition: color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
     }
 
     .pp-filter-bar a:hover {
       color: var(--ink);
+      background: color-mix(in srgb, var(--ink) 6%, transparent);
+    }
+
+    .pp-filter-bar a:active {
+      transform: scale(0.96);
     }
 
     .pp-filter-bar a.active {
+      color: var(--gold-contrast);
+      background: var(--accent);
+      box-shadow: 0 4px 14px -4px rgba(212, 175, 55, .55);
+    }
+
+    .pp-filter-bar a.active:hover {
       color: var(--gold-contrast);
       background: var(--accent);
     }
@@ -1148,7 +1259,7 @@
        shrink to fit the container instead of forcing it wider. */
     .pp-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
       gap: 18px;
     }
 
@@ -1156,8 +1267,8 @@
       position: relative;
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      padding: 0 22px 22px;
+      gap: 18px;
+      padding: 0 26px 36px;
       overflow: hidden;
       translate: 0 0;
       transition: translate 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, border-color 0.28s ease;
@@ -1167,7 +1278,7 @@
       content: "";
       display: block;
       height: 5px;
-      margin: 0 -22px 18px;
+      margin: 0 -26px 18px;
       background: var(--brand-gold);
       opacity: 0.9;
     }
@@ -1176,6 +1287,50 @@
       border-color: var(--border-strong);
       translate: 0 -5px;
       box-shadow: var(--shadow-lg);
+    }
+
+    /* Black-and-gold treatment for the package cards, scoped to
+       #packages so the shared .card component elsewhere (admin
+       tables, other public pages) is untouched. Only the text that
+       sits directly on the card's own background needs recoloring —
+       the badge, CTA button and best-value ribbon are already opaque
+       chips of their own and stay legible as-is. */
+    #packages .pp-card {
+      background: #000;
+      border-color: rgba(212, 175, 55, .3);
+    }
+
+    #packages .pp-card:hover {
+      border-color: var(--brand-gold);
+    }
+
+    #packages .pp-card-head-text h3 {
+      color: #FBF6E6;
+    }
+
+    #packages .pp-card-price-tag {
+      color: var(--brand-gold);
+    }
+
+    #packages .pp-card-desc,
+    #packages .pp-card-meta {
+      color: rgba(251, 246, 230, .6);
+    }
+
+    #packages .pp-price-row {
+      border-top-color: rgba(212, 175, 55, .22);
+    }
+
+    #packages .pp-price-ref {
+      color: rgba(251, 246, 230, .42);
+    }
+
+    /* .badge-unisex (used for the "Reseller" scope tag) has a
+       transparent background — fine on the light .card surface it was
+       designed for, but its dark --ink-soft text disappears on this
+       card's new black background. */
+    #packages .badge-unisex {
+      color: rgba(251, 246, 230, .8);
     }
 
     .pp-best-value {
@@ -1225,9 +1380,9 @@
     }
 
     .pp-card-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 13px;
+      width: 50px;
+      height: 50px;
+      border-radius: 14px;
       background: var(--accent-soft);
       color: var(--accent-ink);
       display: flex;
@@ -1237,8 +1392,8 @@
     }
 
     .pp-card-icon svg {
-      width: 21px;
-      height: 21px;
+      width: 24px;
+      height: 24px;
     }
 
     .pp-card-head {
@@ -1263,7 +1418,7 @@
     }
 
     .pp-card-head-text h3 {
-      font-size: 16.5px;
+      font-size: 19px;
       margin: 0 0 6px;
       font-weight: 700;
       letter-spacing: -0.005em;
@@ -1271,7 +1426,7 @@
 
     .pp-card-price-tag {
       flex-shrink: 0;
-      font-size: 17px;
+      font-size: 20px;
       font-weight: 800;
       color: var(--accent-ink);
       letter-spacing: -0.01em;
@@ -1279,7 +1434,7 @@
     }
 
     .pp-card-desc {
-      font-size: 12.5px;
+      font-size: 14.5px;
       color: var(--ink-faint);
       line-height: 1.6;
       min-height: 18px;
@@ -1289,13 +1444,13 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 12px;
+      font-size: 13.5px;
       color: var(--ink-faint);
     }
 
     .pp-card-meta svg {
-      width: 13px;
-      height: 13px;
+      width: 15px;
+      height: 15px;
     }
 
     .pp-price-row {
@@ -1309,25 +1464,25 @@
     }
 
     .pp-price-order {
-      font-size: 20px;
+      font-size: 23px;
       font-weight: 800;
       color: var(--accent-ink);
       letter-spacing: -0.01em;
     }
 
     .pp-price-ref {
-      font-size: 12.5px;
+      font-size: 14px;
       color: var(--ink-faint);
       text-decoration: line-through;
     }
 
     .pp-discount-chip {
       margin-left: auto;
-      font-size: 11px;
+      font-size: 12.5px;
       font-weight: 700;
       color: var(--success);
       background: color-mix(in srgb, var(--success) 14%, transparent);
-      padding: 3px 8px;
+      padding: 4px 10px;
       border-radius: 999px;
       white-space: nowrap;
     }
@@ -1339,11 +1494,26 @@
       gap: 6px;
       width: 100%;
       text-align: center;
+      padding: 13px 20px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 999px;
+      box-shadow: 0 6px 18px -6px rgba(212, 175, 55, .45);
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, background 0.15s ease;
+    }
+
+    .pp-card-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 24px -6px rgba(212, 175, 55, .6);
+    }
+
+    .pp-card-cta:active {
+      transform: translateY(0);
     }
 
     .pp-card-cta svg {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       transition: transform 0.2s ease;
     }
 
@@ -1468,10 +1638,6 @@
         padding-top: 32px;
       }
 
-      .pp-hero-visual {
-        max-width: 170px;
-      }
-
       .pp-lifestyle-strip .pp-media-slot {
         width: 170px;
         height: 305px;
@@ -1545,7 +1711,8 @@
   </div>
 
   <nav class="pp-dot-nav" aria-label="Jump to section">
-    <a href="#hero" data-target="hero"><span class="pp-dot-label">Partner Program</span></a>
+    <a href="#hero" data-target="hero"><span class="pp-dot-label">Home</span></a>
+    <a href="#about" data-target="about"><span class="pp-dot-label">About</span></a>
     <a href="#packages" data-target="packages"><span class="pp-dot-label">Packages</span></a>
     <a href="#how-it-works" data-target="how-it-works"><span class="pp-dot-label">How it works</span></a>
     <a href="#faq" data-target="faq"><span class="pp-dot-label">FAQ</span></a>
@@ -1559,6 +1726,8 @@
         <div class="sub">Scents · Business Partners</div>
       </div>
       <nav class="pp-nav">
+        <a href="#hero">Home</a>
+        <a href="#about">About</a>
         <a href="#packages">Packages</a>
         <a href="#how-it-works">How it works</a>
         <a href="#faq">FAQ</a>
@@ -1570,30 +1739,23 @@
   {% set max_discount = (package_list|map(attribute='discount_percent')|list)|max if package_list else 0 %}
 
   <section class="pp-band pp-band-dark pp-fullsection pp-hero-band" id="hero" style="padding:0;">
-    <div class="pp-band-inner" style="padding:104px 0 240px;">
+    <div class="pp-band-inner">
       <div class="pp-hero">
         <div>
           <h1>Grow with <span class="grad-text">Heaven &amp; Angel Scents</span></h1>
           <p>Curated fragrance bundles, priced below our regular list.</p>
-          <a href="#packages" class="btn btn-accent pp-hero-cta">Browse packages</a>
-        </div>
-        <div class="pp-hero-side">
-          <img class="pp-hero-visual" src="{{ url_for('static', filename='img/hero-perfume-male.png') }}"
-            alt="Heaven &amp; Angel Scents — men's fragrance">
-          <img class="pp-hero-visual" src="{{ url_for('static', filename='img/hero-perfume-female.png') }}"
-            alt="Heaven &amp; Angel Scents — women's fragrance">
+          <a href="#packages" class="btn btn-accent pp-hero-cta">
+            Browse packages
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
         </div>
       </div>
     </div>
-    <div class="pp-tear-wrap" aria-hidden="true">
-      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--bg);">
-        <path
-          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
-      </svg>
-    </div>
   </section>
 
-  <div class="pp-shell">
+  <div class="pp-shell" id="about">
     <div class="pp-inner">
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -1605,7 +1767,7 @@
       {% endif %}
       {% endwith %}
 
-      <div class="pp-process pp-reveal" style="margin-top:180px;">
+      <div class="pp-process pp-reveal" style="margin-top:130px;">
         <div class="pp-process-media">
           <video class="pp-media-slot" src="{{ url_for('static', filename='video/behind-the-scent.mp4') }}" controls
             preload="metadata" playsinline></video>
@@ -1618,8 +1780,8 @@
             </svg>
             Behind the scent
           </span>
-          <h2 style="font-size:20px; margin:0 0 10px;">See how each fragrance comes together</h2>
-          <p style="margin:0; font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
+          <h2 style="font-size:38px; margin:0 0 16px; line-height:1.15;">See how each fragrance comes together</h2>
+          <p style="margin:0; font-size:18.5px; color:var(--ink-soft); line-height:1.7;">
             From blending to bottling, every batch is made in small runs so quality stays consistent across every
             package you order. A short walkthrough of our process will go here.
           </p>
@@ -1629,13 +1791,13 @@
   </div>
 
   <section class="pp-band pp-band-soft pp-fullsection" id="packages" style="padding:0;">
-    <div class="pp-band-inner" style="padding:44px 0 100px;">
+    <div class="pp-band-inner" style="padding:70px 0 60px;">
       <div class="pp-section-head pp-reveal" style="text-align:center; flex-direction:column; gap:6px;">
         <h2>What kind of Perfume we serve for you</h2>
         <p style="margin:0; font-size:13px; color:var(--ink-faint);">Who are in extremely love with quality fragrance
           at wholesale prices.</p>
       </div>
-      <div class="pp-section-head pp-reveal" style="justify-content:center; margin-top:28px;">
+      <div class="pp-section-head pp-reveal" style="justify-content:center; margin-top:56px;">
         <div class="pp-filter-bar">
           <a class="{{ 'active' if scope_filter == 'all' }}"
             href="{{ url_for('portal.packages', slug=slug) }}?anchor=packages">All
@@ -1650,7 +1812,7 @@
 
       <div id="pp-packages-grid">
         {% if package_list %}
-        <div class="pp-grid" style="margin-top:28px;">
+        <div class="pp-grid" style="margin-top:56px;">
           {% for pkg in package_list %}
           <div class="card pp-card pp-reveal" style="--rd: {{ (loop.index0 * 0.06)|round(2) }}s;">
             {% if active_count > 1 and pkg.discount_percent == max_discount and max_discount > 0 %}
@@ -1729,15 +1891,9 @@
         {% endif %}
       </div>
     </div>
-    <div class="pp-tear-wrap" aria-hidden="true">
-      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--brand-black);">
-        <path
-          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
-      </svg>
-    </div>
   </section>
 
-  <section class="pp-band pp-band-dark">
+  <section class="pp-band pp-band-dark pp-stats-band">
     <div class="pp-band-inner">
       <div class="pp-stats-row">
         <div class="pp-stat-tile">
@@ -1757,12 +1913,6 @@
           <div class="label">Priced below list price</div>
         </div>
       </div>
-    </div>
-    <div class="pp-tear-wrap" aria-hidden="true">
-      <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--bg);">
-        <path
-          d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
-      </svg>
     </div>
   </section>
 
@@ -1800,53 +1950,37 @@
       </div>
 
       <section class="pp-fullsection" id="how-it-works">
-        <div class="pp-section-glow" aria-hidden="true"></div>
-        <div class="pp-section-head pp-reveal">
-          <h2>How it works</h2>
-        </div>
-        <div class="pp-steps">
-          <div class="card pp-step pp-reveal" style="--rd:0s;">
-            <span class="pp-step-num">1</span>
-            <h3>Browse packages</h3>
-            <p>Look through the bundles below — each one lists exactly what's inside, with photos, variants, and
-              quantities.</p>
-            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-              stroke-width="2">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
+        <div class="pp-inner">
+          <div class="pp-section-head pp-reveal">
+            <h2>How it works</h2>
           </div>
-          <div class="card pp-step pp-reveal" style="--rd:.08s;">
-            <span class="pp-step-num">2</span>
-            <h3>Send an inquiry</h3>
-            <p>Open a package and tell us a bit about your business — takes under a minute, no account needed.</p>
-            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-              stroke-width="2">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </div>
-          <div class="card pp-step pp-reveal" style="--rd:.16s;">
-            <span class="pp-step-num">3</span>
-            <h3>We follow up</h3>
-            <p>Our team reaches out by phone or email to confirm details and get your order moving.</p>
-            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-              stroke-width="2">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </div>
-          <div class="card pp-step pp-reveal" style="--rd:.24s;">
-            <span class="pp-step-num">4</span>
-            <h3>We confirm your account</h3>
-            <p>Once details check out, we set you up as a Distributor or Reseller so future orders move even faster.</p>
-            <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-              stroke-width="2">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </div>
-          <div class="card pp-step pp-reveal" style="--rd:.32s;">
-            <span class="pp-step-num">5</span>
-            <h3>Reorder anytime</h3>
-            <p>Come back and browse whenever you're ready to restock — no need to start the conversation from scratch.
-            </p>
+          <div class="pp-steps">
+            <div class="card pp-step pp-reveal" style="--rd:0s;">
+              <span class="pp-step-num">1</span>
+              <h3>Fall in love, fast</h3>
+              <p>Scroll the bundles below — pricing and contents laid out plainly. No login, no fine print, no
+                games.</p>
+              <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </div>
+            <div class="card pp-step pp-reveal" style="--rd:.1s;">
+              <span class="pp-step-num">2</span>
+              <h3>Say the word</h3>
+              <p>Send one quick inquiry and we're already on it — we'll confirm details and get you set up as a
+                partner.</p>
+              <svg class="pp-step-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </div>
+            <div class="card pp-step pp-reveal" style="--rd:.2s;">
+              <span class="pp-step-num">3</span>
+              <h3>Restock on repeat</h3>
+              <p>Come back whenever the shelves run low — reordering takes minutes, not another round of
+                paperwork.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -1938,13 +2072,6 @@
           </details>
         </div>
       </section>
-
-      <div class="pp-tear-wrap" aria-hidden="true">
-        <svg class="pp-tear" viewBox="0 0 1200 40" preserveAspectRatio="none" style="fill:var(--brand-black);">
-          <path
-            d="M0,14 L34,26 L68,6 L102,22 L136,4 L170,20 L204,10 L238,28 L272,6 L306,24 L340,8 L374,26 L408,14 L442,30 L476,6 L510,22 L544,12 L578,28 L612,16 L646,32 L680,20 L714,6 L748,26 L782,14 L816,30 L850,10 L884,24 L918,16 L952,30 L986,8 L1020,24 L1054,12 L1088,28 L1122,18 L1156,32 L1200,16 L1200,40 L0,40 Z" />
-        </svg>
-      </div>
     </div>
   </div>
 
@@ -2062,7 +2189,11 @@
       // runs, so nobody sees the true top of the page first), then ease
       // the last bit into place so the arrival still feels intentional ----
       var scrollReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var headerOffset = 108;
+      // Read the same --pp-header-h the CSS scroll-margin-top uses,
+      // instead of a second hardcoded number that can drift out of sync
+      // with it (that mismatch is what used to leave the header height
+      // wrong here after the CSS value changed).
+      var headerOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pp-header-h')) || 96;
       var scrollTarget = window.__ppScrollTarget ? document.querySelector(window.__ppScrollTarget) : null;
 
       function targetTop() {
@@ -2081,6 +2212,15 @@
           window.scrollTo({ top: targetTop(), behavior: scrollReduceMotion ? 'auto' : 'smooth' });
         });
       }
+
+      // ---- click either lifestyle-strip row to pause just that row's
+      // marquee, independent of the other row (top/bottom each toggle
+      // on their own) ----
+      document.querySelectorAll('.pp-lifestyle-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          row.classList.toggle('is-paused');
+        });
+      });
 
       // ---- reveal-on-scroll for landing sections, with per-item stagger
       // driven by the --rd custom property set inline on each card ----
@@ -2107,7 +2247,9 @@
       // ---- full-screen sections: whichever one is most in view is
       // "active" (full opacity, active dot); the rest dim slightly so
       // the transition between screens reads clearly ----
-      var sections = document.querySelectorAll('.pp-fullsection');
+      // #about isn't a .pp-fullsection (see the CSS note by its id rule)
+      // but should still get an active dot while scrolled into view.
+      var sections = document.querySelectorAll('.pp-fullsection, #about');
       var dots = document.querySelectorAll('.pp-dot-nav a');
 
       function setActiveDot(id) {

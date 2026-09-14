@@ -81,14 +81,27 @@ def register_fonts():
 def logo_drawing(size):
     """A reportlab Drawing of the brand mark, scaled to size x size pt.
     Drop into any Table cell or draw directly onto a canvas like any
-    other flowable/graphic."""
+    other flowable/graphic.
+
+    Kept in sync with static/img/icon.svg by hand (see register_fonts()'s
+    docstring for why this is redrawn rather than loaded from the SVG
+    file directly) — the 0f8ec44 rebrand gave icon.svg a plain, borderless
+    black square (previously this drew a gold-stroked border around it,
+    left over from the old halo/drop mark this replaced), which is fixed
+    below. icon.svg's "&" is a black fill traced with a thin gold outline
+    (paint-order="stroke fill"); reportlab's Shape.String has no stroke
+    support at all (only fillColor — verified against the installed
+    reportlab, there is no strokeColor/strokeWidth on this shape), so a
+    literal port of that is a black glyph invisible against the black
+    square. A solid gold fill is the closest reportlab can actually
+    render and is what was already here — kept as-is.
+    """
     d = Drawing(size, size, transform=[size / 96, 0, 0, size / 96, 0, 0])
 
-    # Rounded-square background — 1.5pt inset, rx=21, stroke-width=2.25:
-    # the same proportions (scaled from a 64-unit viewBox to this one's
-    # 96) as icon.svg's own background rect.
-    d.add(Rect(1.5, 1.5, 93, 93, rx=21, ry=21,
-          fillColor=BRAND_BLACK, strokeColor=GOLD, strokeWidth=2.25))
+    # Rounded-square background — 1.5pt inset, rx=21: same proportions
+    # (scaled from a 64-unit viewBox to this one's 96) as icon.svg's own
+    # background rect, which is a plain fill with no border/stroke at all.
+    d.add(Rect(1.5, 1.5, 93, 93, rx=21, ry=21, fillColor=BRAND_BLACK))
 
     # The "&" itself. y=21 (String's y is its baseline, not a center)
     # was picked by eye against renders at the actual sizes this is
@@ -138,7 +151,16 @@ class NumberedCanvas(pdfcanvas.Canvas):
         pdfcanvas.Canvas.save(self)
 
     def _draw_page_number(self, total_pages):
-        page_w, _ = self.pagesize
+        # reportlab's Canvas only ever exposes the page size as the
+        # private `_pagesize` (see reportlab.pdfgen.canvas.Canvas.__init__)
+        # — there is no public `pagesize` attribute, in this pinned
+        # version (5.0.1) or any other. Reading `self.pagesize` here
+        # raised AttributeError on every PDF that reached a second page
+        # (single-page PDFs never call this, since save() only stamps
+        # page numbers when total_pages > 1), which meant any report or
+        # receipt long enough to spill past one page failed to generate
+        # at all instead of downloading.
+        page_w, _ = self._pagesize
         font, _ = register_fonts()
         self.setFont(font, 7.3)
         self.setFillColor(FOOTER_INK)

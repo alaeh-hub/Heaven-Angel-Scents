@@ -697,6 +697,10 @@
     const REPORT_FIELDS = {
       products: ['variant', 'unit', 'search'],
       production_log: ['unit', 'search', 'window'],
+      materials: ['search', 'window'],
+      suppliers: ['search'],
+      formulas: ['unit', 'search'],
+      cogs_logs: ['unit', 'search', 'window'],
       branch_stock: ['branch_id', 'variant', 'unit', 'low_stock_only', 'search'],
       stock_requests: ['branch_id', 'status', 'search', 'window'],
       inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
@@ -712,6 +716,10 @@
     // field/name stays the same (name="search"), only what it's labeled
     // and hinted as changes, to match what reports.py actually searches.
     const SEARCH_LABELS = {
+      materials: { label: 'Search material / receipt / supplier', placeholder: 'e.g. Fixative or OR-00123' },
+      suppliers: { label: 'Search supplier / contact', placeholder: 'e.g. Golden Scent Supply Co.' },
+      formulas: { label: 'Search material', placeholder: 'e.g. Fixative' },
+      cogs_logs: { label: 'Search item / SKU / batch', placeholder: 'e.g. Golden Hour, HAS-001, or a batch code' },
       accounts: { label: 'Search username', placeholder: 'e.g. manila' },
       inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
       credit_purchases: { label: 'Search item / SKU / name', placeholder: 'e.g. Golden Hour, HAS-001, or a name' },
