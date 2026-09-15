@@ -27,6 +27,11 @@ static/uploads/
 .coverage
 htmlcov/
 
+# Local design/media drafts
+static/img/background*.png
+static/img/background*.mp4
+static/video/white_background*.mp4
+
 # IDE files
 .vscode/
 .idea/
