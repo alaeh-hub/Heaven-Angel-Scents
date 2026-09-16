@@ -25,12 +25,41 @@
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
     max-height: 260px;
     overflow-y: auto;
+    /* Scrollable, just not visibly so (same as .cs-panel in style.css). */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* Bottom padding so a scrolled-to-the-end list's last option has
+       breathing room before the menu's own edge, instead of sitting
+       flush against it with the next option sliced off mid-row (same
+       fix as .cs-panel in style.css). */
+    padding: 4px 0 8px;
     z-index: 500;
-    display: none;
+    transform-origin: top center;
+    /* No opacity transition — this menu opens directly over Unit/Qty
+       produced/Batch code in the same card, and a fade briefly let
+       those show through mid-transition, reading as a z-index bug
+       even though it wasn't one (see .cs-panel's own comment in
+       style.css for the same fix). */
+    visibility: hidden;
+    transform: translateY(-4px) scale(0.98);
+    pointer-events: none;
+    transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.14s;
   }
 
   .ac-combo-menu.open {
-    display: block;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Flips above the input instead of below, and reversed slide
+     direction to match — set by production.html's own script, same
+     reasoning and mechanism as .cs-select.cs-open-up in style.css. */
+  .ac-combo.ac-open-up .ac-combo-menu {
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform-origin: bottom center;
   }
 
   /* Same reasoning as .cs-select.cs-open in style.css: a long product
@@ -38,9 +67,19 @@
      own z-index isn't enough on its own to guarantee it paints above a
      *different* card/table sitting right below (e.g. the production
      log table under this form) — promoting the whole combo to its own
-     stacking context while its menu is open makes that reliable. */
-  .ac-combo:has(.ac-combo-menu.open) {
+     stacking context while its menu is open makes that reliable.
+
+     Toggled by production.html's own script (.ac-open, alongside
+     .ac-combo-menu's own .open) rather than :has() — :has() support
+     isn't universal on older browsers/webviews, and silently failing
+     here is exactly what let the menu paint underneath the table
+     below it. */
+  .ac-combo.ac-open {
     z-index: 500;
+  }
+
+  .ac-combo-menu::-webkit-scrollbar {
+    display: none;
   }
 
   .ac-combo-option {
@@ -516,8 +555,52 @@
 
     function closeMenu() {
       menu.classList.remove('open');
+      combo.classList.remove('ac-open');
+      // Deliberately NOT clearing 'ac-open-up' or the inline max-height
+      // positionMenu() set here — the menu is still visible for the
+      // rest of its closing transform transition, and resetting either
+      // immediately flips/resizes it mid-flight, which reads as the
+      // menu jumping back down to the bottom of the input for a split
+      // second before it fades out. positionMenu() already resets both
+      // fresh at the start of every open.
       menu.innerHTML = '';
       activeIndex = -1;
+    }
+
+    // Keeps a long match list from overhanging past the bottom of
+    // whatever card this combo lives in (e.g. the production log table
+    // right under this form) — same reasoning and mechanism as
+    // .cs-select's own position() in main.js: bounded by whichever is
+    // smaller, the viewport edge or the host card's own edge, flipping
+    // above the input and capping max-height either way instead of
+    // just letting the panel spill onto the section after it.
+    function positionMenu() {
+      combo.classList.remove('ac-open-up');
+      menu.style.maxHeight = '';
+      var rect = input.getBoundingClientRect();
+      var host = combo.closest('.card, .modal, [role="dialog"]');
+      var hostRect = host ? host.getBoundingClientRect() : null;
+      var margin = 12;
+
+      var viewportBelow = window.innerHeight - rect.bottom;
+      var spaceBelow = hostRect
+        ? Math.max(0, Math.min(viewportBelow, hostRect.bottom - rect.bottom - margin))
+        : viewportBelow;
+
+      var viewportAbove = rect.top;
+      var spaceAbove = hostRect
+        ? Math.max(0, Math.min(viewportAbove, rect.top - Math.max(0, hostRect.top) - margin))
+        : viewportAbove;
+
+      var defaultMax = parseFloat(getComputedStyle(menu).maxHeight) || 260;
+      var menuHeight = menu.scrollHeight || defaultMax;
+
+      if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+        combo.classList.add('ac-open-up');
+        menu.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceAbove)) + 'px';
+      } else {
+        menu.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceBelow)) + 'px';
+      }
     }
 
     function renderMenu(query) {
@@ -525,6 +608,8 @@
       if (!currentMatches.length) {
         menu.innerHTML = '<div class="ac-combo-empty">No product matches “' + escapeHtml(query.trim()) + '”.</div>';
         menu.classList.add('open');
+        combo.classList.add('ac-open');
+        positionMenu();
         activeIndex = -1;
         return;
       }
@@ -533,6 +618,8 @@
           highlight(name, query.trim().toLowerCase()) + '</div>';
       }).join('');
       menu.classList.add('open');
+      combo.classList.add('ac-open');
+      positionMenu();
       setActive(0);
     }
 

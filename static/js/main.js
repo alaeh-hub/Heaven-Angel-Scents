@@ -164,6 +164,56 @@ function initThemeToggle() {
     });
 }
 
+// Sets each fill-bar to its data-pct width so the CSS transition on
+// .fill-bar (see style.css) actually animates it filling in, instead of
+// the bar just appearing at its final width. Setting width to 0% first
+// and waiting a frame (rather than jumping straight to the target
+// width) is what gives the transition a "from" state to animate out of
+// — without it, the browser has nothing to interpolate between and the
+// bar would still just snap into place.
+function initFillBars() {
+    document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
+        const pct = parseFloat(el.dataset.pct) || 0;
+        el.style.width = '0%';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                el.style.width = pct + '%';
+            });
+        });
+    });
+}
+
+// Counts a stat-tile's number up from 0 to its rendered value instead
+// of it just sitting there static — a state-transition cue that a
+// dashboard value has landed, not decoration. Only touches values that
+// are a plain integer with no other characters (branch/request/alert
+// counts): anything with a currency symbol, comma, or decimal (peso-
+// formatted totals) is left alone rather than risk re-formatting it
+// wrong. Runs once per element (data-countup-done) since revealContent()
+// re-fires on every soft nav and would otherwise re-count a tile that
+// never actually changed value.
+function initStatCountUp() {
+    if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    document.querySelectorAll('.stat-value').forEach((el) => {
+        if (el.dataset.countupDone) return;
+        const raw = el.textContent.trim();
+        if (!/^\d+$/.test(raw)) return;
+        const target = parseInt(raw, 10);
+        if (!target) return;
+
+        el.dataset.countupDone = '1';
+        const counter = { val: 0 };
+        window.anime.animate(counter, {
+            val: target,
+            duration: 700,
+            ease: 'outExpo',
+            onUpdate: () => { el.textContent = String(Math.round(counter.val)); },
+            onComplete: () => { el.textContent = String(target); },
+        });
+    });
+}
+
 function revealContent() {
     if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
@@ -188,11 +238,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initThemeToggle();
     initPhClock();
     revealContent();
-
-    document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
-        const pct = parseFloat(el.dataset.pct) || 0;
-        el.style.width = pct + '%';
-    });
+    initStatCountUp();
+    initFillBars();
 
     document.querySelectorAll('.flash').forEach(attachFlashDismiss);
 
@@ -233,6 +280,26 @@ function attachFlashDismiss(el) {
     }, 5000);
 }
 
+// Brief scale bounce on a badge whose count just went up (a new stock
+// request, a new inquiry) — the same feedback treatment the theme
+// toggle already uses on click, applied here to a real, sparse state
+// change rather than every render.
+// baseTransform preserves whatever positioning transform the badge
+// already relies on in CSS (e.g. .nav-badge's translateY(-50%) for
+// vertical centering) — animating `transform` directly would otherwise
+// replace it outright for the duration of the pulse and visibly knock
+// the badge out of position.
+function pulseBadge(el, baseTransform) {
+    if (!el || !window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const base = baseTransform ? baseTransform + ' ' : '';
+    const anim = window.Motion.animate(
+        el,
+        { transform: [base + 'scale(1)', base + 'scale(1.35)', base + 'scale(1)'] },
+        { duration: 0.4, easing: [0.34, 1.56, 0.64, 1] }
+    );
+    if (anim && typeof anim.then === 'function') anim.then(null, () => { });
+}
+
 // Copies sidebar nav-link state (unread-count badges, and which link
 // is "active") from a freshly-fetched document onto the live page's
 // sidebar, which a soft nav/refresh never re-fetches or replaces
@@ -252,9 +319,14 @@ function patchSidebarNav(freshDoc) {
         if (liveBadge && !freshBadge) {
             liveBadge.remove();
         } else if (freshBadge && !liveBadge) {
-            link.appendChild(freshBadge.cloneNode(true));
+            const added = freshBadge.cloneNode(true);
+            link.appendChild(added);
+            pulseBadge(added, 'translateY(-50%)');
         } else if (freshBadge && liveBadge) {
+            const before = parseInt(liveBadge.textContent, 10) || 0;
+            const after = parseInt(freshBadge.textContent, 10) || 0;
             liveBadge.textContent = freshBadge.textContent;
+            if (after > before) pulseBadge(liveBadge, 'translateY(-50%)');
         }
 
         link.classList.toggle('active', freshLink.classList.contains('active'));
@@ -334,10 +406,7 @@ function patchPageHead(freshDoc) {
 // need after replacing .content wholesale with a server-rendered
 // fragment that hasn't been through any of this yet.
 function refreshDynamicContent() {
-    document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
-        const pct = parseFloat(el.dataset.pct) || 0;
-        el.style.width = pct + '%';
-    });
+    initFillBars();
     initSmartTables();
     initSmartLists();
     initDispatchQtyWarnings();
@@ -347,6 +416,7 @@ function refreshDynamicContent() {
     // so it already covers any form[data-confirm] that just got
     // swapped in — re-attaching per element isn't necessary.
     revealContent();
+    initStatCountUp();
 }
 
 // Replaces the live .content with freshDoc's .content, if it has one.
@@ -765,12 +835,43 @@ function enhanceSelect(select) {
         // app (e.g. the product-search combos), just generalized here
         // since a <select> can live anywhere: low in a long form, near
         // the bottom of a modal, etc.
+        //
+        // "Room" here is bounded by whichever is smaller: the viewport
+        // edge, or the bottom/top of the card (or modal) the select
+        // lives in. Viewport-only used to be the sole limit, so a long
+        // option list on a select positioned mid-card (plenty of
+        // *viewport* space below, since the page keeps scrolling) would
+        // still open a tall panel that overhung onto whatever section
+        // comes after — Products' "Bulk import / export" card right
+        // under "Add a product", Production's own history table below
+        // its two-column row, etc. A panel is capped to its own card's
+        // remaining space instead and scrolls internally for the rest,
+        // exactly like it already does against the viewport.
         wrap.classList.remove('cs-open-up');
+        panel.style.maxHeight = '';
         const rect = trigger.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const panelHeight = panel.offsetHeight || 280;
-        if (spaceBelow < panelHeight && rect.top > spaceBelow) {
+        const host = wrap.closest('.card, .modal, [role="dialog"]');
+        const hostRect = host ? host.getBoundingClientRect() : null;
+        const margin = 12;
+
+        const viewportBelow = window.innerHeight - rect.bottom;
+        const spaceBelow = hostRect
+            ? Math.max(0, Math.min(viewportBelow, hostRect.bottom - rect.bottom - margin))
+            : viewportBelow;
+
+        const viewportAbove = rect.top;
+        const spaceAbove = hostRect
+            ? Math.max(0, Math.min(viewportAbove, rect.top - Math.max(0, hostRect.top) - margin))
+            : viewportAbove;
+
+        const defaultMax = parseFloat(getComputedStyle(panel).maxHeight) || 280;
+        const panelHeight = panel.scrollHeight || defaultMax;
+
+        if (spaceBelow < panelHeight && spaceAbove > spaceBelow) {
             wrap.classList.add('cs-open-up');
+            panel.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceAbove)) + 'px';
+        } else {
+            panel.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceBelow)) + 'px';
         }
     }
 
@@ -788,7 +889,15 @@ function enhanceSelect(select) {
 
     function close() {
         if (!isOpen()) return;
-        wrap.classList.remove('cs-open', 'cs-open-up');
+        wrap.classList.remove('cs-open');
+        // Deliberately NOT clearing 'cs-open-up' (or the inline
+        // max-height position() set) here — the panel is still
+        // visible for the rest of its closing transform transition,
+        // and removing 'cs-open-up' immediately flips it from
+        // bottom-anchored back to its top-anchored default mid-flight,
+        // which reads as the panel jumping down to the bottom of the
+        // trigger for a split second before it fades out. position()
+        // already resets both fresh at the start of every open().
         trigger.setAttribute('aria-expanded', 'false');
         activeIndex = -1;
     }
@@ -1477,6 +1586,7 @@ function initNotificationBell() {
         items.unshift({ message: payload.message, level: payload.level || 'info', ts: Date.now(), read: false });
         save(items.slice(0, MAX_ITEMS));
         render();
+        pulseBadge(badge);
     }
 
     function markAllRead() {

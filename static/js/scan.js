@@ -232,9 +232,19 @@
         return "\u20b1" + Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    function popResult(ok) {
+        resultCard.classList.remove("scan-pop-ok", "scan-pop-bad");
+        // Force a reflow so re-adding the class restarts the CSS
+        // animation even when the card was already open from a
+        // previous scan (back-to-back camera hits, for example).
+        void resultCard.offsetWidth;
+        resultCard.classList.add(ok ? "scan-pop-ok" : "scan-pop-bad");
+    }
+
     function showMatch(sale) {
         resultEmpty.style.display = "none";
         resultCard.style.display = "";
+        popResult(true);
         resultHead.innerHTML =
             '<span class="scan-badge-ok">&#10003; Verified &mdash; on file</span>' +
             '<span class="mono text-soft" style="margin-left:auto;font-size:12px;">' + esc(sale.receipt_no) + "</span>";
@@ -260,6 +270,7 @@
     function showNotFound(message) {
         resultEmpty.style.display = "none";
         resultCard.style.display = "";
+        popResult(false);
         resultHead.innerHTML = '<span class="scan-badge-bad">&#10007; Not verified</span>';
         resultBody.innerHTML = '<div class="scan-field-full">' + esc(message) + "</div>";
     }

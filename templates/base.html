@@ -112,16 +112,36 @@
             width: 320px;
             max-height: 380px;
             overflow-y: auto;
+            /* Scrollable, just not visibly so (same as .cs-panel in
+               style.css). */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
             background: var(--surface);
             border: var(--border-width-strong) solid var(--border-strong);
             border-radius: var(--radius-sm, 10px);
             box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
             z-index: 60;
+            transform-origin: top right;
+            /* No opacity transition — this panel opens directly over
+               whatever page content sits under the topbar, and a fade
+               briefly lets that show through mid-transition, reading as
+               a stacking bug even though z-index is fine (see
+               .cs-panel's own comment in style.css for the same fix). */
+            visibility: hidden;
+            transform: translateY(-6px) scale(0.98);
+            pointer-events: none;
+            transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.16s;
+        }
+
+        .notif-panel::-webkit-scrollbar {
             display: none;
         }
 
         .notif-panel.open {
-            display: block;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+            transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .notif-panel-header {

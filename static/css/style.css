@@ -1800,6 +1800,17 @@ th.num {
   background: var(--brand-gold);
 }
 
+/* Animates the bar filling in to its data-pct width (see main.js's
+   initFillBars()) instead of snapping straight to it — a state
+   transition worth showing since the width is the actual stock level.
+   Scoped out of prefers-reduced-motion so a reduced-motion visitor's
+   width still lands correctly, just without the animated fill. */
+@media (prefers-reduced-motion: no-preference) {
+  .fill-bar {
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
 .fill-bar.low {
   background: var(--red);
 }
@@ -2496,12 +2507,35 @@ textarea:focus {
   z-index: 500;
   max-height: min(17.5rem, 55vh);
   overflow-y: auto;
+  /* Scrollable, just not visibly so — the panel is compact and the
+     option list itself already implies there's more to scroll to, so
+     a scrollbar track/thumb here is just visual clutter. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   background: var(--surface);
   border: var(--border-width-strong) solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
-  padding: 0.25rem;
-  display: none;
+  /* Extra bottom padding (vs. the 0.25rem on every other side) so a
+     scrolled-to-the-end list's last option has breathing room before
+     the panel's own edge — without it, that last row sits flush
+     against the clip boundary and the option after it (still just
+     inside max-height) shows as a thin sliced-off sliver instead of
+     either being fully visible or fully hidden. */
+  padding: 0.25rem 0.25rem 0.5rem;
+  transform-origin: top center;
+  /* No opacity transition here on purpose — a fading-in panel is
+     briefly semi-transparent, and this panel routinely opens right on
+     top of other opaque fields in the same form (e.g. Production's
+     Unit select sits directly above Qty produced/Batch code), so a
+     fade let those show through for a moment and read as "the dropdown
+     is rendering behind the page" even though z-index was always
+     correct. Sliding/scaling in while staying fully opaque the whole
+     time avoids that entirely. */
+  visibility: hidden;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.14s;
 }
 
 /* Flips the panel above the trigger instead of below, when there
@@ -2511,10 +2545,14 @@ textarea:focus {
 .cs-select.cs-open-up .cs-panel {
   top: auto;
   bottom: calc(100% + 0.375rem);
+  transform-origin: bottom center;
 }
 
 .cs-select.cs-open .cs-panel {
-  display: block;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* A select that opens with a long option list (many branches, many
@@ -2530,6 +2568,10 @@ textarea:focus {
 .cs-select.cs-open {
   position: relative;
   z-index: 500;
+}
+
+.cs-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .cs-option {
@@ -3199,12 +3241,30 @@ input[type="file"]:hover::-webkit-file-upload-button {
   padding: 3.5rem 3rem;
 }
 
+.auth-visual-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.auth-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 9, 6, 0.62), rgba(10, 9, 6, 0.78));
+  z-index: 1;
+}
+
 .auth-blob {
   position: absolute;
   border-radius: 50%;
   filter: blur(70px);
   opacity: 0.55;
   pointer-events: none;
+  z-index: 1;
 }
 
 .auth-blob-gold {

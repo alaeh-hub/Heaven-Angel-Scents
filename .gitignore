@@ -32,6 +32,13 @@ static/img/background*.png
 static/img/background*.mp4
 static/video/white_background*.mp4
 
-# IDE files
+# IDE and local tool metadata
 .vscode/
 .idea/
+.agents/
+.claude/
+.mcp.json
+skills-lock.json
+
+# Local media assets and generated files
+static/video/*.mp4

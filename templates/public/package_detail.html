@@ -22,10 +22,138 @@
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
+    /* Same pairing as packages.html, for the same reason (see that
+       template's own copy of this comment): Integral CF for
+       functional/UI text, Adobe Garamond Pro for display headlines.
+       Both are licensed desktop fonts with no files on this server yet
+       - local()/@font-face pick them up the moment real files land in
+       static/fonts/, and until then this falls back to EB Garamond /
+       Space Grotesk so the page reads as intended today. */
+    @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+    @font-face {
+      font-family: 'Adobe Garamond Pro';
+      src: local('Adobe Garamond Pro'),
+        url('{{ url_for("static", filename="fonts/AdobeGaramondPro-Regular.woff2") }}') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'Integral CF';
+      src: local('Integral CF'),
+        url('{{ url_for("static", filename="fonts/IntegralCF-Regular.woff2") }}') format('woff2');
+      font-weight: 400 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --font-display: 'Adobe Garamond Pro', 'EB Garamond', Georgia, 'Times New Roman', serif;
+      --font-sans: 'Integral CF', 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+      /* Sharp corners everywhere, matching packages.html's shape lock -
+         this page previously used the theme's default soft-rounded
+         radii (--radius: 0.625rem etc. in style.css), which read as a
+         different, less premium shape language right after clicking
+         "View Package" from the all-sharp packages grid. */
+      --radius: 0px !important;
+      --radius-sm: 0px !important;
+      --radius-md: 0px !important;
+      --radius-lg: 0px !important;
+    }
+
+    .btn,
+    .card,
+    .badge,
+    .flash,
+    button,
+    input,
+    select,
+    textarea {
+      border-radius: 0 !important;
+    }
+
     body {
       min-height: 100vh;
       background: var(--bg);
       overflow-x: hidden;
+      font-family: var(--font-sans);
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-family: var(--font-display);
+    }
+
+    /* ================= custom scrollbar =================
+       Same gold-on-dark treatment as packages.html, so a visitor never
+       sees a bare OS scrollbar mid-way through the black-and-gold
+       brand, whether this page is opened standalone or (its main path
+       now) inside packages.html's iframe dialog - the iframe scrolls
+       this page's own document, not the parent's, so this page needs
+       its own copy rather than inheriting the parent's. */
+    html {
+      scrollbar-width: thin;
+      scrollbar-color: var(--brand-gold) #0a0a0a;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-track-piece {
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, var(--brand-gold), #a4842f);
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #e6c65a, var(--brand-gold));
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    /* Thinner variant for the gallery's own internal scroll strip -
+       the page-wide 10px bar above would overwhelm a 64px-wide thumb
+       column. */
+    .pp-gallery-thumbs {
+      scrollbar-width: thin;
+      scrollbar-color: var(--brand-gold) transparent;
+    }
+
+    .pp-gallery-thumbs::-webkit-scrollbar {
+      width: 5px;
+      background: transparent;
+    }
+
+    .pp-gallery-thumbs::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .pp-gallery-thumbs::-webkit-scrollbar-thumb {
+      background: var(--brand-gold);
+      border-radius: 0;
     }
 
     /* ================= ambient backdrop ================= */
@@ -86,11 +214,14 @@
 
     /* logo-wordmark.png already has the mark and the "Heaven & Angel
        Scents" text baked into one image — still used by the footer
-       (see .pp-wordmark-sm) even though the header that used to be the
-       other consumer of this class is gone. width: auto lets the
-       image's own aspect ratio hold; object-fit: contain guards
-       against any stretch if this ever sits in a box shorter than its
-       natural width. */
+       (see .pp-wordmark-sm). This page carries no header of its own:
+       it's opened as a dialog over packages.html (see that template's
+       package-detail modal), so packages.html's own header is already
+       visible around it; a second one here would be redundant chrome
+       on what's meant to be a focused, conversion-first view. width:
+       auto lets the image's own aspect ratio hold; object-fit: contain
+       guards against any stretch if this ever sits in a box shorter
+       than its natural width. */
     .pp-wordmark {
       display: block;
       height: 56px;
@@ -256,10 +387,10 @@
     }
 
     .pp-head h1 {
-      font-size: 44px;
+      font-size: clamp(28px, 6.5vw, 44px);
       margin: 0 0 14px;
       letter-spacing: -0.02em;
-      line-height: 1.1;
+      line-height: 1.15;
     }
 
     .pp-head p.desc {
@@ -290,7 +421,7 @@
       color: var(--accent-ink);
       background: var(--accent-soft);
       padding: 7px 13px;
-      border-radius: 999px;
+      border-radius: 0;
       margin-bottom: 18px;
     }
 
@@ -410,6 +541,44 @@
       overflow: hidden;
       aspect-ratio: 4 / 3;
       box-shadow: var(--shadow-sm);
+      --spot-x: 50%;
+      --spot-y: 50%;
+    }
+
+    /* Cursor-tracked gold glow on the main product image, matching the
+       card treatment on packages.html — z-index sits below the caption
+       so the caption text stays legible over it. */
+    .pp-gallery-main::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 0;
+      background: radial-gradient(280px circle at var(--spot-x) var(--spot-y), rgba(212, 175, 55, .18), transparent 70%);
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .pp-gallery-main:hover::after {
+      opacity: 1;
+    }
+
+    .pp-gallery-slide img {
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pp-gallery-main:hover .pp-gallery-slide.active img {
+      transform: scale(1.05);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-gallery-slide img {
+        transition: none;
+      }
+
+      .pp-gallery-main:hover .pp-gallery-slide.active img {
+        transform: none;
+      }
     }
 
     .pp-gallery-badge {
@@ -424,7 +593,7 @@
       backdrop-filter: blur(6px);
       border: var(--border-width-strong) solid var(--border-strong);
       padding: 5px 10px;
-      border-radius: 999px;
+      border-radius: 0;
     }
 
     .pp-gallery-slide {
@@ -489,7 +658,8 @@
       padding: 9px 14px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      transition: background-color 0.15s ease;
+      border-left: 3px solid transparent;
+      transition: background-color 0.15s ease, border-left-color 0.15s ease;
     }
 
     .pp-contents-row:last-child {
@@ -498,11 +668,13 @@
 
     .pp-contents-row[data-slide]:hover {
       background: var(--surface-2);
+      border-left-color: var(--accent-ink);
       cursor: pointer;
     }
 
     .pp-contents-row[data-slide].active {
       background: var(--accent-soft);
+      border-left-color: var(--brand-gold);
     }
 
     .pp-contents-head {
@@ -536,7 +708,7 @@
       color: var(--accent-ink);
       background: var(--accent-soft);
       padding: 3px 9px;
-      border-radius: 999px;
+      border-radius: 0;
       white-space: nowrap;
     }
 
@@ -567,9 +739,11 @@
     }
 
     /* ================= sticky order summary sidebar =================
-       top: 20px, not the old 88px — that was clearance for the fixed
-       header, which is gone now, so the sidebar only needs a little
-       breathing room from the viewport's own top edge. */
+       top: 20px - this page has no fixed header of its own to clear
+       (see .pp-wordmark's own comment above), so the sidebar only
+       needs a little breathing room from the viewport's own top edge.
+       Also holds true inside packages.html's iframe-embedded dialog,
+       which scrolls this page in its own independent viewport. */
     .pp-sidebar {
       position: sticky;
       top: 20px;
@@ -602,7 +776,7 @@
     .pp-summary-scope-icon {
       width: 34px;
       height: 34px;
-      border-radius: 10px;
+      border-radius: 0;
       background: var(--accent-soft);
       color: var(--accent-ink);
       display: flex;
@@ -633,6 +807,25 @@
       background: var(--success);
       box-shadow: 0 0 0 3px var(--success-soft);
       flex-shrink: 0;
+      animation: pp-live-pulse 2.2s ease-in-out infinite;
+    }
+
+    @keyframes pp-live-pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 3px var(--success-soft);
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px var(--success-soft);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-summary-avail .dot {
+        animation: none;
+      }
     }
 
     .pp-summary-line {
@@ -702,7 +895,7 @@
       color: var(--success);
       background: color-mix(in srgb, var(--success) 14%, transparent);
       padding: 4px 9px;
-      border-radius: 999px;
+      border-radius: 0;
     }
 
     .pp-summary-save svg {
@@ -779,11 +972,15 @@
     }
 
     .pp-other-card {
+      position: relative;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       gap: 10px;
       padding: 18px;
       translate: 0 0;
+      --spot-x: 50%;
+      --spot-y: 15%;
       transition: translate 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
     }
 
@@ -791,6 +988,27 @@
       translate: 0 -3px;
       border-color: var(--border-strong);
       box-shadow: var(--shadow-md);
+    }
+
+    .pp-other-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      opacity: 0;
+      background: radial-gradient(260px circle at var(--spot-x) var(--spot-y), rgba(212, 175, 55, .16), transparent 72%);
+      transition: opacity 0.35s ease;
+      pointer-events: none;
+    }
+
+    .pp-other-card:hover::after {
+      opacity: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-other-card::after {
+        display: none;
+      }
     }
 
     .pp-other-title-row {
@@ -963,6 +1181,8 @@
        sidebar's big Inquire CTA, the modal's Send inquiry) picks up
        the same feel without touching .btn-accent site-wide. */
     .btn-accent {
+      position: relative;
+      overflow: hidden;
       box-shadow: 0 6px 18px -6px rgba(212, 175, 55, .45);
       transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, background 0.15s ease;
     }
@@ -974,6 +1194,29 @@
 
     .btn-accent:active {
       transform: translateY(0);
+    }
+
+    .btn-accent::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -60%;
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(120deg, transparent, rgba(255, 255, 255, .4), transparent);
+      transform: skewX(-20deg);
+      transition: left 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .btn-accent:hover::before {
+      left: 130%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .btn-accent::before {
+        display: none;
+      }
     }
 
     /* ================= footer ================= */
@@ -1257,16 +1500,16 @@
         <div class="col">
           <img class="pp-wordmark pp-wordmark-sm" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
             alt="Heaven &amp; Angel Scents">
-          <p style="margin-top:10px;">Curated fragrance bundles for distributors and resellers — priced below our
+          <p style="margin-top:10px;">Curated fragrance bundles for distributors and resellers, priced below our
             regular list.</p>
         </div>
         <div class="col">
           <h4>Have a question?</h4>
-          <p>Send an inquiry above — that's the fastest way to reach our team. We follow up by phone or email.</p>
+          <p>Send an inquiry above: that's the fastest way to reach our team. We follow up by phone or email.</p>
         </div>
         <div class="col">
           <h4>Private link</h4>
-          <p>This link is shared privately with our distributors and resellers — please don't forward it publicly.</p>
+          <p>This link is shared privately with our distributors and resellers. Please don't forward it publicly.</p>
         </div>
       </div>
       <div class="legal">Heaven &amp; Angel Scents · Partner Program</div>
@@ -1276,7 +1519,7 @@
   <div class="pp-modal-overlay" id="inquireOverlay">
     <div class="card pp-modal">
       <h2>Inquire about {{ pkg.package_name }}</h2>
-      <p class="sub">Tell us a bit about your business — our team will follow up by phone or email.</p>
+      <p class="sub">Tell us a bit about your business. Our team will follow up by phone or email.</p>
       <form method="POST" action="{{ url_for('portal.inquire', slug=slug, package_id=pkg.package_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -1402,6 +1645,41 @@
       contentsRows.forEach(function (el) {
         el.addEventListener('click', function () { setActiveSlide(el.dataset.slide); });
       });
+
+      // Cursor-tracked gold glow on the main product image and the
+      // "other packages" cards, matching packages.html — fine-pointer
+      // devices only, since touch has no continuous mousemove to drive it.
+      var fineHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      var reduceMotionDetail = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (fineHover && !reduceMotionDetail) {
+        var galleryMain = document.querySelector('.pp-gallery-main');
+        if (galleryMain) {
+          galleryMain.addEventListener('mousemove', function (e) {
+            var r = galleryMain.getBoundingClientRect();
+            galleryMain.style.setProperty('--spot-x', (((e.clientX - r.left) / r.width) * 100).toFixed(1) + '%');
+            galleryMain.style.setProperty('--spot-y', (((e.clientY - r.top) / r.height) * 100).toFixed(1) + '%');
+          });
+        }
+
+        document.querySelectorAll('.pp-other-card').forEach(function (otherCard) {
+          otherCard.addEventListener('mousemove', function (e) {
+            var r = otherCard.getBoundingClientRect();
+            var px = (e.clientX - r.left) / r.width;
+            var py = (e.clientY - r.top) / r.height;
+            otherCard.style.setProperty('--spot-x', (px * 100).toFixed(1) + '%');
+            otherCard.style.setProperty('--spot-y', (py * 100).toFixed(1) + '%');
+            var rx = (0.5 - py) * 5;
+            var ry = (px - 0.5) * 6;
+            // translateY isn't included here: the hover lift already
+            // comes from the CSS `translate` property below, which
+            // composes independently with this `transform`.
+            otherCard.style.transform = 'perspective(900px) rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
+          });
+          otherCard.addEventListener('mouseleave', function () {
+            otherCard.style.transform = '';
+          });
+        });
+      }
 
       var overlay = document.getElementById('inquireOverlay');
       var openBtn = document.getElementById('openInquireBtn');
@@ -1569,7 +1847,7 @@
                 // usual flash-carrying redirect (e.g. the rate limiter's
                 // 429 page) — still say *something* rather than leaving
                 // the visitor clicking "Send inquiry" into silence.
-                showFlash('Something went wrong sending your inquiry — please try again in a moment.', 'error');
+                showFlash('Something went wrong sending your inquiry. Please try again in a moment.', 'error');
                 return;
               }
               var sawSuccess = false;

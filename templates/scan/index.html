@@ -146,6 +146,33 @@
 
   .scan-badge-ok { color: var(--success); }
   .scan-badge-bad { color: var(--danger); }
+
+  /* Each verify (camera hit, upload, or manual entry) re-triggers one of
+     these on #scanResultCard — see scan.js's popResult() — so every
+     scan reads as a distinct, acknowledged event instead of the result
+     panel just silently swapping text, even on back-to-back scans while
+     it's already open. */
+  @keyframes scan-result-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  }
+
+  @keyframes scan-flash-ok {
+    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent); }
+    to { box-shadow: 0 0 0 14px color-mix(in srgb, var(--success) 0%, transparent); }
+  }
+
+  @keyframes scan-flash-bad {
+    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
+    to { box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent); }
+  }
+
+  #scanResultCard.scan-pop-ok {
+    animation: scan-result-in .32s cubic-bezier(0.16, 1, 0.3, 1), scan-flash-ok .6s ease-out;
+  }
+
+  #scanResultCard.scan-pop-bad {
+    animation: scan-result-in .32s cubic-bezier(0.16, 1, 0.3, 1), scan-flash-bad .6s ease-out;
+  }
 </style>
 {% endblock %}
 
