@@ -21,6 +21,4 @@ simple-websocket` there gets you real WebSocket upgrades instead of
 long-polling.
 """
 
-from app import create_app
-
-app = create_app()
+from app import app

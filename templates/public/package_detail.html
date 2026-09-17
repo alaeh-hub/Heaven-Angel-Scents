@@ -11,6 +11,15 @@
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script>
     (function () {
+      // Same reload-jump guard as packages.html's own copy of this
+      // comment: without it, the browser's native scroll restoration
+      // can land mid-reflow (gallery/contents table not yet sized) on
+      // refresh, which on some mobile browsers shows up as the page
+      // being zoomed out until it settles.
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+
       // This page is light-mode only — no theme toggle, matching
       // packages.html (see that template's own copy of this comment):
       // it never reads/writes the shared 'theme' localStorage key, so
@@ -74,8 +83,17 @@
       border-radius: 0 !important;
     }
 
+    html {
+      /* See packages.html's own copy of this comment: on some mobile
+         browsers <html>, not <body>, is the element that actually
+         scrolls/zooms-to-fit, so overflow-x needs capping here too. */
+      overflow-x: hidden;
+      width: 100%;
+    }
+
     body {
       min-height: 100vh;
+      width: 100%;
       background: var(--bg);
       overflow-x: hidden;
       font-family: var(--font-sans);
@@ -236,6 +254,12 @@
       padding: 0 20px 72px;
     }
 
+    @media (max-width: 768px) {
+      .pp-shell {
+        padding: 0 14px 48px;
+      }
+    }
+
     .pp-inner {
       max-width: 1160px;
       margin: 0 auto;
@@ -270,6 +294,12 @@
       max-width: 1160px;
       margin: 0 auto;
       padding: 0 20px;
+    }
+
+    @media (max-width: 768px) {
+      .pp-band-inner {
+        padding: 0 14px;
+      }
     }
 
     .pp-band-dark .pp-eyebrow {
@@ -533,6 +563,31 @@
       border-radius: 0 !important;
     }
 
+    /* Below ~640px the fixed 76px thumb column leaves too little room
+       for the main image (this page also renders standalone, at full
+       device width, inside packages.html's fullscreen mobile dialog -
+       see that template's .pp-detail-overlay). Put the main image on
+       top at full width and turn the thumb rail into a horizontal
+       scroll strip underneath instead. */
+    @media (max-width: 640px) {
+      .pp-gallery {
+        grid-template-columns: 1fr;
+      }
+
+      .pp-gallery-main {
+        order: -1;
+      }
+
+      .pp-gallery-thumbs {
+        flex-direction: row;
+        max-height: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-right: 0;
+        padding-bottom: 2px;
+      }
+    }
+
     .pp-gallery-main {
       position: relative;
       border: var(--border-width-strong) solid var(--border-strong);
@@ -717,8 +772,8 @@
         grid-template-columns: 38px 1fr auto;
       }
 
+      .pp-contents-head span:nth-child(2),
       .pp-contents-head span:nth-child(3),
-      .pp-contents-head span:nth-child(4),
       .pp-contents-row .c-variant,
       .pp-contents-row .c-unit {
         display: none;
@@ -1013,9 +1068,10 @@
 
     .pp-other-title-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 8px;
+      gap: 4px 8px;
     }
 
     .pp-other-card h3 {
@@ -1161,6 +1217,16 @@
       opacity: 1;
       translate: 0 0;
       scale: 1;
+    }
+
+    @media (max-width: 420px) {
+      .pp-modal-overlay {
+        padding: 12px;
+      }
+
+      .pp-modal {
+        padding: 18px;
+      }
     }
 
     .pp-modal h2 {

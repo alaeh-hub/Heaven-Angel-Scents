@@ -192,29 +192,42 @@ def send_partner_inquiry_email(
         "— Sent automatically from the Heaven & Angel Scents partner portal.",
     ]
 
-    msg = EmailMessage()
-    msg["Subject"] = f"Package inquiry: {company_name} — {package_name}"
-    msg["From"] = cfg["MAIL_DEFAULT_SENDER"]
-    msg["To"] = cfg["PARTNER_INQUIRY_NOTIFY_EMAIL"]
-    if email:
-        # So HQ can just hit "Reply" in their inbox to answer the
-        # inquirer directly, instead of copying their address by hand.
-        msg["Reply-To"] = email
-    # Plain text stays the primary body (some clients / spam filters
-    # prefer it, and it's what shows if HTML rendering is off); the HTML
-    # version is attached as an alternative that most inboxes — Gmail
-    # included — will prefer to display when available.
-    msg.set_content("\n".join(body_lines))
-    msg.add_alternative(
-        _build_html_body(
-            package_name=package_name, partner_type=partner_type, company_name=company_name,
-            contact_person=contact_person, phone=phone, email=email, address=address,
-            message=message,
-        ),
-        subtype="html",
-    )
-
+    # Building the message (not just sending it) is inside this same
+    # try/except: company_name/package_name land straight in the Subject
+    # header below, and company_name is free text straight from the
+    # public, unauthenticated inquiry form — parse_required_text() only
+    # strips leading/trailing whitespace, so an embedded \r or \n in the
+    # middle of it (trivially sent by anyone POSTing the form directly,
+    # bypassing whatever a browser's <input> would normally allow) makes
+    # Python's own email policy raise ValueError("Header values may not
+    # contain linefeed or carriage return characters") the moment it's
+    # assigned to msg["Subject"] — before smtplib is ever touched. That
+    # used to happen outside this try/except entirely, breaking this
+    # function's "never raises" contract for a plain bad-input case, not
+    # just a real SMTP failure.
     try:
+        msg = EmailMessage()
+        msg["Subject"] = f"Package inquiry: {company_name} — {package_name}"
+        msg["From"] = cfg["MAIL_DEFAULT_SENDER"]
+        msg["To"] = cfg["PARTNER_INQUIRY_NOTIFY_EMAIL"]
+        if email:
+            # So HQ can just hit "Reply" in their inbox to answer the
+            # inquirer directly, instead of copying their address by hand.
+            msg["Reply-To"] = email
+        # Plain text stays the primary body (some clients / spam filters
+        # prefer it, and it's what shows if HTML rendering is off); the HTML
+        # version is attached as an alternative that most inboxes — Gmail
+        # included — will prefer to display when available.
+        msg.set_content("\n".join(body_lines))
+        msg.add_alternative(
+            _build_html_body(
+                package_name=package_name, partner_type=partner_type, company_name=company_name,
+                contact_person=contact_person, phone=phone, email=email, address=address,
+                message=message,
+            ),
+            subtype="html",
+        )
+
         with smtplib.SMTP(cfg["MAIL_SERVER"], cfg.get("MAIL_PORT", 587), timeout=10) as smtp:
             if cfg.get("MAIL_USE_TLS", True):
                 smtp.starttls()

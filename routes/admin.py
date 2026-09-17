@@ -2823,10 +2823,17 @@ def remove_package_item(package_id):
         abort(404)
 
     item_id = request.form.get("package_item_id")
-    execute(
+    # Same reasoning as reject_request()/edit_material(): without checking
+    # rowcount, a stale page (item already removed by another admin, or a
+    # double-submit) would DELETE zero rows but still fall through and
+    # flash "Product removed" as if it had actually happened.
+    _, rowcount = execute(
         "DELETE FROM package_items WHERE package_item_id = %s AND package_id = %s",
         (item_id, package_id),
     )
+    if rowcount == 0:
+        flash("That product is no longer in this package.", "error")
+        return redirect(url_for("admin.package_detail", package_id=package_id))
 
     remaining = query(
         "SELECT COUNT(*) c FROM package_items WHERE package_id = %s", (package_id,), fetchone=True

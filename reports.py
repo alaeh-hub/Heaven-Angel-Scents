@@ -331,15 +331,19 @@ def _window_note(filters, truncated):
 #
 # cost_per_unit/cogs_per_unit are the same "per-unit price" shape as
 # unit_price (raw_materials/cogs_logs' own per-unit cost, not a line
-# total). qty_per_unit (unit_formula_items) and package_qty
-# (raw_materials) are both a quantity in whatever unit that particular
-# material happens to use (grams, mL, pieces, ...) — unlike a plain
-# piece-count like qty_sold/qty_produced (always "how many bottles",
-# regardless of which product), summing these across rows for different
-# materials on the same report would add incompatible units together
-# (e.g. grams + milliliters) into a number that means nothing.
-NO_TOTAL_COLUMNS = {"unit_price", "cost_per_unit",
-                    "cogs_per_unit", "qty_per_unit", "package_qty"}
+# total). price/hq_price (products.price, shown as-is on the Products
+# and Branch Stock reports) are that exact same per-unit reference
+# price too — summing it across unrelated products is just as
+# meaningless as summing unit_price across unrelated sales. qty_per_unit
+# (unit_formula_items) and package_qty (raw_materials) are both a
+# quantity in whatever unit that particular material happens to use
+# (grams, mL, pieces, ...) — unlike a plain piece-count like
+# qty_sold/qty_produced (always "how many bottles", regardless of which
+# product), summing these across rows for different materials on the
+# same report would add incompatible units together (e.g. grams +
+# milliliters) into a number that means nothing.
+NO_TOTAL_COLUMNS = {"unit_price", "cost_per_unit", "cogs_per_unit",
+                    "qty_per_unit", "package_qty", "price", "hq_price"}
 
 
 def _compute_totals(columns, rows):

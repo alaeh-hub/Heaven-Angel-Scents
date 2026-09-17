@@ -51,7 +51,8 @@ from extensions import limiter
 from mailer import send_partner_inquiry_email
 from sockets import notify_admin, notify_bell
 from utils import (
-    PARTNER_TYPES, ValidationError, parse_email, parse_phone, parse_required_text,
+    PARTNER_TYPES, ValidationError, parse_email, parse_optional_text, parse_phone,
+    parse_required_text,
 )
 
 bp = Blueprint("portal", __name__, url_prefix="/partner-portal")
@@ -307,7 +308,6 @@ def inquire(slug, package_id):
         return redirect(url_for("portal.packages", slug=slug))
 
     partner_type = request.form.get("partner_type", "").strip()
-    address = request.form.get("address", "").strip() or None
     message = request.form.get("message", "").strip() or None
 
     # Every field below is required now except address and message — a
@@ -330,6 +330,9 @@ def inquire(slug, package_id):
         )
         phone = parse_phone(request.form.get("phone"))
         email = parse_email(request.form.get("email"))
+        address = parse_optional_text(
+            request.form.get("address"), "Address", max_length=255
+        )
         if len(message or "") > 500:
             raise ValidationError("Message is too long — please keep it under 500 characters.")
     except ValidationError as err:

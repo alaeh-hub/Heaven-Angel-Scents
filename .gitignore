@@ -26,6 +26,7 @@ static/uploads/
 .pytest_cache/
 .coverage
 htmlcov/
+check/
 
 # Local design/media drafts
 static/img/background*.png

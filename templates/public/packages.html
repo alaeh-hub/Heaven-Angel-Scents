@@ -9,6 +9,16 @@
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script>
     (function () {
+      // On a reload, the browser's own scroll-restoration tries to jump
+      // back to the old scroll Y before the videos/marquee/images below
+      // have re-established their final layout size, so it can land the
+      // viewport mid-reflow (this page already restores position itself,
+      // deliberately, via the ?anchor param handled below). Turning off
+      // the native one avoids that mid-load jump/flash on refresh.
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+
       document.documentElement.setAttribute('data-theme', 'light');
 
       var anchorParam = null;
@@ -97,6 +107,13 @@
 
     html {
       scroll-behavior: smooth;
+      /* Belt-and-suspenders alongside body's overflow-x below — on some
+         mobile browsers <html>, not <body>, is the element that actually
+         scrolls/zooms-to-fit, so overflow-x needs to be capped here too
+         or a momentarily-too-wide element (before fonts/video finish
+         loading) can make the browser fit the whole page zoomed out. */
+      overflow-x: hidden;
+      width: 100%;
     }
 
     html.pp-pending-scroll {
@@ -105,6 +122,7 @@
 
     body {
       min-height: 100vh;
+      width: 100%;
       background: var(--bg);
       overflow-x: hidden;
       position: relative;
@@ -397,6 +415,29 @@
       }
     }
 
+    /* ================= scroll progress bar =================
+       Bound to overall page scroll progress via Motion's scroll()
+       function (see the bottom script) — a thin gold hairline that
+       fills left-to-right as the visitor reads down the page. */
+    .pp-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      z-index: 41;
+      background: linear-gradient(90deg, var(--brand-gold), #fff6d8 55%, var(--brand-gold));
+      transform: scaleX(0);
+      transform-origin: 0 50%;
+      pointer-events: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-progress {
+        display: none;
+      }
+    }
+
     /* ================= back to top ================= */
     .pp-back-to-top {
       position: fixed;
@@ -442,7 +483,7 @@
 
     @media (max-width: 768px) {
       .pp-back-to-top {
-        bottom: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom));
         width: 40px;
         height: 40px;
       }
@@ -603,6 +644,7 @@
 
     /* ---- Mobile Hamburger Button ---- */
     .pp-menu-toggle {
+      position: relative;
       display: none;
       justify-self: end;
       background: transparent;
@@ -612,7 +654,7 @@
       cursor: pointer;
       color: #FBF6E6;
       z-index: 50;
-      transition: background 0.2s ease, border-color 0.2s ease;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
     }
 
     .pp-menu-toggle:hover,
@@ -621,22 +663,50 @@
       border-color: var(--brand-gold);
     }
 
+    .pp-menu-toggle:active {
+      transform: scale(0.92);
+    }
+
+    /* Bars morph into an X instead of instantly swapping — both icons
+       are always in the DOM, stacked on top of each other, and cross
+       fade/rotate into place. */
     .pp-menu-toggle svg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
       width: 22px;
       height: 22px;
-      display: block;
+      margin: -11px 0 0 -11px;
+      transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pp-menu-toggle .icon-bars {
+      opacity: 1;
+      transform: rotate(0deg);
     }
 
     .pp-menu-toggle .icon-close {
-      display: none;
+      opacity: 0;
+      transform: rotate(-90deg);
     }
 
     .pp-menu-toggle.is-active .icon-bars {
-      display: none;
+      opacity: 0;
+      transform: rotate(90deg);
     }
 
     .pp-menu-toggle.is-active .icon-close {
-      display: block;
+      opacity: 1;
+      transform: rotate(0deg);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .pp-menu-toggle svg,
+      .pp-menu-toggle.is-active svg {
+        transition: opacity 0.15s ease;
+        transform: none;
+      }
     }
 
     /* ---- Mobile Nav Drawer ---- */
@@ -648,7 +718,7 @@
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       z-index: 45;
-      padding: calc(var(--pp-header-h) + 20px) 24px 40px;
+      padding: calc(var(--pp-header-h) + 20px) 24px calc(40px + env(safe-area-inset-bottom));
       flex-direction: column;
       justify-content: space-between;
       opacity: 0;
@@ -1134,6 +1204,10 @@
       box-shadow: 0 14px 32px -8px rgba(212, 175, 55, .75);
     }
 
+    .pp-hero-cta:active {
+      transform: translateY(0) scale(0.97);
+    }
+
     /* Foil shine sweep on the primary CTAs — a single diagonal
        highlight crossing the button on hover, reinforcing the gold
        brand material without looping indefinitely. */
@@ -1271,6 +1345,12 @@
       animation-name: pp-lifestyle-loop-right;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+      .pp-lifestyle-group {
+        animation: none;
+      }
+    }
+
     /* Mathematically seamless infinite loop: exact width + gap reset */
     @keyframes pp-lifestyle-loop-left {
       from {
@@ -1300,6 +1380,19 @@
       object-fit: contain;
       pointer-events: none;
       -webkit-user-drag: none;
+      transition: filter 0.3s ease, opacity 0.3s ease;
+    }
+
+    /* Hover/pause feedback — the row itself is the click target (its
+       images are pointer-events:none, see above), so :hover still
+       resolves on .pp-lifestyle-row and reaches its images here. */
+    .pp-lifestyle-row:hover .pp-media-slot {
+      filter: brightness(1.08) saturate(1.1);
+    }
+
+    .pp-lifestyle-row.is-paused .pp-media-slot {
+      opacity: 0.85;
+      filter: grayscale(0.15);
     }
 
     @media (max-width: 768px) {
@@ -1442,6 +1535,7 @@
     }
 
     .pp-filter-bar {
+      position: relative;
       display: inline-flex;
       align-items: center;
       gap: 3px;
@@ -1453,15 +1547,42 @@
       flex-shrink: 0;
     }
 
+    /* Sliding active-tab pill — a JS-positioned layer that glides
+       between tabs instead of the highlight just popping onto the new
+       one. Pure enhancement: .pp-filter-bar only gets .has-pill once
+       the script below successfully builds it, so the static
+       a.active background further down still lights up the right tab
+       immediately with JS off (or before the script runs). */
+    .pp-filter-pill {
+      position: absolute;
+      top: 5px;
+      bottom: 5px;
+      left: 0;
+      width: 0;
+      background: var(--accent);
+      box-shadow: 0 4px 14px -4px rgba(212, 175, 55, .55);
+      opacity: 0;
+      z-index: 0;
+      pointer-events: none;
+      transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), width 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-filter-pill {
+        transition: opacity 0.15s ease;
+      }
+    }
+
     .pp-filter-bar a {
       position: relative;
+      z-index: 1;
       font-size: 13.5px;
       font-weight: 600;
       color: var(--ink-soft);
       padding: 8px 16px;
       border-radius: 0;
       white-space: nowrap;
-      transition: color 0.2s ease, background-color 0.2s ease;
+      transition: color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
     }
 
     .pp-filter-bar a:hover {
@@ -1469,10 +1590,18 @@
       background: color-mix(in srgb, var(--ink) 6%, transparent);
     }
 
-    .pp-filter-bar a.active {
+    .pp-filter-bar a:active {
+      transform: scale(0.96);
+    }
+
+    .pp-filter-bar:not(.has-pill) a.active {
       color: var(--gold-contrast);
       background: var(--accent);
       box-shadow: 0 4px 14px -4px rgba(212, 175, 55, .55);
+    }
+
+    .pp-filter-bar.has-pill a.active {
+      color: var(--gold-contrast);
     }
 
     /* ================= package grid ================= */
@@ -1669,6 +1798,23 @@
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease;
+    }
+
+    .pp-card:hover .pp-card-icon {
+      transform: rotate(-8deg) scale(1.08);
+      background: var(--brand-gold);
+      color: var(--gold-contrast);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pp-card-icon {
+        transition: background-color 0.25s ease;
+      }
+
+      .pp-card:hover .pp-card-icon {
+        transform: none;
+      }
     }
 
     .pp-card-icon svg {
@@ -1689,9 +1835,10 @@
 
     .pp-card-title-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 8px;
+      gap: 4px 8px;
     }
 
     @media (max-width: 480px) {
@@ -1753,6 +1900,7 @@
       font-size: 13px;
       color: var(--ink-soft);
       line-height: 1.65;
+      overflow: hidden;
     }
 
     @media (max-width: 480px) {
@@ -1923,6 +2071,9 @@
 </head>
 
 <body>
+  <!-- Scroll progress bar, bound to page scroll via Motion's scroll() -->
+  <div class="pp-progress" id="pp-progress" aria-hidden="true"></div>
+
   <!-- Global Perfume Spray Target Overlay (pointer-events: none) -->
   <div class="pp-spray-canvas-overlay" id="pp-spray-overlay" aria-hidden="true"></div>
 
@@ -2046,12 +2197,12 @@
       </div>
     </div>
 
-    <div class="pp-band-inner">
+    <div class="pp-band-inner" id="heroParallax">
       <div class="pp-hero">
         <div>
-          <h1>Partner with <span class="grad-text">Heaven &amp; Angel Scents</span></h1>
-          <p>Premium fragrances, priced below wholesale.</p>
-          <a href="#packages" class="btn btn-accent pp-hero-cta">
+          <h1 class="pp-reveal" style="--rd:0s;">Partner with <span class="grad-text">Heaven &amp; Angel Scents</span></h1>
+          <p class="pp-reveal" style="--rd:.12s;">Premium fragrances, priced below wholesale.</p>
+          <a href="#packages" class="btn btn-accent pp-hero-cta pp-reveal" style="--rd:.24s;">
             Browse packages
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
               <path d="M5 12h14M13 6l6 6-6 6" />
@@ -2232,20 +2383,24 @@
   <section class="pp-band pp-band-dark pp-stats-band">
     <div class="pp-band-inner">
       <div class="pp-stats-row">
-        <div class="pp-stat-tile">
-          <div class="num">{{ package_list|length }}</div>
+        <div class="pp-stat-tile pp-reveal pp-counter" style="--rd:0s;" data-count-to="{{ package_list|length }}"
+          data-decimals="0">
+          <div class="num">0</div>
           <div class="label">Package{{ 's' if package_list|length != 1 }} available</div>
         </div>
-        <div class="pp-stat-tile">
-          <div class="num">{{ max_discount|round(1) if max_discount else 0 }}%</div>
+        <div class="pp-stat-tile pp-reveal pp-counter" style="--rd:.08s;"
+          data-count-to="{{ max_discount|round(1) if max_discount else 0 }}" data-decimals="1" data-suffix="%">
+          <div class="num">0%</div>
           <div class="label">Best discount available</div>
         </div>
-        <div class="pp-stat-tile">
-          <div class="num">{{ partner_types|length }}</div>
+        <div class="pp-stat-tile pp-reveal pp-counter" style="--rd:.16s;" data-count-to="{{ partner_types|length }}"
+          data-decimals="0">
+          <div class="num">0</div>
           <div class="label">Partner types welcomed</div>
         </div>
-        <div class="pp-stat-tile">
-          <div class="num">100%</div>
+        <div class="pp-stat-tile pp-reveal pp-counter" style="--rd:.24s;" data-count-to="100" data-decimals="0"
+          data-suffix="%">
+          <div class="num">0%</div>
           <div class="label">Priced below list price</div>
         </div>
       </div>
@@ -2597,9 +2752,40 @@
         }, 5000);
       });
 
-      // Filter tabs fetch swap
+      // Filter tabs: sliding active-tab pill
       var filterBar = document.querySelector('.pp-filter-bar');
       var packagesGrid = document.getElementById('pp-packages-grid');
+      var positionFilterPill = function () { };
+
+      if (filterBar) {
+        var filterPill = document.createElement('span');
+        filterPill.className = 'pp-filter-pill';
+        filterPill.setAttribute('aria-hidden', 'true');
+        filterBar.insertBefore(filterPill, filterBar.firstChild);
+        filterBar.classList.add('has-pill');
+
+        positionFilterPill = function (instant) {
+          var active = filterBar.querySelector('a.active');
+          if (!active) { filterPill.style.opacity = '0'; return; }
+          var barRect = filterBar.getBoundingClientRect();
+          var linkRect = active.getBoundingClientRect();
+          if (instant) filterPill.style.transition = 'none';
+          filterPill.style.opacity = '1';
+          filterPill.style.width = linkRect.width + 'px';
+          filterPill.style.transform = 'translateX(' + (linkRect.left - barRect.left) + 'px)';
+          if (instant) {
+            // Force a reflow so the next (animated) call doesn't inherit
+            // this one's transition:none.
+            filterPill.offsetHeight;
+            filterPill.style.transition = '';
+          }
+        };
+
+        positionFilterPill(true);
+        window.addEventListener('resize', function () { positionFilterPill(true); }, { passive: true });
+      }
+
+      // Filter tabs fetch swap
       if (filterBar && packagesGrid && window.fetch) {
         filterBar.addEventListener('click', function (e) {
           var link = e.target.closest('a');
@@ -2607,18 +2793,35 @@
           e.preventDefault();
 
           var href = link.getAttribute('href');
-          fetch(href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+
+          // Brief fade-out of the current grid before swapping in the
+          // filtered results, so the switch reads as a transition
+          // rather than an abrupt content pop. The new cards then fade
+          // and slide in on their own via the .pp-reveal/--rd stagger
+          // each one already carries from the server-rendered markup.
+          var canAnimateSwap = !!(window.Motion && window.Motion.animate) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          var fadeOut = canAnimateSwap
+            ? window.Motion.animate(packagesGrid, { opacity: [1, 0] }, { duration: 0.15, ease: 'easeIn' })
+            : null;
+
+          Promise.resolve(fadeOut)
+            .then(function () {
+              return fetch(href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            })
             .then(function (res) { if (!res.ok) throw new Error('bad response'); return res.text(); })
             .then(function (html) {
               var freshGrid = new DOMParser().parseFromString(html, 'text/html').getElementById('pp-packages-grid');
               if (!freshGrid) throw new Error('grid not found');
 
               packagesGrid.innerHTML = freshGrid.innerHTML;
+              packagesGrid.style.opacity = '';
               packagesGrid.querySelectorAll('.pp-reveal').forEach(function (el) { el.classList.add('pp-in'); });
               filterBar.querySelectorAll('a').forEach(function (a) { a.classList.toggle('active', a === link); });
+              positionFilterPill();
               history.pushState(null, '', href);
             })
             .catch(function () {
+              packagesGrid.style.opacity = '';
               window.location.href = href;
             });
         });
@@ -2652,6 +2855,33 @@
         });
       });
 
+      // Stat tile count-up, run once each tile scrolls into view — reuses
+      // the same reveal observer below rather than a second one.
+      function formatCount(value, decimals) {
+        return decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
+      }
+
+      function runCounter(tile) {
+        var numEl = tile.querySelector('.num');
+        if (!numEl) return;
+        var target = parseFloat(tile.getAttribute('data-count-to'));
+        if (isNaN(target)) return;
+        var decimals = parseInt(tile.getAttribute('data-decimals') || '0', 10);
+        var suffix = tile.getAttribute('data-suffix') || '';
+
+        if (scrollReduceMotion || !window.Motion || !window.Motion.animate) {
+          numEl.textContent = formatCount(target, decimals) + suffix;
+          return;
+        }
+        window.Motion.animate(0, target, {
+          duration: 1.3,
+          ease: 'easeOut',
+          onUpdate: function (latest) {
+            numEl.textContent = formatCount(latest, decimals) + suffix;
+          }
+        });
+      }
+
       // Scroll reveal
       var revealEls = document.querySelectorAll('.pp-reveal');
       if (revealEls.length && !scrollReduceMotion && ('IntersectionObserver' in window)) {
@@ -2659,13 +2889,17 @@
           entries.forEach(function (entry) {
             if (entry.isIntersecting) {
               entry.target.classList.add('pp-in');
+              if (entry.target.classList.contains('pp-counter')) runCounter(entry.target);
               observer.unobserve(entry.target);
             }
           });
         }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
         revealEls.forEach(function (el) { observer.observe(el); });
       } else {
-        revealEls.forEach(function (el) { el.classList.add('pp-in'); });
+        revealEls.forEach(function (el) {
+          el.classList.add('pp-in');
+          if (el.classList.contains('pp-counter')) runCounter(el);
+        });
       }
 
       // Nav Active State Scan-line Tracking
@@ -2730,6 +2964,63 @@
 
         backToTop.addEventListener('click', function () {
           window.scrollTo({ top: 0, behavior: scrollReduceMotion ? 'auto' : 'smooth' });
+        });
+      }
+
+      // ---- scroll progress bar + hero parallax fade (Motion's scroll()) ----
+      if (window.Motion && window.Motion.scroll && window.Motion.animate && !scrollReduceMotion) {
+        var progressEl = document.getElementById('pp-progress');
+        if (progressEl) {
+          window.Motion.scroll(
+            window.Motion.animate(progressEl, { scaleX: [0, 1] }, { ease: 'linear' })
+          );
+        }
+
+        var heroSection = document.getElementById('hero');
+        var heroParallaxEl = document.getElementById('heroParallax');
+        if (heroSection && heroParallaxEl) {
+          window.Motion.scroll(
+            window.Motion.animate(heroParallaxEl, { opacity: [1, 0.15], y: [0, -60] }, { ease: 'linear' }),
+            { target: heroSection, offset: ['start start', 'end start'] }
+          );
+        }
+      }
+
+      // ---- animated FAQ accordion ----
+      // <details>/<summary> already work with zero JS (keyboard included);
+      // this only intercepts the click to smoothly tween the body's height
+      // instead of the native instant show/hide, falling back to that
+      // native behavior untouched when motion is reduced.
+      if (!scrollReduceMotion && window.Motion && window.Motion.animate) {
+        document.querySelectorAll('.pp-faq-item').forEach(function (item) {
+          var summary = item.querySelector('summary');
+          var body = item.querySelector('.pp-faq-body');
+          if (!summary || !body) return;
+          var animating = false;
+
+          summary.addEventListener('click', function (e) {
+            if (animating) { e.preventDefault(); return; }
+            e.preventDefault();
+            animating = true;
+
+            if (item.open) {
+              var startHeight = body.offsetHeight;
+              window.Motion.animate(body, { height: [startHeight + 'px', '0px'] }, { duration: 0.26, ease: 'easeInOut' })
+                .then(function () {
+                  item.open = false;
+                  body.style.height = '';
+                  animating = false;
+                });
+            } else {
+              item.open = true;
+              var endHeight = body.scrollHeight;
+              window.Motion.animate(body, { height: ['0px', endHeight + 'px'] }, { duration: 0.3, ease: 'easeOut' })
+                .then(function () {
+                  body.style.height = '';
+                  animating = false;
+                });
+            }
+          });
         });
       }
 
