@@ -7,9 +7,10 @@
 {% block head %}
 <style>
   /* Fixed column widths (see .table-fixed in style.css), same convention
-     as Materials/Suppliers/Inventory Log. Only 6 rows ever exist here
-     (one per packaging size), so unlike those pages this table skips
-     the smart-table search/pagination wrapper entirely. */
+     as Materials/Suppliers/Inventory Log. Only a handful of rows ever
+     exist here (one per packaging size — see utils.PRODUCT_UNITS), so
+     unlike those pages this table skips the smart-table search/
+     pagination wrapper entirely. */
   @media (min-width: 681px) {
     .formula-table th:nth-child(1), .formula-table td:nth-child(1) { width: 30%; }
     .formula-table th:nth-child(2), .formula-table td:nth-child(2) { width: 20%; }

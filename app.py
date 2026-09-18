@@ -242,6 +242,14 @@ def create_app():
         return {"today": datetime.date.today().isoformat()}
 
     @app.context_processor
+    def inject_login_splash():
+        # Popped, not just read, so it renders true on exactly one page
+        # load (the dashboard a fresh login redirects to) and never
+        # again on a later refresh — see auth.py's login(), which is the
+        # only place that sets it.
+        return {"show_login_splash": session.pop("show_login_splash", False)}
+
+    @app.context_processor
     def inject_sidebar_task_counts():
 
         if "user_id" not in session:

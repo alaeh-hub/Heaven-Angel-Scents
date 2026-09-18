@@ -41,44 +41,193 @@
     color: var(--ink-faint);
     margin-top: 5px;
   }
+
+  /* ---- Choice cards: the two top-level decisions (Sale vs Refill,
+     Bottle vs Loose ML) get more visual weight than an in-form pill
+     toggle like Cash/Credit — each option carries its own always-visible
+     one-line explanation, so there's no separate hint text to toggle. ---- */
+  .choice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .choice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    text-align: left;
+    padding: 10px 12px;
+    border: var(--border-width-strong) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease,
+      box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .choice-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .choice-card:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  .choice-card.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .choice-card-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    transition: color 0.16s ease;
+  }
+
+  .choice-card.active .choice-card-title {
+    color: var(--accent-ink);
+  }
+
+  .choice-card-desc {
+    font-size: 11px;
+    color: var(--ink-faint);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 420px) {
+    .choice-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ---- Bottle/Loose ML section swap: a quick fade + rise instead of an
+     instant display toggle. .kind-panel-enter starts the incoming panel
+     transparent/offset; removing it (on the next frame, after display is
+     already set) lets the transition animate it in. See setKind() in
+     the script block below. ---- */
+  .kind-panel {
+    transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .kind-panel-enter {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="max-width:640px;">
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+<div class="card card-pad">
   <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 14px;">
     Deducts from warehouse stock immediately. Use Production to add stock.
   </p>
+
+  <div class="field">
+    <label>Transaction</label>
+    <div class="choice-grid" id="topTypeSwitch">
+      <button type="button" class="choice-card active" data-value="Sale">
+        <span class="choice-card-title">Sale</span>
+        <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
+      </button>
+      <button type="button" class="choice-card" data-value="Refill">
+        <span class="choice-card-title">Refill</span>
+        <span class="choice-card-desc">Customer's own bottle — doesn't deduct stock.</span>
+      </button>
+    </div>
+  </div>
+
   <form method="POST" id="saleForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form_token" value="{{ form_token }}">
+    <input type="hidden" name="sale_type" id="sale_type" value="Sale">
 
     <div class="field">
-      <label for="productName">Product</label>
-      <select id="productName" required data-catalog='{{ inventory | tojson }}'>
-        <option value="">Select…</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="sku">Unit</label>
-      <select id="sku" name="sku" required disabled>
-        <option value="">Select a product first…</option>
-      </select>
-    </div>
-
-    <div class="form-row">
-      <div class="field">
-        <label for="qty_sold">Quantity</label>
-        <input type="number" id="qty_sold" name="qty_sold" min="1" required>
-      </div>
-      <div class="field">
-        <label for="unit_price">Price charged (₱)</label>
-        <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
+      <label>Sale kind</label>
+      <div class="choice-grid" id="kindSwitch">
+        <button type="button" class="choice-card active" data-value="bottle">
+          <span class="choice-card-title">Bottle</span>
+          <span class="choice-card-desc">Fixed size, picked from your product list.</span>
+        </button>
+        <button type="button" class="choice-card" data-value="loose">
+          <span class="choice-card-title">Loose ML</span>
+          <span class="choice-card-desc">Pour by the mL — qty and price both typed in.</span>
+        </button>
       </div>
     </div>
-    <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+
+    <!-- ---- Bottle: the normal product/unit/qty/price flow ---- -->
+    <div id="bottleSection" class="kind-panel">
+      <div class="field">
+        <label for="productName">Product</label>
+        <select id="productName" required data-catalog='{{ inventory | tojson }}'>
+          <option value="">Select…</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="sku">Unit</label>
+        <select id="sku" name="sku" required disabled>
+          <option value="">Select a product first…</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="field">
+          <label for="qty_sold">Quantity</label>
+          <input type="number" id="qty_sold" name="qty_sold" min="1" required>
+        </div>
+        <div class="field">
+          <label for="unit_price">Price charged (₱)</label>
+          <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
+        </div>
+      </div>
+      <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+
+      <div class="field kind-panel" id="freebieField">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin-bottom:0;">
+          <input type="checkbox" id="freebieCheckbox" style="width:auto; margin:0;">
+          This is a freebie / giveaway (₱0, no charge)
+        </label>
+        <div class="help">Still deducts stock like a normal sale — just charges nothing, and hides payment method below.</div>
+      </div>
+    </div>
+
+    <!-- ---- Loose ML: sold by volume, not a fixed bottle — qty (mL) and
+         price per mL are both freely typed, with the total previewed
+         live. Only products stocked in the 1L/bulk size show up here. ---- -->
+    <div id="looseSection" class="kind-panel" style="display:none;">
+      <div class="field">
+        <label for="sku_loose">Product</label>
+        <select id="sku_loose" name="sku" disabled>
+          <option value="">Select…</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="field">
+          <label for="qty_sold_loose">Quantity (mL)</label>
+          <input type="number" id="qty_sold_loose" name="qty_sold" min="1" disabled placeholder="e.g. 500" required>
+        </div>
+        <div class="field">
+          <label for="unit_price_loose">Price per mL (₱)</label>
+          <input type="number" id="unit_price_loose" name="unit_price" step="0.01" min="0" disabled required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="looseTotalDisplay">Total price</label>
+        <input type="text" id="looseTotalDisplay" readonly placeholder="₱0.00">
+        <div class="help">Quantity (mL) × price per mL — filled in automatically as you type either one.</div>
+      </div>
+    </div>
 
     <div class="field">
       <label for="sold_at">Sale date <span class="text-faint">(optional — logging a past sale)</span></label>
@@ -86,28 +235,15 @@
       <div class="help">Leave blank to use today's date.</div>
     </div>
 
-    <div class="form-row">
-      <div class="field">
-        <label>Type</label>
-        <div class="rb-mode" id="saleTypeSwitch">
-          <button type="button" class="rb-mode-opt active" data-value="Sale">Sale</button>
-          <button type="button" class="rb-mode-opt" data-value="Refill">Refill</button>
-        </div>
-        <input type="hidden" name="sale_type" id="sale_type" value="Sale">
+    <div class="field" id="paymentMethodField">
+      <label>Payment method</label>
+      <div class="rb-mode" id="paymentSwitch">
+        <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
+        <button type="button" class="rb-mode-opt" data-value="Credit">Credit</button>
       </div>
-      <div class="field">
-        <label>Payment method</label>
-        <div class="rb-mode" id="paymentSwitch">
-          <button type="button" class="rb-mode-opt active" data-value="Cash">Cash</button>
-          <button type="button" class="rb-mode-opt" data-value="Credit">Credit</button>
-        </div>
-        <input type="hidden" name="payment_method" id="payment_method" value="Cash">
-      </div>
+      <input type="hidden" name="payment_method" id="payment_method" value="Cash">
     </div>
-    <!-- AFTER -->
-    <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Refill: customer's own bottle, product cost
-      only — doesn't deduct stock.</div>
-    <!-- AFTER -->
+
     <div class="form-row" id="buyerField" style="display:none;">
       <div class="field" style="flex:1;">
         <label for="buyer_name">Name (Credit)</label>
@@ -150,6 +286,28 @@
 
     <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
   </form>
+</div>
+
+<div class="card card-pad">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Import from Excel</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 16px;">
+    Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here —
+    every row is inserted at once instead of typing each one in above.
+  </p>
+  <a href="{{ url_for('admin.sales_import_template') }}" class="btn btn-ghost" style="width:100%; margin-bottom:12px;" data-generate-file>
+    Download import template (.xlsx)
+  </a>
+  <form method="POST" action="{{ url_for('admin.import_sales') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_token" value="{{ import_form_token }}">
+    <div class="field">
+      <label for="import_file">Filled-in template</label>
+      <input type="file" id="import_file" name="import_file" accept=".xlsx" required>
+      <div class="help">Only SKUs already stocked at the HQ warehouse can be imported — see the "Products (reference)" sheet in the template.</div>
+    </div>
+    <button type="submit" class="btn btn-accent" style="width:100%;">Import sales</button>
+  </form>
+</div>
 </div>
 
 <div class="card mt-24">
@@ -210,7 +368,7 @@
             <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
             <td data-label="" class="mobile-inline-action">
-              <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
+              <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
             </td>
             <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
                  style.css. Hidden on desktop, where every cell above is
@@ -263,13 +421,106 @@
       });
     }
 
+    // ---- Fade+rise a panel in/out instead of an instant display toggle
+    // (see .kind-panel/.kind-panel-enter in this page's <style>). Setting
+    // display first, forcing a reflow, then removing the "entering" class
+    // on the next frame is what makes the CSS transition actually run —
+    // toggling straight to the end state would just snap. ----
+    function revealPanel(el) {
+      el.style.display = '';
+      el.classList.add('kind-panel-enter');
+      void el.offsetWidth;
+      requestAnimationFrame(function () {
+        el.classList.remove('kind-panel-enter');
+      });
+    }
+    function hidePanel(el) {
+      el.style.display = 'none';
+    }
+
     var buyerField = document.getElementById('buyerField');
     var buyerSelect = document.getElementById('buyer_name');
     var customerFieldsWrap = document.getElementById('customerFieldsWrap');
     var customerNameInput = document.getElementById('customer_name');
     var customerAddressInput = document.getElementById('customer_address');
+    var paymentMethodField = document.getElementById('paymentMethodField');
+    var paymentMethodHidden = document.getElementById('payment_method');
+    var saleTypeHidden = document.getElementById('sale_type');
+    var freebieField = document.getElementById('freebieField');
+    var freebieCheckbox = document.getElementById('freebieCheckbox');
+    var bottleSection = document.getElementById('bottleSection');
+    var looseSection = document.getElementById('looseSection');
 
-    wireSwitch('saleTypeSwitch', 'sale_type');
+    // ---- Top-level Sale/Refill, independent of Bottle/Loose ML below.
+    // Freebie isn't a third option here — it's a checkbox nested inside
+    // the Bottle section (see updateFreebieVisibility below), since a
+    // giveaway is always a real, whole, countable bottle here, never a
+    // loose ML pour. The single hidden `sale_type` field submitted to
+    // the server is always exactly one of Sale/Refill/Freebie — combined
+    // from topType + freebieCheckbox by recomputeSaleType(). ----
+    var topType = 'Sale';
+    var kind = 'bottle';
+
+    function updateFreebieVisibility() {
+      var show = topType === 'Sale' && kind === 'bottle';
+      var isHidden = freebieField.style.display === 'none';
+      if (show && isHidden) {
+        revealPanel(freebieField);
+      } else if (!show && !isHidden) {
+        hidePanel(freebieField);
+      }
+      if (!show && freebieCheckbox.checked) freebieCheckbox.checked = false;
+    }
+
+    // ---- Freebie: always ₱0, still deducts stock like a normal sale.
+    // Payment method doesn't apply to it (nothing is ever charged), so
+    // it's hidden and forced back to Cash whenever it's checked. ----
+    function applyFreebieLock(isFreebie) {
+      priceInput.readOnly = isFreebie;
+      if (isFreebie) {
+        priceInput.value = '0';
+        priceHint.textContent = '';
+      } else {
+        refreshPriceHint();
+      }
+
+      paymentMethodField.style.display = isFreebie ? 'none' : '';
+      if (isFreebie) {
+        document.querySelectorAll('#paymentSwitch .rb-mode-opt').forEach(function (b) {
+          b.classList.toggle('active', b.dataset.value === 'Cash');
+        });
+        paymentMethodHidden.value = 'Cash';
+        buyerField.style.display = 'none';
+        buyerSelect.required = false;
+        buyerSelect.value = '';
+        customerFieldsWrap.style.display = '';
+      }
+    }
+
+    function recomputeSaleType() {
+      var isFreebie = topType === 'Sale' && kind === 'bottle' && freebieCheckbox.checked;
+      saleTypeHidden.value = isFreebie ? 'Freebie' : topType;
+      applyFreebieLock(isFreebie);
+    }
+
+    document.getElementById('topTypeSwitch').addEventListener('click', function (e) {
+      var btn = e.target.closest('.choice-card');
+      if (!btn || btn.classList.contains('active')) return;
+      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      topType = btn.dataset.value;
+      updateFreebieVisibility();
+      recomputeSaleType();
+    });
+
+    document.getElementById('kindSwitch').addEventListener('click', function (e) {
+      var btn = e.target.closest('.choice-card');
+      if (!btn || btn.classList.contains('active')) return;
+      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      setKind(btn.dataset.value);
+    });
+
+    freebieCheckbox.addEventListener('change', recomputeSaleType);
+
     wireSwitch('paymentSwitch', 'payment_method', function (value) {
       var isCredit = value === 'Credit';
       buyerField.style.display = isCredit ? '' : 'none';
@@ -317,6 +568,7 @@
     var productSelect = document.getElementById('productName');
     var priceInput = document.getElementById('unit_price');
     var priceHint = document.getElementById('priceHint');
+    var qtyInput = document.getElementById('qty_sold');
 
     var catalog = [];
     try {
@@ -346,16 +598,44 @@
       productSelect.appendChild(opt);
     });
 
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Price charged is always PER UNIT of whatever Quantity counts in —
+    // for a bottle-counted product that's per bottle (e.g. ₱250/85ML
+    // bottle); for a product sold loose by volume (e.g. a 1L SKU priced
+    // at ₱0.82) it's per mL, with Quantity being how many mL were given.
+    // Either way, the actual total charged (qty × price — computed the
+    // same way everywhere else in the app: receipts, Sales History,
+    // reports) is only ever previewed here, never written back into the
+    // price field itself, so nothing here can double up with that
+    // multiplication downstream.
+    function refreshPriceHint() {
+      if (priceInput.readOnly) {
+        priceHint.textContent = '';
+        return;
+      }
+      var rate = parseFloat(priceInput.value);
+      var qty = parseFloat(qtyInput.value);
+      if (isNaN(rate) || rate < 0 || isNaN(qty) || qty <= 0) {
+        priceHint.textContent = '';
+        return;
+      }
+      priceHint.textContent = formatPeso(rate) + ' × ' + qty + ' = ' + formatPeso(rate * qty) + ' total — edit price if this sale used a different rate.';
+    }
+
     function applySuggestedPrice() {
       var opt = skuSelect.options[skuSelect.selectedIndex];
       var suggested = opt ? opt.dataset.price : null;
       if (suggested) {
         priceInput.value = suggested;
-        priceHint.textContent = 'Reference price: ₱' + Number(suggested).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' — edit if different.';
-      } else {
-        priceHint.textContent = '';
       }
+      refreshPriceHint();
     }
+
+    qtyInput.addEventListener('input', refreshPriceHint);
+    priceInput.addEventListener('input', refreshPriceHint);
 
     function populateUnits(productName) {
       skuSelect.innerHTML = '';
@@ -383,10 +663,92 @@
     productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
     skuSelect.addEventListener('change', applySuggestedPrice);
 
+    // ---- Loose ML: sold by volume — qty (mL) and price per mL are both
+    // freely typed (never looked up from a fixed formula), with the
+    // total only ever previewed here, same "never double up with the
+    // qty × price multiplication done everywhere downstream" reasoning
+    // as refreshPriceHint above. Only products actually stocked in the
+    // 1L/bulk size are offered, since that's the one size sold loose
+    // rather than as a discrete bottle (see utils.FORMULA_UNITS). ----
+    var looseSelect = document.getElementById('sku_loose');
+    var qtySoldLoose = document.getElementById('qty_sold_loose');
+    var unitPriceLoose = document.getElementById('unit_price_loose');
+    var looseTotalDisplay = document.getElementById('looseTotalDisplay');
+
+    var looseRows = catalog.filter(function (row) { return row.unit === '1L'; });
+    if (looseRows.length) {
+      looseRows.forEach(function (row) {
+        var opt = document.createElement('option');
+        opt.value = row.sku;
+        opt.dataset.price = row.price;
+        opt.textContent = row.item_name + ' — ' + row.stock_qty + ' in stock';
+        looseSelect.appendChild(opt);
+      });
+    } else {
+      looseSelect.options[0].textContent = 'No loose/bulk (1L) product stocked here';
+    }
+
+    function refreshLooseTotal() {
+      var rate = parseFloat(unitPriceLoose.value);
+      var qty = parseFloat(qtySoldLoose.value);
+      if (isNaN(rate) || rate < 0 || isNaN(qty) || qty <= 0) {
+        looseTotalDisplay.value = '';
+        return;
+      }
+      looseTotalDisplay.value = formatPeso(rate * qty);
+    }
+
+    function applySuggestedLoosePrice() {
+      var opt = looseSelect.options[looseSelect.selectedIndex];
+      var suggested = opt ? opt.dataset.price : null;
+      if (suggested) unitPriceLoose.value = suggested;
+      refreshLooseTotal();
+    }
+
+    looseSelect.addEventListener('change', applySuggestedLoosePrice);
+    qtySoldLoose.addEventListener('input', refreshLooseTotal);
+    unitPriceLoose.addEventListener('input', refreshLooseTotal);
+
+    // ---- Bottle vs Loose ML: which set of fields is actually active.
+    // The inactive set is fully `disabled` (not just visually hidden),
+    // so its `required` attributes never block submission, and only the
+    // active set's sku/qty_sold/unit_price values are what the browser
+    // actually submits under those shared field names. ----
+    function setKind(newKind) {
+      kind = newKind;
+      var isBottle = kind === 'bottle';
+      if (isBottle) {
+        revealPanel(bottleSection);
+        hidePanel(looseSection);
+      } else {
+        hidePanel(bottleSection);
+        revealPanel(looseSection);
+      }
+
+      productSelect.disabled = !isBottle;
+      qtyInput.disabled = !isBottle;
+      priceInput.disabled = !isBottle;
+      if (isBottle) {
+        populateUnits(productSelect.value);
+      } else {
+        skuSelect.disabled = true;
+      }
+
+      looseSelect.disabled = isBottle;
+      qtySoldLoose.disabled = isBottle;
+      unitPriceLoose.disabled = isBottle;
+
+      updateFreebieVisibility();
+      recomputeSaleType();
+    }
+
     if (productNames.length) {
       productSelect.value = productNames[0];
       populateUnits(productNames[0]);
     }
+
+    updateFreebieVisibility();
+    recomputeSaleType();
   })();
 </script>
 {% endblock %}

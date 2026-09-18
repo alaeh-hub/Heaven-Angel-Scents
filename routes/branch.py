@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import uuid
 from urllib.parse import urlencode
 
@@ -8,6 +9,7 @@ from db import TransactionAborted, execute, query, transaction
 from decorators import branch_required
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
 from sockets import notify_admin_and_branch
 from utils import (
     PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
@@ -600,13 +602,17 @@ def record_sale():
         try:
             qty = parse_positive_int(
                 request.form.get("qty_sold"), "Quantity sold")
-            # Strictly positive, not just non-negative — a Sale/Refill
-            # charging ₱0 is otherwise a way to move stock out as a
-            # "sale" with zero revenue and no record of it being a
-            # freebie/giveaway. A real comp/sample should be handled
-            # some other way HQ can see, not recorded as a normal sale.
-            unit_price = parse_positive_decimal(
-                request.form.get("unit_price"), "Price charged")
+            # Strictly positive, not just non-negative, for Sale/Refill —
+            # a ₱0 "Sale" would otherwise be a way to move stock out with
+            # zero revenue and no record of it being a freebie/giveaway.
+            # Freebie is the explicit way to log that instead — always
+            # ₱0, whatever was actually typed into the field (it's
+            # read-only client-side, but never trust that alone).
+            if sale_type == "Freebie":
+                unit_price = decimal.Decimal("0")
+            else:
+                unit_price = parse_positive_decimal(
+                    request.form.get("unit_price"), "Price charged")
             customer_name = parse_optional_text(
                 request.form.get("customer_name"), "Customer name", 120)
             customer_address = parse_optional_text(
@@ -621,8 +627,14 @@ def record_sale():
             return redirect(url_for("branch.record_sale"))
 
         if sale_type not in SALE_TYPES:
-            flash("Select whether this is a sale or a refill.", "error")
+            flash("Select whether this is a sale, a refill, or a freebie.", "error")
             return redirect(url_for("branch.record_sale"))
+        # Freebie is never actually paid for — payment_method only means
+        # something for a real charge (Cash vs. Credit), so it's forced
+        # to Cash here rather than exposed as its own choice, whatever
+        # the form happened to submit.
+        if sale_type == "Freebie":
+            payment_method = "Cash"
         if payment_method not in PAYMENT_METHODS:
             flash("Select a payment method.", "error")
             return redirect(url_for("branch.record_sale"))
@@ -630,7 +642,6 @@ def record_sale():
             flash("Select a product to sell.", "error")
             return redirect(url_for("branch.record_sale"))
 
-        # AFTER
         buyer_name = None
         if payment_method == "Credit":
             if not raw_buyer:
@@ -688,8 +699,12 @@ def record_sale():
                         "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
                         (after_qty, bid, sku),
                     )
-                movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale" if payment_method == "Cash" else f"Credit — {buyer_name}"
+                movement_type = {"Sale": "SALE", "Refill": "REFILL",
+                                  "Freebie": "FREEBIE"}[sale_type]
+                if sale_type == "Freebie":
+                    notes = "Freebie / giveaway"
+                else:
+                    notes = "Point-of-sale" if payment_method == "Cash" else f"Credit — {buyer_name}"
                 if is_refill:
                     notes += " · no stock deducted (refill)"
                 cur.execute(
@@ -747,7 +762,66 @@ def record_sale():
     return render_template(
         "branch/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
         customers=customers, form_token=issue_form_token("branch_record_sale"),
+        import_form_token=issue_form_token("branch_import_sales"),
     )
+
+
+# ---------------------------------------------------------------- bulk import (Excel)
+@bp.route("/record-sale/import-template")
+@branch_required
+def sales_import_template():
+    """Downloadable blank workbook for the "Import from Excel" button
+    below — see sales_import.build_sales_import_template().
+    """
+    bid = _branch_id()
+    inventory = query(
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
+           FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
+           WHERE bi.branch_id = %s ORDER BY p.item_name""",
+        (bid,),
+    )
+    buf = build_sales_import_template(inventory)
+    return send_file(
+        buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True, download_name="sales-import-template.xlsx",
+    )
+
+
+@bp.route("/record-sale/import", methods=["POST"])
+@branch_required
+def import_sales():
+    """Bulk-insert every row of an uploaded, filled-in copy of the
+    template above in one go, instead of using Record Sale one line at
+    a time. See sales_import.import_sales_rows() for the all-or-nothing
+    transaction this runs — either the whole file lands, or none of it
+    does, with every problem reported at once.
+    """
+    bid = _branch_id()
+    if not consume_form_token("branch_import_sales"):
+        flash(
+            "This import already went through, or the form expired — try uploading again.", "error")
+        return redirect(url_for("branch.record_sale"))
+
+    upload = request.files.get("import_file")
+    if not upload or not upload.filename:
+        flash("Choose an Excel file to import.", "error")
+        return redirect(url_for("branch.record_sale"))
+
+    try:
+        raw_rows = parse_sales_import_workbook(upload)
+        inserted = import_sales_rows(bid, raw_rows, session.get("user_id"))
+        notify_admin_and_branch(bid, ["inventory", "sales", "movement_logs"])
+        flash(
+            f"Imported {inserted} sale{'s' if inserted != 1 else ''} from the file.", "success")
+    except (ValidationError, TransactionAborted) as err:
+        for line in str(err).split("\n"):
+            if line.strip():
+                flash(line, "error")
+    except Exception:
+        current_app.logger.exception(
+            "sales import failed for branch_id=%s", bid)
+        flash("Couldn't import that file — please check the format and try again.", "error")
+    return redirect(url_for("branch.record_sale"))
 
 
 # ---------------------------------------------------------------- sales history

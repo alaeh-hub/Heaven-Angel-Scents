@@ -18,13 +18,23 @@ from flask import current_app, request, session
 # in admin.py/branch.py/reports.py) so the one allow-list is what every
 # form validates against, what every <select> is built from, and what
 # reports.py filters against.
-PRODUCT_UNITS = ("85ML", "50ML", "1L", "100ML", "10ML", "3ML Tester")
+PRODUCT_UNITS = ("85ML", "70ML", "55ML", "50ML", "1L", "100ML", "10ML", "3ML Tester")
+
+# The subset of PRODUCT_UNITS the Formulas (cost of goods) page covers —
+# every actual bottle size, but not 1L. 1L is sold loose by the mL (see
+# record_sale()'s live qty × price hint in branch.py/admin.py) at
+# whatever quantity/price is typed in per sale — there's no one fixed
+# "bottle" recipe for it to have a formula against, so it's left out of
+# the Formulas page entirely rather than sitting there permanently empty.
+FORMULA_UNITS = tuple(u for u in PRODUCT_UNITS if u != "1L")
 
 # Short, filename/SKU-safe suffix for each unit (no spaces), used only to
 # build the stored SKU from an admin-entered base product code — see
 # build_sku() below. Keys must exactly match PRODUCT_UNITS.
 _PRODUCT_UNIT_SUFFIXES = {
     "85ML": "85ML",
+    "70ML": "70ML",
+    "55ML": "55ML",
     "50ML": "50ML",
     "1L": "1L",
     "100ML": "100ML",
@@ -40,7 +50,18 @@ _BASE_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9\-]{0,29}$")
 # A sale is a normal transaction (customer takes a bottle); a refill is a
 # customer bringing back their own bottle and only paying for product.
 # Both consume stock; both carry their own manually-entered price.
-SALE_TYPES = ("Sale", "Refill")
+#
+# Freebie is a giveaway/comp/sample — it consumes stock the same way a
+# Sale does (a real bottle leaves inventory), but is always logged at
+# ₱0, unlike Sale/Refill which must be strictly positive (see
+# parse_positive_decimal's callers in routes/branch.py and routes/
+# admin.py) — that strict-positive rule exists specifically so a
+# giveaway can't be quietly disguised as a ₱0 "Sale" with nothing
+# marking it as one; Freebie is the explicit, visible way to log it
+# instead. Deliberately its own sale_type rather than a payment_method
+# value — payment_method (Cash/Credit) is about how a real charge gets
+# settled, which doesn't apply here since nothing is ever charged.
+SALE_TYPES = ("Sale", "Refill", "Freebie")
 
 # Cash is a normal register transaction. Credit is anyone — an employee
 # taking product against their own pay, or a customer buying on store

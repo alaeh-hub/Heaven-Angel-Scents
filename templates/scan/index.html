@@ -38,7 +38,26 @@
     border: 2px solid var(--accent);
     border-radius: 14px;
     pointer-events: none;
-    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
+      0 0 16px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: scan-reticle-glow 2s ease-in-out infinite;
+  }
+
+  /* Subtle "actively looking" pulse on the targeting frame while the
+     camera is on — the dimmed backdrop shadow (the 1000px spread above)
+     stays fixed, only the gold glow breathes. */
+  @keyframes scan-reticle-glow {
+
+    0%,
+    100% {
+      box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
+        0 0 10px 0 color-mix(in srgb, var(--accent) 40%, transparent);
+    }
+
+    50% {
+      box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
+        0 0 20px 2px color-mix(in srgb, var(--accent) 65%, transparent);
+    }
   }
 
   .scan-status {
@@ -157,13 +176,25 @@
   }
 
   @keyframes scan-flash-ok {
-    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent); }
-    to { box-shadow: 0 0 0 14px color-mix(in srgb, var(--success) 0%, transparent); }
+    from {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent),
+        0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 14px color-mix(in srgb, var(--success) 0%, transparent),
+        0 0 32px 6px color-mix(in srgb, var(--success) 0%, transparent);
+    }
   }
 
   @keyframes scan-flash-bad {
-    from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
-    to { box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent); }
+    from {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent),
+        0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent),
+        0 0 32px 6px color-mix(in srgb, var(--danger) 0%, transparent);
+    }
   }
 
   #scanResultCard.scan-pop-ok {

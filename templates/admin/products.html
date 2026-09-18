@@ -75,6 +75,8 @@
     Export the current catalog, edit it in a spreadsheet, then import it back — a row whose
     product code + unit already exists updates that product's name/variant/price; a new
     combination adds it to the catalog with zero stock everywhere, same as adding one by hand.
+    A new size for a code that already has other sizes on file takes that product's existing
+    name and variant, so a typo in one row can't rename it differently across its own sizes.
   </p>
   <!-- The "Columns: ..." help line used to live inside this field, which
        made column 1 taller than the button columns next to it — with
@@ -92,7 +94,7 @@
       <button type="submit" form="importProductsForm" class="btn btn-accent">Import CSV</button>
     </div>
     <div class="field" style="flex:0 0 auto;">
-      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank">Export CSV</a>
+      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank" data-generate-file>Export CSV</a>
     </div>
   </div>
   <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price — same order as Export CSV.</div>
@@ -250,13 +252,43 @@
     // Mirrors utils.py's _PRODUCT_UNIT_SUFFIXES — display-only preview,
     // the server always computes the real SKU itself on submit.
     var UNIT_SUFFIXES = {
-      '85ML': '85ML', '50ML': '50ML', '1L': '1L',
+      '85ML': '85ML', '70ML': '70ML', '55ML': '55ML', '50ML': '50ML', '1L': '1L',
       '100ML': '100ML', '10ML': '10ML', '3ML Tester': '3MLT'
     };
     var baseInput = document.getElementById('base_code');
     var unitSelect = document.getElementById('unit');
     var previewField = document.getElementById('skuPreviewField');
     var previewValue = document.getElementById('skuPreviewValue');
+    var itemNameInput = document.getElementById('item_name');
+    var variantSelect = document.getElementById('variant');
+
+    // Reuse the SAME product code for another size (e.g. A1-85ML already
+    // exists, now adding A1-1L) auto-fills the fragrance name and variant
+    // from whichever existing size that code already belongs to — a
+    // product's name/variant don't change across its own sizes, so typing
+    // them again is just a chance to make them inconsistent by mistake.
+    // Built by reversing build_sku()'s <code>-<suffix> shape (using the
+    // same UNIT_SUFFIXES mirror above) off each catalog row's own
+    // data-sku/data-unit/data-item-name/data-variant (see the "Edit"
+    // buttons in the table below) — no extra data from the server needed.
+    var basesByCode = {};
+    document.querySelectorAll('[data-sku][data-unit]').forEach(function (el) {
+      var suffix = UNIT_SUFFIXES[el.dataset.unit];
+      var sku = el.dataset.sku || '';
+      if (!suffix || sku.slice(-(suffix.length + 1)) !== '-' + suffix) return;
+      var code = sku.slice(0, sku.length - suffix.length - 1);
+      if (!basesByCode[code]) {
+        basesByCode[code] = { item_name: el.dataset.itemName, variant: el.dataset.variant };
+      }
+    });
+
+    function autofillFromBaseCode() {
+      var match = basesByCode[baseInput.value.trim().toUpperCase()];
+      if (!match) return;
+      if (itemNameInput) itemNameInput.value = match.item_name;
+      if (variantSelect) variantSelect.value = match.variant;
+    }
+
     if (baseInput && unitSelect && previewField && previewValue) {
       function updatePreview() {
         var base = baseInput.value.trim().toUpperCase();
@@ -268,7 +300,10 @@
           previewField.style.display = 'none';
         }
       }
-      baseInput.addEventListener('input', updatePreview);
+      baseInput.addEventListener('input', function () {
+        updatePreview();
+        autofillFromBaseCode();
+      });
       unitSelect.addEventListener('change', updatePreview);
     }
   })();

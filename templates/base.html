@@ -621,6 +621,20 @@
 
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
+
+    {% if show_login_splash %}
+    <!-- One-shot, shown only on the page a fresh login redirects to
+         (see app.py's inject_login_splash() and auth.py's login()) —
+         a brief centered-logo moment before the app itself appears,
+         same idea as the splash Facebook/Instagram show right after
+         signing in. main.js's initLoginSplash() fades this out and
+         removes it from the DOM a moment after the page loads. -->
+    <div class="login-splash" id="loginSplash" role="status" aria-live="polite" aria-label="Signing you in">
+        <img class="login-splash-logo" src="{{ url_for('static', filename='img/logo-wordmark.png') }}"
+            alt="Heaven &amp; Angel Scents">
+    </div>
+    {% endif %}
+
     <div class="app-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
         <aside class="sidebar" id="sidebar">

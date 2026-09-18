@@ -19,9 +19,10 @@ from audit import log_action
 import login_activity
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
-    MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
+    FORMULA_UNITS, MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
     build_sku, consume_form_token, generate_temp_password, issue_form_token, parse_base_code,
     parse_non_negative_decimal, parse_non_negative_int, parse_optional_id, parse_optional_text,
     parse_past_date, parse_positive_decimal, parse_positive_int, parse_required_text,
@@ -537,7 +538,12 @@ def import_products():
         image_path are left alone (same restriction as edit_product() —
         change a size by adding a new base_code/unit row instead).
       - SKU is new          -> insert it and give every existing branch
-        a zero-stock row, same as the manual add path.
+        a zero-stock row, same as the manual add path. If this base_code
+        already has another size on file, that size's item_name/variant
+        win over whatever this row says (see the sibling_skus lookup
+        below) — same "reusing a code means the same product" autofill
+        the manual form does live, so one row's typo can't leave a scent
+        named differently across its own sizes.
 
     One bad or duplicate-in-file row is skipped and reported by row
     number rather than aborting the whole upload, so a single typo
@@ -587,6 +593,29 @@ def import_products():
 
         existing = query(
             "SELECT sku FROM products WHERE sku = %s", (sku,), fetchone=True)
+
+        # A brand-new size for a code that already has other sizes on
+        # file (e.g. this row is A1-1L and A1-85ML already exists) takes
+        # THAT product's name/variant instead of whatever this row says —
+        # same "reusing a code means the same product" behavior as the
+        # live autofill on the manual Add a Product form, just applied
+        # here so a typo in one CSV row can't quietly rename a scent
+        # differently across its own sizes. Only for a genuinely new SKU;
+        # editing an existing one's own name/variant already goes through
+        # this same row further down (or the Edit form) untouched.
+        if not existing:
+            sibling_skus = [build_sku(base_code, u)
+                             for u in PRODUCT_UNITS if u != unit]
+            if sibling_skus:
+                placeholders = ",".join(["%s"] * len(sibling_skus))
+                sibling = query(
+                    f"SELECT item_name, variant FROM products WHERE sku IN ({placeholders}) LIMIT 1",
+                    tuple(sibling_skus), fetchone=True,
+                )
+                if sibling:
+                    item_name = sibling["item_name"]
+                    variant = sibling["variant"]
+
         try:
             if existing:
                 execute(
@@ -1057,11 +1086,16 @@ def record_sale():
 
         try:
             qty = parse_positive_int(request.form.get("qty_sold"), "Quantity")
-            # Strictly positive — see branch.record_sale()'s identical
-            # comment: a ₱0 Sale/Refill is otherwise a way to move stock
-            # out with no revenue and nothing marking it as a freebie.
-            unit_price = parse_positive_decimal(
-                request.form.get("unit_price"), "Price charged")
+            # Strictly positive for Sale/Refill — see branch.record_sale()'s
+            # identical comment: a ₱0 Sale would otherwise be a way to
+            # move stock out with no revenue and nothing marking it as a
+            # freebie. Freebie is the explicit way to log that instead —
+            # always ₱0, whatever was actually typed into the field.
+            if sale_type == "Freebie":
+                unit_price = decimal.Decimal("0")
+            else:
+                unit_price = parse_positive_decimal(
+                    request.form.get("unit_price"), "Price charged")
             customer_name = parse_optional_text(
                 request.form.get("customer_name"), "Customer name", 120)
             customer_address = parse_optional_text(
@@ -1076,8 +1110,14 @@ def record_sale():
             return redirect(url_for("admin.record_sale"))
 
         if sale_type not in SALE_TYPES:
-            flash("Select whether this is a sale or a refill.", "error")
+            flash("Select whether this is a sale, a refill, or a freebie.", "error")
             return redirect(url_for("admin.record_sale"))
+        # Freebie is never actually paid for — payment_method only means
+        # something for a real charge (Cash vs. Credit), so it's forced
+        # to Cash here rather than exposed as its own choice, whatever
+        # the form happened to submit.
+        if sale_type == "Freebie":
+            payment_method = "Cash"
         if payment_method not in PAYMENT_METHODS:
             flash("Select a payment method.", "error")
             return redirect(url_for("admin.record_sale"))
@@ -1135,8 +1175,12 @@ def record_sale():
                         "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
                         (after_qty, HQ_BRANCH_ID, sku),
                     )
-                movement_type = "SALE" if sale_type == "Sale" else "REFILL"
-                notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Credit — {buyer_name}"
+                movement_type = {"Sale": "SALE", "Refill": "REFILL",
+                                  "Freebie": "FREEBIE"}[sale_type]
+                if sale_type == "Freebie":
+                    notes = "Freebie / giveaway (HQ)"
+                else:
+                    notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Credit — {buyer_name}"
                 if is_refill:
                     notes += " · no stock deducted (refill)"
                 cur.execute(
@@ -1196,7 +1240,63 @@ def record_sale():
     return render_template(
         "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
         customers=customers, form_token=issue_form_token("admin_record_sale"),
+        import_form_token=issue_form_token("admin_import_sales"),
     )
+
+
+# ---------------------------------------------------------------- bulk import (Excel)
+@bp.route("/record-sale/import-template")
+@admin_required
+def sales_import_template():
+    """Downloadable blank workbook for the "Import from Excel" button
+    below — see sales_import.build_sales_import_template().
+    """
+    inventory = query(
+        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
+           FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
+           WHERE bi.branch_id = %s ORDER BY p.item_name""",
+        (HQ_BRANCH_ID,),
+    )
+    buf = build_sales_import_template(inventory)
+    return send_file(
+        buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True, download_name="sales-import-template.xlsx",
+    )
+
+
+@bp.route("/record-sale/import", methods=["POST"])
+@admin_required
+def import_sales():
+    """Bulk-insert every row of an uploaded, filled-in copy of the
+    template above in one go. Mirrors branch.import_sales() — see
+    sales_import.import_sales_rows() for the all-or-nothing transaction
+    this runs against the HQ warehouse (branch_id=1).
+    """
+    if not consume_form_token("admin_import_sales"):
+        flash(
+            "This import already went through, or the form expired — try uploading again.", "error")
+        return redirect(url_for("admin.record_sale"))
+
+    upload = request.files.get("import_file")
+    if not upload or not upload.filename:
+        flash("Choose an Excel file to import.", "error")
+        return redirect(url_for("admin.record_sale"))
+
+    try:
+        raw_rows = parse_sales_import_workbook(upload)
+        inserted = import_sales_rows(
+            HQ_BRANCH_ID, raw_rows, session.get("user_id"))
+        notify_admin(["inventory", "sales", "movement_logs"])
+        flash(
+            f"Imported {inserted} sale{'s' if inserted != 1 else ''} from the file.", "success")
+    except (ValidationError, TransactionAborted) as err:
+        for line in str(err).split("\n"):
+            if line.strip():
+                flash(line, "error")
+    except Exception:
+        current_app.logger.exception("admin sales import failed")
+        flash("Couldn't import that file — please check the format and try again.", "error")
+    return redirect(url_for("admin.record_sale"))
 
 
 # ---------------------------------------------------------------- user accounts
@@ -2228,13 +2328,17 @@ def edit_material():
 @bp.route("/formulas")
 @admin_required
 def formulas():
-    """Bill-of-materials editor: for each PACKAGING SIZE (85ML, 50ML,
-    1L, 100ML, 10ML, 3ML Tester — see unit_formula_items in schema.sql),
-    which raw materials (and how much of each) go into producing ONE
+    """Bill-of-materials editor: for each bottled PACKAGING SIZE (see
+    utils.FORMULA_UNITS and unit_formula_items in schema.sql), which raw
+    materials (and how much of each) go into producing ONE
     unit of it. Deliberately keyed by unit, not by product — every scent
     sold in, say, 85ML shares the same 85ML formula. This is what logging
     a production run now runs off of automatically (see production()
     above) instead of a separate raw-materials picker.
+
+    1L is deliberately excluded — it's sold loose by the mL, at whatever
+    quantity/price is typed in on Record Sale, not as a fixed bottle
+    with one recipe to cost out (see utils.FORMULA_UNITS).
     """
     materials_list = query(
         """SELECT material_id, material_name, unit
@@ -2252,13 +2356,12 @@ def formulas():
     for row in formula_rows:
         items_by_unit.setdefault(row["unit"], []).append(row)
 
-    # PRODUCT_UNITS is the same fixed 6-item list products.unit is
-    # validated against — every packaging size gets a row here whether
-    # or not it has a formula yet, so admins see the full picture (which
-    # sizes still need one) rather than only ever seeing sizes someone
-    # already set up.
+    # FORMULA_UNITS is PRODUCT_UNITS minus 1L (see its own comment in
+    # utils.py) — every bottle size gets a row here whether or not it has
+    # a formula yet, so admins see the full picture (which sizes still
+    # need one) rather than only ever seeing sizes someone already set up.
     units = []
-    for unit in PRODUCT_UNITS:
+    for unit in FORMULA_UNITS:
         items = items_by_unit.get(unit, [])
         units.append({
             "unit": unit,
@@ -2296,7 +2399,7 @@ def save_formula():
     schema.sql for why a formula is a fully custom recipe now.
     """
     unit = request.form.get("unit")
-    if unit not in PRODUCT_UNITS:
+    if unit not in FORMULA_UNITS:
         flash("Select a valid packaging size.", "error")
         return redirect(url_for("admin.formulas"))
 

@@ -133,6 +133,11 @@ def login():
             return redirect(url_for("auth.change_password"))
 
         flash(f"Welcome back, {user['username']}.", "success")
+        # One-shot flag, popped by app.py's inject_login_splash() the
+        # first time any base.html page renders after this — shows the
+        # branded splash in base.html once, then never again until the
+        # next login.
+        session["show_login_splash"] = True
         return redirect(url_for("admin.dashboard"
                                 if user["role"] == "Admin"
                                 else "branch.dashboard"))

@@ -35,16 +35,17 @@
 
   {% macro movement_badge(mtype) %}
   {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL':
-  'female', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
+  'female', 'FREEBIE': 'pending', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
   <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
   {% endmacro %}
 
   {# A Sale is the normal case (customer takes a bottle). A Refill is a
   customer bringing their own bottle back and only paying for product.
-  Both consume stock the same way — this badge is purely a visual cue
+  A Freebie is a giveaway/comp/sample — always ₱0, consumes stock like
+  a Sale. All three consume stock; this badge is purely a visual cue
   for which one a given row was. #}
   {% macro sale_type_badge(sale_type) %}
-  {% set map = {'Sale': 'fulfilled', 'Refill': 'transit'} %}
+  {% set map = {'Sale': 'fulfilled', 'Refill': 'transit', 'Freebie': 'pending'} %}
   <span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
   {% endmacro %}
 

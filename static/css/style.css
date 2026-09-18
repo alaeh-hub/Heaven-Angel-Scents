@@ -285,6 +285,12 @@ a {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 0.1875rem;
+  /* Soft gold glow behind the hard outline — reads as "lit up", not
+     just outlined, matching the black & gold brand elsewhere. Kept
+     low-opacity/wide-blur so it never fights the outline for
+     legibility, and costs nothing on non-rectangular/inline targets
+     since it's additive to the outline, not a layout-affecting box. */
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 /* Off-screen until focused, then dropped into view at the top-left —
@@ -457,6 +463,7 @@ th.num {
   height: 1px;
   background: var(--brand-gold);
   opacity: 0.5;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--brand-gold) 70%, transparent);
 }
 
 .sidebar-close {
@@ -610,6 +617,26 @@ th.num {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px var(--success-soft);
+  animation: live-dot-glow 2.4s ease-in-out infinite;
+}
+
+/* Gentle pulsing glow on the "system is live" dot next to the sidebar/
+   login-panel subtitle — reads as an active status light rather than a
+   plain static marker. Layered onto the existing ring box-shadow above
+   (not replacing it) so the ring still gives the dot definition on both
+   light and dark surfaces at rest. */
+@keyframes live-dot-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--success-soft),
+      0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent);
+  }
+
+  50% {
+    box-shadow: 0 0 0 3px var(--success-soft),
+      0 0 6px 3px color-mix(in srgb, var(--success) 45%, transparent);
+  }
 }
 
 /* Collapsed rail (at rest, unhovered, unpinned — see .sidebar's own
@@ -811,6 +838,7 @@ th.num {
   height: 56%;
   border-radius: 0 0.25rem 0.25rem 0;
   background: var(--accent);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--accent) 65%, transparent);
   /* Reveal-direction transition for the collapsed-rail override below
      (hide direction there is fast + immediate) — same choreography as
      everything else on the rail. */
@@ -821,7 +849,8 @@ th.num {
   opacity: 1;
   background: var(--accent);
   color: var(--gold-contrast);
-  box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 50%, transparent),
+    0 0 12px 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* Always absolutely positioned (against .nav-link's own position:
@@ -2201,6 +2230,10 @@ th.num {
 
 .btn-primary:hover {
   background: color-mix(in srgb, var(--brand-black) 80%, var(--brand-gold));
+  /* Fixed --brand-gold rather than the theme's --accent, same reasoning
+     as the button's own fill/border above — a black chip should glow
+     gold in both themes, not shift with the theme's accent. */
+  box-shadow: 0 0 18px 1px color-mix(in srgb, var(--brand-gold) 45%, transparent);
 }
 
 .btn-accent {
@@ -2210,6 +2243,7 @@ th.num {
 
 .btn-accent:hover {
   background: var(--accent-ink);
+  box-shadow: 0 0 16px 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .btn-ghost {
@@ -2359,6 +2393,94 @@ th.num {
   }
 }
 
+/* Full-screen branded splash shown once, right after a successful
+   sign-in (see #loginSplash in base.html and initLoginSplash() in
+   main.js, which holds it briefly then fades it out and removes it
+   from the DOM). Sits above .loading-overlay (10000) since a slow
+   login POST could still be closing that overlay as this page's own
+   first paint happens. prefers-reduced-motion is handled by the same
+   global animation-duration override .loading-overlay relies on
+   (further up this file), not a rule of its own. */
+.login-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.login-splash-logo {
+  width: 220px;
+  max-width: 55vw;
+  animation: login-splash-logo-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes login-splash-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+
+.login-splash.login-splash-exit {
+  animation: login-splash-out 0.35s ease-in forwards;
+}
+
+@keyframes login-splash-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Centered dialog shown while a receipt/report/CSV export is being
+   built server-side (see main.js's initGenerateFileFeedback() and
+   runFileGeneration()) — reuses .loading-overlay/.loading-dialog for
+   the backdrop and card, just with a progress bar in place of the
+   plain spinner, since these downloads (unlike a normal form submit)
+   never navigate the current tab on their own, so without this
+   there's nothing on screen between the click and the browser's own
+   download indicator a moment later. */
+.gen-progress-track {
+  width: 220px;
+  max-width: 60vw;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.gen-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+/* Server-side PDF/Excel generation itself reports no measurable
+   progress (send_file only hands back a Content-Length once the file
+   is already fully built) — this sliding-bar state stands in for that
+   "still working, no percentage available" phase, and setGenerateProgress()
+   in main.js switches to a real, determinate width the moment response
+   bytes actually start arriving. */
+.gen-progress-track.indeterminate .gen-progress-fill {
+  width: 40%;
+  transition: none;
+  animation: gen-progress-indeterminate 1.6s ease-in-out infinite;
+}
+
+@keyframes gen-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
 .field {
   margin-bottom: 1rem;
 }
@@ -2400,6 +2522,7 @@ textarea {
   font-size: 0.875rem;
   background: var(--surface);
   color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus,
@@ -3265,6 +3388,10 @@ input[type="file"]:hover::-webkit-file-upload-button {
   opacity: 0.55;
   pointer-events: none;
   z-index: 1;
+  /* Same slow ambient drift as the public package page's .pp-glow
+     blobs — a still glow next to the looping background video read as
+     static/frozen by comparison. */
+  animation: auth-blob-drift 20s ease-in-out infinite;
 }
 
 .auth-blob-gold {
@@ -3281,6 +3408,19 @@ input[type="file"]:hover::-webkit-file-upload-button {
   background: var(--accent-ink);
   bottom: -6.25rem;
   right: -3.75rem;
+  animation-delay: -10s;
+}
+
+@keyframes auth-blob-drift {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(1.5rem, -1.125rem) scale(1.08);
+  }
 }
 
 .auth-visual-inner {

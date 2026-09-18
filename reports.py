@@ -52,8 +52,8 @@ register_fonts()
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
 STATUS_CHOICES = ("Pending", "In Transit", "Fulfilled", "Rejected")
-MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH",
-                         "RECEIPT", "SALE", "REFILL", "ADJUSTMENT", "DAMAGE")
+MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH", "RECEIPT",
+                         "SALE", "REFILL", "FREEBIE", "ADJUSTMENT", "DAMAGE")
 VARIANT_CHOICES = ("Male", "Female", "Unisex")
 ROLE_CHOICES = ("Admin", "Branch")
 UNIT_CHOICES = PRODUCT_UNITS
@@ -108,9 +108,10 @@ BADGE_KIND_MAPS = {
     "status": {"Pending": "pending", "In Transit": "transit", "Fulfilled": "fulfilled", "Rejected": "rejected"},
     "movement_type": {
         "PRODUCTION": "fulfilled", "DISPATCH": "transit", "RECEIPT": "fulfilled",
-        "SALE": "unisex", "REFILL": "female", "ADJUSTMENT": "pending", "DAMAGE": "rejected",
+        "SALE": "unisex", "REFILL": "female", "FREEBIE": "pending",
+        "ADJUSTMENT": "pending", "DAMAGE": "rejected",
     },
-    "sale_type": {"Sale": "fulfilled", "Refill": "transit"},
+    "sale_type": {"Sale": "fulfilled", "Refill": "transit", "Freebie": "pending"},
     "payment_method": {"Cash": "active", "Credit": "pending"},
     "variant": {"Male": "male", "Female": "female", "Unisex": "unisex"},
     "active_status": {"Active": "active", "Discontinued": "inactive", "Deactivated": "inactive"},

@@ -437,7 +437,7 @@
               <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
               <td data-label="" class="mobile-inline-action">
                 {% if r.status == 'Fulfilled' %}
-                <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
+                <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
                 {% endif %}
               </td>
             </tr>

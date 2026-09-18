@@ -48,7 +48,7 @@
             <td class="num mono" data-label="Unit price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td data-label="" class="mobile-inline-action">
-              <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank">Receipt</a>
+              <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
             </td>
           </tr>
           {% endfor %}

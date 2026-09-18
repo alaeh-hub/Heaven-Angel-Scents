@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS products (
     sku         VARCHAR(50) PRIMARY KEY,
     item_name   VARCHAR(100) NOT NULL,
     variant     ENUM('Male', 'Female', 'Unisex') NOT NULL,
-    unit        ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL DEFAULT '50ML',
+    unit        ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL DEFAULT '50ML',
     price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     -- Path to the uploaded product photo, relative to the Flask app's
     -- static folder (e.g. 'uploads/products/<uuid>.jpg'), so it can be
@@ -184,8 +184,8 @@ CREATE TABLE IF NOT EXISTS production_logs (
 
 -- ----------------------------------------------------------------------------
 -- 5a. Unit Formulas (Cost of Goods) — the recipe of raw materials that go
---     into producing ONE unit of a given PACKAGING SIZE (85ML, 50ML, 1L,
---     100ML, 10ML, 3ML Tester — the same fixed list as products.unit).
+--     into producing ONE unit of a given PACKAGING SIZE (see
+--     utils.PRODUCT_UNITS — the same fixed list as products.unit).
 --
 --     Deliberately keyed by `unit`, not by sku: every product of the same
 --     packaging size (e.g. every 85ML scent) shares one formula — there's
@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS production_logs (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS unit_formula_items (
     formula_item_id INT AUTO_INCREMENT PRIMARY KEY,
-    unit            ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL,
+    unit            ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL,
     material_id     INT NOT NULL,
     qty_per_unit    DECIMAL(10, 4) NOT NULL,
     line_cost       DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,   -- hand-entered total cost for this line; independent of qty_per_unit and raw_materials.cost_per_unit
@@ -393,7 +393,12 @@ CREATE TABLE IF NOT EXISTS stock_request_items (
 --    'Refill' (customer brings back a bottle and only pays for product) —
 --    both consume stock and both carry a manually-entered unit_price,
 --    since refills are usually charged a different amount than a full
---    sale of the same SKU.
+--    sale of the same SKU. 'Freebie' is a giveaway/comp/sample — it
+--    consumes stock the same way a Sale does, but unit_price is always
+--    0 for it (every other sale_type requires unit_price > 0 at the
+--    application layer — see routes/branch.py's and routes/admin.py's
+--    record_sale() — specifically so a giveaway can't be quietly
+--    disguised as a ₱0 "Sale" with nothing marking it as one).
 --
 --    payment_method + buyer_name: covers anyone — an employee taking
 --    product against their own pay, or a customer buying on store
@@ -423,7 +428,7 @@ CREATE TABLE IF NOT EXISTS sales (
     sku              VARCHAR(50) NOT NULL,
     qty_sold         INT NOT NULL,
     unit_price       DECIMAL(10, 2) NOT NULL,
-    sale_type        ENUM('Sale', 'Refill') NOT NULL DEFAULT 'Sale',
+    sale_type        ENUM('Sale', 'Refill', 'Freebie') NOT NULL DEFAULT 'Sale',
     payment_method   ENUM('Cash', 'Credit') NOT NULL DEFAULT 'Cash',
     buyer_user_id    INT NULL,                 -- who's being charged, only set for Credit sales
     customer_name    VARCHAR(120) NULL,
@@ -441,13 +446,19 @@ CREATE TABLE IF NOT EXISTS sales (
 
 -- ----------------------------------------------------------------------------
 -- 8. Universal Stock Movement Logs (Audit Trail / Ledger)
+--
+--    FREEBIE is its own movement_type (not just SALE with a note) for
+--    the same reason sales.sale_type has its own 'Freebie' value — see
+--    that table's comment above — so a giveaway is easy to spot and
+--    filter for on its own in the Movement Logs / Reports pages instead
+--    of blending into ordinary sale traffic.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS stock_movement_logs (
     log_id             INT AUTO_INCREMENT PRIMARY KEY,
     branch_id          INT NOT NULL,
     sku                VARCHAR(50) NOT NULL,
     change_qty         INT NOT NULL,               -- positive for additions, negative for deductions
-    movement_type      ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'ADJUSTMENT', 'DAMAGE') NOT NULL,
+    movement_type      ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE') NOT NULL,
     notes              VARCHAR(255),
     -- Who/what caused this entry, and the stock level immediately
     -- before/after it, so disputes ("where did these units go?") can
@@ -697,7 +708,7 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'unit'
     ) THEN
         ALTER TABLE products
-            ADD COLUMN unit ENUM('85ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
+            ADD COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
                 NOT NULL DEFAULT '50ML' AFTER variant;
     END IF;
 
@@ -760,7 +771,7 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'sale_type'
     ) THEN
         ALTER TABLE sales
-            ADD COLUMN sale_type ENUM('Sale', 'Refill') NOT NULL DEFAULT 'Sale' AFTER unit_price;
+            ADD COLUMN sale_type ENUM('Sale', 'Refill', 'Freebie') NOT NULL DEFAULT 'Sale' AFTER unit_price;
     END IF;
 
     -- sales.payment_method --------------------------------------------
@@ -1516,3 +1527,186 @@ DELIMITER ;
 
 CALL _migrate_unit_formula_items_unit_cost_to_line_cost();
 DROP PROCEDURE _migrate_unit_formula_items_unit_cost_to_line_cost;
+
+-- ----------------------------------------------------------------------------
+-- 28. Migration — unit_formula_items.is_packaging / cogs_logs.sale_id: removed
+--
+--     Both were added to auto-log a Refill's cost of goods against
+--     capital (a Refill formula minus packaging lines), then reverted —
+--     this feature turned out not to be needed; a Refill can be logged
+--     from Record Sale or the Excel import with no formula involved at
+--     all, and the app never required one. This migration drops both if
+--     an earlier run of this file already added them, so any database
+--     converges back to the plain shape (unit_formula_items with no
+--     packaging flag, cogs_logs written only from production runs).
+--     Guarded and re-run-safe like every other step in this file — a
+--     no-op on a database that never had either column.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_remove_refill_cogs_feature()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items' AND column_name = 'is_packaging'
+    ) THEN
+        ALTER TABLE unit_formula_items DROP COLUMN is_packaging;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'cogs_logs' AND column_name = 'sale_id'
+    ) THEN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cogs_logs'
+                  AND CONSTRAINT_NAME = 'fk_cogs_logs_sale' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+        ) THEN
+            ALTER TABLE cogs_logs DROP FOREIGN KEY fk_cogs_logs_sale;
+        END IF;
+        ALTER TABLE cogs_logs DROP COLUMN sale_id;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_remove_refill_cogs_feature();
+DROP PROCEDURE _migrate_remove_refill_cogs_feature;
+
+-- ----------------------------------------------------------------------------
+-- 30. Migration — products.unit / unit_formula_items.unit: add 70ML
+--
+--     Widens both packaging-size ENUMs to add '70ML' alongside the
+--     existing 85ML/50ML/1L/100ML/10ML/3ML Tester — see utils.py's
+--     PRODUCT_UNITS, the single Python source of truth every route/
+--     report/template validates against or loops over. Existing rows
+--     are untouched (this only adds a new allowed value, same "widen,
+--     never narrow silently" shape as every other ENUM migration in
+--     this file, e.g. stock_movement_logs.movement_type gaining
+--     'REFILL' above). Guarded and re-run-safe like every other step
+--     in this file — a no-op on a fresh install, which already gets
+--     70ML straight from the CREATE TABLE statements above.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_add_70ml_unit()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products'
+              AND column_name = 'unit' AND column_type LIKE '%70ML%'
+    ) THEN
+        ALTER TABLE products
+            MODIFY COLUMN unit ENUM('85ML', '70ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
+                NOT NULL DEFAULT '50ML';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items'
+              AND column_name = 'unit' AND column_type LIKE '%70ML%'
+    ) THEN
+        ALTER TABLE unit_formula_items
+            MODIFY COLUMN unit ENUM('85ML', '70ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_add_70ml_unit();
+DROP PROCEDURE _migrate_add_70ml_unit;
+
+-- ----------------------------------------------------------------------------
+-- 31. Migration — products.unit / unit_formula_items.unit: add 55ML
+--
+--     Same shape as migration 30 above, for the same reason — see
+--     utils.py's PRODUCT_UNITS. Kept as its own separate, independently
+--     guarded step (rather than folded into migration 30) since a
+--     database that already ran migration 30 before 55ML existed would
+--     otherwise never pick it up — that migration's own guard
+--     (column_type LIKE '%70ML%') would already read as "done" and
+--     skip re-running. Guarded and re-run-safe like every other step in
+--     this file — a no-op on a fresh install, which already gets 55ML
+--     straight from the CREATE TABLE statements above.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_add_55ml_unit()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products'
+              AND column_name = 'unit' AND column_type LIKE '%55ML%'
+    ) THEN
+        ALTER TABLE products
+            MODIFY COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
+                NOT NULL DEFAULT '50ML';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items'
+              AND column_name = 'unit' AND column_type LIKE '%55ML%'
+    ) THEN
+        ALTER TABLE unit_formula_items
+            MODIFY COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_add_55ml_unit();
+DROP PROCEDURE _migrate_add_55ml_unit;
+
+-- ----------------------------------------------------------------------------
+-- 32. Migration — sales.sale_type / stock_movement_logs.movement_type: add Freebie
+--
+--     Widens both ENUMs to add 'Freebie'/'FREEBIE' for logging a
+--     giveaway/comp/sample — see the comments on both tables above and
+--     utils.py's SALE_TYPES for the full reasoning. Existing rows are
+--     untouched (only adds a new allowed value). Guarded and re-run-safe
+--     like every other step in this file — a no-op on a fresh install,
+--     which already gets both straight from the CREATE TABLE statements
+--     above.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_add_freebie()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales'
+              AND column_name = 'sale_type' AND column_type LIKE '%Freebie%'
+    ) THEN
+        ALTER TABLE sales
+            MODIFY COLUMN sale_type ENUM('Sale', 'Refill', 'Freebie') NOT NULL DEFAULT 'Sale';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'stock_movement_logs'
+              AND column_name = 'movement_type' AND column_type LIKE '%FREEBIE%'
+    ) THEN
+        ALTER TABLE stock_movement_logs
+            MODIFY COLUMN movement_type
+            ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE') NOT NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_add_freebie();
+DROP PROCEDURE _migrate_add_freebie;
+
+-- ----------------------------------------------------------------------------
+-- 33. Migration — unit_formula_items: drop any 1L rows
+--
+--     1L is sold loose by the mL (whatever quantity/price is typed in on
+--     Record Sale — see utils.FORMULA_UNITS), not as a fixed bottle with
+--     one recipe to cost out, so the Formulas page no longer offers it
+--     at all. This clears out any 1L formula lines a database might
+--     already have from before that restriction existed. A plain DELETE
+--     rather than a guarded procedure — safe to re-run any time, and a
+--     no-op once there's nothing left to delete.
+-- ----------------------------------------------------------------------------
+DELETE FROM unit_formula_items WHERE unit = '1L';
