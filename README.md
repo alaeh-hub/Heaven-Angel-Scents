@@ -268,3 +268,39 @@ This is a serious internal operations platform with clear business workflows, ac
 Heaven & Angel Scents is a full inventory and branch operations system for a fragrance brand. It combines warehouse management, branch retail operations, partner lead handling, reporting, operational audit logs, and AI-assisted business support into a single Flask application.
 
 It is currently structured as a real-world internal business system with strong operational guardrails, role isolation, and traceable inventory and finance workflows.
+
+
+Build and reconcile Jan–Jul 2026 Sales/COGS/Profit workbook for Heaven and Angel Scents
+
+- Extracted per-month SALE/REFILL tables from raw SALES WITH DETAILS,
+  split by branch (Lipa City vs. Balayan) with subtotals + grand totals
+- Built COGS calculations from scratch (materials → per-bottle/per-ml
+  rates → Business 1 & 2 cost), cross-checked against each month's own
+  Monthly Report tab
+- Discovered source files use two disagreeing rate methodologies:
+  split tabs (₱95/₱6/₱0.82-per-ml + container costs, used in Jan) vs.
+  combined "MONTHLY REPORT" tabs (₱85/₱67-flat/₱10/₱1.00-per-ml, no
+  container line, used Feb–Jul); switched Feb–Jul to match the
+  combined tab per instruction, left Jan on the original rates
+- Found and fixed: February missing Address column (rebuilt from raw
+  file), missed online Shopee orders (+₱1,569.04), March's profit
+  formula bug (referenced prior month's sales), free/promotional
+  bottles inconsistently excluded from COGS (now included everywhere
+  at full cost — Jan +₱570, Feb +₱85)
+- Merged branch-split file + COGS file into one MASTER workbook:
+  added cross-file SUMMARY (financials + branch totals) with 3 charts,
+  a PRICING CHANGES tab documenting the Feb rate change, and a DATA
+  QUALITY NOTES tab compiling every inconsistency found
+- Applied black-and-gold theme across all 25 sheets (Cambria/Calibri
+  fonts, gold headers/totals, restyled charts) to match the site's
+  branding
+- Investigated the Supplier tab's ₱90 rate vs. ₱85/₱95 in use;
+  built a materials-cost reconstruction (~₱83.71/bottle) as a
+  standalone PDF, including a January-specific check (materials
+  prices unchanged from July, scent mix not the cause of the gap)
+- Identified 85ml-refill bottle-count errors in the combined tab for
+  Feb (22 vs. actual 20), Mar (16 vs. actual 31 — the big one), and
+  Apr (26 vs. actual 27); corrections proposed but not yet applied
+
+Files: Heaven_and_Angel_Scents_MASTER_Jan-Jul2026.xlsx,
+85ml_Bottle_Cost_Estimate.pdf
