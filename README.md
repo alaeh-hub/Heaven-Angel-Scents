@@ -301,6 +301,8 @@ Build and reconcile Jan–Jul 2026 Sales/COGS/Profit workbook for Heaven and Ang
 - Identified 85ml-refill bottle-count errors in the combined tab for
   Feb (22 vs. actual 20), Mar (16 vs. actual 31 — the big one), and
   Apr (26 vs. actual 27); corrections proposed but not yet applied
+- The workbook should not be treated as final until these refill counts
+  are corrected and the affected COGS and profit totals are revalidated
 
 Files: Heaven_and_Angel_Scents_MASTER_Jan-Jul2026.xlsx,
 85ml_Bottle_Cost_Estimate.pdf

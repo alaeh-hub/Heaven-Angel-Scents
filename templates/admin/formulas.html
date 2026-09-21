@@ -92,6 +92,30 @@
 
 <div class="card mt-24">
   <div class="card-header">
+    <h2>Bulk/Refill rate per mL</h2>
+    <span class="hint">current: ₱{{ '%.4f'|format(bulk_rate) }}/mL</span>
+  </div>
+  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
+    The one shared rate every Bulk/Refill-category product is sold at (Record Sale multiplies this by the mL amount
+    typed in). Production starts from this rate too, but lets it be retyped per batch since material costs
+    fluctuate — this figure is only ever a starting point there, not read live.
+  </p>
+  <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" style="padding: 0 22px 22px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="field" style="flex:0 0 180px;">
+        <label for="rate_per_ml">Rate per mL (₱)</label>
+        <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0" value="{{ bulk_rate }}" required>
+      </div>
+      <div class="field" style="flex:0 0 auto;">
+        <button type="submit" class="btn btn-accent">Save rate</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
     <h2>Unit formulas (cost of goods)</h2>
     <span class="hint">{{ units|length }} packaging size{{ 's' if units|length != 1 }}</span>
   </div>

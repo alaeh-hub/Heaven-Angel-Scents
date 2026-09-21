@@ -22,7 +22,8 @@ from reports import REPORT_TYPES, get_report, parse_report_filters, render_repor
 from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
-    FORMULA_UNITS, MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError,
+    BOTTLE_UNITS, FORMULA_UNITS, MATERIAL_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_CATEGORIES,
+    PRODUCT_UNITS, SALE_TYPES, ValidationError,
     build_sku, consume_form_token, generate_temp_password, issue_form_token, parse_base_code,
     parse_non_negative_decimal, parse_non_negative_int, parse_optional_id, parse_optional_text,
     parse_past_date, parse_positive_decimal, parse_positive_int, parse_required_text,
@@ -330,13 +331,22 @@ def products():
     if request.method == "POST":
         item_name = request.form.get("item_name", "").strip()
         variant = request.form.get("variant")
-        unit = request.form.get("unit")
+        category = request.form.get("category") or "Bottled"
+        # A Bulk/Refill product has no fixed size to pick — its unit is
+        # always BULK, set here rather than trusted from the form, same
+        # reasoning as sale_type == "Freebie" forcing payment_method to
+        # Cash in record_sale() below. A Bottled product must pick one of
+        # the four real bottle sizes; BULK is never a valid choice for it.
+        unit = "BULK" if category == "Bulk/Refill" else request.form.get("unit")
 
         try:
             base_code = parse_base_code(request.form.get("base_code"))
             price = parse_non_negative_decimal(
                 request.form.get("price"), "Price")
-            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
+            if category not in PRODUCT_CATEGORIES:
+                raise ValidationError("Select a valid category.")
+            valid_units = PRODUCT_UNITS if category == "Bulk/Refill" else BOTTLE_UNITS
+            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in valid_units:
                 raise ValidationError(
                     "Please fill in every field with a valid value.")
             # The base code is reusable across sizes (e.g. base 'A1' + unit
@@ -355,9 +365,9 @@ def products():
             with transaction() as conn:
                 cur = conn.cursor()
                 cur.execute(
-                    "INSERT INTO products (sku, item_name, variant, unit, price, image_path) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (sku, item_name, variant, unit, price, image_path),
+                    "INSERT INTO products (sku, item_name, variant, category, unit, price, image_path) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (sku, item_name, variant, category, unit, price, image_path),
                 )
                 # Give every existing branch (and HQ) a zero-stock row so
                 # it shows up everywhere. Both writes happen in one
@@ -395,7 +405,9 @@ def products():
            LEFT JOIN branch_inventory bi ON p.sku = bi.sku
            GROUP BY p.sku ORDER BY p.item_name"""
     )
-    return render_template("admin/products.html", catalog=catalog, unit_choices=PRODUCT_UNITS)
+    return render_template(
+        "admin/products.html", catalog=catalog, unit_choices=BOTTLE_UNITS, category_choices=PRODUCT_CATEGORIES,
+    )
 
 
 @bp.route("/products/edit", methods=["POST"])
@@ -583,7 +595,10 @@ def import_products():
             variant = (row.get("variant") or "").strip()
             unit = (row.get("unit") or "").strip()
             price = parse_non_negative_decimal(row.get("price"), "Price")
-            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
+            # Bulk/Refill (unit BULK) isn't importable via CSV — it has no
+            # fixed size/price to round-trip through this sheet; add it
+            # through the manual "Add a product" form instead.
+            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in BOTTLE_UNITS:
                 raise ValidationError(
                     "item_name, variant, and unit must all be valid.")
             sku = build_sku(base_code, unit)
@@ -605,7 +620,7 @@ def import_products():
         # this same row further down (or the Edit form) untouched.
         if not existing:
             sibling_skus = [build_sku(base_code, u)
-                             for u in PRODUCT_UNITS if u != unit]
+                             for u in BOTTLE_UNITS if u != unit]
             if sibling_skus:
                 placeholders = ",".join(["%s"] * len(sibling_skus))
                 sibling = query(
@@ -697,29 +712,48 @@ def production():
             return redirect(url_for("admin.production"))
 
         product = query(
-            "SELECT sku, item_name, unit FROM products WHERE sku = %s",
+            "SELECT sku, item_name, unit, category FROM products WHERE sku = %s",
             (sku,), fetchone=True,
         )
         if not product:
             flash("Select a valid product.", "error")
             return redirect(url_for("admin.production"))
 
-        # cogs_per_unit is a plain sum of every formula line's own
-        # hand-entered line_cost — no per-material lookup against
-        # raw_materials, and no multiplication against qty_per_unit,
-        # needed to compute this batch's cost (see unit_formula_items in
-        # schema.sql). qty_used (for material_usage_logs below) is
-        # tracked separately and purely as a quantity audit trail.
-        formula_items = query(
-            "SELECT material_id, qty_per_unit, line_cost FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
-            (product["unit"],),
-        )
+        is_bulk = product["category"] == "Bulk/Refill"
+        formula_items = []
         cogs_per_unit = total_cogs = None
-        if formula_items:
-            cogs_per_unit = sum(
-                (i["line_cost"] for i in formula_items), decimal.Decimal("0")
-            ).quantize(decimal.Decimal("0.0001"))
+        if is_bulk:
+            # Bulk/Refill has no formula at all — qty_produced here is a
+            # custom mL amount, and cost is that mL amount x a rate typed
+            # in for THIS batch (material costs fluctuate, so it's not
+            # pulled read-only from bulk_rate_settings the way Record
+            # Sale's price is — see that table's own comment in
+            # schema.sql). No material_usage_logs rows follow from this,
+            # since there's no formula/ingredient list to log usage of.
+            try:
+                cogs_per_unit = parse_non_negative_decimal(
+                    request.form.get("rate_per_ml"), "Rate per mL").quantize(decimal.Decimal("0.0001"))
+            except ValidationError as err:
+                flash(str(err), "error")
+                return redirect(url_for("admin.production"))
             total_cogs = (cogs_per_unit * qty).quantize(decimal.Decimal("0.01"))
+        else:
+            # cogs_per_unit is a plain sum of every formula line's own
+            # hand-entered line_cost — no per-material lookup against
+            # raw_materials, and no multiplication against qty_per_unit,
+            # needed to compute this batch's cost (see unit_formula_items in
+            # schema.sql). qty_used (for material_usage_logs below) is
+            # tracked separately and purely as a quantity audit trail.
+            formula_items = query(
+                "SELECT material_id, qty_per_unit, line_cost FROM unit_formula_items WHERE unit = %s ORDER BY material_id",
+                (product["unit"],),
+            )
+            if formula_items:
+                cogs_per_unit = sum(
+                    (i["line_cost"] for i in formula_items), decimal.Decimal("0")
+                ).quantize(decimal.Decimal("0.0001"))
+                total_cogs = (cogs_per_unit * qty).quantize(decimal.Decimal("0.01"))
+        has_cost = is_bulk or bool(formula_items)
 
         try:
             with transaction() as conn:
@@ -752,7 +786,7 @@ def production():
                      session.get("user_id"), before_qty, after_qty),
                 )
 
-                if formula_items:
+                if has_cost:
                     cur.execute(
                         """INSERT INTO cogs_logs
                            (sku, production_log_id, qty_produced, cogs_per_unit, total_cogs,
@@ -774,10 +808,11 @@ def production():
                         )
                 cur.close()
             notify_admin(["production", "inventory", "movement_logs"])
-            if formula_items:
+            if has_cost:
                 notify_all(["materials"])
+                unit_label = "mL" if is_bulk else "units"
                 flash(
-                    f"Logged {qty} units produced — ₱{total_cogs:,.2f} in cost of goods — and added to HQ warehouse stock.",
+                    f"Logged {qty} {unit_label} produced — ₱{total_cogs:,.2f} in cost of goods — and added to HQ warehouse stock.",
                     "success",
                 )
             else:
@@ -799,7 +834,7 @@ def production():
     # the JS whether that preview (and the run itself) has a formula to
     # draw from at all.
     products_list = query(
-        """SELECT p.sku, p.item_name, p.unit,
+        """SELECT p.sku, p.item_name, p.unit, p.category,
                   COALESCE(f.cogs_per_unit, 0) AS cogs_per_unit,
                   (f.unit IS NOT NULL) AS has_formula
            FROM products p
@@ -815,7 +850,7 @@ def production():
     # older run picked up more than one batch back when "Log material
     # usage" let an admin link any run by hand.
     logs = query(
-        """SELECT pl.*, p.item_name, p.unit,
+        """SELECT pl.*, p.item_name, p.unit, p.category,
                   cogs.cogs_per_unit, cogs.total_cogs
            FROM production_logs pl
            JOIN products p ON pl.sku = p.sku
@@ -830,7 +865,7 @@ def production():
            ORDER BY pl.produced_at DESC LIMIT 40"""
     )
     hq_stock = query(
-        """SELECT p.sku, p.item_name, p.variant, p.unit, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.category, p.unit, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
@@ -1201,11 +1236,14 @@ def record_sale():
         return redirect(url_for("admin.record_sale"))
 
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.category, p.unit, p.price, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
+    bulk_rate = query(
+        "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
+    )["rate_per_ml"]
     # s.* already carries sales.sku (the FK column) — no need to
     # re-select p.sku separately; it's used below for the Item column's
     # SKU + Name display.
@@ -1239,7 +1277,7 @@ def record_sale():
     )
     return render_template(
         "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
-        customers=customers, form_token=issue_form_token("admin_record_sale"),
+        customers=customers, bulk_rate=bulk_rate, form_token=issue_form_token("admin_record_sale"),
         import_form_token=issue_form_token("admin_import_sales"),
     )
 
@@ -2336,14 +2374,17 @@ def formulas():
     a production run now runs off of automatically (see production()
     above) instead of a separate raw-materials picker.
 
-    1L is deliberately excluded — it's sold loose by the mL, at whatever
-    quantity/price is typed in on Record Sale, not as a fixed bottle
-    with one recipe to cost out (see utils.FORMULA_UNITS).
+    Bulk/Refill (unit BULK) is deliberately excluded — it has no fixed
+    bottle/one recipe to cost out; its rate per mL is set separately
+    below (see bulk_rate_settings in schema.sql and save_bulk_rate()).
     """
     materials_list = query(
         """SELECT material_id, material_name, unit
            FROM raw_materials ORDER BY material_name"""
     )
+    bulk_rate = query(
+        "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
+    )["rate_per_ml"]
     formula_rows = query(
         """SELECT ufi.unit, ufi.material_id, ufi.qty_per_unit, ufi.line_cost,
                   rm.material_name, rm.unit AS material_unit
@@ -2381,7 +2422,30 @@ def formulas():
         "admin/formulas.html",
         units=units,
         materials=materials_list,
+        bulk_rate=bulk_rate,
     )
+
+
+@bp.route("/formulas/save-bulk-rate", methods=["POST"])
+@admin_required
+def save_bulk_rate():
+    """Update the single shared ₱-per-mL rate every Bulk/Refill product is
+    produced/sold at (see bulk_rate_settings in schema.sql). Production
+    still lets this be overridden per batch (raw material costs
+    fluctuate); Record Sale always uses this rate as-is.
+    """
+    try:
+        rate = parse_non_negative_decimal(
+            request.form.get("rate_per_ml"), "Rate per mL")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.formulas"))
+
+    execute("UPDATE bulk_rate_settings SET rate_per_ml = %s WHERE id = 1", (rate,))
+    notify_all(["materials"])
+    log_action("save_bulk_rate", details=f"₱{rate:.4f}/mL")
+    flash(f"Bulk/Refill rate set to ₱{rate:.4f} per mL.", "success")
+    return redirect(url_for("admin.formulas"))
 
 
 @bp.route("/formulas/save", methods=["POST"])

@@ -9,6 +9,26 @@ function getCsrfToken() {
     return meta ? meta.getAttribute('content') : '';
 }
 
+// True when `link` points to exactly the page already showing — same
+// pathname + query string, no #hash target — i.e. a click that
+// shouldn't do anything at all: not reload, not close the mobile
+// sidebar overlay, nothing. (A link that only differs by #hash is
+// deliberately NOT treated as a no-op here — that's a real in-page
+// anchor jump and should still happen.) Shared by initMobileSidebar()
+// (skip closing the sidebar for it) and initSoftNav() (skip
+// navigating for it) below.
+function isSamePageNoOpLink(link) {
+    let url;
+    try {
+        url = new URL(link.href, window.location.href);
+    } catch (e) {
+        return false;
+    }
+    return url.pathname === window.location.pathname &&
+        url.search === window.location.search &&
+        !url.hash;
+}
+
 (function initSidebarScrollMemory() {
     const sidebar = document.querySelector('.sidebar');
     if (!sidebar) return;
@@ -65,7 +85,14 @@ function initMobileSidebar() {
     });
 
     sidebar.querySelectorAll('a').forEach((link) => {
-        link.addEventListener('click', closeMenu);
+        link.addEventListener('click', () => {
+            // Clicking the tab that's already open shouldn't close the
+            // menu — see isSamePageNoOpLink()'s own comment for why
+            // this needs to check that at all instead of always
+            // closing on any sidebar link click.
+            if (isSamePageNoOpLink(link)) return;
+            closeMenu();
+        });
     });
 
     window.addEventListener('resize', () => {
@@ -722,10 +749,25 @@ function initSoftNav() {
         if (!isInternalNavigableLink(link)) return;
 
         const url = new URL(link.href, window.location.href);
+        if (isSamePageNoOpLink(link)) {
+            // e.g. clicking the sidebar tab that's already open.
+            // Nothing on the page needs to change, so this must be a
+            // true no-op: previously this fell through to the
+            // browser's own default click behavior, which is a full
+            // page reload since the href matches the current URL
+            // exactly. That reload reset everything — scroll
+            // position, and (since the sidebar only stays expanded
+            // via CSS :hover/:focus-within, see
+            // initSidebarNavTooltips() above) the sidebar visibly
+            // snapped back to its collapsed rail, looking like the
+            // click had "closed" it.
+            e.preventDefault();
+            return;
+        }
         if (url.pathname === window.location.pathname && url.search === window.location.search) {
-            // Same page (only the #hash, if any, differs) — let the
-            // browser's own default handling (e.g. jumping to an
-            // in-page anchor) happen rather than "navigating" to a
+            // Same page, but the link targets a real #hash (an
+            // in-page anchor) — let the browser's own default
+            // handling do the jump instead of "navigating" to a
             // no-op and losing that behavior.
             return;
         }
@@ -1569,6 +1611,24 @@ function initDispatchQtyWarnings() {
     });
 }
 
+// Anchors a paginated table/list's own top edge to the same scroll
+// position on every Prev/Next click, instead of leaving it to chance.
+// Without this: paging to a much shorter page (e.g. a last page with
+// one leftover row) shrinks the document underneath an unmoved scroll
+// position, so the browser clamps scrollTop to the new, shorter max —
+// which happens to land right back on the now-nearby pagination
+// controls. Paging back to a taller page doesn't reverse that:
+// scrollTop stays exactly where it was clamped to, now sitting
+// somewhere mid-table on the taller page, with its rows and controls
+// pushed down out of view below it — the user has to scroll down again
+// to find them. Scrolling the container's top into view on every click
+// (not just when it happens to be needed) keeps the anchor point the
+// same regardless of which direction the row count just changed.
+function scrollPaginatedContainerIntoView(container) {
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    container.scrollIntoView({ behavior, block: 'start' });
+}
+
 function initSmartTables() {
     document.querySelectorAll('[data-smart-table]').forEach((container) => {
         const input = container.querySelector('.smart-search-input');
@@ -1654,12 +1714,14 @@ function initSmartTables() {
             filterSelect.addEventListener('change', () => { page = 1; render(); });
         }
         if (prevBtn) {
-            prevBtn.addEventListener('click', () => { if (page > 1) { page--; render(); } });
+            prevBtn.addEventListener('click', () => {
+                if (page > 1) { page--; render(); scrollPaginatedContainerIntoView(container); }
+            });
         }
         if (nextBtn) {
             nextBtn.addEventListener('click', () => {
                 const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-                if (page < totalPages) { page++; render(); }
+                if (page < totalPages) { page++; render(); scrollPaginatedContainerIntoView(container); }
             });
         }
 
@@ -1707,9 +1769,15 @@ function initSmartLists() {
             }
         }
 
-        if (prevBtn) prevBtn.addEventListener('click', () => { if (page > 1) { page--; render(); } });
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                if (page > 1) { page--; render(); scrollPaginatedContainerIntoView(container); }
+            });
+        }
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => { if (page < totalPages) { page++; render(); } });
+            nextBtn.addEventListener('click', () => {
+                if (page < totalPages) { page++; render(); scrollPaginatedContainerIntoView(container); }
+            });
         }
 
         render();

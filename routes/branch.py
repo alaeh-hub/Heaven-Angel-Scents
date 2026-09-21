@@ -726,11 +726,14 @@ def record_sale():
         return redirect(url_for("branch.record_sale"))
 
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.category, p.unit, p.price, bi.stock_qty
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s AND bi.stock_qty > 0 ORDER BY p.item_name""",
         (bid,),
     )
+    bulk_rate = query(
+        "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
+    )["rate_per_ml"]
     recent_sales = query(
         """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
@@ -761,7 +764,7 @@ def record_sale():
     )
     return render_template(
         "branch/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
-        customers=customers, form_token=issue_form_token("branch_record_sale"),
+        customers=customers, bulk_rate=bulk_rate, form_token=issue_form_token("branch_record_sale"),
         import_form_token=issue_form_token("branch_import_sales"),
     )
 

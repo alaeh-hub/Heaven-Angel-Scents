@@ -18,28 +18,42 @@ from flask import current_app, request, session
 # in admin.py/branch.py/reports.py) so the one allow-list is what every
 # form validates against, what every <select> is built from, and what
 # reports.py filters against.
-PRODUCT_UNITS = ("85ML", "70ML", "55ML", "50ML", "1L", "100ML", "10ML", "3ML Tester")
+#
+# BULK is the packaging size for every Bulk/Refill-category product (see
+# PRODUCT_CATEGORIES below) — there's no fixed bottle size to pick since
+# it's sold/produced at whatever custom mL amount is typed in on
+# Production/Record Sale, priced off bulk_rate_settings.rate_per_ml
+# rather than a formula. It's never offered in a plain <select> the way
+# the other four are — see BOTTLE_UNITS.
+PRODUCT_UNITS = ("85ML", "50ML", "10ML", "3ML", "BULK")
 
-# The subset of PRODUCT_UNITS the Formulas (cost of goods) page covers —
-# every actual bottle size, but not 1L. 1L is sold loose by the mL (see
-# record_sale()'s live qty × price hint in branch.py/admin.py) at
-# whatever quantity/price is typed in per sale — there's no one fixed
-# "bottle" recipe for it to have a formula against, so it's left out of
-# the Formulas page entirely rather than sitting there permanently empty.
-FORMULA_UNITS = tuple(u for u in PRODUCT_UNITS if u != "1L")
+# The four fixed bottle sizes — PRODUCT_UNITS minus BULK. This is what
+# the "Unit" dropdown on Add Product actually offers (a Bulk/Refill
+# product's unit is forced to BULK server-side instead of picked), and
+# what CSV import/export restricts itself to.
+BOTTLE_UNITS = tuple(u for u in PRODUCT_UNITS if u != "BULK")
+
+# What the Formulas (cost of goods) page covers — every fixed bottle
+# size. BULK is deliberately excluded: a Bulk/Refill product's cost is
+# rate_per_ml × mL produced (typed in on Production), not one shared
+# per-bottle recipe, so it has nothing to put on this page.
+FORMULA_UNITS = BOTTLE_UNITS
+
+# A product is either a fixed-size bottle (one of BOTTLE_UNITS, priced
+# and costed the normal formula-driven way) or Bulk/Refill — sold and
+# produced by a custom mL amount at a single shared rate per mL (see
+# bulk_rate_settings in schema.sql) instead of a fixed unit/formula.
+PRODUCT_CATEGORIES = ("Bottled", "Bulk/Refill")
 
 # Short, filename/SKU-safe suffix for each unit (no spaces), used only to
 # build the stored SKU from an admin-entered base product code — see
 # build_sku() below. Keys must exactly match PRODUCT_UNITS.
 _PRODUCT_UNIT_SUFFIXES = {
     "85ML": "85ML",
-    "70ML": "70ML",
-    "55ML": "55ML",
     "50ML": "50ML",
-    "1L": "1L",
-    "100ML": "100ML",
     "10ML": "10ML",
-    "3ML Tester": "3MLT",
+    "3ML": "3ML",
+    "BULK": "BULK",
 }
 
 # A base product code: letters, numbers, and hyphens only, must start

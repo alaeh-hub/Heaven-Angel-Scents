@@ -52,12 +52,21 @@ CREATE TABLE IF NOT EXISTS users (
 --    `unit` is the packaging size for this specific SKU (e.g. two
 --    different bottle sizes of the same scent are two different rows/
 --    SKUs, each with its own `unit`).
+--
+--    `category` splits the catalog in two: a 'Bottled' product is a
+--    fixed size (unit is one of utils.BOTTLE_UNITS) priced/costed off a
+--    shared formula (see unit_formula_items below). A 'Bulk/Refill'
+--    product's unit is always 'BULK' — it has no fixed size or formula;
+--    it's produced and sold at whatever custom mL amount is typed in on
+--    Production/Record Sale, at the single shared rate on
+--    bulk_rate_settings.rate_per_ml (see that table's own comment).
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS products (
     sku         VARCHAR(50) PRIMARY KEY,
     item_name   VARCHAR(100) NOT NULL,
     variant     ENUM('Male', 'Female', 'Unisex') NOT NULL,
-    unit        ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL DEFAULT '50ML',
+    category    ENUM('Bottled', 'Bulk/Refill') NOT NULL DEFAULT 'Bottled',
+    unit        ENUM('85ML', '50ML', '10ML', '3ML', 'BULK') NOT NULL DEFAULT '50ML',
     price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     -- Path to the uploaded product photo, relative to the Flask app's
     -- static folder (e.g. 'uploads/products/<uuid>.jpg'), so it can be
@@ -219,10 +228,14 @@ CREATE TABLE IF NOT EXISTS production_logs (
 --     qty_per_unit carries no upper bound tied to raw_materials — that
 --     table is just a purchase log now (see its own comment above), with
 --     nothing on it to check a recipe amount against.
+--
+--     BULK (the Bulk/Refill category's packaging size — see products'
+--     own comment above) never appears here: it has no fixed-size
+--     formula, only bulk_rate_settings.rate_per_ml.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS unit_formula_items (
     formula_item_id INT AUTO_INCREMENT PRIMARY KEY,
-    unit            ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL,
+    unit            ENUM('85ML', '50ML', '10ML', '3ML') NOT NULL,
     material_id     INT NOT NULL,
     qty_per_unit    DECIMAL(10, 4) NOT NULL,
     line_cost       DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,   -- hand-entered total cost for this line; independent of qty_per_unit and raw_materials.cost_per_unit
@@ -234,6 +247,30 @@ CREATE TABLE IF NOT EXISTS unit_formula_items (
     CHECK (qty_per_unit > 0),
     CHECK (line_cost >= 0)
 );
+
+-- ----------------------------------------------------------------------------
+-- 5a-bis. Bulk Rate Settings — the single shared ₱-per-mL rate every
+--     Bulk/Refill-category product (see products' own comment above) is
+--     produced and sold at, in place of a formula. One row, always
+--     id = 1 — there's no per-product or per-scent rate, just the one
+--     figure set on the Formulas page (see admin.py's save_bulk_rate()).
+--
+--     Production reads it only as a starting suggestion (rate_per_ml is
+--     still freely retyped per batch there, since material costs
+--     fluctuate) and freezes whatever was actually typed into that
+--     batch's cogs_logs row, same as a bottled formula's cost per unit.
+--     Record Sale reads it live and uses it as-is — a Bulk/Refill sale's
+--     price per mL is never retyped by hand.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bulk_rate_settings (
+    id            TINYINT PRIMARY KEY DEFAULT 1,
+    rate_per_ml   DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CHECK (id = 1),
+    CHECK (rate_per_ml >= 0)
+);
+
+INSERT IGNORE INTO bulk_rate_settings (id, rate_per_ml) VALUES (1, 0.0000);
 
 -- ----------------------------------------------------------------------------
 -- 5b. Cost of Goods (COGS) Logs — one row per "Log material usage" batch
@@ -708,7 +745,7 @@ BEGIN
         WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'unit'
     ) THEN
         ALTER TABLE products
-            ADD COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
+            ADD COLUMN unit ENUM('85ML', '50ML', '10ML', '3ML', 'BULK')
                 NOT NULL DEFAULT '50ML' AFTER variant;
     END IF;
 
@@ -1710,3 +1747,67 @@ DROP PROCEDURE _migrate_add_freebie;
 --     no-op once there's nothing left to delete.
 -- ----------------------------------------------------------------------------
 DELETE FROM unit_formula_items WHERE unit = '1L';
+
+-- ----------------------------------------------------------------------------
+-- 34. Migration — products/unit_formula_items: 85ML/50ML/10ML/3ML(+BULK)
+--     only, products.category, bulk_rate_settings
+--
+--     Narrows the packaging-size list down to four fixed bottle sizes
+--     (dropping 70ML, 55ML, 100ML, 1L, and renaming "3ML Tester" to
+--     "3ML") plus the new BULK size for the Bulk/Refill category (see
+--     products' own comment above, and utils.PRODUCT_UNITS/
+--     BOTTLE_UNITS/PRODUCT_CATEGORIES). Assumes no existing product,
+--     sale, or formula row still uses one of the dropped sizes — this
+--     was confirmed before writing this migration; a database that
+--     still has one will fail the MODIFY COLUMN below loudly rather
+--     than silently truncating/misclassifying real data, which is the
+--     right failure mode here.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_bulk_refill_category()
+BEGIN
+    -- products.category ---------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'category'
+    ) THEN
+        ALTER TABLE products
+            ADD COLUMN category ENUM('Bottled', 'Bulk/Refill') NOT NULL DEFAULT 'Bottled' AFTER variant;
+    END IF;
+
+    -- products.unit ----------------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products'
+              AND column_name = 'unit' AND column_type = "enum('85ML','50ML','10ML','3ML','BULK')"
+    ) THEN
+        ALTER TABLE products
+            MODIFY COLUMN unit ENUM('85ML', '50ML', '10ML', '3ML', 'BULK') NOT NULL DEFAULT '50ML';
+    END IF;
+
+    -- unit_formula_items.unit -------------------------------------------------
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items'
+              AND column_name = 'unit' AND column_type = "enum('85ML','50ML','10ML','3ML')"
+    ) THEN
+        ALTER TABLE unit_formula_items
+            MODIFY COLUMN unit ENUM('85ML', '50ML', '10ML', '3ML') NOT NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_bulk_refill_category();
+DROP PROCEDURE _migrate_bulk_refill_category;
+
+CREATE TABLE IF NOT EXISTS bulk_rate_settings (
+    id            TINYINT PRIMARY KEY DEFAULT 1,
+    rate_per_ml   DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CHECK (id = 1),
+    CHECK (rate_per_ml >= 0)
+);
+
+INSERT IGNORE INTO bulk_rate_settings (id, rate_per_ml) VALUES (1, 0.0000);

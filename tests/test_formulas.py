@@ -1,7 +1,7 @@
 """routes/admin.py's formula editor (save_formula) and production() —
 logging a production run now automatically computes and logs its cost of
-goods off the formula for the SKU's PACKAGING SIZE (85ML, 50ML, 1L,
-100ML, 10ML, 3ML Tester) in the same step, instead of a separate "Log
+goods off the formula for the SKU's PACKAGING SIZE (85ML, 50ML, 10ML,
+3ML) in the same step, instead of a separate "Log
 material usage" action picking raw materials one by one (that used to
 live on the Materials page — see production.html/admin.production()). A
 formula belongs to a size, not a specific product — every scent sold in,
@@ -19,7 +19,7 @@ raw_materials.cost_per_unit; raw materials themselves are a pure
 purchase log, untouched by any of this.
 
 Formulas are shared, session-wide state per unit — a small fixed set of
-6 values, not a fresh row per test the way make_product()'s SKUs are —
+4 values, not a fresh row per test the way make_product()'s SKUs are —
 so every test here calls make_formula() (which replaces a unit's rows,
 same as save_formula() itself) immediately before asserting anything
 that depends on that unit's exact formula, rather than assuming a unit
@@ -78,8 +78,8 @@ def test_formulas_page_renders_before_and_after_a_formula_exists(client, sql):
     _signed_in_admin(client, sql)
     resp = client.get("/admin/formulas")
     assert resp.status_code == 200
-    # All 6 packaging sizes are always listed, formula or not.
-    assert b"85ML" in resp.data and b"3ML Tester" in resp.data
+    # All 4 packaging sizes are always listed, formula or not.
+    assert b"85ML" in resp.data and b"3ML" in resp.data
 
     mat_a = make_raw_material(sql)
     make_formula(sql, "85ML", [(mat_a, "2", "5.00")])
@@ -149,7 +149,7 @@ def test_save_formula_has_no_upper_bound_tied_to_raw_materials(client, sql):
     only) — a formula line can call for any positive qty_per_unit, with
     nothing on raw_materials to check it against."""
     _signed_in_admin(client, sql)
-    make_formula(sql, "1L", [])  # start from a known-empty formula
+    make_formula(sql, "85ML", [])  # start from a known-empty formula
     # Only 5 pieces were ever bought in one purchase row...
     mat_a = make_raw_material(
         sql, unit="Piece", package_qty="5.000", package_cost="50.00")
@@ -157,13 +157,13 @@ def test_save_formula_has_no_upper_bound_tied_to_raw_materials(client, sql):
     # ...but a formula can still call for far more than that per unit —
     # there's no stock concept left to cap it.
     resp = client.post(SAVE_FORMULA_URL, data={
-        "unit": "1L",
+        "unit": "85ML",
         "material_id[]": [str(mat_a)],
         "qty_per_unit[]": ["60"],
         "line_cost[]": ["9.00"],
     })
     assert resp.status_code == 302
-    items = _formula_items(sql, "1L")
+    items = _formula_items(sql, "85ML")
     assert len(items) == 1
     assert Decimal(items[0]["qty_per_unit"]) == Decimal("60.0000")
 
@@ -211,10 +211,10 @@ def test_formula_is_shared_by_every_product_of_the_same_unit(client, sql):
     the exact same formula and cost per unit."""
     _signed_in_admin(client, sql)
     mat_a = make_raw_material(sql)
-    make_formula(sql, "1L", [(mat_a, "3", "6.00")])  # ₱6.00/unit for every 1L product
+    make_formula(sql, "85ML", [(mat_a, "3", "6.00")])  # ₱6.00/unit for every 85ML product
 
-    sku_1 = make_product(sql, unit="1L")
-    sku_2 = make_product(sql, unit="1L")
+    sku_1 = make_product(sql, unit="85ML")
+    sku_2 = make_product(sql, unit="85ML")
 
     resp = client.get(PRODUCTION_URL)
     assert resp.status_code == 200
@@ -236,13 +236,13 @@ def test_formula_is_shared_by_every_product_of_the_same_unit(client, sql):
 
 def test_production_run_computes_cogs_and_logs_every_ingredient(client, sql):
     _signed_in_admin(client, sql)
-    sku = make_product(sql, unit="100ML")
+    sku = make_product(sql, unit="10ML")
     mat_a = make_raw_material(sql, unit="Gram")
     mat_b = make_raw_material(sql, unit="Piece")
     # cost per unit = 5.00 + 0.50 = ₱5.50 — line costs are hand-entered
     # flat totals, unrelated to qty_per_unit (2.5g / 1 piece here is
     # purely what material_usage_logs tracks per batch).
-    make_formula(sql, "100ML", [(mat_a, "2.5", "5.00"), (mat_b, "1", "0.50")])
+    make_formula(sql, "10ML", [(mat_a, "2.5", "5.00"), (mat_b, "1", "0.50")])
 
     resp = _log_production(client, sku, 4)
     assert resp.status_code == 302
@@ -277,8 +277,8 @@ def test_production_run_without_a_formula_still_logs_with_no_cogs(client, sql):
     a production run always logs and moves stock — it just carries no
     cost of goods until a formula is added for its packaging size."""
     _signed_in_admin(client, sql)
-    make_formula(sql, "3ML Tester", [])  # explicitly no formula
-    sku = make_product(sql, unit="3ML Tester")
+    make_formula(sql, "3ML", [])  # explicitly no formula
+    sku = make_product(sql, unit="3ML")
 
     resp = _log_production(client, sku, 1, follow_redirects=True)
     assert resp.status_code == 200

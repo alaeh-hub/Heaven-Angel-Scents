@@ -43,7 +43,7 @@
   }
 
   /* ---- Choice cards: the two top-level decisions (Sale vs Refill,
-     Bottle vs Loose ML) get more visual weight than an in-form pill
+     Bottle vs Bulk/Refill) get more visual weight than an in-form pill
      toggle like Cash/Credit — each option carries its own always-visible
      one-line explanation, so there's no separate hint text to toggle. ---- */
   .choice-grid {
@@ -106,7 +106,7 @@
     }
   }
 
-  /* ---- Bottle/Loose ML section swap: a quick fade + rise instead of an
+  /* ---- Bottle/Bulk/Refill section swap: a quick fade + rise instead of an
      instant display toggle. .kind-panel-enter starts the incoming panel
      transparent/offset; removing it (on the next frame, after display is
      already set) lets the transition animate it in. See setKind() in
@@ -157,8 +157,8 @@
           <span class="choice-card-desc">Fixed size, picked from your product list.</span>
         </button>
         <button type="button" class="choice-card" data-value="loose">
-          <span class="choice-card-title">Loose ML</span>
-          <span class="choice-card-desc">Pour by the mL — qty and price both typed in.</span>
+          <span class="choice-card-title">Bulk/Refill</span>
+          <span class="choice-card-desc">Custom mL amount, priced at the shared rate per mL.</span>
         </button>
       </div>
     </div>
@@ -200,9 +200,11 @@
       </div>
     </div>
 
-    <!-- ---- Loose ML: sold by volume, not a fixed bottle — qty (mL) and
-         price per mL are both freely typed, with the total previewed
-         live. Only products stocked in the 1L/bulk size show up here. ---- -->
+    <!-- ---- Bulk/Refill: sold by volume, not a fixed bottle — qty (mL)
+         is freely typed, price per mL is always the one shared rate on
+         file (see the Formulas page / bulk_rate_settings in schema.sql),
+         never retyped by hand. Only products in the Bulk/Refill category
+         show up here (see products.category). ---- -->
     <div id="looseSection" class="kind-panel" style="display:none;">
       <div class="field">
         <label for="sku_loose">Product</label>
@@ -218,14 +220,16 @@
         </div>
         <div class="field">
           <label for="unit_price_loose">Price per mL (₱)</label>
-          <input type="number" id="unit_price_loose" name="unit_price" step="0.01" min="0" disabled required>
+          <input type="number" id="unit_price_loose" name="unit_price" step="0.01" min="0" readonly disabled required
+            data-bulk-rate="{{ bulk_rate }}">
+          <div class="help">Set on the Formulas page — not editable here.</div>
         </div>
       </div>
 
       <div class="field">
         <label for="looseTotalDisplay">Total price</label>
         <input type="text" id="looseTotalDisplay" readonly placeholder="₱0.00">
-        <div class="help">Quantity (mL) × price per mL — filled in automatically as you type either one.</div>
+        <div class="help">Quantity (mL) × price per mL — filled in automatically as you type the quantity.</div>
       </div>
     </div>
 
@@ -451,7 +455,7 @@
     var bottleSection = document.getElementById('bottleSection');
     var looseSection = document.getElementById('looseSection');
 
-    // ---- Top-level Sale/Refill, independent of Bottle/Loose ML below.
+    // ---- Top-level Sale/Refill, independent of Bottle/Bulk/Refill below.
     // Freebie isn't a third option here — it's a checkbox nested inside
     // the Bottle section (see updateFreebieVisibility below), since a
     // giveaway is always a real, whole, countable bottle here, never a
@@ -604,9 +608,9 @@
 
     // Price charged is always PER UNIT of whatever Quantity counts in —
     // for a bottle-counted product that's per bottle (e.g. ₱250/85ML
-    // bottle); for a product sold loose by volume (e.g. a 1L SKU priced
-    // at ₱0.82) it's per mL, with Quantity being how many mL were given.
-    // Either way, the actual total charged (qty × price — computed the
+    // bottle); for a Bulk/Refill product it's the shared per-mL rate
+    // (e.g. ₱0.82), with Quantity being how many mL were given. Either
+    // way, the actual total charged (qty × price — computed the
     // same way everywhere else in the app: receipts, Sales History,
     // reports) is only ever previewed here, never written back into the
     // price field itself, so nothing here can double up with that
@@ -663,29 +667,32 @@
     productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
     skuSelect.addEventListener('change', applySuggestedPrice);
 
-    // ---- Loose ML: sold by volume — qty (mL) and price per mL are both
-    // freely typed (never looked up from a fixed formula), with the
-    // total only ever previewed here, same "never double up with the
-    // qty × price multiplication done everywhere downstream" reasoning
-    // as refreshPriceHint above. Only products actually stocked in the
-    // 1L/bulk size are offered, since that's the one size sold loose
-    // rather than as a discrete bottle (see utils.FORMULA_UNITS). ----
+    // ---- Bulk/Refill: sold by volume — qty (mL) is freely typed, price
+    // per mL is always the one shared rate on file (data-bulk-rate,
+    // never retyped by hand here — see the Formulas page /
+    // bulk_rate_settings in schema.sql), with the total only ever
+    // previewed here, same "never double up with the qty × price
+    // multiplication done everywhere downstream" reasoning as
+    // refreshPriceHint above. Only products in the Bulk/Refill category
+    // are offered, since that's the one category sold loose rather than
+    // as a discrete bottle (see products.category). ----
     var looseSelect = document.getElementById('sku_loose');
     var qtySoldLoose = document.getElementById('qty_sold_loose');
     var unitPriceLoose = document.getElementById('unit_price_loose');
     var looseTotalDisplay = document.getElementById('looseTotalDisplay');
+    var bulkRate = unitPriceLoose.dataset.bulkRate || '0';
+    unitPriceLoose.value = bulkRate;
 
-    var looseRows = catalog.filter(function (row) { return row.unit === '1L'; });
+    var looseRows = catalog.filter(function (row) { return row.category === 'Bulk/Refill'; });
     if (looseRows.length) {
       looseRows.forEach(function (row) {
         var opt = document.createElement('option');
         opt.value = row.sku;
-        opt.dataset.price = row.price;
-        opt.textContent = row.item_name + ' — ' + row.stock_qty + ' in stock';
+        opt.textContent = row.item_name + ' — ' + row.stock_qty + ' mL in stock';
         looseSelect.appendChild(opt);
       });
     } else {
-      looseSelect.options[0].textContent = 'No loose/bulk (1L) product stocked here';
+      looseSelect.options[0].textContent = 'No Bulk/Refill product stocked here';
     }
 
     function refreshLooseTotal() {
@@ -698,18 +705,10 @@
       looseTotalDisplay.value = formatPeso(rate * qty);
     }
 
-    function applySuggestedLoosePrice() {
-      var opt = looseSelect.options[looseSelect.selectedIndex];
-      var suggested = opt ? opt.dataset.price : null;
-      if (suggested) unitPriceLoose.value = suggested;
-      refreshLooseTotal();
-    }
-
-    looseSelect.addEventListener('change', applySuggestedLoosePrice);
+    looseSelect.addEventListener('change', refreshLooseTotal);
     qtySoldLoose.addEventListener('input', refreshLooseTotal);
-    unitPriceLoose.addEventListener('input', refreshLooseTotal);
 
-    // ---- Bottle vs Loose ML: which set of fields is actually active.
+    // ---- Bottle vs Bulk/Refill: which set of fields is actually active.
     // The inactive set is fully `disabled` (not just visually hidden),
     // so its `required` attributes never block submission, and only the
     // active set's sku/qty_sold/unit_price values are what the browser

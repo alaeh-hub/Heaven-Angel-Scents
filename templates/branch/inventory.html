@@ -4,6 +4,42 @@
 {% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}My Inventory{% endblock %}
 
+{% block head %}
+<style>
+  /* Scoped to .binv-table so none of this leaks onto the other pages
+     that reuse fill_bar() (dashboard, production, low stock) — see
+     _macros.html's fill_bar macro, which this page renders as-is. */
+  .binv-table .product-thumb,
+  .binv-table .product-thumb-empty {
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .binv-table tbody tr:hover .product-thumb,
+  .binv-table tbody tr:hover .product-thumb-empty {
+    transform: scale(1.08);
+  }
+
+  /* A slow, gentle ring pulse on any track holding a low-stock bar —
+     the red fill already flags it as a static color, this just keeps a
+     "needs a restock request" row from being easy to miss while
+     scanning down a long table. :has() targets the track (fixed width)
+     rather than the bar itself, since a near-empty bar is too narrow
+     for its own box-shadow ring to read clearly. Left out of
+     prefers-reduced-motion entirely, same as .fill-bar's own fill
+     transition in style.css. */
+  @media (prefers-reduced-motion: no-preference) {
+    .binv-table .fill-track:has(.fill-bar.low) {
+      animation: binv-low-pulse 1.8s ease-in-out infinite;
+    }
+  }
+
+  @keyframes binv-low-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 45%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 0%, transparent); }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
   {% if rows %}
@@ -27,7 +63,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed">
+      <table class="smart-table table-fixed binv-table">
         <colgroup>
           <col style="width:24%"><col style="width:12%">
           <col style="width:10%"><col style="width:14%"><col style="width:40%">
@@ -85,4 +121,84 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Same row-stagger + count-up treatment as admin's Products page (see
+  // its block scripts for the fuller comment on the load-order gate) —
+  // scoped to .binv-table so it doesn't touch any other fill_bar() page.
+  (function () {
+    var tbody = document.querySelector('.binv-table tbody');
+    var container = document.querySelector('[data-smart-table]');
+    if (!tbody || !container) return;
+
+    function visibleRows() {
+      return Array.prototype.filter.call(tbody.rows, function (r) {
+        return r.style.display !== 'none';
+      });
+    }
+
+    function staggerRows() {
+      if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var rows = visibleRows();
+      if (!rows.length) return;
+      var anim = window.Motion.animate(
+        rows,
+        { opacity: [0, 1], transform: ['translateY(6px)', 'translateY(0px)'] },
+        { duration: 0.32, delay: window.Motion.stagger(0.03), easing: [0.16, 1, 0.3, 1] }
+      );
+      if (anim && typeof anim.then === 'function') anim.then(null, function () { });
+    }
+
+    // Counts each row's stock qty up from 0 (anime.js), same idea as
+    // main.js's initStatCountUp() for dashboard tiles — .fill-qty's text
+    // is "<qty> u" rather than a bare number, so the trailing unit is
+    // captured and reattached instead of being counted itself.
+    function countUpFillQty() {
+      if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      document.querySelectorAll('.binv-table .fill-qty').forEach(function (el) {
+        var match = /^(\d+)(.*)$/.exec(el.textContent.trim());
+        if (!match) return;
+        var target = parseInt(match[1], 10);
+        var suffix = match[2];
+        if (!target) return;
+        var counter = { val: 0 };
+        window.anime.animate(counter, {
+          val: target,
+          duration: 700,
+          ease: 'outExpo',
+          onUpdate: function () { el.textContent = String(Math.round(counter.val)) + suffix; },
+          onComplete: function () { el.textContent = String(target) + suffix; },
+        });
+      });
+    }
+
+    function initialReveal() {
+      staggerRows();
+      countUpFillQty();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initialReveal);
+    } else {
+      initialReveal();
+    }
+
+    var restaggerTimer = null;
+    container.addEventListener('input', function (e) {
+      if (!e.target.closest('.smart-search-input')) return;
+      clearTimeout(restaggerTimer);
+      restaggerTimer = setTimeout(staggerRows, 160);
+    });
+    container.addEventListener('change', function (e) {
+      if (!e.target.closest('.smart-filter-select')) return;
+      staggerRows();
+    });
+    container.addEventListener('click', function (e) {
+      if (!e.target.closest('[data-page-prev], [data-page-next]')) return;
+      staggerRows();
+    });
+  })();
+</script>
 {% endblock %}

@@ -1,11 +1,11 @@
-{% macro fill_bar(qty, reference) %}
+{% macro fill_bar(qty, reference, unit_label='u') %}
 {% set pct = (qty / reference * 100) if reference else 0 %}
 {% set pct = 100 if pct > 100 else pct %}
 {% set low = qty <= (reference / 4) %} <div class="fill-row">
   <div class="fill-track">
     <div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}"></div>
   </div>
-  <span class="fill-qty num">{{ qty }} u</span>
+  <span class="fill-qty num">{{ qty }} {{ unit_label }}</span>
   </div>
   {% endmacro %}
 

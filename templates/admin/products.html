@@ -4,6 +4,34 @@
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Products{% endblock %}
 
+{% block head %}
+<style>
+  /* Catalog-only polish, scoped to .prod-table so none of it leaks onto
+     any other page's .smart-table (Packages, Partners, etc. all reuse
+     the same base classes). Thumbnail gets a small hover pop, mirroring
+     the lift .card-hoverable already uses elsewhere, so a row reads as
+     interactive even though only its Edit button actually is one. */
+  .prod-table .product-thumb,
+  .prod-table .product-thumb-empty {
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .prod-table tbody tr:hover .product-thumb,
+  .prod-table tbody tr:hover .product-thumb-empty {
+    transform: scale(1.08);
+  }
+
+  /* SKU preview field animates in via anime.js (see updatePreview() in
+     block scripts below) rather than pure CSS — it's shown/hidden with
+     display:none/'' so its width doesn't stay reserved in the form-row
+     while hidden; a max-height/opacity transition would leave that gap
+     since collapsing height doesn't collapse a flex row's width. */
+  #skuPreviewField {
+    will-change: opacity, transform;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Add-a-product form now sits full width, on top of the table — same
      fix as Packages and Partners: a side-by-side 1.6fr/1fr grid next to
@@ -36,6 +64,14 @@
         </select>
       </div>
       <div class="field">
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          {% for c in category_choices %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" id="unitField">
         <label for="unit">Unit</label>
         <select id="unit" name="unit" required>
           <option value="">Select…</option>
@@ -44,9 +80,15 @@
           {% endfor %}
         </select>
       </div>
-      <div class="field">
+    </div>
+    <div class="form-row">
+      <div class="field" id="priceField">
         <label for="price">Price for this unit (₱)</label>
         <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
+      </div>
+      <div class="field" id="bulkNoticeField" style="display:none; align-self:center;">
+        <div class="help">Bulk/Refill has no fixed size or catalog price — it's produced and sold at a custom mL
+          amount, priced off the shared rate on the <a href="{{ url_for('admin.formulas') }}">Formulas page</a>.</div>
       </div>
     </div>
     <div class="form-row">
@@ -124,11 +166,12 @@
           {% for u in unit_choices %}
           <option value="{{ u }}" {{ 'selected' if u == '85ML' }}>{{ u }}</option>
           {% endfor %}
+          <option value="BULK">Bulk/Refill</option>
         </select>
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table table-fixed">
+      <table class="smart-table table-fixed prod-table">
         <colgroup>
           <col style="width:28%"><col style="width:12%">
           <col style="width:10%"><col style="width:16%"><col style="width:16%"><col style="width:18%">
@@ -152,7 +195,7 @@
                 {{ m.product_thumb(p.image_path, p.item_name) }}
                 <div>
                   <div class="item-name">{{ p.item_name }}</div>
-                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ p.unit }}</span></div>
+                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ 'Bulk/Refill' if p.unit == 'BULK' else p.unit }}</span></div>
                   <div class="item-sub item-sub-badge">
                     {{ m.variant_badge(p.variant) }}
                   </div>
@@ -160,7 +203,7 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
-            <td class="mono text-soft mobile-fold" data-label="Unit">{{ p.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit">{{ 'Bulk/Refill' if p.unit == 'BULK' else p.unit }}</td>
             <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
             <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
             <td data-label="" class="mobile-inline-action">
@@ -252,8 +295,7 @@
     // Mirrors utils.py's _PRODUCT_UNIT_SUFFIXES — display-only preview,
     // the server always computes the real SKU itself on submit.
     var UNIT_SUFFIXES = {
-      '85ML': '85ML', '70ML': '70ML', '55ML': '55ML', '50ML': '50ML', '1L': '1L',
-      '100ML': '100ML', '10ML': '10ML', '3ML Tester': '3MLT'
+      '85ML': '85ML', '50ML': '50ML', '10ML': '10ML', '3ML': '3ML', 'BULK': 'BULK'
     };
     var baseInput = document.getElementById('base_code');
     var unitSelect = document.getElementById('unit');
@@ -261,6 +303,37 @@
     var previewValue = document.getElementById('skuPreviewValue');
     var itemNameInput = document.getElementById('item_name');
     var variantSelect = document.getElementById('variant');
+
+    // ---- Category: a Bulk/Refill product has no fixed size or catalog
+    // price to pick (see products.html's own field comments above) —
+    // the server always forces unit to BULK for it regardless of what's
+    // submitted (see admin.py's products()), so the Unit field is just
+    // hidden and excused from validation rather than pointed at a real
+    // choice. ----
+    (function () {
+      var categorySelect = document.getElementById('category');
+      var unitField = document.getElementById('unitField');
+      var priceInput = document.getElementById('price');
+      var priceField = document.getElementById('priceField');
+      var bulkNoticeField = document.getElementById('bulkNoticeField');
+      if (!categorySelect) return;
+
+      function applyCategory() {
+        var isBulk = categorySelect.value === 'Bulk/Refill';
+        unitField.style.display = isBulk ? 'none' : '';
+        unitSelect.required = !isBulk;
+        unitSelect.disabled = isBulk;
+        if (isBulk) unitSelect.value = '';
+        priceField.style.display = isBulk ? 'none' : '';
+        priceInput.required = !isBulk;
+        if (isBulk) priceInput.value = '0';
+        bulkNoticeField.style.display = isBulk ? '' : 'none';
+        if (unitSelect.dispatchEvent) unitSelect.dispatchEvent(new Event('change'));
+      }
+
+      categorySelect.addEventListener('change', applyCategory);
+      applyCategory();
+    })();
 
     // Reuse the SAME product code for another size (e.g. A1-85ML already
     // exists, now adding A1-1L) auto-fills the fragrance name and variant
@@ -290,14 +363,28 @@
     }
 
     if (baseInput && unitSelect && previewField && previewValue) {
+      // Tracked separately from previewField.style.display so the reveal
+      // animation only plays on the actual hidden->visible edge, not on
+      // every keystroke while it's already showing (which would replay
+      // the fade-in on top of itself each time the SKU text updates).
+      var skuPreviewVisible = false;
       function updatePreview() {
         var base = baseInput.value.trim().toUpperCase();
         var suffix = UNIT_SUFFIXES[unitSelect.value];
         if (base && suffix) {
           previewValue.textContent = base + '-' + suffix;
-          previewField.style.display = '';
-        } else {
+          if (!skuPreviewVisible) {
+            previewField.style.display = '';
+            skuPreviewVisible = true;
+            if (window.anime && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+              window.anime.animate(previewField, {
+                opacity: [0, 1], translateY: [-4, 0], duration: 200, ease: 'outQuad',
+              });
+            }
+          }
+        } else if (skuPreviewVisible) {
           previewField.style.display = 'none';
+          skuPreviewVisible = false;
         }
       }
       baseInput.addEventListener('input', function () {
@@ -306,6 +393,90 @@
       });
       unitSelect.addEventListener('change', updatePreview);
     }
+  })();
+
+  // Catalog table polish: rows stagger in (via Motion) instead of just
+  // appearing, and "Total stock" counts up from 0 (via anime.js) the
+  // same way dashboard stat tiles already do — see initStatCountUp() in
+  // main.js, which this mirrors but scoped to .prod-table only (that
+  // shared function targets .stat-value, not table cells). Re-staggers
+  // just the currently-visible rows after a search/filter/page change
+  // too, so paging through a long catalog isn't just an instant swap.
+  (function () {
+    var tbody = document.querySelector('.prod-table tbody');
+    var container = document.querySelector('[data-smart-table]');
+    if (!tbody || !container) return;
+
+    function visibleRows() {
+      return Array.prototype.filter.call(tbody.rows, function (r) {
+        return r.style.display !== 'none';
+      });
+    }
+
+    function staggerRows() {
+      if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var rows = visibleRows();
+      if (!rows.length) return;
+      var anim = window.Motion.animate(
+        rows,
+        { opacity: [0, 1], transform: ['translateY(6px)', 'translateY(0px)'] },
+        { duration: 0.32, delay: window.Motion.stagger(0.03), easing: [0.16, 1, 0.3, 1] }
+      );
+      if (anim && typeof anim.then === 'function') anim.then(null, function () { });
+    }
+
+    function countUpStock() {
+      if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      document.querySelectorAll('.prod-table td[data-label="Total stock"]').forEach(function (el) {
+        var raw = el.textContent.trim();
+        if (!/^\d+$/.test(raw)) return;
+        var target = parseInt(raw, 10);
+        if (!target) return;
+        var counter = { val: 0 };
+        window.anime.animate(counter, {
+          val: target,
+          duration: 700,
+          ease: 'outExpo',
+          onUpdate: function () { el.textContent = String(Math.round(counter.val)); },
+          onComplete: function () { el.textContent = String(target); },
+        });
+      });
+    }
+
+    function initialReveal() {
+      staggerRows();
+      countUpStock();
+    }
+
+    // initSmartTables() (main.js) has already paginated/filtered rows —
+    // set each one's display — by the time this runs on a soft nav
+    // (refreshDynamicContent() calls it before this page's own script
+    // block re-runs), but not yet on a hard load, where this inline
+    // script executes mid-parse, before main.js's own DOMContentLoaded
+    // handler gets to it. Waiting for DOMContentLoaded there — and
+    // running immediately otherwise, since it's already long past on a
+    // soft nav — is what keeps this from staggering in rows a bigger
+    // catalog is still about to paginate away.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initialReveal);
+    } else {
+      initialReveal();
+    }
+
+    var restaggerTimer = null;
+    container.addEventListener('input', function (e) {
+      if (!e.target.closest('.smart-search-input')) return;
+      clearTimeout(restaggerTimer);
+      restaggerTimer = setTimeout(staggerRows, 160);
+    });
+    container.addEventListener('change', function (e) {
+      if (!e.target.closest('.smart-filter-select')) return;
+      staggerRows();
+    });
+    container.addEventListener('click', function (e) {
+      if (!e.target.closest('[data-page-prev], [data-page-next]')) return;
+      staggerRows();
+    });
   })();
 
   // Mirrors utils.py's product_avatar() exactly — just the initials;
