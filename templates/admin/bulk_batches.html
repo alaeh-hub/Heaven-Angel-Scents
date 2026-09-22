@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Bulk Batches{% endblock %}
+{% block eyebrow %}Catalog &amp; Supply{% endblock %}
+{% block heading %}Bulk Batches{% endblock %}
+
+{% block head %}
+<style>
+  /* ---- Add-row + line-item cart, same shape/reasoning as the Formulas
+     page's own fm-add-row/fm-table (see templates/admin/formulas.html) —
+     duplicated here rather than shared since this page's rows carry
+     different fields (material + qty used, no hand-typed cost) and nest
+     inside a bigger form (batch size + materials), not a modal. */
+  .bb-add-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .bb-add-row .field { margin-bottom: 0; }
+  .bb-add-row .field-material { flex: 1.6; min-width: 180px; }
+  .bb-add-row .field-qty { flex: 0 0 130px; }
+  .bb-add-row .btn { flex: 0 0 auto; }
+
+  .bb-table-wrap {
+    margin-top: 16px;
+    border: var(--border-width-strong) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+  }
+
+  .bb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .bb-table th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--ink-faint);
+    padding: 9px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .bb-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+  .bb-table tbody tr:last-child td { border-bottom: none; }
+  .bb-table td.num, .bb-table th.num { text-align: right; white-space: nowrap; }
+  .bb-qty-input { width: 100px; text-align: right; }
+  .bb-remove {
+    background: none; border: none; color: var(--danger);
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+  }
+  .bb-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
+  .bb-empty-row td { padding: 20px 14px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
+  .bb-total-row td { font-weight: 700; background: var(--bg); }
+  .bb-total-row .bb-total-label { text-align: right; }
+
+  .bb-preview {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: var(--border-width-strong) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+  }
+  .bb-preview-yields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .bb-preview-yield {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  @media (min-width: 681px) {
+    .bat-table th:nth-child(1), .bat-table td:nth-child(1) { width: 22%; }
+    .bat-table th:nth-child(2), .bat-table td:nth-child(2) { width: 20%; }
+    .bat-table th:nth-child(3), .bat-table td:nth-child(3) { width: 24%; }
+    .bat-table th:nth-child(4), .bat-table td:nth-child(4) { width: 16%; }
+    .bat-table th:nth-child(5), .bat-table td:nth-child(5) { width: 18%; }
+  }
+
+  .bb-yield-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .bb-yield-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .bb-yield-card .bb-yield-unit { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .03em; }
+  .bb-yield-card .bb-yield-count { font-size: 16px; font-weight: 700; margin-top: 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set active_batches_count = batches|selectattr('depleted', 'equalto', false)|list|length %}
+{% set active_ml_total = batches|rejectattr('depleted')|sum(attribute='remaining_ml') %}
+{% set active_capital_total = batches|rejectattr('depleted')|sum(attribute='total_cost') %}
+
+<div class="grid grid-4 stack">
+  <div class="card stat-tile">
+    <div class="stat-label">Batches on file</div>
+    <div class="stat-value">{{ batches|length }}</div>
+    <div class="stat-foot">{{ active_batches_count }} still have mL left</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">mL remaining (active batches)</div>
+    <div class="stat-value accent">{{ active_ml_total|round(0)|int }}</div>
+    <div class="stat-foot">across every non-depleted batch</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Capital tied up in batches</div>
+    <div class="stat-value">{{ active_capital_total|peso }}</div>
+    <div class="stat-foot">sum of active batches' real cost</div>
+  </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Materials tracked</div>
+    <div class="stat-value">{{ materials|length }}</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">manage stock →</a></div>
+  </div>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Log a new batch</h2>
+  </div>
+  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
+    Mix specific raw materials, at specific quantities, into one bulk batch (e.g. 500ml or 1 gallon). Stock is
+    deducted from each material used, and the batch's total cost, cost per mL, and how many bottles of each size it
+    can fill are all computed from what was actually used — not typed in by hand.
+  </p>
+  <form method="POST" action="{{ url_for('admin.create_bulk_batch') }}" style="padding: 0 22px 22px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="scent_name">Scent / batch name</label>
+        <input type="text" id="scent_name" name="scent_name" placeholder="Rose Garden" required>
+      </div>
+      <div class="field">
+        <label for="batch_code">Batch code <span class="text-faint">(optional)</span></label>
+        <input type="text" id="batch_code" name="batch_code" placeholder="B-2026-09-A">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="input_qty">Batch size</label>
+        <input type="number" id="input_qty" name="input_qty" step="0.001" min="0.001" placeholder="1" required>
+      </div>
+      <div class="field">
+        <label for="input_unit">Unit</label>
+        <select id="input_unit" name="input_unit" required>
+          {% for u in batch_units %}
+          <option value="{{ u }}" {{ 'selected' if u=='Gallon' }}>{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+      <input type="text" id="notes" name="notes" maxlength="255">
+    </div>
+
+    <div class="bb-add-row" style="margin-top:10px;">
+      <div class="field field-material">
+        <label for="bbMaterialSelect">Material</label>
+        <select id="bbMaterialSelect">
+          <option value="">Select…</option>
+          {% for mat in materials %}
+          <option value="{{ mat.material_id }}" data-name="{{ mat.material_name }}" data-unit="{{ mat.unit }}"
+            data-cost-per-unit="{{ mat.cost_per_unit }}" data-stock-qty="{{ mat.stock_qty }}">
+            {{ mat.material_name }} ({{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }} in
+            stock)
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field field-qty">
+        <label for="bbQtyInput">Qty used</label>
+        <input type="number" id="bbQtyInput" step="0.001" min="0.001" value="1">
+      </div>
+      <button type="button" class="btn btn-ghost" id="bbAddBtn">Add</button>
+    </div>
+
+    <div class="bb-table-wrap">
+      <table class="bb-table">
+        <colgroup>
+          <col style="width:34%"><col style="width:20%"><col style="width:22%"><col style="width:24%"><col style="width:40px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th class="num">Qty used</th>
+            <th class="num">Cost / unit</th>
+            <th class="num">Line cost</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="bbBody">
+          <tr class="bb-empty-row" id="bbEmptyRow">
+            <td colspan="5">No materials added yet — pick one above.</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bb-total-row" id="bbTotalRow">
+            <td colspan="3" class="bb-total-label">Total cost</td>
+            <td class="num mono" id="bbTotal">₱0.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="bb-preview" id="bbPreview" style="display:none;">
+      <div><strong id="bbPreviewVolume"></strong></div>
+      <div id="bbPreviewCostPerMl"></div>
+      <div class="bb-preview-yields" id="bbPreviewYields"></div>
+    </div>
+
+    <div id="bbInputs"></div>
+    <button type="submit" class="btn btn-accent" style="width:100%; margin-top:14px;">Log batch</button>
+  </form>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Batches</h2>
+    <span class="hint" id="batchesCount">{{ batches|length }} batch{{ 'es' if batches|length != 1 }}</span>
+  </div>
+  {% if batches %}
+  <div data-smart-table data-page-size="10" data-count-target="batchesCount" data-count-label="batch">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="text" class="smart-search-input" placeholder="Search by scent or batch code…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap table-airy">
+      <table class="smart-table table-fixed bat-table">
+        <colgroup>
+          <col style="width:22%"><col style="width:20%"><col style="width:24%">
+          <col style="width:16%"><col style="width:18%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Batch</th>
+            <th class="num">Size</th>
+            <th>Remaining</th>
+            <th class="num">Cost / mL</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in batches %}
+          <tr data-search="{{ (b.scent_name ~ ' ' ~ (b.batch_code or ''))|lower }}">
+            <td class="item-name mobile-inline-anchor" data-label="Batch">
+              {{ b.scent_name }}
+              <div class="item-sub item-sub-badge">
+                {% if b.batch_code %}<span class="badge badge-pending">{{ b.batch_code }}</span>{% endif %}
+                <span class="{{ 'badge badge-rejected' if b.depleted else 'badge badge-fulfilled' }}">{{ 'Depleted' if b.depleted else 'Active' }}</span>
+              </div>
+            </td>
+            <td class="mono text-soft" data-label="Size">{{ b.input_qty|round(3)|string|replace('.000','') }} {{ b.input_unit.lower() }}
+              <div class="item-sub">{{ b.total_volume_ml|round(1)|string|replace('.0','') }} mL total</div>
+            </td>
+            <td data-label="Remaining">{{ m.fill_bar(b.remaining_ml, b.total_volume_ml, 'mL') }}</td>
+            <td class="num mono" data-label="Cost / mL">₱{{ '%.6f'|format(b.cost_per_ml) }}</td>
+            <td data-label="" class="mobile-inline-action">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openBatchDetails(this)"
+                data-scent-name="{{ b.scent_name }}" data-batch-code="{{ b.batch_code or '' }}"
+                data-total-cost="{{ b.total_cost }}" data-cost-per-ml="{{ b.cost_per_ml }}"
+                data-remaining-ml="{{ b.remaining_ml }}" data-notes="{{ b.notes or '' }}"
+                data-ingredients='{{ b.ingredients | tojson }}' data-yields='{{ b.yields | tojson }}'>Details</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No batches match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  <div style="padding: 4px 22px 18px;">
+    <p class="text-faint" style="font-size:12px;">Bottling an 85ML/50ML/10ML/3ML SKU on the
+      <a href="{{ url_for('admin.production') }}">Production Log page</a> draws down a batch's remaining mL — what it
+      actually gets charged, though, is the flat base price set per size on the
+      <a href="{{ url_for('admin.formulas') }}">Formulas page</a>, not this batch's own cost/mL (shown here purely for
+      reference).</p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No batches logged yet — use the form above to mix your first one.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div id="batchDetailsOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:640px; width:100%; max-height:85vh; overflow-y:auto;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Batch details — <span id="bdScentName"></span></h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;" id="bdSummary"></p>
+
+    <h3 style="font-size:13px; margin: 14px 0 6px;">Materials used</h3>
+    <table class="bb-table">
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th class="num">Qty used</th>
+          <th class="num">Cost / unit</th>
+          <th class="num">Line cost</th>
+        </tr>
+      </thead>
+      <tbody id="bdIngredients"></tbody>
+    </table>
+
+    <h3 style="font-size:13px; margin: 18px 0 6px;">Bottle yield from what's left</h3>
+    <div class="bb-yield-grid" id="bdYields"></div>
+
+    <div style="margin-top:18px;">
+      <button type="button" class="btn btn-ghost" style="width:100%;" id="bdCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var mlPerBatchUnit = {{ ml_per_batch_unit | tojson }};
+    var bottleMlMap = {{ bottle_ml_map | tojson }};
+
+    var materialSelect = document.getElementById('bbMaterialSelect');
+    var qtyInput = document.getElementById('bbQtyInput');
+    var addBtn = document.getElementById('bbAddBtn');
+    var body = document.getElementById('bbBody');
+    var emptyRow = document.getElementById('bbEmptyRow');
+    var totalEl = document.getElementById('bbTotal');
+    var inputsHolder = document.getElementById('bbInputs');
+    var inputQty = document.getElementById('input_qty');
+    var inputUnit = document.getElementById('input_unit');
+    var preview = document.getElementById('bbPreview');
+    var previewVolume = document.getElementById('bbPreviewVolume');
+    var previewCostPerMl = document.getElementById('bbPreviewCostPerMl');
+    var previewYields = document.getElementById('bbPreviewYields');
+    if (!materialSelect || !addBtn || !body) return;
+
+    var materialsById = {};
+    Array.prototype.forEach.call(materialSelect.options, function (opt) {
+      if (!opt.value) return;
+      materialsById[opt.value] = {
+        name: opt.dataset.name,
+        unit: opt.dataset.unit,
+        costPerUnit: parseFloat(opt.dataset.costPerUnit),
+        stockQty: parseFloat(opt.dataset.stockQty),
+      };
+    });
+
+    // material_id -> qty used
+    var lines = {};
+
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function totalCost() {
+      var total = 0;
+      Object.keys(lines).forEach(function (id) {
+        var mat = materialsById[id];
+        if (!mat) return;
+        total += lines[id] * mat.costPerUnit;
+      });
+      return total;
+    }
+
+    function updatePreview() {
+      var qty = parseFloat(inputQty.value);
+      var unit = inputUnit.value;
+      var perUnitMl = mlPerBatchUnit[unit];
+      if (!(qty > 0) || !perUnitMl) {
+        preview.style.display = 'none';
+        return;
+      }
+      var totalMl = qty * perUnitMl;
+      var cost = totalCost();
+      var costPerMl = totalMl > 0 ? cost / totalMl : 0;
+      previewVolume.textContent = totalMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL total, ' + formatPeso(cost) + ' cost';
+      previewCostPerMl.textContent = '≈ ₱' + costPerMl.toFixed(6) + ' per mL (reference only — bottling charges the flat base price set on the Formulas page, not this)';
+      previewYields.innerHTML = Object.keys(bottleMlMap).map(function (unit) {
+        var sizeMl = bottleMlMap[unit];
+        var count = Math.floor(totalMl / sizeMl);
+        return '<div class="bb-preview-yield">' + count + '&times; ' + unit + '</div>';
+      }).join('');
+      preview.style.display = 'block';
+    }
+
+    function render() {
+      var ids = Object.keys(lines);
+      body.innerHTML = '';
+
+      if (!ids.length) {
+        body.appendChild(emptyRow);
+        totalEl.textContent = '₱0.00';
+      } else {
+        ids.forEach(function (id) {
+          var mat = materialsById[id];
+          if (!mat) return;
+          var qty = lines[id];
+          var lineCost = qty * mat.costPerUnit;
+
+          var tr = document.createElement('tr');
+
+          var nameTd = document.createElement('td');
+          nameTd.setAttribute('data-label', 'Material');
+          nameTd.textContent = mat.name;
+          tr.appendChild(nameTd);
+
+          var qtyTd = document.createElement('td');
+          qtyTd.className = 'num';
+          qtyTd.setAttribute('data-label', 'Qty used');
+          var qtyEl = document.createElement('input');
+          qtyEl.type = 'number';
+          qtyEl.step = '0.001';
+          qtyEl.min = '0.001';
+          qtyEl.value = qty;
+          qtyEl.className = 'bb-qty-input mono';
+          qtyEl.addEventListener('change', function () {
+            var v = parseFloat(qtyEl.value);
+            if (!v || v <= 0) v = 0.001;
+            lines[id] = v;
+            render();
+          });
+          qtyTd.appendChild(qtyEl);
+          tr.appendChild(qtyTd);
+
+          var costPerUnitTd = document.createElement('td');
+          costPerUnitTd.className = 'num mono text-soft';
+          costPerUnitTd.setAttribute('data-label', 'Cost / unit');
+          costPerUnitTd.textContent = '₱' + mat.costPerUnit.toFixed(4) + ' / ' + mat.unit.toLowerCase();
+          tr.appendChild(costPerUnitTd);
+
+          var lineCostTd = document.createElement('td');
+          lineCostTd.className = 'num mono';
+          lineCostTd.setAttribute('data-label', 'Line cost');
+          lineCostTd.textContent = formatPeso(lineCost);
+          tr.appendChild(lineCostTd);
+
+          var removeTd = document.createElement('td');
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'bb-remove';
+          removeBtn.innerHTML = '&times;';
+          removeBtn.title = 'Remove';
+          removeBtn.addEventListener('click', function () {
+            delete lines[id];
+            render();
+          });
+          removeTd.appendChild(removeBtn);
+          tr.appendChild(removeTd);
+
+          body.appendChild(tr);
+        });
+        totalEl.textContent = formatPeso(totalCost());
+      }
+
+      inputsHolder.innerHTML = '';
+      Object.keys(lines).forEach(function (id) {
+        var idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'material_id[]';
+        idInput.value = id;
+        inputsHolder.appendChild(idInput);
+
+        var qtyHidden = document.createElement('input');
+        qtyHidden.type = 'hidden';
+        qtyHidden.name = 'qty_used[]';
+        qtyHidden.value = lines[id];
+        inputsHolder.appendChild(qtyHidden);
+      });
+
+      updatePreview();
+    }
+
+    addBtn.addEventListener('click', function () {
+      var id = materialSelect.value;
+      if (!id) return;
+      var qty = parseFloat(qtyInput.value);
+      if (!qty || qty <= 0) qty = 1;
+      lines[id] = qty;
+      qtyInput.value = 1;
+      render();
+    });
+
+    inputQty.addEventListener('input', updatePreview);
+    inputUnit.addEventListener('change', updatePreview);
+
+    render();
+  })();
+
+  (function () {
+    var overlay = document.getElementById('batchDetailsOverlay');
+    if (!overlay) return;
+    var scentEl = document.getElementById('bdScentName');
+    var summaryEl = document.getElementById('bdSummary');
+    var ingredientsEl = document.getElementById('bdIngredients');
+    var yieldsEl = document.getElementById('bdYields');
+    var closeBtn = document.getElementById('bdCloseBtn');
+
+    function formatPeso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function esc(value) {
+      var div = document.createElement('div');
+      div.textContent = String(value);
+      return div.innerHTML;
+    }
+
+    window.openBatchDetails = function (btn) {
+      scentEl.textContent = btn.dataset.scentName;
+      var remainingMl = parseFloat(btn.dataset.remainingMl);
+      summaryEl.textContent = (btn.dataset.batchCode ? btn.dataset.batchCode + ' — ' : '') +
+        remainingMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL left · ' +
+        formatPeso(btn.dataset.totalCost) + ' total cost · ₱' + parseFloat(btn.dataset.costPerMl).toFixed(6) + '/mL' +
+        (btn.dataset.notes ? ' · ' + btn.dataset.notes : '');
+
+      var ingredients = [];
+      try { ingredients = JSON.parse(btn.dataset.ingredients || '[]'); } catch (e) { ingredients = []; }
+      ingredientsEl.innerHTML = ingredients.map(function (row) {
+        return '<tr>' +
+          '<td>' + esc(row.material_name) + '</td>' +
+          '<td class="num mono">' + esc(row.qty_used) + ' ' + esc((row.material_unit || '').toLowerCase()) + '</td>' +
+          '<td class="num mono">' + formatPeso(row.cost_per_unit_snapshot) + '</td>' +
+          '<td class="num mono">' + formatPeso(row.line_cost) + '</td>' +
+          '</tr>';
+      }).join('') || '<tr><td colspan="4" class="bb-empty-row">No materials on file for this batch.</td></tr>';
+
+      var yields = [];
+      try { yields = JSON.parse(btn.dataset.yields || '[]'); } catch (e) { yields = []; }
+      yieldsEl.innerHTML = yields.map(function (y) {
+        return '<div class="bb-yield-card">' +
+          '<div class="bb-yield-unit">' + esc(y.unit) + '</div>' +
+          '<div class="bb-yield-count">' + esc(y.bottle_count) + '</div>' +
+          '</div>';
+      }).join('');
+
+      openOverlay(overlay);
+    };
+
+    closeBtn.addEventListener('click', function () { closeOverlay(overlay); });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeOverlay(overlay);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
+    });
+  })();
+</script>
+{% endblock %}

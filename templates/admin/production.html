@@ -255,9 +255,33 @@
         <label for="rate_per_ml">Rate per mL (₱)</label>
         <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0">
       </div>
-      <!-- Cost of goods is computed automatically — from the formula for
-           the selected packaging size (see unit_formula_items in
-           schema.sql), or from Rate per mL x mL produced for Bulk/Refill
+      <!-- Every other (Bottled) size must still draw from a bulk batch
+           (see bulk_batches in schema.sql) — this is what deducts its
+           remaining mL, enforcing "materials go into a batch before
+           they're bottled". Cost of goods, though, comes from the flat
+           base price set per size on the Formulas page (see
+           unit_cogs_settings) — not this batch's own real cost/mL, which
+           stays informational (shown on the Bulk Batches page only).
+           Shown for every category except Bulk/Refill (toggled below). -->
+      <div class="field" id="batchField" style="display:none;">
+        <label for="bulk_batch_id">Bulk batch</label>
+        <select id="bulk_batch_id" name="bulk_batch_id">
+          <option value="">Select a batch…</option>
+          {% for b in active_batches %}
+          <option value="{{ b.batch_id }}" data-remaining-ml="{{ b.remaining_ml }}">
+            {{ b.batch_code or ('Batch #' ~ b.batch_id) }} — {{ b.scent_name }}
+            ({{ b.remaining_ml|round(1)|string|replace('.0','') }} mL left)
+          </option>
+          {% endfor %}
+        </select>
+        {% if not active_batches %}
+        <div class="help">No bulk batches have mL left — <a href="{{ url_for('admin.bulk_batches') }}">log one
+            first</a>.</div>
+        {% endif %}
+      </div>
+      <!-- Cost of goods is computed automatically — from the flat base
+           price set per packaging size on the Formulas page for a
+           Bottled run, or from Rate per mL x mL produced for Bulk/Refill
            — this is only a live preview; the authoritative figure is
            recomputed and frozen server-side in production() when the run
            is actually logged. -->
@@ -402,7 +426,7 @@
             <td class="num mono" data-label="Total (capital)">{{ l.total_cogs|peso }}</td>
             {% else %}
             <td class="num text-faint" data-label="Cost / unit">—</td>
-            <td class="num text-faint" data-label="Total (capital)" title="No cost of goods was logged for this run — {{ l.unit }} may not have had a formula on file yet.">not costed</td>
+            <td class="num text-faint" data-label="Total (capital)" title="No cost of goods was logged for this run — an older run logged before bulk batches existed.">not costed</td>
             {% endif %}
           </tr>
           {% endfor %}
@@ -420,10 +444,11 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Cost of goods is computed automatically off the formula for each
-      run's packaging size (see the <a href="{{ url_for('admin.formulas') }}">Formulas page</a>) the moment it's
-      logged — a run's total is "capital" on the dashboard, kept separate from what's been spent buying raw
-      materials.</p>
+    <p class="text-faint" style="font-size:12px;">Cost of goods for a Bottled size is the flat base price set for it
+      on the <a href="{{ url_for('admin.formulas') }}">Formulas page</a> — the
+      <a href="{{ url_for('admin.bulk_batches') }}">bulk batch</a> it's filled from only decides how much of that
+      batch's mL gets used up. Bulk/Refill uses its own rate per mL instead. Either way, the moment it's logged, a
+      run's total is "capital" on the dashboard, kept separate from what's been spent buying raw materials.</p>
   </div>
   {% else %}
   <div class="empty-state">
@@ -490,8 +515,9 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Showing the latest 40 entries — one row per ingredient a logged run
-      drew on, purely a quantity audit trail (its cost is on the run's own row above, not here).</p>
+    <p class="text-faint" style="font-size:12px;">Historical only — this stopped filling once Bottled runs started
+      drawing from bulk batches. See a batch's own "Details" on the
+      <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches page</a> for what it used.</p>
   </div>
   {% else %}
   <div class="empty-state">
@@ -699,14 +725,16 @@
       preview.style.display = 'block';
     }
 
-    // ---- Cost of goods preview: computed off the formula for the
-    // selected packaging size (see unit_formula_items in schema.sql) —
+    // ---- Cost of goods preview: the flat base price set for the
+    // selected packaging size (see unit_cogs_settings in schema.sql) —
     // purely a live preview here; production() recomputes and freezes
     // the real figure server-side when the run is actually logged. ----
     var qtyProducedInput = document.getElementById('qty_produced');
     var cogsPreview = document.getElementById('cogsPreview');
     var rateField = document.getElementById('rateField');
     var rateInput = document.getElementById('rate_per_ml');
+    var batchField = document.getElementById('batchField');
+    var batchSelect = document.getElementById('bulk_batch_id');
     var qtyProducedLabel = document.getElementById('qtyProducedLabel');
 
     function formatPeso(n) {
@@ -727,7 +755,14 @@
       var isBulk = isBulkSelected();
       rateField.style.display = isBulk ? '' : 'none';
       rateInput.required = isBulk;
+      batchField.style.display = isBulk ? 'none' : '';
+      batchSelect.required = !isBulk;
       qtyProducedLabel.textContent = isBulk ? 'Volume produced (mL)' : 'Units produced';
+    }
+
+    // "85ML" -> 85. Mirrors utils.bottle_size_ml() server-side.
+    function bottleSizeMl(unit) {
+      return parseFloat(String(unit).replace(/ML$/i, ''));
     }
 
     function updateCogsPreview() {
@@ -748,13 +783,24 @@
         cogsPreview.textContent = formatPeso(rate) + ' per mL' + (bulkTotalText ? ' — ' + bulkTotalText : '.');
         return;
       }
-      if (opt.dataset.hasFormula !== '1') {
-        cogsPreview.textContent = opt.dataset.unit + ' has no formula yet — this run will be logged with no cost of goods.';
+      var batchOpt = batchSelect.options[batchSelect.selectedIndex];
+      if (!batchOpt || !batchOpt.value) {
+        cogsPreview.textContent = 'Select a bulk batch to draw this run\'s mL from.';
         return;
       }
+      // Cost of goods is the flat base price set for this packaging size
+      // on the Formulas page — not this batch's own cost/mL, which only
+      // decides how much of the batch gets used up (see updateCogsPreview
+      // and production()'s own comment for why).
+      var bottleMl = bottleSizeMl(opt.dataset.unit);
       var cogsPerUnit = parseFloat(opt.dataset.cogsPerUnit);
-      var totalText = (qty > 0) ? formatPeso(cogsPerUnit * qty) + ' total cost of goods for ' + qty + ' unit(s).' : '';
+      var remainingMl = parseFloat(batchOpt.dataset.remainingMl);
+      var neededMl = (qty > 0) ? qty * bottleMl : 0;
+      var totalText = (qty > 0) ? formatPeso(cogsPerUnit * qty) + ' total cost of goods for ' + qty + ' unit(s), using ' + neededMl.toFixed(1) + ' mL of this batch.' : '';
       cogsPreview.textContent = formatPeso(cogsPerUnit) + ' cost per unit' + (totalText ? ' — ' + totalText : '.');
+      if (neededMl > remainingMl) {
+        cogsPreview.textContent += ' This batch only has ' + remainingMl.toFixed(1) + ' mL left.';
+      }
     }
 
     function populateUnits(productName) {
@@ -778,7 +824,6 @@
         opt.textContent = row.category === 'Bulk/Refill' ? 'Bulk/Refill' : row.unit;
         opt.dataset.unit = row.unit;
         opt.dataset.category = row.category;
-        opt.dataset.hasFormula = row.has_formula ? '1' : '0';
         opt.dataset.cogsPerUnit = row.cogs_per_unit;
         skuSelect.appendChild(opt);
       });
@@ -847,6 +892,7 @@
     skuSelect.addEventListener('change', updateCogsPreview);
     if (qtyProducedInput) qtyProducedInput.addEventListener('input', updateCogsPreview);
     if (rateInput) rateInput.addEventListener('input', updateCogsPreview);
+    if (batchSelect) batchSelect.addEventListener('change', updateCogsPreview);
 
     if (productNames.length) {
       selectProduct(productNames[0]);

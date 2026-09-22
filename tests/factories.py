@@ -148,18 +148,21 @@ def make_user(sql, role, branch_id=None, password="Test-Passw0rd!",
 
 def make_raw_material(sql, unit="Gram", package_qty="100.000", package_cost="100.00"):
     """Insert a raw material the way admin.py's materials() would — a
-    plain purchase log entry, cost_per_unit worked out from
-    package_cost/package_qty. No stock/on-hand quantity — raw_materials
-    isn't deducted by anything (see schema.sql's own comment on it).
+    purchase log entry, cost_per_unit worked out from package_cost/
+    package_qty, and stock_qty seeded to package_qty (a freshly added
+    material starts with everything it was just bought at fully in
+    stock — see raw_materials in schema.sql). Nothing deducts from
+    stock_qty except a bulk batch actually consuming it (see
+    make_bulk_batch()/create_bulk_batch()).
     """
     name = f"Test Material {unique_suffix()}"
     cost_per_unit = float(package_cost) / float(package_qty)
     cur = sql.cursor()
     cur.execute(
         """INSERT INTO raw_materials
-               (material_name, unit, purchase_mode, package_qty, package_cost, cost_per_unit)
-           VALUES (%s, %s, 'Package', %s, %s, %s)""",
-        (name, unit, package_qty, package_cost, cost_per_unit),
+               (material_name, unit, purchase_mode, package_qty, package_cost, cost_per_unit, stock_qty)
+           VALUES (%s, %s, 'Package', %s, %s, %s, %s)""",
+        (name, unit, package_qty, package_cost, cost_per_unit, package_qty),
     )
     sql.commit()
     material_id = cur.lastrowid
@@ -175,36 +178,87 @@ def get_raw_material(sql, material_id):
     return row
 
 
-def make_formula(sql, unit, items):
-    """Set a packaging size's formula directly (bypassing save_formula()'s
-    own route/CSRF/form plumbing, but matching its actual replace
-    semantics) — `items` is a list of (material_id, qty_per_unit) pairs,
-    or (material_id, qty_per_unit, line_cost) triples when a test cares
-    about the formula's actual cost. qty_per_unit and line_cost are two
-    independently hand-entered values now (see unit_formula_items in
-    schema.sql) — nothing multiplies one by the other, so a 2-tuple just
-    defaults line_cost to 0 for tests that only care the row exists.
+PRODUCTION_URL = "/admin/production"
 
-    Formulas are shared per unit (85ML, 50ML, ...), a small fixed set —
-    not a fresh, uniquely-named row per test the way make_product()'s
-    SKUs are. Always deleting this unit's existing rows before inserting
-    the new ones (same as save_formula() itself) keeps tests that reuse
-    a unit deterministic regardless of what an earlier test in the same
-    session left behind; passing an empty `items` list clears it back to
-    "no formula set" for a test that specifically needs that state.
+
+def log_production(client, sku, qty_produced, batch_code=None, bulk_batch_id=None,
+                    rate_per_ml=None, **kwargs):
+    """POST to admin.production() the way the "Log a production run" form
+    does. A Bottled size now requires bulk_batch_id (its real cost/mL
+    prices the run — see bulk_batches in schema.sql); Bulk/Refill instead
+    requires rate_per_ml. Callers pass whichever one applies to their
+    product's category.
     """
+    token = get_form_token(client, PRODUCTION_URL)
+    data = {"form_token": token, "sku": sku, "qty_produced": str(qty_produced)}
+    if batch_code:
+        data["batch_code"] = batch_code
+    if bulk_batch_id is not None:
+        data["bulk_batch_id"] = str(bulk_batch_id)
+    if rate_per_ml is not None:
+        data["rate_per_ml"] = str(rate_per_ml)
+    return client.post(PRODUCTION_URL, data=data, **kwargs)
+
+
+def make_bulk_batch(sql, items, input_qty="1000.000", input_unit="Milliliter", scent_name=None):
+    """Insert a bulk batch directly (bypassing create_bulk_batch()'s own
+    route/transaction, but matching its actual cost math) for tests that
+    need an existing batch to bottle from rather than testing batch
+    creation itself. `items` is a list of (material_id, qty_used,
+    cost_per_unit) triples. Unlike the real route, this does NOT deduct
+    raw_materials.stock_qty — tests covering that deduction go through
+    create_bulk_batch() directly instead.
+    """
+    ml_per_unit = {"Milliliter": 1, "Liter": 1000, "Gallon": 3785.411784}
+    total_volume_ml = float(input_qty) * ml_per_unit[input_unit]
+    total_cost = sum(float(qty) * float(cost) for _, qty, cost in items)
+    cost_per_ml = total_cost / total_volume_ml if total_volume_ml else 0
+
     cur = sql.cursor()
-    cur.execute("DELETE FROM unit_formula_items WHERE unit = %s", (unit,))
-    for item in items:
-        material_id, qty_per_unit = item[0], item[1]
-        line_cost = item[2] if len(item) > 2 else 0
+    cur.execute(
+        """INSERT INTO bulk_batches
+               (scent_name, input_qty, input_unit, total_volume_ml, total_cost, cost_per_ml, remaining_ml)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (scent_name or f"Test Batch {unique_suffix()}", input_qty, input_unit,
+         total_volume_ml, total_cost, cost_per_ml, total_volume_ml),
+    )
+    batch_id = cur.lastrowid
+    for material_id, qty_used, cost_per_unit in items:
         cur.execute(
-            """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit, line_cost)
-               VALUES (%s, %s, %s, %s)""",
-            (unit, material_id, qty_per_unit, line_cost),
+            """INSERT INTO bulk_batch_materials
+                   (batch_id, material_id, qty_used, cost_per_unit_snapshot, line_cost)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (batch_id, material_id, qty_used, cost_per_unit,
+             float(qty_used) * float(cost_per_unit)),
         )
     sql.commit()
     cur.close()
+    return batch_id
+
+
+def set_unit_cogs(sql, unit, base_cost_per_unit):
+    """Set a Bottled packaging size's flat base cost of goods directly
+    (bypassing save_unit_cogs()'s own route, but matching its upsert
+    semantics) — see unit_cogs_settings in schema.sql. This is what
+    production() logs as cogs_per_unit for that size, independent of
+    whichever bulk batch a run draws from (see make_bulk_batch()).
+    """
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO unit_cogs_settings (unit, base_cost_per_unit) VALUES (%s, %s)
+           ON DUPLICATE KEY UPDATE base_cost_per_unit = VALUES(base_cost_per_unit)""",
+        (unit, base_cost_per_unit),
+    )
+    sql.commit()
+    cur.close()
+
+
+def get_bulk_batch(sql, batch_id):
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT * FROM bulk_batches WHERE batch_id = %s", (batch_id,))
+    row = cur.fetchone()
+    cur.close()
+    return row
 
 
 def get_cogs_logs(sql, sku):

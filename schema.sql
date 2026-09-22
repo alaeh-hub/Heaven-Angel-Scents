@@ -1811,3 +1811,179 @@ CREATE TABLE IF NOT EXISTS bulk_rate_settings (
 );
 
 INSERT IGNORE INTO bulk_rate_settings (id, rate_per_ml) VALUES (1, 0.0000);
+
+-- ----------------------------------------------------------------------------
+-- 35. Migration — raw_materials.stock_qty (v2 — real on-hand stock)
+--
+--     Brings the column back (see migration 15/25 above for why it was
+--     dropped the first time: nothing ever deducted from it). This time
+--     it's real: bulk_batches consumption (see below) genuinely deducts
+--     from it, and restock_material() genuinely adds to it. Backfilled to
+--     package_qty on an existing database — there's no batch-consumption
+--     history to subtract yet, since the feature starts here.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_raw_materials_stock_qty_v2()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials' AND column_name = 'stock_qty'
+    ) THEN
+        ALTER TABLE raw_materials
+            ADD COLUMN stock_qty DECIMAL(10, 3) NOT NULL DEFAULT 0.000 AFTER cost_per_unit;
+        UPDATE raw_materials SET stock_qty = package_qty;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_raw_materials_stock_qty_v2();
+DROP PROCEDURE _migrate_raw_materials_stock_qty_v2;
+
+-- ----------------------------------------------------------------------------
+-- 36. Bulk Batches — the "make a bulk mix first" step between raw
+--     materials and bottling.
+--
+--     A batch is a real quantity of mixed scent (e.g. 500ml or 1 gallon),
+--     produced from specific raw materials at specific quantities (see
+--     bulk_batch_materials below). input_qty/input_unit record what was
+--     actually typed in (e.g. "1 Gallon"); total_volume_ml is that same
+--     amount converted to milliliters (see utils.ML_PER_BATCH_UNIT) — the
+--     one unit everything else on this table (and remaining_ml) is kept
+--     in, so batches entered in different units still compare/deduct
+--     correctly against each other.
+--
+--     total_cost/cost_per_ml are frozen at creation from the sum of this
+--     batch's own bulk_batch_materials line costs — a later change to a
+--     raw material's cost_per_unit never rewrites a past batch's numbers,
+--     same "snapshot, don't recompute later" rule cogs_logs.cogs_per_unit
+--     already follows.
+--
+--     remaining_ml starts equal to total_volume_ml and is deducted every
+--     time a Bottled production run (see production() in routes/admin.py)
+--     draws from this batch to fill 85ML/50ML/10ML/3ML bottles — that's
+--     also what lets the Bulk Batches page answer "how many 85ml bottles
+--     can this batch still make" (floor(remaining_ml / 85), etc.) without
+--     a separate rollup table.
+--
+--     scent_name/batch_code are plain free text, not a FK to `products` —
+--     one batch can supply several bottle sizes of the same scent, and
+--     nothing here forces a strict one-batch-one-SKU relationship, the
+--     same loosely-coupled shape bulk_rate_settings/production_logs.
+--     batch_code already use elsewhere in this schema.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bulk_batches (
+    batch_id           INT AUTO_INCREMENT PRIMARY KEY,
+    batch_code         VARCHAR(50) NULL UNIQUE,
+    scent_name         VARCHAR(100) NOT NULL,
+    input_qty          DECIMAL(10, 3) NOT NULL,
+    input_unit         ENUM('Milliliter', 'Liter', 'Gallon') NOT NULL,
+    total_volume_ml    DECIMAL(12, 3) NOT NULL,
+    total_cost         DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    cost_per_ml        DECIMAL(12, 6) NOT NULL DEFAULT 0.000000,
+    remaining_ml       DECIMAL(12, 3) NOT NULL,
+    notes              VARCHAR(255) NULL,
+    created_by_user_id INT NULL,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_bulk_batches_created_at (created_at),
+    CHECK (total_volume_ml > 0),
+    CHECK (remaining_ml >= 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- 36a. Bulk Batch Materials — which raw materials (and how much of each)
+--     actually went into one specific bulk_batches row.
+--
+--     Unlike unit_formula_items.line_cost (hand-typed, no arithmetic
+--     relationship to qty_per_unit), line_cost here IS computed:
+--     qty_used x cost_per_unit_snapshot — this table is the real
+--     "materials used, quantity, and cost" record a batch's total_cost is
+--     summed from. cost_per_unit_snapshot freezes raw_materials.cost_per_unit
+--     at the moment the batch was made, same reasoning as every other
+--     snapshot column in this schema (stock_request_items.unit_price,
+--     cogs_logs.cogs_per_unit, ...).
+--
+--     Creating a batch deducts qty_used from raw_materials.stock_qty (see
+--     create_bulk_batch() in routes/admin.py) — this table doubles as the
+--     audit trail for that deduction, the same role material_usage_logs
+--     plays for bottling.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bulk_batch_materials (
+    item_id                INT AUTO_INCREMENT PRIMARY KEY,
+    batch_id               INT NOT NULL,
+    material_id            INT NOT NULL,
+    qty_used               DECIMAL(10, 3) NOT NULL,
+    cost_per_unit_snapshot DECIMAL(10, 4) NOT NULL,
+    line_cost              DECIMAL(12, 4) NOT NULL,
+    FOREIGN KEY (batch_id) REFERENCES bulk_batches(batch_id) ON DELETE CASCADE,
+    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+    INDEX idx_bulk_batch_materials_batch (batch_id),
+    INDEX idx_bulk_batch_materials_material (material_id),
+    CHECK (qty_used > 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- 37. Migration — cogs_logs.bulk_batch_id
+--
+--     Traces a Bottled production run's cost of goods back to the
+--     specific bulk_batches row it was filled from (see production() in
+--     routes/admin.py) — nullable and ON DELETE SET NULL, same "kept for
+--     traceability, batch header can still be removed" pattern
+--     production_log_id already uses on this table.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_cogs_logs_bulk_batch_id()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'cogs_logs' AND column_name = 'bulk_batch_id'
+    ) THEN
+        ALTER TABLE cogs_logs
+            ADD COLUMN bulk_batch_id INT NULL AFTER production_log_id;
+        ALTER TABLE cogs_logs ADD CONSTRAINT fk_cogs_logs_bulk_batch
+            FOREIGN KEY (bulk_batch_id) REFERENCES bulk_batches(batch_id) ON DELETE SET NULL;
+        ALTER TABLE cogs_logs ADD INDEX idx_cogs_logs_bulk_batch (bulk_batch_id);
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_cogs_logs_bulk_batch_id();
+DROP PROCEDURE _migrate_cogs_logs_bulk_batch_id;
+
+-- ----------------------------------------------------------------------------
+-- 38. Unit Cost-of-Goods Settings — the flat base cost per Bottled
+--     packaging size, replacing unit_formula_items as what production()
+--     logs as cogs_per_unit for a Bottled run.
+--
+--     unit_formula_items (see its own comment above) is superseded and no
+--     longer read by production() — left in the schema as an unused,
+--     harmless leftover rather than dropped, so no historical formula
+--     data is lost. It was a materials-cart recipe per packaging size,
+--     but that's now redundant: a bulk batch already records exactly
+--     which materials and quantities went into it (see bulk_batches/
+--     bulk_batch_materials above), so re-deriving a per-bottle recipe on
+--     top of that was double bookkeeping. This table replaces it with
+--     one hand-typed number per size instead — e.g. "85ML costs ₱95" —
+--     same shape as bulk_rate_settings' single rate, just one row per
+--     BOTTLE_UNITS size instead of one shared row.
+--
+--     A Bottled production run still requires picking a bulk batch (see
+--     production() in routes/admin.py) — that's what deducts the batch's
+--     remaining_ml and is unaffected by this table. This table only
+--     supplies cogs_per_unit; the batch's own cost_per_ml stays purely
+--     informational (shown on the Bulk Batches page) rather than feeding
+--     a production run's logged cost.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS unit_cogs_settings (
+    unit               ENUM('85ML', '50ML', '10ML', '3ML') PRIMARY KEY,
+    base_cost_per_unit DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CHECK (base_cost_per_unit >= 0)
+);
+
+INSERT IGNORE INTO unit_cogs_settings (unit, base_cost_per_unit) VALUES
+    ('85ML', 0.0000), ('50ML', 0.0000), ('10ML', 0.0000), ('3ML', 0.0000);

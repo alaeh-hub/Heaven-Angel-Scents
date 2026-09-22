@@ -54,11 +54,12 @@
      from .table-fixed, that narrow box would wrap every character onto
      its own line. */
   @media (min-width: 681px) {
-    .mat-table th:nth-child(1), .mat-table td:nth-child(1) { width: 24%; }
-    .mat-table th:nth-child(2), .mat-table td:nth-child(2) { width: 20%; }
-    .mat-table th:nth-child(3), .mat-table td:nth-child(3) { width: 20%; }
-    .mat-table th:nth-child(4), .mat-table td:nth-child(4) { width: 18%; }
-    .mat-table th:nth-child(5), .mat-table td:nth-child(5) { width: 18%; }
+    .mat-table th:nth-child(1), .mat-table td:nth-child(1) { width: 21%; }
+    .mat-table th:nth-child(2), .mat-table td:nth-child(2) { width: 17%; }
+    .mat-table th:nth-child(3), .mat-table td:nth-child(3) { width: 15%; }
+    .mat-table th:nth-child(4), .mat-table td:nth-child(4) { width: 15%; }
+    .mat-table th:nth-child(5), .mat-table td:nth-child(5) { width: 15%; }
+    .mat-table th:nth-child(6), .mat-table td:nth-child(6) { width: 17%; }
 
     .sup-table th:nth-child(1), .sup-table td:nth-child(1) { width: 20%; }
     .sup-table th:nth-child(2), .sup-table td:nth-child(2) { width: 14%; }
@@ -74,7 +75,8 @@
      stretching each one to fill it. Sizing to content instead of
      width:100% keeps History/Edit looking like the same small buttons
      used everywhere else in the app, not a chunky full-width pair. */
-  .sup-table td.sup-col-actions .inline-form {
+  .sup-table td.sup-col-actions .inline-form,
+  .mat-table td.mat-col-actions .inline-form {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -83,7 +85,8 @@
      holds two small actions stacked on top of each other, so there's
      no reason for them to be as prominent as a page's main action
      buttons. */
-  .sup-table td.sup-col-actions .btn {
+  .sup-table td.sup-col-actions .btn,
+  .mat-table td.mat-col-actions .btn {
     padding: 5px 10px;
     font-size: 11.5px;
   }
@@ -155,8 +158,8 @@
     <div class="table-wrap table-airy">
       <table class="smart-table table-fixed mat-table">
         <colgroup>
-          <col style="width:24%"><col style="width:20%"><col style="width:20%">
-          <col style="width:18%"><col style="width:18%">
+          <col style="width:21%"><col style="width:17%"><col style="width:15%">
+          <col style="width:15%"><col style="width:15%"><col style="width:17%">
         </colgroup>
         <thead>
           <tr>
@@ -164,6 +167,7 @@
             <th>Purchased as</th>
             <th>Supplier</th>
             <th class="num">Cost per unit</th>
+            <th class="num">Stock on hand</th>
             <th></th>
           </tr>
         </thead>
@@ -188,13 +192,20 @@
             <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
             <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{
               mat.unit.lower() }}</td>
-            <td data-label="" class="mobile-inline-action">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
-                data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
-                data-purchase-mode="{{ mat.purchase_mode }}" data-package-qty="{{ mat.package_qty }}"
-                data-unit="{{ mat.unit }}" data-package-cost="{{ mat.package_cost }}"
-                data-receipt-number="{{ mat.receipt_number or '' }}"
-                data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
+            <td class="num mono {{ 'danger' if mat.stock_qty <= 0 }}" data-label="Stock on hand">{{
+              mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</td>
+            <td data-label="" class="mat-col-actions mobile-inline-action">
+              <div class="inline-form">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openRestockMaterial(this)"
+                  data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
+                  data-unit="{{ mat.unit }}" data-stock-qty="{{ mat.stock_qty }}">Restock</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
+                  data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
+                  data-purchase-mode="{{ mat.purchase_mode }}" data-package-qty="{{ mat.package_qty }}"
+                  data-unit="{{ mat.unit }}" data-package-cost="{{ mat.package_cost }}"
+                  data-receipt-number="{{ mat.receipt_number or '' }}"
+                  data-supplier-id="{{ mat.supplier_id or '' }}">Edit</button>
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -212,10 +223,10 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">This is a purchase log, not a stock count — adding or editing a
-      material just records what was bought and for how much; nothing here is deducted when a production run is
-      logged. Cost of goods (and its own history) is on the <a href="{{ url_for('admin.production') }}">Production
-        Log page</a> now.</p>
+    <p class="text-faint" style="font-size:12px;">Stock on hand is real now — "Restock" adds to it (and rolls the
+      purchase into the running cost-per-unit average), and it's deducted whenever a
+      <a href="{{ url_for('admin.bulk_batches') }}">bulk batch</a> uses it up. Edit only corrects this record's own
+      fields — it never touches stock on hand.</p>
   </div>
   {% else %}
   <div class="empty-state">
@@ -458,6 +469,32 @@
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="editMaterialCancelBtn">Cancel</button>
         <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Restock material -->
+<div id="restockMaterialOverlay"
+  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  <div class="card card-pad" style="max-width:400px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Restock <span id="restockMaterialName"></span></h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;" id="restockCurrentStock"></p>
+    <form method="POST" action="{{ url_for('admin.restock_material') }}" id="restockMaterialForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="material_id" id="restockMaterialId">
+      <div class="field">
+        <label for="restockQty" id="restockQtyLabel">Quantity added</label>
+        <input type="number" id="restockQty" name="qty" step="0.001" min="0.001" required>
+      </div>
+      <div class="field">
+        <label for="restockCost">Cost for that purchase (₱)</label>
+        <input type="number" id="restockCost" name="cost" step="0.01" min="0" required>
+        <div class="help" id="restockCostPreview" style="display:none;"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="restockMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent" style="flex:1;">Add to stock</button>
       </div>
     </form>
   </div>
@@ -722,6 +759,54 @@
       var mode = (btn.dataset.purchaseMode === 'Individual') ? 'individual' : 'package';
       setEditMode(mode);
       updateEditCostPreview();
+      openOverlay(overlay);
+    };
+
+    cancelBtn.addEventListener('click', function () { closeOverlay(overlay); });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeOverlay(overlay);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') closeOverlay(overlay);
+    });
+  })();
+
+  (function () {
+    var overlay = document.getElementById('restockMaterialOverlay');
+    if (!overlay) return;
+    var nameEl = document.getElementById('restockMaterialName');
+    var stockEl = document.getElementById('restockCurrentStock');
+    var idInput = document.getElementById('restockMaterialId');
+    var qtyLabel = document.getElementById('restockQtyLabel');
+    var qtyInput = document.getElementById('restockQty');
+    var costInput = document.getElementById('restockCost');
+    var costPreview = document.getElementById('restockCostPreview');
+    var cancelBtn = document.getElementById('restockMaterialCancelBtn');
+    var unit = '';
+
+    function updateCostPreview() {
+      var qty = parseFloat(qtyInput.value);
+      var cost = parseFloat(costInput.value);
+      if (qty > 0 && cost >= 0) {
+        costPreview.textContent = '≈ ₱' + (cost / qty).toFixed(4) + ' per ' + unit.toLowerCase() + ' for this purchase';
+        costPreview.style.display = 'block';
+      } else {
+        costPreview.style.display = 'none';
+      }
+    }
+    [qtyInput, costInput].forEach(function (el) {
+      el.addEventListener('input', updateCostPreview);
+    });
+
+    window.openRestockMaterial = function (btn) {
+      idInput.value = btn.dataset.materialId;
+      nameEl.textContent = btn.dataset.materialName;
+      unit = btn.dataset.unit;
+      qtyLabel.textContent = 'Quantity added (' + unit.toLowerCase() + ')';
+      stockEl.textContent = 'Currently ' + btn.dataset.stockQty + ' ' + unit.toLowerCase() + ' in stock.';
+      qtyInput.value = '';
+      costInput.value = '';
+      costPreview.style.display = 'none';
       openOverlay(overlay);
     };
 

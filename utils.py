@@ -85,6 +85,31 @@ PAYMENT_METHODS = ("Cash", "Credit")
 
 MATERIAL_UNITS = ("Gram", "Milliliter", "Liter", "Gallon", "Piece")
 
+# The units a bulk batch's own size can be entered in (see bulk_batches in
+# schema.sql) — everything gets converted to milliliters via
+# ML_PER_BATCH_UNIT so a 500ml batch and a 1-gallon batch compare and
+# deduct against each other correctly. Gallon here is the standard US
+# liquid gallon (3.785411784 L), matching how "gallon" jugs are commonly
+# sold/labeled locally.
+BATCH_VOLUME_UNITS = ("Milliliter", "Liter", "Gallon")
+
+ML_PER_BATCH_UNIT = {
+    "Milliliter": decimal.Decimal("1"),
+    "Liter": decimal.Decimal("1000"),
+    "Gallon": decimal.Decimal("3785.411784"),
+}
+
+
+def bottle_size_ml(unit):
+    """Pull the numeric mL size out of a BOTTLE_UNITS string, e.g.
+    '85ML' -> Decimal('85'). Used for bulk-batch yield math (how many
+    bottles of this size a batch's remaining_ml can still fill) and for
+    deducting a batch's remaining_ml when a production run is logged
+    against it (see production() in routes/admin.py). BULK is not a
+    BOTTLE_UNITS value so it never reaches here.
+    """
+    return decimal.Decimal(unit[:-2])
+
 # A Distributor buys in bulk to resell further down a chain of their own;
 # a Reseller buys in bulk to sell directly to end customers. Both are
 # bulk buyers outside the retail branch network — see the `partners`
