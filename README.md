@@ -118,6 +118,8 @@ Branches can record both regular sales and refills:
 
 The public partner portal gives distributors and resellers access to package offerings without requiring an authenticated account. It uses a deployment-specific slug to protect the portal route instead of app login.
 
+Its pages are a separate React app in `public-site/` (Vite + React Router + Motion, Geist type, Phosphor icons), with its own design tokens in `public-site/src/styles/tokens.css` (light and dark, following the visitor's system setting). Flask checks the slug, serves the built app at `/partner-portal/<slug>/packages[/<id>]`, and exposes the JSON API it uses under `/partner-portal/<slug>/api/` (see `routes/portal.py`). Product photos, the bottle renders and the film are still served from Flask's `static/`.
+
 The flow includes:
 
 - browsing partner package listings
@@ -195,6 +197,18 @@ The app is intentionally strict in production mode and will warn or fail early i
 python app.py
 ```
 
+For the partner portal front end (`public-site/`), in a second terminal:
+
+```bash
+cd public-site
+npm install
+npm run dev      # http://localhost:5173/partner-portal/<slug>/packages, hot reload,
+                 # proxies the API and /static to Flask on :5000
+npm run build    # or build once and use Flask's own :5000 URL
+```
+
+(The npm scripts call Vite through `node` directly because npm's Windows shims break on the `&` in this folder's name.)
+
 For production-style WSGI serving, the repo also includes `wsgi.py` and the required Gunicorn + gevent stack in `requirements.txt`.
 
 ---
@@ -219,6 +233,8 @@ For production-style WSGI serving, the repo also includes `wsgi.py` and the requ
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── README.md
+├── public-site/          # partner portal front end (React + Vite)
+│   └── src/
 ├── routes/
 │   ├── admin.py
 │   ├── auth.py
@@ -231,11 +247,11 @@ For production-style WSGI serving, the repo also includes `wsgi.py` and the requ
 │   ├── css/
 │   ├── js/
 │   ├── img/
-│   └── uploads/
+│   ├── uploads/
+│   └── public-site/      # build output of public-site/ (git-ignored)
 ├── templates/
 │   ├── admin/
 │   ├── branch/
-│   ├── public/
 │   ├── ai/
 │   ├── scan/
 │   ├── base.html

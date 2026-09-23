@@ -14,7 +14,7 @@
   .rb-mode {
     display: inline-flex;
     gap: 2px;
-    background: var(--bg);
+    background: var(--field);
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: 99px;
     padding: 3px;
@@ -89,6 +89,7 @@
           <option value="RECEIPT">Receipt</option>
           <option value="SALE">Sale</option>
           <option value="REFILL">Refill</option>
+          <option value="FREEBIE">Freebie</option>
           <option value="ADJUSTMENT">Adjustment</option>
           <option value="DAMAGE">Damage</option>
         </select>
@@ -96,9 +97,10 @@
       <div class="field" data-filter="sale_type" style="display:none;">
         <label for="rb_sale_type">Sale type</label>
         <select id="rb_sale_type" name="sale_type">
-          <option value="all">Sale &amp; Refill</option>
+          <option value="all">All sale types</option>
           <option value="Sale">Sale only</option>
           <option value="Refill">Refill only</option>
+          <option value="Freebie">Freebies only</option>
         </select>
       </div>
       <div class="field" data-filter="payment_method" style="display:none;">
@@ -571,6 +573,8 @@
       inventory_log: ['movement_type', 'search', 'window'],
       sales_history: ['variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
       credit_purchases: ['sale_type', 'search', 'window'],
+      customers: ['search'],
+      discrepancies: ['search', 'window'],
     };
 
     // "search" filters a different column depending on the report — the
@@ -579,6 +583,9 @@
     const SEARCH_LABELS = {
       inventory_log: { label: 'Search item / SKU / notes', placeholder: 'e.g. Golden Hour, HAS-001, or a note' },
       credit_purchases: { label: 'Search item / SKU / name', placeholder: 'e.g. Golden Hour, HAS-001, or a name' },
+      sales_history: { label: 'Search item / SKU / customer', placeholder: 'e.g. Golden Hour, HAS-001, or a customer' },
+      customers: { label: 'Search customer', placeholder: 'e.g. Maria Santos' },
+      discrepancies: { label: 'Search item / SKU / delivery', placeholder: 'e.g. Golden Hour or a delivery number' },
     };
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 

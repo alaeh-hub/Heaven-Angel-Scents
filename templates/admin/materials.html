@@ -13,7 +13,7 @@
   .rb-mode {
     display: inline-flex;
     gap: 2px;
-    background: var(--bg);
+    background: var(--field);
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: 99px;
     padding: 3px;
@@ -72,13 +72,16 @@
 
   /* Buttons are stacked (one per line, see below) rather than side by
      side — that's what stops them forcing this column wide, not
-     stretching each one to fill it. Sizing to content instead of
-     width:100% keeps History/Edit looking like the same small buttons
-     used everywhere else in the app, not a chunky full-width pair. */
+     stretching each one to fill it. inline-flex shrink-wraps the stack
+     to its widest button (Restock / History) and align-items: stretch
+     then widens the shorter one (Edit) to match, so each pair reads as
+     one even block instead of two ragged buttons, while still staying
+     small rather than filling the whole column. */
   .sup-table td.sup-col-actions .inline-form,
   .mat-table td.mat-col-actions .inline-form {
+    display: inline-flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   /* A touch smaller than the usual .btn-sm — this column only ever

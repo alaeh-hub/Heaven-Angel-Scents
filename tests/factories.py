@@ -224,11 +224,16 @@ def make_bulk_batch(sql, items, input_qty="1000.000", input_unit="Milliliter", s
     )
     batch_id = cur.lastrowid
     for material_id, qty_used, cost_per_unit in items:
+        # qty_used_unit is stored alongside qty_used/cost_per_unit_snapshot
+        # (see migration 39 in schema.sql) — tests here always give amounts
+        # already in the material's own purchase unit, so use that.
+        cur.execute("SELECT unit FROM raw_materials WHERE material_id = %s", (material_id,))
+        qty_used_unit = cur.fetchone()[0]
         cur.execute(
             """INSERT INTO bulk_batch_materials
-                   (batch_id, material_id, qty_used, cost_per_unit_snapshot, line_cost)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (batch_id, material_id, qty_used, cost_per_unit,
+                   (batch_id, material_id, qty_used, qty_used_unit, cost_per_unit_snapshot, line_cost)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (batch_id, material_id, qty_used, qty_used_unit, cost_per_unit,
              float(qty_used) * float(cost_per_unit)),
         )
     sql.commit()

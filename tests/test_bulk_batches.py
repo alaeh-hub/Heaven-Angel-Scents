@@ -73,6 +73,7 @@ def test_create_bulk_batch_deducts_stock_and_computes_cost(client, sql):
         "input_unit": "Liter",
         "material_id[]": [str(mat_a), str(mat_b)],
         "qty_used[]": ["10", "20"],
+        "qty_unit[]": ["Gram", "Milliliter"],
     })
     assert resp.status_code == 302
 
@@ -92,6 +93,46 @@ def test_create_bulk_batch_deducts_stock_and_computes_cost(client, sql):
     assert Decimal(mat_b_row["stock_qty"]) == Decimal("480.000")
 
 
+def test_create_bulk_batch_supports_material_logged_in_a_different_unit(client, sql):
+    """The bug this feature exists to fix: a material bought by the
+    Gallon (raw_materials.unit) but used a few mL at a time per batch
+    used to have no way to say so — typing '0.31' meant 0.31 *gallons*,
+    not 0.31 mL, wildly overcharging the batch. qty_unit[] lets the admin
+    say which unit each line's amount is actually in (see
+    utils.compatible_material_units/convert_material_qty).
+    """
+    _signed_in_admin(client, sql)
+    # cost_per_unit = 3785.411784 pesos/gallon == exactly 1.00 peso/mL
+    mat_a = make_raw_material(
+        sql, unit="Gallon", package_qty="1.000", package_cost="3785.411784")
+
+    token = get_form_token(client, BULK_BATCHES_URL)
+    resp = client.post(CREATE_BULK_BATCH_URL, data={
+        "form_token": token,
+        "scent_name": "Tiny Dose",
+        "input_qty": "1",
+        "input_unit": "Liter",
+        "material_id[]": [str(mat_a)],
+        "qty_used[]": ["0.31"],
+        "qty_unit[]": ["Milliliter"],
+    })
+    assert resp.status_code == 302
+
+    batches = _bulk_batches_by_scent(sql, "Tiny Dose")
+    assert len(batches) == 1
+    # 0.31 mL x ~1.00 peso/mL = ~0.31 pesos -- NOT 0.31 gallons x 3785.41
+    # pesos/gallon (which would have been ~1173.48 pesos).
+    assert Decimal(batches[0]["total_cost"]) == Decimal("0.31")
+
+    # Stock is deducted in the material's own unit (gallons) by the
+    # converted amount, not a straight 0.31 taken off the top.
+    mat_a_row = get_raw_material(sql, mat_a)
+    expected_gallons_used = Decimal("0.31") / Decimal("3785.411784")
+    expected_stock = (Decimal("1.000000") -
+                       expected_gallons_used).quantize(Decimal("0.000001"))
+    assert Decimal(mat_a_row["stock_qty"]) == expected_stock
+
+
 def test_create_bulk_batch_rejects_insufficient_stock(client, sql):
     _signed_in_admin(client, sql)
     mat_a = make_raw_material(
@@ -105,6 +146,7 @@ def test_create_bulk_batch_rejects_insufficient_stock(client, sql):
         "input_unit": "Liter",
         "material_id[]": [str(mat_a)],
         "qty_used[]": ["60"],  # only 5g in stock
+        "qty_unit[]": ["Gram"],
     }, follow_redirects=True)
     assert resp.status_code == 200
     assert b"not enough" in resp.data.lower()

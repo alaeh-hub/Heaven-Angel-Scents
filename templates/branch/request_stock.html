@@ -81,12 +81,11 @@
 
   .cart-table th {
     text-align: left;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .03em;
+    font-size: 12px;
+    letter-spacing: 0;
     color: var(--ink-faint);
     padding: 9px 14px;
-    background: var(--bg);
+    background: var(--field);
     border-bottom: 1px solid var(--border);
   }
 
@@ -136,7 +135,7 @@
 
   .cart-total-row td {
     font-weight: 700;
-    background: var(--bg);
+    background: var(--field);
   }
 
   .cart-total-row .cart-total-label {
@@ -254,10 +253,9 @@
     .cart-table tbody td[data-label]:not([data-label=""])::before {
       content: attr(data-label);
       display: block;
-      font-size: 9px;
+      font-size: 11px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0;
       color: var(--ink-faint);
       margin-bottom: 3px;
     }
@@ -304,7 +302,7 @@
       border: var(--border-width-strong) solid var(--border-strong);
       border-radius: var(--radius-sm);
       margin-top: 10px;
-      background: var(--bg);
+      background: var(--field);
     }
 
     .cart-table tr.cart-total-row td {

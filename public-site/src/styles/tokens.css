@@ -1,0 +1,564 @@
+/* Design tokens + primitives for the partner portal.
+
+   Direction: Apple-inspired premium product page (quiet neutrals, big
+   confident sans type, soft materials, spring motion) carrying the
+   brand's own gold as the single accent. Nothing here is an Apple asset
+   or an official Apple material; the frosted surfaces are plain
+   backdrop-filter approximations with solid fallbacks.
+
+   Shape rule (used everywhere):
+     - surfaces (cards, media, sheets): --r-surface (24px), inner --r-inner (16px)
+     - interactive controls (buttons, chips, segmented control): full pill
+     - form inputs: --r-input (14px)
+
+   Theme: follows the visitor's system setting, one theme per page. */
+
+@import '@fontsource-variable/geist';
+
+:root {
+  color-scheme: light dark;
+
+  --font: 'Geist Variable', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+  /* Light */
+  --bg: #fafafa;
+  --bg-alt: #f1f1f3;
+  --surface: #fdfdfd;
+  --surface-sunk: #ececef;
+  --ink: #141416;
+  --ink-2: #57575e;
+  --ink-3: #8a8a92;
+  --hairline: rgb(20 20 22 / 0.09);
+  --hairline-strong: rgb(20 20 22 / 0.16);
+
+  /* Brand gold. --gold is the fill (dark text on it), --gold-ink is the
+     text-on-background shade that still clears WCAG AA. */
+  --gold: #d4af37;
+  --gold-hover: #dcbb4c;
+  --gold-ink: #86650f;
+  --gold-soft: rgb(212 175 55 / 0.14);
+  --on-gold: #17140a;
+
+  --success: #1f8a4c;
+  --success-soft: rgb(31 138 76 / 0.12);
+  --danger: #c2372f;
+  --danger-soft: rgb(194 55 47 / 0.1);
+
+  --glass: rgb(250 250 250 / 0.72);
+  --glass-strong: rgb(253 253 253 / 0.86);
+  --scrim: rgb(12 12 14 / 0.38);
+
+  --shadow-sm: 0 1px 2px rgb(20 20 30 / 0.05), 0 2px 8px -2px rgb(20 20 30 / 0.06);
+  --shadow-md: 0 1px 2px rgb(20 20 30 / 0.04), 0 18px 40px -18px rgb(20 20 30 / 0.22);
+  --shadow-lg: 0 30px 80px -24px rgb(20 20 30 / 0.35);
+
+  --r-surface: 24px;
+  --r-inner: 16px;
+  --r-input: 14px;
+
+  --container: 1200px;
+  --gutter: clamp(20px, 4vw, 40px);
+  --nav-h: 56px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0c;
+    --bg-alt: #121214;
+    --surface: #17171a;
+    --surface-sunk: #202024;
+    --ink: #f3f3f1;
+    --ink-2: #a9a9b0;
+    --ink-3: #75757d;
+    --hairline: rgb(255 255 255 / 0.08);
+    --hairline-strong: rgb(255 255 255 / 0.15);
+
+    --gold: #d9b64b;
+    --gold-hover: #e3c465;
+    --gold-ink: #e0c068;
+    --gold-soft: rgb(217 182 75 / 0.14);
+
+    --success: #4cc07a;
+    --success-soft: rgb(76 192 122 / 0.14);
+    --danger: #ff6b60;
+    --danger-soft: rgb(255 107 96 / 0.12);
+
+    --glass: rgb(16 16 18 / 0.7);
+    --glass-strong: rgb(24 24 27 / 0.86);
+    --scrim: rgb(0 0 0 / 0.55);
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -18px rgb(0 0 0 / 0.7);
+    --shadow-lg: 0 30px 80px -24px rgb(0 0 0 / 0.8);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass: var(--bg);
+    --glass-strong: var(--surface);
+  }
+}
+
+/* ---------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: clip;
+  scroll-padding-top: calc(var(--nav-h) + 12px);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+img,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--gold-soft);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* ------------------------------------------------------------- type */
+
+.display {
+  font-size: clamp(40px, 4.8vw, 66px);
+}
+
+.title-xl {
+  font-size: clamp(34px, 4.2vw, 56px);
+}
+
+.title-lg {
+  font-size: clamp(28px, 3.2vw, 40px);
+}
+
+.lede {
+  font-size: clamp(17px, 1.5vw, 21px);
+  line-height: 1.45;
+  color: var(--ink-2);
+  max-width: 44ch;
+  letter-spacing: -0.015em;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold-ink);
+  margin-bottom: 14px;
+}
+
+/* ---------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.35s var(--ease-out);
+}
+
+.btn-sm {
+  height: 38px;
+  padding: 0 16px;
+  font-size: 14.5px;
+}
+
+.btn-primary {
+  background: var(--gold);
+  color: var(--on-gold);
+  box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--gold) 70%, transparent);
+}
+
+.btn-primary:hover {
+  background: var(--gold-hover);
+  /* The gold button glows a little brighter under the pointer. */
+  box-shadow:
+    0 10px 30px -8px color-mix(in srgb, var(--gold) 85%, transparent),
+    0 0 0 4px var(--gold-soft);
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.btn-secondary {
+  background: var(--surface-sunk);
+  color: var(--ink);
+}
+
+.btn-secondary:hover {
+  background: color-mix(in srgb, var(--surface-sunk) 70%, var(--hairline-strong));
+}
+
+.link-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold-ink);
+  font-weight: 550;
+}
+
+.link-arrow svg {
+  transition: transform 0.25s var(--ease-out);
+}
+
+.link-arrow:hover svg {
+  transform: translateX(3px);
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--ink);
+  transition: background-color 0.2s ease;
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--surface-sunk) 70%, var(--hairline-strong));
+}
+
+/* ------------------------------------------------------------ chips */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 550;
+  background: var(--surface-sunk);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.chip-gold {
+  background: var(--gold-soft);
+  color: var(--gold-ink);
+}
+
+.chip-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+/* ------------------------------------------------------------ forms */
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.field .optional {
+  color: var(--ink-3);
+  font-weight: 450;
+}
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: var(--r-input);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px var(--gold-soft);
+}
+
+.input:disabled {
+  background: var(--surface-sunk);
+  color: var(--ink-2);
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 96px;
+}
+
+select.input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%),
+    linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);
+  background-position: calc(100% - 22px) 50%, calc(100% - 16px) 50%;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 40px;
+}
+
+.help {
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+/* -------------------------------------------------------------- glow
+
+   Cursor-following gold light for surfaces. useGlowPointer (mounted once
+   in App.jsx) writes the pointer position as --mx/--my on every glow
+   element under the mouse; before the first move they fall back to the
+   centre.
+
+   .glow-card  a soft spotlight on the surface plus a gold rim that lights
+               up nearest the pointer. Add .glow-fill to skip the rim
+               (rows inside a list, where a ring per row would be noisy).
+   .glow-area  a broad, borderless bloom for stages and visuals. */
+
+.glow-card,
+.glow-area {
+  position: relative;
+  isolation: isolate;
+}
+
+.glow-card::before,
+.glow-card::after,
+.glow-area::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-out);
+}
+
+.glow-card::before {
+  z-index: -1;
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--gold) 11%, transparent),
+    transparent 60%
+  );
+}
+
+.glow-card::after {
+  z-index: 1;
+  padding: 1px;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--gold) 80%, transparent),
+    transparent 70%
+  );
+  /* Only the 1px ring survives the mask. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+.glow-fill::after {
+  content: none;
+}
+
+.glow-area::before {
+  background: radial-gradient(
+    460px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--gold) 16%, transparent),
+    transparent 65%
+  );
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .glow-card:hover::before,
+  .glow-card:hover::after,
+  .glow-area:hover::before {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------- skeleton */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-sunk);
+  border-radius: var(--r-inner);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent);
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ toasts */
+
+.toasts {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(460px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-md);
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.toast svg {
+  flex-shrink: 0;
+}
+
+.toast-success svg {
+  color: var(--success);
+}
+
+.toast-error svg {
+  color: var(--danger);
+}
+
+/* Z-index scale: nav 40 · sheet 60 · form overlay 70 · toasts 90 */

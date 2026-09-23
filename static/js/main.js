@@ -296,6 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSmartLists();
     initDispatchQtyWarnings();
     initCustomSelects();
+    initDatePickers();
     // Registered BEFORE initSoftNav() — both are delegated on
     // `document` in the bubble phase, and listeners on the same node
     // fire in registration order, so this must run first. initSoftNav()'s
@@ -459,6 +460,7 @@ function refreshDynamicContent() {
     initSmartLists();
     initDispatchQtyWarnings();
     initCustomSelects();
+    initDatePickers();
     // initConfirmDialogs() is intentionally NOT re-called here: it's
     // delegated on `document` once at page load (see its own comment),
     // so it already covers any form[data-confirm] that just got
@@ -1117,6 +1119,290 @@ function enhanceSelect(select) {
 
     rebuildPanel();
     sync();
+}
+
+// Custom date/month picker — the same progressive-enhancement idea as
+// initCustomSelects() above, applied to every <input type="date"> and
+// <input type="month">. The browser's own picker is drawn by the OS
+// (a different look on every browser/phone, none of it reachable from
+// CSS), so this puts a styled trigger + calendar panel in front of it.
+//
+// The real input is kept exactly where it was, just made invisible and
+// click-through (see .dp in style.css): it's still the form field that
+// gets submitted, still the tab stop, still what `required`/min/max
+// validation and every page script that reads or sets `.value` (the
+// report builder's date range, Record Sale's backdated sale) talks to.
+// Same two hooks as enhanceSelect() keep the trigger in sync with it:
+// a `.value` property override for scripted changes, and a
+// MutationObserver for min/max/disabled attribute changes.
+//
+// Opt out per field with `data-dp-skip`. Safe to re-run (softRefresh(),
+// soft nav): dataset.dpEnhanced makes it a no-op on an already-enhanced
+// input.
+const DP_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December'];
+const DP_WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function initDatePickers(root) {
+    (root || document).querySelectorAll('input[type="date"], input[type="month"]').forEach(enhanceDateInput);
+}
+
+function enhanceDateInput(input) {
+    if (input.dataset.dpEnhanced || input.dataset.dpSkip !== undefined) return;
+    input.dataset.dpEnhanced = '1';
+    const monthMode = input.type === 'month';
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const toIso = (y, m, d) => monthMode ? `${y}-${pad(m + 1)}` : `${y}-${pad(m + 1)}-${pad(d)}`;
+    // Parsed as plain numbers, never through `new Date(string)`, which
+    // treats "YYYY-MM-DD" as UTC midnight and can land on the previous
+    // day in any timezone west of UTC.
+    function parse(value) {
+        const m = monthMode ? /^(\d{4})-(\d{2})$/.exec(value || '') : /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+        return m ? { y: +m[1], m: +m[2] - 1, d: monthMode ? 1 : +m[3] } : null;
+    }
+    const today = new Date();
+    const todayIso = toIso(today.getFullYear(), today.getMonth(), today.getDate());
+    const inRange = (iso) => !((input.min && iso < input.min) || (input.max && iso > input.max));
+
+    const wrap = document.createElement('div');
+    wrap.className = 'dp';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'dp-trigger';
+    // Not its own tab stop, same as .cs-trigger: the real input stays
+    // the focusable control (see this function's header comment).
+    trigger.tabIndex = -1;
+    trigger.setAttribute('aria-hidden', 'true');
+    trigger.innerHTML =
+        '<span class="dp-trigger-label"></span>' +
+        '<svg class="dp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">' +
+        '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
+    wrap.appendChild(trigger);
+    const labelEl = trigger.querySelector('.dp-trigger-label');
+
+    const panel = document.createElement('div');
+    panel.className = 'dp-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', monthMode ? 'Choose month' : 'Choose date');
+    wrap.appendChild(panel);
+
+    // view: the month (or, in month mode, the year) the panel shows.
+    // cursor: the keyboard-highlighted cell, an ISO string like the value.
+    let view = { y: today.getFullYear(), m: today.getMonth() };
+    let cursor = null;
+
+    const isOpen = () => wrap.classList.contains('dp-open');
+
+    function syncTrigger() {
+        const p = parse(input.value);
+        if (p) {
+            labelEl.textContent = monthMode
+                ? `${DP_MONTHS[p.m]} ${p.y}`
+                : `${DP_MONTHS[p.m].slice(0, 3)} ${p.d}, ${p.y}`;
+            labelEl.classList.remove('dp-placeholder');
+        } else {
+            labelEl.textContent = input.placeholder || (monthMode ? 'Select month' : 'Select date');
+            labelEl.classList.add('dp-placeholder');
+        }
+        wrap.classList.toggle('dp-disabled', input.disabled);
+    }
+
+    function cell(text, iso, extraClass) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.tabIndex = -1;
+        b.className = 'dp-cell' + (extraClass ? ' ' + extraClass : '');
+        b.textContent = text;
+        b.dataset.iso = iso;
+        if (!inRange(iso)) b.disabled = true;
+        if (iso === input.value) b.classList.add('dp-selected');
+        if (iso === (monthMode ? todayIso.slice(0, 7) : todayIso)) b.classList.add('dp-today');
+        if (iso === cursor) b.classList.add('dp-cursor');
+        return b;
+    }
+
+    function render() {
+        panel.innerHTML = '';
+        const head = document.createElement('div');
+        head.className = 'dp-head';
+        const title = document.createElement('span');
+        title.className = 'dp-title';
+        title.textContent = monthMode ? String(view.y) : `${DP_MONTHS[view.m]} ${view.y}`;
+        const nav = (dir, label, path) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.tabIndex = -1;
+            b.className = 'dp-nav';
+            b.setAttribute('aria-label', label);
+            b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${path}"/></svg>`;
+            b.addEventListener('click', () => shiftView(dir));
+            return b;
+        };
+        head.append(
+            title,
+            nav(-1, monthMode ? 'Previous year' : 'Previous month', 'm15 6-6 6 6 6'),
+            nav(1, monthMode ? 'Next year' : 'Next month', 'm9 6 6 6-6 6'),
+        );
+        panel.appendChild(head);
+
+        const grid = document.createElement('div');
+        grid.className = monthMode ? 'dp-grid dp-grid-months' : 'dp-grid';
+        if (monthMode) {
+            DP_MONTHS.forEach((name, i) => grid.appendChild(cell(name.slice(0, 3), toIso(view.y, i), '')));
+        } else {
+            DP_WEEKDAYS.forEach((d) => {
+                const w = document.createElement('span');
+                w.className = 'dp-weekday';
+                w.textContent = d;
+                grid.appendChild(w);
+            });
+            // Leading/trailing days from the neighbouring months keep
+            // every month a steady 6-row grid, so the panel never
+            // changes height (and jumps) while paging through months.
+            const first = new Date(view.y, view.m, 1);
+            const start = new Date(view.y, view.m, 1 - first.getDay());
+            for (let i = 0; i < 42; i += 1) {
+                const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+                const outside = d.getMonth() !== view.m;
+                grid.appendChild(cell(String(d.getDate()), toIso(d.getFullYear(), d.getMonth(), d.getDate()),
+                    outside ? 'dp-outside' : ''));
+            }
+        }
+        grid.addEventListener('click', (e) => {
+            const b = e.target.closest('.dp-cell');
+            if (b && !b.disabled) pick(b.dataset.iso);
+        });
+        panel.appendChild(grid);
+
+        const foot = document.createElement('div');
+        foot.className = 'dp-foot';
+        const footBtn = (text, fn, disabled) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.tabIndex = -1;
+            b.className = 'dp-foot-btn';
+            b.textContent = text;
+            b.disabled = !!disabled;
+            b.addEventListener('click', fn);
+            return b;
+        };
+        const nowIso = monthMode ? todayIso.slice(0, 7) : todayIso;
+        foot.append(
+            footBtn('Clear', () => pick(''), input.required),
+            footBtn(monthMode ? 'This month' : 'Today', () => pick(nowIso), !inRange(nowIso)),
+        );
+        panel.appendChild(foot);
+
+        // Keep every panel button from stealing focus off the real input
+        // (which would blur it and close the panel before the click lands).
+        panel.querySelectorAll('button').forEach((b) => b.addEventListener('mousedown', (e) => e.preventDefault()));
+    }
+
+    function shiftView(dir) {
+        if (monthMode) view.y += dir;
+        else {
+            const d = new Date(view.y, view.m + dir, 1);
+            view = { y: d.getFullYear(), m: d.getMonth() };
+        }
+        render();
+    }
+
+    function position() {
+        wrap.classList.remove('dp-open-up');
+        const rect = trigger.getBoundingClientRect();
+        const below = window.innerHeight - rect.bottom;
+        if (below < panel.offsetHeight + 16 && rect.top > below) wrap.classList.add('dp-open-up');
+    }
+
+    function open() {
+        if (input.disabled || isOpen()) return;
+        const p = parse(input.value);
+        const base = p || parse(monthMode ? todayIso.slice(0, 7) : todayIso);
+        view = { y: base.y, m: base.m };
+        cursor = input.value || null;
+        render();
+        wrap.classList.add('dp-open');
+        position();
+    }
+
+    function close() {
+        if (!isOpen()) return;
+        wrap.classList.remove('dp-open');
+        cursor = null;
+    }
+
+    function pick(iso) {
+        if (iso && !inRange(iso)) return;
+        valueDescriptor.set.call(input, iso);
+        syncTrigger();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        close();
+    }
+
+    // Arrow keys walk the cursor a day (or, in month mode, a month) at a
+    // time and a week (or a row of three months) vertically, paging the
+    // view along with it, Enter picks it.
+    function moveCursor(step) {
+        const p = parse(cursor || input.value) || parse(monthMode ? todayIso.slice(0, 7) : todayIso);
+        const d = monthMode ? new Date(p.y, p.m + step, 1) : new Date(p.y, p.m, p.d + step);
+        cursor = toIso(d.getFullYear(), d.getMonth(), d.getDate());
+        view = { y: d.getFullYear(), m: d.getMonth() };
+        render();
+    }
+
+    const valueDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    Object.defineProperty(input, 'value', {
+        configurable: true,
+        enumerable: true,
+        get() { return valueDescriptor.get.call(input); },
+        set(v) {
+            valueDescriptor.set.call(input, v);
+            syncTrigger();
+            if (isOpen()) render();
+        },
+    });
+
+    new MutationObserver(() => { syncTrigger(); if (isOpen()) render(); })
+        .observe(input, { attributes: true, attributeFilter: ['min', 'max', 'disabled', 'required', 'placeholder'] });
+
+    input.addEventListener('focus', () => wrap.classList.add('dp-focus'));
+    input.addEventListener('blur', () => { wrap.classList.remove('dp-focus'); close(); });
+    input.addEventListener('change', syncTrigger);
+    // Native typing into a hidden date field would edit it blind, so
+    // every key goes through the panel instead.
+    input.addEventListener('keydown', (e) => {
+        if (input.disabled || e.key === 'Tab') { close(); return; }
+        e.preventDefault();
+        if (!isOpen()) {
+            if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) open();
+            return;
+        }
+        const rowStep = monthMode ? 3 : 7;
+        if (e.key === 'Escape') close();
+        else if (e.key === 'ArrowLeft') moveCursor(-1);
+        else if (e.key === 'ArrowRight') moveCursor(1);
+        else if (e.key === 'ArrowUp') moveCursor(-rowStep);
+        else if (e.key === 'ArrowDown') moveCursor(rowStep);
+        else if (e.key === 'PageUp') shiftView(-1);
+        else if (e.key === 'PageDown') shiftView(1);
+        else if ((e.key === 'Enter' || e.key === ' ') && cursor) pick(cursor);
+    });
+
+    trigger.addEventListener('mousedown', (e) => e.preventDefault());
+    trigger.addEventListener('click', () => {
+        if (input.disabled) return;
+        input.focus({ preventScroll: true });
+        if (isOpen()) close(); else open();
+    });
+    document.addEventListener('click', (e) => { if (isOpen() && !wrap.contains(e.target)) close(); });
+    window.addEventListener('resize', () => { if (isOpen()) position(); });
+
+    syncTrigger();
 }
 
 // Unified confirm-dialog pattern for every "are you sure?" form in the

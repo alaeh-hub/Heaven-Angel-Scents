@@ -16,6 +16,14 @@ def _signed_in_admin(client, sql):
     return user
 
 
+def _row_count(sql, table):
+    cur = sql.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM {table}")
+    count = cur.fetchone()[0]
+    cur.close()
+    return count
+
+
 def test_partners_table_renders_collapsible_mobile_markup(client, sql):
     _signed_in_admin(client, sql)
     make_partner(sql)
@@ -27,8 +35,10 @@ def test_partners_table_renders_collapsible_mobile_markup(client, sql):
     assert "table-collapsible" in html
     assert 'class="row-toggle-btn" aria-expanded="false"' in html
     assert 'class="mobile-toggle-row"' in html
-    # Contact, Package sales, Last inquiry collapse away.
-    assert html.count("mobile-detail") == 3
+    # Contact, Package sales, Last inquiry collapse away — 3 per row.
+    # Other tests leave their own partners in the shared test database,
+    # so count rows rather than assume 1.
+    assert html.count("mobile-detail") == _row_count(sql, "partners") * 3
 
 
 def test_packages_table_renders_collapsible_mobile_markup(client, sql):
@@ -42,8 +52,9 @@ def test_packages_table_renders_collapsible_mobile_markup(client, sql):
     assert "table-collapsible" in html
     assert 'class="row-toggle-btn" aria-expanded="false"' in html
     assert 'class="mobile-toggle-row"' in html
-    # Items, Reference value, Discount, Order price collapse away.
-    assert html.count("mobile-detail") == 4
+    # Items, Reference value, Discount, Order price collapse away — 4
+    # per row (counted, same reason as the partners test above).
+    assert html.count("mobile-detail") == _row_count(sql, "packages") * 4
 
 
 def test_partner_inquiries_table_renders_collapsible_mobile_markup(client, sql):
@@ -63,7 +74,7 @@ def test_partner_inquiries_table_renders_collapsible_mobile_markup(client, sql):
     # this page's own <style> block also mentions "mobile-detail" a
     # few times in CSS selectors/comments, which a bare substring count
     # would double-count.
-    assert html.count('mobile-detail"') == 4
+    assert html.count('mobile-detail"') == _row_count(sql, "partner_inquiries") * 4
     # The max-width column-width fix: these classes must land on the
     # actual data cell, not just the <th> (see the CSS comment above
     # .pi-col-company in partner_inquiries.html) — a <th>-only max-width

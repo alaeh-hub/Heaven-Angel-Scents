@@ -9,14 +9,21 @@ of anything a stranger could stumble onto. An admin can always copy
 the current link from the Partners page (see routes/admin.py's
 partners()).
 
-Flow, on purpose kept to a single page per package:
+The pages themselves are a React app (see public-site/ at the repo
+root). This blueprint only does two things for it:
 
-  1. /packages             — browse active packages, "View Package" per card.
-  2. /packages/<id>        — full package detail: every product in it (with
-                             photo, variant, unit, qty), pricing, and an
-                             "Inquire About This Package" button that opens
-                             an inquiry form right there (no extra page).
-  3. POST .../inquire      — submitting that form:
+  * Serves the built app's index.html at the page URLs below (after
+    the slug check), so the private link HQ hands out never changed:
+      /packages             — browse active packages.
+      /packages/<id>        — one package's full detail + inquiry form.
+      /products             — the full product catalog.
+    React Router takes over from there in the browser.
+  * Exposes the JSON API that app reads and writes, under /api/:
+      GET  /api/packages              — the package list (?scope= filter).
+      GET  /api/packages/<id>         — one package, its products, a few
+                                        other packages, and a CSRF token.
+      GET  /api/products              — the catalog (?gender=, ?page=).
+      POST /api/packages/<id>/inquire — submitting the inquiry form:
        a. Saves the inquiry permanently to partner_inquiries (see
           schema.sql) — the history admins review on the Partner
           Inquiries page.
@@ -41,10 +48,12 @@ slug, with no login to throttle via the usual account-lockout path —
 see the rate limit on inquire() below.
 """
 import decimal
+import os
 import secrets
 import threading
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, request, send_file, url_for
+from flask_wtf.csrf import generate_csrf
 
 from db import execute, query
 from extensions import limiter
@@ -52,7 +61,7 @@ from mailer import send_partner_inquiry_email
 from sockets import notify_admin, notify_bell
 from utils import (
     PARTNER_TYPES, ValidationError, parse_email, parse_optional_text, parse_phone,
-    parse_required_text,
+    parse_required_text, product_avatar,
 )
 
 bp = Blueprint("portal", __name__, url_prefix="/partner-portal")
@@ -174,12 +183,157 @@ def _send_inquiry_notification_async(app, inquiry_id, mail_kwargs):
                 "Background partner-inquiry notification failed for inquiry_id=%s", inquiry_id)
 
 
+def _money(value):
+    """Decimal -> float rounded to centavos, for JSON. Display-only: the
+    stored order_amount on an inquiry is still computed server-side in
+    inquire() below, never taken from anything the browser sends back."""
+    return float(decimal.Decimal(value).quantize(decimal.Decimal("0.01")))
+
+
+def _package_summary(row, item_count=None):
+    """One package as the React app sees it — the same fields the old
+    Jinja templates read, with totals already discounted via
+    _package_value()."""
+    reference_total, discounted_total = _package_value(
+        row["discount_percent"], row["reference_total"])
+    return {
+        "package_id": row["package_id"],
+        "package_name": row["package_name"],
+        "description": row["description"],
+        "partner_scope": row["partner_scope"],
+        "discount_percent": float(row["discount_percent"]),
+        "item_count": int(row["item_count"] if item_count is None else item_count),
+        "reference_total": _money(reference_total),
+        "discounted_total": _money(discounted_total),
+    }
+
+
+def _serve_public_site():
+    """Hand the browser the built React app (public-site/, built into
+    static/public-site/ by `npm run build`). Served no-cache so a fresh
+    build is picked up on the next page load; the hashed JS/CSS files it
+    references are ordinary static files and cache normally."""
+    index_path = os.path.join(current_app.static_folder, "public-site", "index.html")
+    if not os.path.isfile(index_path):
+        current_app.logger.error(
+            "Partner portal front end is not built: %s is missing. Run `npm install` and "
+            "`npm run build` inside public-site/ (or use `npm run dev` there while developing).",
+            index_path,
+        )
+        return (
+            "The partner portal front end hasn't been built yet. "
+            "Run `npm install && npm run build` inside public-site/.",
+            503,
+            {"Content-Type": "text/plain; charset=utf-8"},
+        )
+    response = send_file(index_path, max_age=0)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @bp.route("/<slug>/packages")
 def packages(slug):
-    """Public catalog of active packages, optionally filtered to just
-    Distributor- or Reseller-scoped ones (packages scoped 'Both' always
-    show either way). Each card links to the package's own detail page
-    ("View Package") — inquiring happens there, not from this list."""
+    """Page URL for the package list — see _serve_public_site(). Still
+    the URL admin.py's Partners page copies for HQ to share."""
+    _verify_slug(slug)
+    return _serve_public_site()
+
+
+@bp.route("/<slug>/packages/<int:package_id>")
+def package_detail(slug, package_id):
+    """Page URL for one package. A missing/inactive package is handled
+    in the browser (the API below 404s and the app sends the visitor
+    back to the list with an explanation), so this always serves the
+    app once the slug checks out."""
+    _verify_slug(slug)
+    return _serve_public_site()
+
+
+@bp.route("/<slug>/products")
+def products_page(slug):
+    """Page URL for the full product catalog ("View all" under the
+    collection strip) — see _serve_public_site()."""
+    _verify_slug(slug)
+    return _serve_public_site()
+
+
+PRODUCTS_PER_PAGE = 12
+PRODUCT_GENDERS = ("Male", "Female", "Unisex")
+# Smallest bottle first, bulk last, whatever order the SKUs were added in.
+_UNIT_ORDER = "FIELD(unit, '3ML', '10ML', '50ML', '85ML', 'BULK')"
+
+
+@bp.route("/<slug>/api/products")
+def api_products(slug):
+    """Every scent in the catalog, one entry per product name + gender
+    (the SKU table has a row per size, so sizes are folded into a list),
+    optionally filtered by gender and paginated.
+
+    ?gender=Male|Female|Unisex (anything else = all), ?page=N (1-based,
+    clamped to the last page). Also returns per-gender counts for the
+    filter tabs.
+    """
+    _verify_slug(slug)
+
+    gender = request.args.get("gender", "all")
+    if gender not in PRODUCT_GENDERS:
+        gender = "all"
+    where = "WHERE variant = %s" if gender != "all" else ""
+    params = (gender,) if gender != "all" else ()
+
+    count_rows = query(
+        """SELECT variant, COUNT(*) AS c
+           FROM (SELECT item_name, variant FROM products GROUP BY item_name, variant) grouped
+           GROUP BY variant"""
+    )
+    counts = {g: 0 for g in PRODUCT_GENDERS}
+    for row in count_rows:
+        counts[row["variant"]] = int(row["c"])
+    counts["all"] = sum(counts.values())
+
+    total = counts[gender]
+    pages = max(1, -(-total // PRODUCTS_PER_PAGE))
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = min(max(page, 1), pages)
+
+    rows = query(
+        f"""SELECT item_name, variant,
+                   GROUP_CONCAT(DISTINCT unit ORDER BY {_UNIT_ORDER} SEPARATOR ',') AS units,
+                   MAX(image_path) AS image_path
+            FROM products {where}
+            GROUP BY item_name, variant
+            ORDER BY item_name, variant
+            LIMIT %s OFFSET %s""",
+        params + (PRODUCTS_PER_PAGE, (page - 1) * PRODUCTS_PER_PAGE),
+    )
+
+    return jsonify(
+        products=[
+            {
+                "item_name": r["item_name"],
+                "variant": r["variant"],
+                "sizes": [u for u in (r["units"] or "").split(",") if u],
+                "image_url": url_for("static", filename=r["image_path"]) if r["image_path"] else None,
+            }
+            for r in rows
+        ],
+        gender=gender,
+        counts=counts,
+        page=page,
+        pages=pages,
+        per_page=PRODUCTS_PER_PAGE,
+        total=total,
+    )
+
+
+@bp.route("/<slug>/api/packages")
+def api_packages(slug):
+    """Active packages, optionally filtered to just Distributor- or
+    Reseller-scoped ones (packages scoped 'Both' always show either
+    way)."""
     _verify_slug(slug)
 
     scope_filter = request.args.get("scope", "all")
@@ -188,6 +342,8 @@ def packages(slug):
     if scope_filter in PARTNER_TYPES:
         where_extra = "AND (pkg.partner_scope = 'Both' OR pkg.partner_scope = %s)"
         params = (scope_filter,)
+    else:
+        scope_filter = "all"
 
     package_rows = query(
         f"""SELECT pkg.*, COUNT(pi.package_item_id) AS item_count,
@@ -201,40 +357,31 @@ def packages(slug):
         params,
     )
 
-    package_list = []
-    for row in package_rows:
-        reference_total, discounted_total = _package_value(
-            row["discount_percent"], row["reference_total"])
-        row["reference_total"] = reference_total
-        row["discounted_total"] = discounted_total
-        package_list.append(row)
-
-    return render_template(
-        "public/packages.html",
-        package_list=package_list, scope_filter=scope_filter,
-        partner_types=PARTNER_TYPES, slug=slug,
+    return jsonify(
+        packages=[_package_summary(row) for row in package_rows],
+        scope=scope_filter,
+        partner_types=list(PARTNER_TYPES),
     )
 
 
-@bp.route("/<slug>/packages/<int:package_id>")
-def package_detail(slug, package_id):
+@bp.route("/<slug>/api/packages/<int:package_id>")
+def api_package_detail(slug, package_id):
     """One package's full detail: every product in it (photo, variant,
-    unit, qty per set), pricing, and the inquiry form — all on this one
-    page, so "View Package" -> "Inquire" never leaves it.
+    unit, qty per set), pricing, a few other packages, and the CSRF
+    token the inquiry form sends back.
 
-    A missing/inactive package_id (deactivated by an admin, or — since
-    Step 2 — auto-deleted after its last product was removed) redirects
-    back to the package list with an explanation instead of a bare 404.
-    A distributor/reseller reaching this from an old bookmark or a
-    shared link has no way to know a package disappeared; a dead-end
-    error page is a worse experience than just landing back on what's
-    currently available.
+    A missing/inactive package_id (deactivated by an admin, or
+    auto-deleted after its last product was removed) is a 404 with a
+    visitor-facing message — the app shows it and returns to the
+    package list rather than a dead-end error page, since a
+    distributor/reseller following an old bookmark or a shared link has
+    no way to know a package disappeared.
     """
     _verify_slug(slug)
     pkg = _active_package_or_none(package_id)
     if not pkg:
-        flash("That package is no longer available — here's what's currently on offer.", "error")
-        return redirect(url_for("portal.packages", slug=slug))
+        return jsonify(
+            error="That package is no longer available. Here's what's on offer right now."), 404
 
     items = query(
         """SELECT p.item_name, p.variant, p.unit, p.image_path, p.price, pi.qty
@@ -242,13 +389,11 @@ def package_detail(slug, package_id):
            WHERE pi.package_id = %s ORDER BY p.item_name""",
         (package_id,),
     )
-    reference_total = sum(
+    pkg["reference_total"] = sum(
         (decimal.Decimal(i["qty"]) * decimal.Decimal(i["price"])
          for i in items),
         decimal.Decimal("0"),
     )
-    reference_total, discounted_total = _package_value(
-        pkg["discount_percent"], reference_total)
 
     # A handful of other active packages (same visibility rule as the
     # main list — scoped to this package's own partner_scope, or 'Both'
@@ -268,22 +413,30 @@ def package_detail(slug, package_id):
            LIMIT 3""",
         (package_id, pkg["partner_scope"], pkg["partner_scope"]),
     )
-    other_packages = []
-    for row in other_rows:
-        row_ref_total, row_discounted_total = _package_value(
-            row["discount_percent"], row["reference_total"])
-        row["reference_total"] = row_ref_total
-        row["discounted_total"] = row_discounted_total
-        other_packages.append(row)
 
-    return render_template(
-        "public/package_detail.html",
-        pkg=pkg, items=items, reference_total=reference_total, discounted_total=discounted_total,
-        partner_types=PARTNER_TYPES, slug=slug, other_packages=other_packages,
+    return jsonify(
+        package=_package_summary(pkg, item_count=len(items)),
+        items=[
+            {
+                "item_name": i["item_name"],
+                "variant": i["variant"],
+                "unit": i["unit"],
+                "qty": int(i["qty"]),
+                "image_url": url_for("static", filename=i["image_path"]) if i["image_path"] else None,
+                "initials": product_avatar(i["item_name"])["initials"],
+            }
+            for i in items
+        ],
+        other_packages=[_package_summary(row) for row in other_rows],
+        partner_types=list(PARTNER_TYPES),
+        # Sent back as the X-CSRFToken header on the inquiry POST — see
+        # CSRFProtect in app.py. Tied to the session cookie this same
+        # response sets.
+        csrf_token=generate_csrf(),
     )
 
 
-@bp.route("/<slug>/packages/<int:package_id>/inquire", methods=["POST"])
+@bp.route("/<slug>/api/packages/<int:package_id>/inquire", methods=["POST"])
 # This is the only write (and the only endpoint that fans out to email +
 # a DB row per hit) anywhere in the unauthenticated portal blueprint —
 # there's no login to throttle abuse through the way auth.login() does
@@ -294,9 +447,10 @@ def package_detail(slug, package_id):
 # same office/shared IP) never gets blocked.
 @limiter.limit("5 per minute;30 per day")
 def inquire(slug, package_id):
+    """Takes a JSON body with the inquiry form's fields. Responds 201
+    {"message"} on success, or 4xx {"error"} with a message to show the
+    visitor."""
     _verify_slug(slug)
-    detail_redirect = redirect(
-        url_for("portal.package_detail", slug=slug, package_id=package_id))
 
     pkg = query(
         "SELECT package_id, package_name, discount_percent FROM packages "
@@ -304,52 +458,53 @@ def inquire(slug, package_id):
         (package_id,), fetchone=True,
     )
     if not pkg:
-        flash("That package is no longer available.", "error")
-        return redirect(url_for("portal.packages", slug=slug))
+        return jsonify(error="That package is no longer available."), 404
 
-    partner_type = request.form.get("partner_type", "").strip()
-    message = request.form.get("message", "").strip() or None
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="Something went wrong sending your inquiry. Please try again."), 400
 
-    # Every field below is required now except address and message — a
+    partner_type = str(data.get("partner_type") or "").strip()
+    message = str(data.get("message") or "").strip() or None
+
+    # Every field below is required except address and message — a
     # Distributor is filling this in on behalf of a business, a Reseller
-    # on behalf of themselves (see the "You are a" toggle on the
-    # template, which relabels "Business / company name" to "Your
-    # full name" for a Reseller — resellers don't necessarily have a
-    # registered company). Either way the underlying column is still
-    # company_name; only the label/placeholder changes per type.
+    # on behalf of themselves (the form relabels "Business / company
+    # name" to "Your full name" for a Reseller — resellers don't
+    # necessarily have a registered company). Either way the underlying
+    # column is still company_name; only the label changes per type.
     try:
         if partner_type not in PARTNER_TYPES:
             raise ValidationError("Select whether you're a distributor or a reseller.")
 
         name_field_label = "Business / company name" if partner_type == "Distributor" else "Your full name"
         company_name = parse_required_text(
-            request.form.get("company_name"), name_field_label, max_length=150
+            data.get("company_name"), name_field_label, max_length=150
         )
         contact_person = parse_required_text(
-            request.form.get("contact_person"), "Contact person", max_length=100
+            data.get("contact_person"), "Contact person", max_length=100
         )
-        phone = parse_phone(request.form.get("phone"))
-        email = parse_email(request.form.get("email"))
+        phone = parse_phone(data.get("phone"))
+        email = parse_email(data.get("email"))
         address = parse_optional_text(
-            request.form.get("address"), "Address", max_length=255
+            data.get("address"), "Address", max_length=255
         )
         if len(message or "") > 500:
-            raise ValidationError("Message is too long — please keep it under 500 characters.")
+            raise ValidationError("Message is too long. Please keep it under 500 characters.")
     except ValidationError as err:
-        flash(str(err), "error")
-        return detail_redirect
+        return jsonify(error=str(err)), 400
 
     partner_id = _find_or_create_partner(
         partner_type, company_name, contact_person, phone, email, address)
 
     # order_amount snapshots what this partner would actually pay for the
     # package right now — same reference-total-then-discount math as
-    # package_detail() above, computed fresh here rather than trusting a
-    # hidden form field (which the visitor's browser could tamper with).
-    # Frozen permanently at insert time, same "snapshot, don't recompute
-    # later" philosophy as package_name_snapshot itself — see schema.sql's
-    # note on partner_inquiries.order_amount for why this only counts once
-    # an admin marks the inquiry Closed.
+    # api_package_detail() above, computed fresh here rather than
+    # trusting anything the browser sends. Frozen permanently at insert
+    # time, same "snapshot, don't recompute later" philosophy as
+    # package_name_snapshot itself — see schema.sql's note on
+    # partner_inquiries.order_amount for why this only counts once an
+    # admin marks the inquiry Closed.
     item_totals = query(
         """SELECT COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
            FROM package_items pi JOIN products p ON p.sku = pi.sku
@@ -396,5 +551,4 @@ def inquire(slug, package_id):
         room="admin", level="success",
     )
 
-    flash("Thanks! Your inquiry has been sent — our team will reach out shortly.", "success")
-    return detail_redirect
+    return jsonify(message="Thanks! Your inquiry has been sent. Our team will reach out shortly."), 201

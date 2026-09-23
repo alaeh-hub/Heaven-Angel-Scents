@@ -1909,6 +1909,14 @@ CREATE TABLE IF NOT EXISTS bulk_batches (
 --     create_bulk_batch() in routes/admin.py) — this table doubles as the
 --     audit trail for that deduction, the same role material_usage_logs
 --     plays for bottling.
+--
+--     qty_used_unit (added in migration 39 below) is the unit qty_used and
+--     cost_per_unit_snapshot are actually expressed in — not necessarily
+--     raw_materials.unit, so a material bought by the Gallon can still
+--     have a few mL used per batch logged as mL rather than a near-zero
+--     fraction of a gallon. Deducting from raw_materials.stock_qty (kept
+--     in the material's own purchase unit) converts qty_used into that
+--     unit first — see utils.convert_material_qty().
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bulk_batch_materials (
     item_id                INT AUTO_INCREMENT PRIMARY KEY,
@@ -1987,3 +1995,68 @@ CREATE TABLE IF NOT EXISTS unit_cogs_settings (
 
 INSERT IGNORE INTO unit_cogs_settings (unit, base_cost_per_unit) VALUES
     ('85ML', 0.0000), ('50ML', 0.0000), ('10ML', 0.0000), ('3ML', 0.0000);
+
+-- ----------------------------------------------------------------------------
+-- 39. Migration — bulk_batch_materials.qty_used_unit + raw_materials.stock_qty
+--     precision (mismatched-unit usage logging)
+--
+--     Before this, create_bulk_batch() (routes/admin.py) assumed a
+--     material's "qty used" was always typed in that material's own
+--     purchase unit (raw_materials.unit) — so a material bought by the
+--     Gallon but used a few mL at a time per batch had no way to be
+--     logged accurately: typing "0.31" meant 0.31 *gallons*, not 0.31 mL,
+--     silently overcharging the batch by orders of magnitude.
+--
+--     qty_used_unit records the unit the admin actually typed the amount
+--     in (one of utils.compatible_material_units(raw_materials.unit) —
+--     the volume trio Milliliter/Liter/Gallon for a liquid material, or
+--     just the material's own unit for Gram/Piece). qty_used and
+--     cost_per_unit_snapshot are now both expressed in THAT unit (see
+--     create_bulk_batch()), not necessarily the material's purchase unit
+--     — line_cost = qty_used * cost_per_unit_snapshot still holds exactly
+--     as before, just no longer forces a batch's line items into a unit
+--     that's the wrong scale for how they're actually used.
+--
+--     Backfilled to each row's own material's purchase unit, which is
+--     what every existing row was (silently, and for liquids sometimes
+--     wrongly) assumed to already be in.
+--
+--     raw_materials.stock_qty is widened from DECIMAL(10,3) to
+--     DECIMAL(14,6) because stock is still deducted in the material's
+--     purchase unit (see create_bulk_batch()) — a Gallon-stocked material
+--     used a few mL at a time converts to a very small fraction of a
+--     gallon per batch (e.g. 0.31 mL = 0.0000819 gallon), which the old
+--     3-decimal-place column would round straight to zero and never
+--     actually deduct.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_qty_used_unit_and_stock_precision()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'bulk_batch_materials' AND column_name = 'qty_used_unit'
+    ) THEN
+        ALTER TABLE bulk_batch_materials
+            ADD COLUMN qty_used_unit ENUM('Gram', 'Milliliter', 'Liter', 'Gallon', 'Piece') NULL AFTER material_id;
+        UPDATE bulk_batch_materials bbm
+        JOIN raw_materials rm ON rm.material_id = bbm.material_id
+        SET bbm.qty_used_unit = rm.unit;
+        ALTER TABLE bulk_batch_materials
+            MODIFY COLUMN qty_used_unit ENUM('Gram', 'Milliliter', 'Liter', 'Gallon', 'Piece') NOT NULL;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'raw_materials'
+              AND column_name = 'stock_qty' AND column_type = 'decimal(10,3)'
+    ) THEN
+        ALTER TABLE raw_materials
+            MODIFY COLUMN stock_qty DECIMAL(14, 6) NOT NULL DEFAULT 0.000000;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_qty_used_unit_and_stock_precision();
+DROP PROCEDURE _migrate_qty_used_unit_and_stock_precision;

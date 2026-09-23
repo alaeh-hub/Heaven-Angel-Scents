@@ -35,6 +35,18 @@ python3 -m venv .venv
 `requirements.txt` includes the production WSGI stack (`gunicorn`, `gevent`,
 `gevent-websocket`) already — nothing extra to install for that.
 
+The public partner portal is a React app in `public-site/` that has to be
+built before Flask can serve it (needs Node.js 20+ on the build host):
+
+```bash
+cd public-site
+npm ci
+npm run build        # writes static/public-site/, which Flask serves
+cd ..
+```
+
+Until it's built, the portal URLs answer 503 with a message saying so.
+
 ## 3. Database
 
 ```bash
@@ -249,6 +261,7 @@ tailing.
 cd /opt/heaven-and-angel
 git pull
 .venv/bin/pip install -r requirements.txt   # in case dependencies changed
+(cd public-site && npm ci && npm run build)  # rebuild the partner portal front end
 mysql -u root -p heaven_and_angel_scents < schema.sql   # back up first — see step 3
 sudo systemctl restart heaven-and-angel
 ```

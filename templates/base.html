@@ -350,7 +350,7 @@
             justify-content: space-between;
             gap: 10px;
             padding: 12px 14px;
-            border-bottom: var(--border-width-strong) solid var(--border-strong);
+            border-bottom: 1px solid var(--border);
             background: var(--surface-2);
             flex-shrink: 0;
         }
@@ -459,8 +459,8 @@
         }
 
         .halo-suggestion:hover {
-            border-color: var(--accent);
-            background: var(--accent-soft);
+            border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+            background: color-mix(in srgb, var(--accent) 10%, var(--surface));
             color: var(--accent-ink);
         }
 
@@ -562,7 +562,7 @@
             font-size: 12.8px;
             padding: 9px 13px;
             border-radius: 19px;
-            background: var(--surface);
+            background: var(--field);
         }
 
         .halo-send {
@@ -586,7 +586,7 @@
         }
 
         .halo-send:hover:not(:disabled) {
-            background: var(--accent-ink);
+            background: color-mix(in srgb, var(--accent) 88%, #fff);
         }
 
         .halo-send:active:not(:disabled) {
@@ -1168,7 +1168,8 @@
             <div class="halo-log" id="haloLog">
                 <div class="halo-empty" id="haloEmpty">
                     <p>Hi, I'm Halo. Ask about {{ 'company-wide' if session.role == 'Admin' else 'your branch' }}
-                        stock, requests, or sales — I can also draft a reorder for you to review.</p>
+                        stock, requests, sales, customers or credit{{ ', materials, production costs or partner inquiries' if session.role == 'Admin' }}
+                        — I can also draft a reorder for you to review.</p>
                     <div class="halo-suggestions">
                         {% if session.role == 'Admin' %}
                         <button type="button" class="halo-suggestion"
@@ -1177,11 +1178,17 @@
                         <button type="button" class="halo-suggestion"
                             data-q="What stock requests are still pending my approval?">Any requests pending my
                             approval?</button>
+                        <button type="button" class="halo-suggestion"
+                            data-q="Which raw materials are running lowest right now?">Which raw materials are
+                            running low?</button>
                         {% else %}
                         <button type="button" class="halo-suggestion"
                             data-q="What items are running low at my branch?">What's running low here?</button>
                         <button type="button" class="halo-suggestion" data-q="How much have I sold today?">How much
                             have I sold today?</button>
+                        <button type="button" class="halo-suggestion"
+                            data-q="Who has the most taken on credit at my branch?">Who owes the most on
+                            credit?</button>
                         {% endif %}
                     </div>
                 </div>

@@ -165,6 +165,11 @@ REPORT_TYPES = {
     "suppliers":       {"label": "Suppliers",        "admin": True, "branch": False, "windowed": False},
     "formulas":        {"label": "Formulas (Cost of Goods)", "admin": True, "branch": False, "windowed": False},
     "cogs_logs":       {"label": "Cost of Goods Log", "admin": True, "branch": False, "windowed": True},
+    # Bulk Batches — the step between raw materials and bottling (see
+    # bulk_batches in schema.sql). Admin-only like the rest of the
+    # materials/cost-of-goods bookkeeping above, and a dated log (when
+    # each batch was mixed), so windowed.
+    "bulk_batches":    {"label": "Bulk Batches",     "admin": True, "branch": False, "windowed": True},
     "branch_stock":    {"label": "Branch Stock",     "admin": True, "branch": True,  "windowed": False,
                         "branch_label": "My Inventory"},
     "stock_requests":  {"label": "Stock Requests",   "admin": True, "branch": True,  "windowed": True},
@@ -172,6 +177,19 @@ REPORT_TYPES = {
     "sales_history":   {"label": "Sales History",    "admin": True, "branch": True,  "windowed": True},
     "credit_purchases": {"label": "Credit Purchases", "admin": True, "branch": True,
                          "windowed": True, "branch_label": "Credit Purchases"},
+    # Customers — the repeat-customer directory (built from
+    # sales.customer_name, no table of its own). A per-customer rollup
+    # like the Customers pages, so a snapshot rather than windowed.
+    "customers":       {"label": "Customers",        "admin": True, "branch": True,  "windowed": False},
+    # Discrepancies — damaged/short units on deliveries, the same
+    # DAMAGE/ADJUSTMENT rows both Discrepancies pages list. Dated, so
+    # windowed.
+    "discrepancies":   {"label": "Discrepancies",    "admin": True, "branch": True,  "windowed": True},
+    # Branch Performance — one summary row per retail branch (the Branch
+    # Performance page). Windowed so revenue/units can be pulled for a
+    # month or a date range; "Recent N" doesn't mean anything for a
+    # per-branch total, so it reads as all time (see the builder).
+    "branch_performance": {"label": "Branch Performance", "admin": True, "branch": False, "windowed": True},
     "accounts":        {"label": "Accounts",         "admin": True, "branch": False, "windowed": False},
     # Partners & Distribution — admin-only (branch accounts never see
     # this section of the app at all, same as Accounts above).
@@ -342,9 +360,12 @@ def _window_note(filters, truncated):
 # qty_sold/qty_produced (always "how many bottles", regardless of which
 # product), summing these across rows for different materials on the
 # same report would add incompatible units together (e.g. grams +
-# milliliters) into a number that means nothing.
+# milliliters) into a number that means nothing. cost_per_ml (a bulk
+# batch's cost per mL) is the same per-unit shape as cost_per_unit, and
+# turnover (Branch Performance) is a ratio per branch, not an amount.
 NO_TOTAL_COLUMNS = {"unit_price", "cost_per_unit", "cogs_per_unit",
-                    "qty_per_unit", "package_qty", "price", "hq_price"}
+                    "qty_per_unit", "package_qty", "price", "hq_price",
+                    "cost_per_ml", "turnover"}
 
 
 def _compute_totals(columns, rows):
@@ -550,45 +571,52 @@ def _report_suppliers(filters, branch_scope):
 
 
 def _report_formulas(filters, branch_scope):
-    """One row per formula line (unit_formula_items) — the bill-of-
-    materials recipe behind each packaging size's cost of goods (see
-    the Formulas page / schema.sql's unit_formula_items comment). A
-    snapshot like Products/Packages, not windowed — a formula has no
-    "when it happened" the way a purchase or a production run does, it's
-    just whatever recipe is on file right now. `unit` here is the same
-    packaging-size enum (85ML, 50ML, ...) the unit filter everywhere
-    else in this module already validates against, so it's reused as-is
-    rather than needing its own filter.
-    """
-    where, params = "", []
-    if filters["unit"] != "all":
-        where += " AND ufi.unit = %s"
-        params.append(filters["unit"])
-    if filters["search"]:
-        where += " AND rm.material_name LIKE %s"
-        params.append(f"%{filters['search']}%")
+    """The cost of goods on file right now: the flat base cost per
+    Bottled packaging size (unit_cogs_settings) plus the single per-mL
+    rate for Bulk/Refill (bulk_rate_settings) — exactly what the
+    Formulas page edits and what production() logs as cogs_per_unit.
 
-    rows = query(
-        f"""SELECT ufi.unit, rm.material_name, rm.unit AS material_unit,
-                   ufi.qty_per_unit, ufi.line_cost
-            FROM unit_formula_items ufi
-            JOIN raw_materials rm ON rm.material_id = ufi.material_id
-            WHERE 1=1 {where}
-            ORDER BY ufi.unit, rm.material_name LIMIT {MAX_ROWS}""",
-        tuple(params),
-    )
-    for r in rows:
-        r["qty_per_unit"] = float(r["qty_per_unit"])
-        r["line_cost"] = float(r["line_cost"])
+    This used to list unit_formula_items (a per-size materials recipe),
+    but production() no longer reads that table — it was superseded by
+    unit_cogs_settings (see schema.sql's migration 38) — so the report
+    was showing a recipe that no longer drives any cost. A snapshot, not
+    windowed, same as before. The unit filter still applies: a bottle
+    size narrows to that size's row, BULK narrows to the bulk rate.
+    """
+    rows = []
+    if filters["unit"] != "BULK":
+        where, params = "", []
+        if filters["unit"] != "all":
+            where = " WHERE unit = %s"
+            params.append(filters["unit"])
+        for r in query(
+            f"""SELECT unit, base_cost_per_unit, updated_at
+                FROM unit_cogs_settings{where}
+                ORDER BY FIELD(unit, '85ML', '50ML', '10ML', '3ML')""",
+            tuple(params),
+        ):
+            rows.append({
+                "unit": r["unit"], "basis": "Per bottle",
+                "cost_per_unit": float(r["base_cost_per_unit"]),
+                "updated_at": r["updated_at"],
+            })
+    if filters["unit"] in ("all", "BULK"):
+        bulk = query(
+            "SELECT rate_per_ml, updated_at FROM bulk_rate_settings WHERE id = 1", fetchone=True)
+        if bulk:
+            rows.append({
+                "unit": "BULK", "basis": "Per mL (Bulk/Refill)",
+                "cost_per_unit": float(bulk["rate_per_ml"]),
+                "updated_at": bulk["updated_at"],
+            })
 
     columns = [
         ("unit", "Packaging Size", "str"),
-        ("material_name", "Material", "str"),
-        ("qty_per_unit", "Qty per Unit", "num"),
-        ("material_unit", "Material Unit", "str"),
-        ("line_cost", "Line Cost", "money"),
+        ("basis", "Charged", "str"),
+        ("cost_per_unit", "Cost of Goods", "money"),
+        ("updated_at", "Last Changed", "datetime"),
     ]
-    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now — the recipe behind each packaging size's cost of goods"
+    return columns, rows, False, "Snapshot as of now — the cost of goods each production run is charged"
 
 
 def _report_cogs_logs(filters, branch_scope):
@@ -604,25 +632,29 @@ def _report_cogs_logs(filters, branch_scope):
         where += " AND p.unit = %s"
         params.append(filters["unit"])
     if filters["search"]:
-        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR pl.batch_code LIKE %s)"
+        where += (" AND (p.item_name LIKE %s OR p.sku LIKE %s OR pl.batch_code LIKE %s"
+                  " OR bb.batch_code LIKE %s OR bb.scent_name LIKE %s)")
         like = f"%{filters['search']}%"
-        params += [like, like, like]
+        params += [like, like, like, like, like]
     time_where, order, limit_n, truncated = _time_window(
         "c.created_at", filters, params)
     where += time_where
 
     rows = query(
         f"""SELECT c.created_at, p.sku, p.item_name, p.unit, pl.batch_code,
+                   COALESCE(bb.batch_code, bb.scent_name) AS bulk_batch,
                    c.qty_produced, c.cogs_per_unit, c.total_cogs, u.username
             FROM cogs_logs c
             JOIN products p ON c.sku = p.sku
             LEFT JOIN production_logs pl ON c.production_log_id = pl.log_id
+            LEFT JOIN bulk_batches bb ON c.bulk_batch_id = bb.batch_id
             LEFT JOIN users u ON c.created_by_user_id = u.user_id
             WHERE 1=1 {where} {order} LIMIT {limit_n}""",
         tuple(params),
     )
     for r in rows:
         r["batch_code"] = r["batch_code"] or "—"
+        r["bulk_batch"] = r["bulk_batch"] or "—"
         r["qty_produced"] = float(r["qty_produced"])
         r["cogs_per_unit"] = float(r["cogs_per_unit"])
         r["total_cogs"] = float(r["total_cogs"])
@@ -632,6 +664,9 @@ def _report_cogs_logs(filters, branch_scope):
         ("created_at", "Logged", "datetime"),
         ("sku", "SKU", "str"), ("item_name", "Item", "str"),
         ("unit", "Unit", "str"), ("batch_code", "Batch", "str"),
+        # Which bulk batch a Bottled run was filled from (cogs_logs.
+        # bulk_batch_id) — "—" for Bulk/Refill runs and older rows.
+        ("bulk_batch", "Filled From", "str"),
         ("qty_produced", "Qty Produced", "num"),
         ("cogs_per_unit", "Cost / Unit", "money"),
         ("total_cogs", "Total Cost of Goods", "money"),
@@ -813,9 +848,9 @@ def _report_sales_history(filters, branch_scope):
         where += " AND s.payment_method = %s"
         params.append(filters["payment_method"])
     if filters["search"]:
-        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s)"
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR s.customer_name LIKE %s)"
         like = f"%{filters['search']}%"
-        params += [like, like]
+        params += [like, like, like]
     time_where, order, limit_n, truncated = _time_window(
         "s.sold_at", filters, params)
     where += time_where
@@ -823,7 +858,8 @@ def _report_sales_history(filters, branch_scope):
     rows = query(
         f"""SELECT s.sold_at, b.branch_name, p.item_name, p.sku, p.variant, p.unit,
                    s.qty_sold, s.unit_price, (s.qty_sold * s.unit_price) AS line_total,
-                   s.sale_type, s.payment_method, COALESCE(s.buyer_name, bu.username) AS buyer_username
+                   s.sale_type, s.payment_method, COALESCE(s.buyer_name, bu.username) AS buyer_username,
+                   s.customer_name
             FROM sales s
             JOIN branches b ON s.branch_id = b.branch_id
             JOIN products p ON s.sku = p.sku
@@ -835,6 +871,7 @@ def _report_sales_history(filters, branch_scope):
         r["unit_price"] = float(r["unit_price"])
         r["line_total"] = float(r["line_total"])
         r["buyer_username"] = r["buyer_username"] or "—"
+        r["customer_name"] = r["customer_name"] or "Walk-in"
 
     columns = [] if branch_scope is not None else [
         ("branch_name", "Branch", "str")]
@@ -846,6 +883,7 @@ def _report_sales_history(filters, branch_scope):
         ("unit_price", "Unit Price", "money"), ("line_total", "Total", "money"),
         ("payment_method", "Payment", "badge:payment_method"), ("buyer_username",
                                                                 "Buyer (if Credit)", "str"),
+        ("customer_name", "Customer", "str"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
     return columns, rows, truncated, _window_note(filters, truncated)
@@ -1110,6 +1148,248 @@ def _report_partner_inquiries(filters, branch_scope):
     return columns, rows, truncated, _window_note(filters, truncated)
 
 
+def _report_bulk_batches(filters, branch_scope):
+    """One row per bulk batch (bulk_batches) — what was mixed, how much,
+    what it really cost, and how much is left to bottle from. Materials
+    are folded into one "Materials Used" cell per batch (from
+    bulk_batch_materials) rather than one row per ingredient, so the
+    batch totals stay one-row-per-batch and total up correctly.
+    """
+    where, params = "", []
+    if filters["search"]:
+        where += " AND (bb.scent_name LIKE %s OR bb.batch_code LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like]
+    time_where, order, limit_n, truncated = _time_window(
+        "bb.created_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT bb.created_at, bb.batch_code, bb.scent_name,
+                   bb.total_volume_ml, bb.remaining_ml, bb.total_cost, bb.cost_per_ml,
+                   (SELECT GROUP_CONCAT(
+                        CONCAT(rm.material_name, ' ', TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM bbm.qty_used)),
+                               ' ', COALESCE(bbm.qty_used_unit, rm.unit))
+                        ORDER BY rm.material_name SEPARATOR ', ')
+                    FROM bulk_batch_materials bbm
+                    JOIN raw_materials rm ON rm.material_id = bbm.material_id
+                    WHERE bbm.batch_id = bb.batch_id) AS materials_used,
+                   u.username
+            FROM bulk_batches bb
+            LEFT JOIN users u ON bb.created_by_user_id = u.user_id
+            WHERE 1=1 {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["batch_code"] = r["batch_code"] or "—"
+        r["total_volume_ml"] = float(r["total_volume_ml"])
+        r["remaining_ml"] = float(r["remaining_ml"])
+        r["used_ml"] = r["total_volume_ml"] - r["remaining_ml"]
+        r["total_cost"] = float(r["total_cost"])
+        r["cost_per_ml"] = float(r["cost_per_ml"])
+        r["materials_used"] = r["materials_used"] or "—"
+        r["username"] = r["username"] or "—"
+
+    columns = [
+        ("created_at", "Mixed", "datetime"),
+        ("batch_code", "Batch", "str"), ("scent_name", "Scent", "str"),
+        ("materials_used", "Materials Used", "str"),
+        ("total_volume_ml", "Volume (mL)", "num"),
+        ("used_ml", "Bottled (mL)", "num"),
+        ("remaining_ml", "Remaining (mL)", "num"),
+        ("total_cost", "Batch Cost", "money"),
+        ("cost_per_ml", "Cost / mL", "money"),
+        ("username", "Made By", "str"),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
+
+
+def _report_customers(filters, branch_scope):
+    """The repeat-customer directory — same data as the admin/branch
+    Customers pages, built from sales.customer_name (walk-ins with no
+    name are left out, since there's nothing to group them by).
+
+    Address is the one on that customer's earliest sale, the same
+    "first sale wins" convention as both Customers pages — looked up
+    with a correlated subquery (earliest by sold_at, then sale_id) so a
+    customer with two sales at the same timestamp still gets exactly one
+    row. A branch account (branch_scope) only ever sees its own sales;
+    admin can narrow to one branch or see the fleet-wide rollup, where
+    a customer who shopped at several branches is still one row.
+    """
+    scope_sql, scope_params = "", []
+    if branch_scope is not None:
+        scope_sql, scope_params = " AND {a}.branch_id = %s", [branch_scope]
+    elif filters["branch_id"] != "all":
+        scope_sql, scope_params = " AND {a}.branch_id = %s", [filters["branch_id"]]
+
+    search_sql, search_params = "", []
+    if filters["search"]:
+        search_sql = " AND sa.customer_name LIKE %s"
+        search_params = [f"%{filters['search']}%"]
+
+    rows = query(
+        f"""SELECT agg.customer_name AS name,
+                   (SELECT s2.customer_address FROM sales s2
+                    WHERE s2.customer_name = agg.customer_name{scope_sql.format(a="s2")}
+                    ORDER BY s2.sold_at, s2.sale_id LIMIT 1) AS address,
+                   agg.branches, agg.purchase_count, agg.total_units,
+                   agg.total_spent, agg.last_purchase_at
+            FROM (
+                SELECT sa.customer_name,
+                       GROUP_CONCAT(DISTINCT b.branch_name ORDER BY b.branch_name SEPARATOR ', ') AS branches,
+                       COUNT(*) AS purchase_count,
+                       COALESCE(SUM(sa.qty_sold), 0) AS total_units,
+                       COALESCE(SUM(sa.qty_sold * sa.unit_price), 0) AS total_spent,
+                       MAX(sa.sold_at) AS last_purchase_at
+                FROM sales sa
+                JOIN branches b ON sa.branch_id = b.branch_id
+                WHERE sa.customer_name IS NOT NULL AND sa.customer_name <> ''
+                      {scope_sql.format(a="sa")}{search_sql}
+                GROUP BY sa.customer_name
+            ) agg
+            ORDER BY agg.total_spent DESC LIMIT {MAX_ROWS}""",
+        tuple(scope_params + scope_params + search_params),
+    )
+    for r in rows:
+        r["address"] = r["address"] or "—"
+        r["total_units"] = int(r["total_units"])
+        r["total_spent"] = float(r["total_spent"])
+
+    columns = [("name", "Customer", "str"), ("address", "Address", "str")]
+    if branch_scope is None:
+        columns.append(("branches", "Branches Shopped", "str"))
+    columns += [
+        ("purchase_count", "Purchases", "int"),
+        ("total_units", "Units Bought", "int"),
+        ("total_spent", "Total Spent", "money"),
+        ("last_purchase_at", "Last Purchase", "datetime"),
+    ]
+    return columns, rows, len(rows) == MAX_ROWS, "Snapshot as of now — named customers only (walk-ins excluded)"
+
+
+def _report_discrepancies(filters, branch_scope):
+    """Delivery discrepancies — DAMAGE (reported damaged at receipt) and
+    ADJUSTMENT (dispatched but never received) rows tied to a delivery
+    (reference_type='STOCK_REQUEST'), the same rows both Discrepancies
+    pages list. change_qty is stored negative for both (they deduct
+    stock), so it's flipped back to a positive "units lost" figure here,
+    same as the admin page's summary does.
+    """
+    where, params = "", []
+    if branch_scope is not None:
+        where += " AND sml.branch_id = %s"
+        params.append(branch_scope)
+    elif filters["branch_id"] != "all":
+        where += " AND sml.branch_id = %s"
+        params.append(filters["branch_id"])
+    if filters["search"]:
+        where += " AND (p.item_name LIKE %s OR p.sku LIKE %s OR sr.delivery_number LIKE %s)"
+        like = f"%{filters['search']}%"
+        params += [like, like, like]
+    time_where, order, limit_n, truncated = _time_window(
+        "sml.created_at", filters, params)
+    where += time_where
+
+    rows = query(
+        f"""SELECT sml.created_at, b.branch_name, sr.delivery_number, p.item_name, p.sku,
+                   sml.movement_type, -sml.change_qty AS units_lost, sml.notes
+            FROM stock_movement_logs sml
+            JOIN branches b ON sml.branch_id = b.branch_id
+            JOIN products p ON sml.sku = p.sku
+            LEFT JOIN stock_requests sr
+              ON sml.reference_type = 'STOCK_REQUEST' AND sml.reference_id = sr.request_id
+            WHERE sml.reference_type = 'STOCK_REQUEST'
+              AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+              {where} {order} LIMIT {limit_n}""",
+        tuple(params),
+    )
+    for r in rows:
+        r["delivery_number"] = r["delivery_number"] or "—"
+        r["units_lost"] = int(r["units_lost"])
+        r["notes"] = r["notes"] or "—"
+
+    columns = [] if branch_scope is not None else [
+        ("branch_name", "Branch", "str")]
+    columns = [("created_at", "When", "datetime")] + columns + [
+        ("delivery_number", "Delivery", "str"),
+        ("item_name", "Item", "str"), ("sku", "SKU", "str"),
+        ("movement_type", "Type", "badge:movement_type"),
+        ("units_lost", "Units Lost", "int"), ("notes", "Notes", "str"),
+    ]
+    truncated = truncated and len(rows) == MAX_ROWS
+    return columns, rows, truncated, _window_note(filters, truncated)
+
+
+def _report_branch_performance(filters, branch_scope):
+    """One row per retail branch — the Branch Performance page as a
+    report: sales count, units, revenue and delivery discrepancies over
+    the chosen window, plus current stock on hand and the same rough
+    turnover figure (units sold / current stock) the page shows.
+
+    This is a per-branch total, so there's no "most recent N rows" to
+    take — Recent mode reads as all time. Range/Month bound the sales
+    and discrepancies (stock on hand is always as of now; there's no
+    stock history to take it at a past date from).
+    """
+    sales_params, disc_params = [], []
+    if filters["mode"] in ("range", "month"):
+        sales_where, _, _, _ = _time_window("sold_at", filters, sales_params)
+        disc_where, _, _, _ = _time_window("created_at", filters, disc_params)
+        note = _window_note(filters, False)
+    else:
+        sales_where = disc_where = ""
+        note = "All time"
+
+    rows = query(
+        f"""SELECT b.branch_name,
+                   COALESCE(sales_agg.sales_count, 0) AS sales_count,
+                   COALESCE(sales_agg.units_sold, 0) AS units_sold,
+                   COALESCE(sales_agg.revenue, 0) AS revenue,
+                   COALESCE(stock_agg.total_stock, 0) AS total_stock,
+                   COALESCE(disc_agg.discrepancy_count, 0) AS discrepancy_count
+            FROM branches b
+            LEFT JOIN (
+                SELECT branch_id, COUNT(*) AS sales_count, SUM(qty_sold) AS units_sold,
+                       SUM(qty_sold * unit_price) AS revenue
+                FROM sales WHERE 1=1 {sales_where} GROUP BY branch_id
+            ) sales_agg ON sales_agg.branch_id = b.branch_id
+            LEFT JOIN (
+                SELECT branch_id, SUM(stock_qty) AS total_stock
+                FROM branch_inventory GROUP BY branch_id
+            ) stock_agg ON stock_agg.branch_id = b.branch_id
+            LEFT JOIN (
+                SELECT branch_id, COUNT(*) AS discrepancy_count
+                FROM stock_movement_logs
+                WHERE reference_type = 'STOCK_REQUEST' AND movement_type IN ('DAMAGE', 'ADJUSTMENT')
+                      {disc_where}
+                GROUP BY branch_id
+            ) disc_agg ON disc_agg.branch_id = b.branch_id
+            WHERE b.is_hq = FALSE
+            ORDER BY revenue DESC, b.branch_name""",
+        tuple(sales_params + disc_params),
+    )
+    for r in rows:
+        r["units_sold"] = int(r["units_sold"])
+        r["revenue"] = float(r["revenue"])
+        r["total_stock"] = int(r["total_stock"])
+        # None (shown as "—") when there's no stock on hand to divide by,
+        # same as the page — not a misleading 0 or an unbounded number.
+        r["turnover"] = round(r["units_sold"] / r["total_stock"], 2) if r["total_stock"] else None
+
+    columns = [
+        ("branch_name", "Branch", "str"),
+        ("sales_count", "Sales", "int"),
+        ("units_sold", "Units Sold", "int"),
+        ("revenue", "Revenue", "money"),
+        ("total_stock", "Stock on Hand (now)", "int"),
+        ("discrepancy_count", "Discrepancies", "int"),
+        ("turnover", "Turnover", "num"),
+    ]
+    return columns, rows, False, note
+
+
 _BUILDERS = {
     "products": _report_products,
     "production_log": _report_production_log,
@@ -1117,11 +1397,15 @@ _BUILDERS = {
     "suppliers": _report_suppliers,
     "formulas": _report_formulas,
     "cogs_logs": _report_cogs_logs,
+    "bulk_batches": _report_bulk_batches,
     "branch_stock": _report_branch_stock,
     "stock_requests": _report_stock_requests,
     "inventory_log": _report_inventory_log,
     "sales_history": _report_sales_history,
     "credit_purchases": _report_credit_purchases,
+    "customers": _report_customers,
+    "discrepancies": _report_discrepancies,
+    "branch_performance": _report_branch_performance,
     "accounts": _report_accounts,
     "partners": _report_partners,
     "packages": _report_packages,
@@ -1168,7 +1452,7 @@ def get_report(report_type, filters, branch_scope=None, actor_label=""):
         "truncated": truncated,
         # {column_key: summed_value} for every money/int column, or None
         # — see _compute_totals(). Both render_report_pdf() and
-        # render_report_excel() add a bold TOTAL row from this when present.
+        # render_report_excel() add a bold Total row from this when present.
         "totals": _compute_totals(columns, rows),
     }
 
@@ -1227,6 +1511,14 @@ def render_report_pdf(report):
     )
     story = []
 
+    # The three header columns add up to exactly the frame width
+    # (doc.width), the same width the data table and rules below use.
+    # They used to be fixed at 265mm on a 247mm frame, so the centered
+    # header hung past both margins, pushing the logo toward the page edge.
+    logo_w = 12 * mm
+    brand_w = 100 * mm
+    title_w = doc.width - logo_w - brand_w
+
     header = Table(
         [[
             logo_drawing(30),
@@ -1234,16 +1526,16 @@ def render_report_pdf(report):
                 "<font color='#8A6D1F'>Heaven</font> <font color='#5B5445'>&amp;</font> "
                 "<font color='#17140D'>Angel</font> Scents", s["brand"])],
                 [Paragraph("Perfume Manufacturing &amp; Retail &middot; Inventory System", s["brand_sub"])]],
-                colWidths=[118 * mm]),
-            Table([[Paragraph(report["title"].upper() + " REPORT", s["doc_title"])],
+                colWidths=[brand_w]),
+            Table([[Paragraph(report["title"] + " report", s["doc_title"])],
                    [Paragraph(report["subtitle"], s["doc_meta"])],
                    [Paragraph(
                        f"Generated {report['generated_at'].strftime('%b %d, %Y %I:%M %p')}"
                        + (f" by {report['actor_label']}" if report["actor_label"] else ""),
                        s["doc_meta"])]],
-                  colWidths=[135 * mm]),
+                  colWidths=[title_w]),
         ]],
-        colWidths=[12 * mm, 118 * mm, 135 * mm],
+        colWidths=[logo_w, brand_w, title_w],
     )
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1301,7 +1593,7 @@ def render_report_pdf(report):
 
         # ---- totals row ----
         # Bold, right-aligned sums under every money/int column, with a
-        # "TOTAL" label in the first column. Tracked separately (rather
+        # "Total" label in the first column. Tracked separately (rather
         # than reusing s["td"]/s["td_num"]) so it can be bolded without
         # touching the styles ordinary cells use.
         total_row_idx = None
@@ -1314,7 +1606,7 @@ def render_report_pdf(report):
             total_row = []
             for c_idx, (key, _, ctype, _) in enumerate(columns):
                 if c_idx == 0:
-                    total_row.append(Paragraph("TOTAL", total_label_style))
+                    total_row.append(Paragraph("Total", total_label_style))
                 elif key in totals:
                     total_row.append(
                         Paragraph(_fmt_cell(totals[key], ctype), total_num_style))
@@ -1512,7 +1804,7 @@ def render_report_excel(report):
                              bold=True, color="1D3BC4")
             cell.fill = XL_TITLE_FILL
             if c == 1:
-                cell.value = "TOTAL"
+                cell.value = "Total"
                 cell.alignment = Alignment(horizontal="left")
             elif key in totals:
                 if ctype == "money":

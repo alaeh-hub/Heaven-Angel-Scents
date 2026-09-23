@@ -100,6 +100,33 @@ ML_PER_BATCH_UNIT = {
 }
 
 
+def compatible_material_units(unit):
+    """Which units a material's *usage* can be logged in, given how it's
+    stocked (raw_materials.unit) — e.g. a material bought by the Gallon
+    still has its per-batch usage logged in whatever of Milliliter/Liter/
+    Gallon is most natural (a few mL of fragrance oil out of a gallon jug),
+    without the admin converting by hand. The volume trio converts freely
+    via ML_PER_BATCH_UNIT; Gram/Piece have nothing to convert with, so only
+    their own unit is offered. See bulk_batch_materials.qty_used_unit in
+    schema.sql and create_bulk_batch() in routes/admin.py.
+    """
+    if unit in ML_PER_BATCH_UNIT:
+        return BATCH_VOLUME_UNITS
+    return (unit,)
+
+
+def convert_material_qty(qty, from_unit, to_unit):
+    """Convert `qty` from `from_unit` to `to_unit` — both must be the same
+    unit, or both must be one of the volume trio (see
+    compatible_material_units). mL is the common base every volume unit
+    converts through (ML_PER_BATCH_UNIT); a non-volume unit only ever
+    "converts" to itself.
+    """
+    if from_unit == to_unit:
+        return qty
+    return qty * ML_PER_BATCH_UNIT[from_unit] / ML_PER_BATCH_UNIT[to_unit]
+
+
 def bottle_size_ml(unit):
     """Pull the numeric mL size out of a BOTTLE_UNITS string, e.g.
     '85ML' -> Decimal('85'). Used for bulk-batch yield math (how many

@@ -93,7 +93,7 @@
     border: var(--border-width-strong) solid var(--border-strong);
     font-size: 12px;
     font-weight: 700;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font);
   }
 
   .chat-msg-col {
@@ -114,7 +114,7 @@
 
   .chat-msg {
     padding: 11px 15px;
-    border-radius: 14px;
+    border-radius: 18px;
     font-size: 13.8px;
     line-height: 1.55;
     white-space: pre-wrap;
@@ -151,9 +151,9 @@
   }
 
   .chat-time {
-    font-size: 10.5px;
+    font-size: 11px;
     color: var(--ink-faint);
-    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
   }
 
   .chat-copy-btn {
@@ -281,8 +281,8 @@
     align-items: flex-start;
     gap: 10px;
     padding: 12px 13px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    border-radius: 14px;
     background: var(--surface);
     font-size: 12.5px;
     font-weight: 500;
@@ -295,8 +295,8 @@
   }
 
   .chat-suggestion:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
     color: var(--accent-ink);
     transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
@@ -307,7 +307,7 @@
     width: 24px;
     height: 24px;
     border-radius: 7px;
-    background: var(--bg);
+    background: var(--field);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -351,7 +351,7 @@
     font-family: inherit;
     padding: 11px 16px;
     border-radius: 22px;
-    background: var(--surface);
+    background: var(--field);
   }
 
   .chat-send-btn {
@@ -375,7 +375,7 @@
   }
 
   .chat-send-btn:hover:not(:disabled) {
-    background: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 88%, #fff);
   }
 
   .chat-send-btn:active:not(:disabled) {
@@ -408,8 +408,8 @@
   }
 
   .chat-hint-row .chip-suggestion:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
     color: var(--accent-ink);
   }
 </style>

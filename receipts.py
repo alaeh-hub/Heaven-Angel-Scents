@@ -39,7 +39,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 import brand_assets
@@ -131,7 +131,7 @@ def _styles():
         "value_soft": ParagraphStyle("value_soft", parent=base["Normal"], fontName=FONT_REGULAR,
                                      fontSize=9.5, textColor=INK, leading=12),
         "section": ParagraphStyle("section", parent=base["Normal"], fontName=FONT_BOLD,
-                                  fontSize=9.5, textColor=INK, leading=12, spaceBefore=14, spaceAfter=6),
+                                  fontSize=9.5, textColor=INK, leading=12, spaceBefore=11, spaceAfter=4),
         "qty_label": ParagraphStyle("qty_label", parent=base["Normal"], fontName=FONT_REGULAR,
                                     fontSize=7.5, textColor=INK_FAINT, alignment=TA_CENTER, leading=10),
         "qty_value": ParagraphStyle("qty_value", parent=base["Normal"], fontName=FONT_BOLD,
@@ -218,7 +218,7 @@ def build_receipt_pdf(request_id, branch_id=None):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        topMargin=20 * mm, bottomMargin=16 * mm, leftMargin=20 * mm, rightMargin=20 * mm,
+        topMargin=16 * mm, bottomMargin=14 * mm, leftMargin=20 * mm, rightMargin=20 * mm,
         title=f"Goods Received Receipt GR-{request_id:06d}",
     )
     story = []
@@ -233,7 +233,7 @@ def build_receipt_pdf(request_id, branch_id=None):
                 colWidths=[84 * mm],
             ),
             Table(
-                [[Paragraph("GOODS RECEIVED RECEIPT", s["doc_title"])],
+                [[Paragraph("Goods received receipt", s["doc_title"])],
                  [Paragraph(
                      f"Receipt No. GR-{request_id:06d}", s["doc_meta"])],
                  [Paragraph(f"Delivery {req['delivery_number']}", s["doc_meta"])]],
@@ -254,7 +254,7 @@ def build_receipt_pdf(request_id, branch_id=None):
 
     # ---- Branch / delivery info grid ----
     def info_cell(label, value):
-        return [Paragraph(label.upper(), s["label"]), Paragraph(value, s["value"])]
+        return [Paragraph(label, s["label"]), Paragraph(value, s["value"])]
 
     info_grid = Table(
         [[
@@ -265,10 +265,11 @@ def build_receipt_pdf(request_id, branch_id=None):
             info_cell("Items on this delivery", str(len(items))),
         ]],
         colWidths=[85 * mm, 85 * mm],
-        rowHeights=[15 * mm, 15 * mm],
+        rowHeights=[13 * mm, 13 * mm],
     )
     info_grid.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROUNDEDCORNERS", [5, 5, 5, 5]),
         ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.75, BORDER),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -291,7 +292,7 @@ def build_receipt_pdf(request_id, branch_id=None):
                  color=BORDER, spaceBefore=2, spaceAfter=8))
 
     def th(text, num=False):
-        return Paragraph(text.upper(), s["th_cell_num"] if num else s["th_cell"])
+        return Paragraph(text, s["th_cell_num"] if num else s["th_cell"])
 
     items_head = [
         th("Item"), th("Variant"), th("Unit"),
@@ -327,6 +328,7 @@ def build_receipt_pdf(request_id, branch_id=None):
                   13 * mm, 14 * mm, 12 * mm, 22 * mm, 25 * mm],
     )
     items_table.setStyle(TableStyle([
+        ("ROUNDEDCORNERS", [5, 5, 5, 5]),
         ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F5F0E1")),
@@ -338,8 +340,8 @@ def build_receipt_pdf(request_id, branch_id=None):
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         # Header row only: a touch less side padding gives the narrow
-        # qty columns (REQ/DISP/RECV/DMG) just enough extra room that
-        # their all-caps labels never have to break mid-word.
+        # qty columns (Req/Disp/Recv/Dmg) just enough extra room that
+        # their labels never have to break mid-word.
         ("LEFTPADDING", (0, 0), (-1, 0), 4),
         ("RIGHTPADDING", (0, 0), (-1, 0), 4),
         ("TOPPADDING", (0, 0), (-1, 0), 7),
@@ -355,7 +357,7 @@ def build_receipt_pdf(request_id, branch_id=None):
     def qty_cell(label, value, color=INK):
         style = ParagraphStyle(
             "qv_%s" % label, parent=s["qty_value"], textColor=color)
-        return [Paragraph(str(value), style), Paragraph(label.upper(), s["qty_label"])]
+        return [Paragraph(str(value), style), Paragraph(label, s["qty_label"])]
 
     qty_row = [
         qty_cell("Requested", total_requested),
@@ -368,11 +370,12 @@ def build_receipt_pdf(request_id, branch_id=None):
     ]
     qty_table = Table([qty_row], colWidths=[34 * mm] * 5)
     qty_table.setStyle(TableStyle([
+        ("ROUNDEDCORNERS", [5, 5, 5, 5]),
         ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.75, BORDER),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(qty_table)
 
@@ -387,6 +390,7 @@ def build_receipt_pdf(request_id, branch_id=None):
             colWidths=[170 * mm],
         )
         note_box.setStyle(TableStyle([
+            ("ROUNDEDCORNERS", [5, 5, 5, 5]),
             ("BACKGROUND", (0, 0), (-1, -1), DANGER_SOFT),
             ("BOX", (0, 0), (-1, -1), 0.75, DANGER),
             ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -435,8 +439,9 @@ def build_receipt_pdf(request_id, branch_id=None):
             story.append(
                 Paragraph(f"Ledger note ({label}): {mv['notes']}", s["footer"]))
 
-    # ---- Signatures ----
-    story.append(Spacer(1, 26))
+    # ---- Signatures + footer ----
+    # Kept together as one block: on a delivery that only just fills
+    # page one, the footer used to spill onto a page of its own.
     sig_table = Table(
         [[
             Table([[HRFlowable(width=70 * mm, thickness=0.75, color=INK_FAINT)],
@@ -446,18 +451,18 @@ def build_receipt_pdf(request_id, branch_id=None):
         ]],
         colWidths=[85 * mm, 85 * mm],
     )
-    story.append(sig_table)
-
-    # ---- Footer ----
-    story.append(Spacer(1, 22))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                 color=BORDER, spaceAfter=6))
-    story.append(Paragraph(
-        "Generated from the Heaven &amp; Angel Scents inventory system. Figures reflect the stock "
-        "movement ledger recorded at the time this shipment was confirmed received and are not "
-        "editable after the fact.",
-        s["footer"],
-    ))
+    story.append(KeepTogether([
+        Spacer(1, 20),
+        sig_table,
+        Spacer(1, 12),
+        HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=6),
+        Paragraph(
+            "Generated from the Heaven &amp; Angel Scents inventory system. Figures reflect the stock "
+            "movement ledger recorded at the time this shipment was confirmed received and are not "
+            "editable after the fact.",
+            s["footer"],
+        ),
+    ]))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     buf.seek(0)
@@ -523,6 +528,13 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
     None) and nothing is actually drawn — only the layout's height is
     computed, by running every line through the exact same advance()
     calls a real draw would make.
+
+    Layout, top to bottom: a text-only letterhead (no logo — the mark
+    used to sit centered above the brand name and, at slip width,
+    collided with it), the receipt type and number, the sale details, the
+    line item, a prominent total, then the QR verification block. Plain
+    hairline rules separate the sections instead of rows of "* * *"
+    characters, which read as noise on a small slip.
     """
     line_total = sale["qty_sold"] * sale["unit_price"]
     is_refill = sale["sale_type"] == "Refill"
@@ -543,14 +555,15 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
             c.drawCentredString(x_center, state["y"], text)
         advance(gap if gap is not None else size + 4.5)
 
-    def rule(char="*", size=7.5, gap=None):
+    def rule(color=BORDER, width=0.6, gap=12):
+        # Drawn a few points above the current baseline so it sits in
+        # the gap between the line before it and the one after.
         if not dry:
-            c.setFont(FONT_REGULAR, size)
-            c.setFillColor(INK_FAINT)
-            cell = size * 0.62
-            n = max(3, int(RECEIPT_CONTENT_WIDTH / (cell * 2)))
-            c.drawCentredString(x_center, state["y"], (char + " ") * n)
-        advance(gap if gap is not None else size + 5)
+            c.setStrokeColor(color)
+            c.setLineWidth(width)
+            y = state["y"] + 3
+            c.line(x_left, y, x_right, y)
+        advance(gap)
 
     def kv(label, value, size=7.8, gap=None):
         if not dry:
@@ -560,119 +573,125 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
             c.setFont(FONT_BOLD, size)
             c.setFillColor(INK)
             c.drawRightString(x_right, state["y"], value)
-        advance(gap if gap is not None else size + 6.5)
+        advance(gap if gap is not None else size + 6)
 
-    def note(text, font=FONT_REGULAR, size=7.2, color=INK_FAINT, gap=None):
+    def small_left(text, font=FONT_REGULAR, size=7, color=INK_FAINT, gap=None):
+        """Wrapped, left-aligned small text (e.g. a customer address)."""
+        for wrapped_line in simpleSplit(text, font, size, RECEIPT_CONTENT_WIDTH):
+            if not dry:
+                c.setFont(font, size)
+                c.setFillColor(color)
+                c.drawString(x_left, state["y"], wrapped_line)
+            advance(size + 3)
+        advance(gap if gap is not None else 3)
+
+    def note(text, font=FONT_REGULAR, size=7, color=INK_FAINT, gap=None):
         if not dry:
             c.setFont(font, size)
             c.setFillColor(color)
             c.drawCentredString(x_center, state["y"], text)
         advance(gap if gap is not None else size + 4)
 
-    def logo(size, gap=None):
+    def callout(lines, size=7):
+        """A soft gold rounded box for the Refill/Freebie explanation, so
+        it reads as a note about this sale rather than more fine print."""
+        pad = 5
+        line_h = size + 3
+        height = pad * 2 + line_h * len(lines) - 3
         if not dry:
-            renderPDF.draw(logo_drawing(size), c, x_center - (size / 2), state["y"] - size)
-        advance(gap if gap is not None else size + 6)
+            c.setFillColor(ACCENT_SOFT)
+            c.setStrokeColor(ACCENT_SOFT)
+            c.roundRect(x_left, state["y"] - height + size + 1, RECEIPT_CONTENT_WIDTH, height, 4,
+                        stroke=0, fill=1)
+            c.setFillColor(ACCENT_INK)
+            c.setFont(FONT_REGULAR, size)
+            y = state["y"] - pad + 1
+            for text in lines:
+                c.drawCentredString(x_center, y, text)
+                y -= line_h
+        advance(height + 8)
 
-    def wrapped_left(label, text, size=7.2, gap=None):
-        if not dry:
-            c.setFont(FONT_BOLD, size)
-            c.setFillColor(INK_FAINT)
-            c.drawString(x_left, state["y"], label)
-        advance(size + 3.5)
-        for wrapped_line in simpleSplit(text, FONT_REGULAR, size, RECEIPT_CONTENT_WIDTH):
-            if not dry:
-                c.setFont(FONT_REGULAR, size)
-                c.setFillColor(INK)
-                c.drawString(x_left, state["y"], wrapped_line)
-            advance(size + 3)
-        advance(gap if gap is not None else 2)
-
-    # ---- Letterhead ----
-    logo(20, gap=26)
-    center("HEAVEN & ANGEL SCENTS", font=FONT_BOLD, size=12, gap=15)
-    center("Perfume Manufacturing & Retail", size=7.2, gap=9)
+    # ---- Letterhead (text only) ----
+    center("Heaven & Angel Scents", font=FONT_BOLD, size=12.5, gap=12)
+    center("Perfume Manufacturing & Retail", font=FONT_REGULAR, size=7, color=INK_FAINT, gap=9)
     if sale.get("location"):
-        center(sale["location"], size=7.2, gap=9)
-    advance(5)
-    rule(gap=13)
-    if is_refill:
-        receipt_title = "REFILL RECEIPT"
-    elif is_freebie:
-        receipt_title = "FREEBIE RECEIPT"
-    else:
-        receipt_title = "SALES RECEIPT"
-    center(receipt_title, size=10, gap=13)
-    rule(gap=13)
+        for loc_line in simpleSplit(sale["location"], FONT_REGULAR, 7, RECEIPT_CONTENT_WIDTH):
+            center(loc_line, font=FONT_REGULAR, size=7, color=INK_FAINT, gap=9)
+    advance(4)
+    rule(color=ACCENT, width=0.9, gap=14)
 
-    # ---- Sale meta ----
-    kv("Receipt No.", f"SR-{sale['sale_id']:06d}")
-    kv("Date", _fmt_dt(sale["sold_at"]))
+    # ---- Receipt type + number ----
+    if is_refill:
+        receipt_title = "Refill receipt"
+    elif is_freebie:
+        receipt_title = "Freebie receipt"
+    else:
+        receipt_title = "Sales receipt"
+    center(receipt_title, font=FONT_BOLD, size=8, color=ACCENT_INK, gap=13)
+    center(f"SR-{sale['sale_id']:06d}", font=FONT_BOLD, size=14, gap=11)
+    center(_fmt_dt(sale["sold_at"]), font=FONT_REGULAR, size=7.2, color=INK_FAINT, gap=12)
+    rule()
+
+    # ---- Sale details ----
     kv("Branch", sale["branch_name"])
-    kv("Sale type", sale["sale_type"])
-    payment_value = sale["payment_method"]
-    if sale["payment_method"] == "Credit" and sale["buyer_username"]:
-        payment_value += f" ({sale['buyer_username']})"
-    kv("Payment", payment_value)
-    kv("Customer", sale["customer_name"] or "Walk-in", gap=10)
-    rule(char="-", gap=12)
+    if sale["payment_method"] == "Credit":
+        kv("Payment", "Credit")
+        if sale["buyer_username"]:
+            kv("Charged to", sale["buyer_username"])
+    else:
+        kv("Payment", sale["payment_method"])
+    kv("Customer", sale["customer_name"] or "Walk-in", gap=None if sale["customer_address"] else 13)
+    if sale["customer_address"]:
+        small_left(sale["customer_address"], gap=6)
+    rule()
 
     # ---- Line item ----
     if not dry:
-        c.setFont(FONT_BOLD, 8.4)
+        c.setFont(FONT_BOLD, 8.6)
         c.setFillColor(INK)
         c.drawString(x_left, state["y"], sale["item_name"])
+        c.drawRightString(x_right, state["y"], f"₱{line_total:,.2f}")
     advance(10.5)
     if not dry:
         c.setFont(FONT_REGULAR, 7)
         c.setFillColor(INK_FAINT)
-        c.drawString(x_left, state["y"], f"{sale['sku']} \u00b7 {sale['variant']} \u00b7 {sale['unit']}")
-    advance(11.5)
-    if not dry:
-        c.setFont(FONT_REGULAR, 8.2)
-        c.setFillColor(INK)
-        c.drawString(x_left, state["y"], f"{sale['qty_sold']} x \u20b1{sale['unit_price']:,.2f}")
-        c.setFont(FONT_BOLD, 8.4)
-        c.drawRightString(x_right, state["y"], f"\u20b1{line_total:,.2f}")
+        c.drawString(x_left, state["y"], f"{sale['variant']} · {sale['unit']} · {sale['sku']}")
+        c.drawRightString(x_right, state["y"], f"{sale['qty_sold']} × ₱{sale['unit_price']:,.2f}")
     advance(13)
+    rule(color=INK, width=0.8, gap=15)
 
-    if sale["customer_address"]:
-        wrapped_left("ADDRESS", sale["customer_address"], gap=4)
-
-    rule(char="-", gap=12)
+    # ---- Total ----
     if not dry:
-        c.setFont(FONT_BOLD, 11)
+        c.setFont(FONT_BOLD, 9)
         c.setFillColor(INK)
-        c.drawString(x_left, state["y"], "TOTAL")
-        c.drawRightString(x_right, state["y"], f"\u20b1{line_total:,.2f}")
+        c.drawString(x_left, state["y"] + 1, "Total")
+        c.setFont(FONT_BOLD, 15)
+        c.drawRightString(x_right, state["y"], f"₱{line_total:,.2f}")
     advance(16)
-    rule(gap=14)
 
     if is_refill:
-        note("Refill \u2014 customer's own bottle;", gap=9)
-        note("product cost only, no stock unit deducted.", gap=13)
+        advance(2)
+        callout(["Refill — customer's own bottle.", "Product cost only; no bottle deducted from stock."])
     elif is_freebie:
-        note("Freebie \u2014 giveaway, no charge.", gap=13)
+        advance(2)
+        callout(["Freebie — a giveaway, no charge."])
+    else:
+        advance(4)
+    rule()
 
     # ---- QR verification ----
-    qr_size = 30 * mm
-    advance(4)
+    qr_size = 26 * mm
     if not dry:
         qr_drawing = _qr_drawing(receipt_code, qr_size)
-        renderPDF.draw(qr_drawing, c, x_center - (qr_size / 2), state["y"] - qr_size)
-    advance(qr_size + 8)
-    note("Scan to verify this receipt", size=6.8, gap=10)
-    if not dry:
-        c.setFont(FONT_REGULAR, 6.8)
-        c.setFillColor(INK_FAINT)
-        c.drawCentredString(x_center, state["y"], receipt_code)
-    advance(14)
+        renderPDF.draw(qr_drawing, c, x_center - (qr_size / 2), state["y"] - qr_size + 6)
+    advance(qr_size + 4)
+    note("Scan to verify this receipt", font=FONT_BOLD, size=7, color=INK, gap=9)
+    note(receipt_code, size=6.6, gap=13)
+    rule()
 
-    rule(gap=12)
     note("Thank you!" if is_freebie else "Thank you for your purchase!",
-         font=FONT_BOLD, size=8.2, color=INK, gap=11)
-    note("Generated by the Heaven & Angel Scents", size=6.5, gap=8.5)
-    note("inventory system.", size=6.5, gap=10)
+         font=FONT_BOLD, size=8.4, color=INK, gap=10)
+    note("Generated by the Heaven & Angel Scents inventory system.", size=6, gap=2)
 
     return top_y - state["y"]
 

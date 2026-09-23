@@ -22,6 +22,11 @@ test_logo.pdf
 # Uploaded product images stay local and are not committed
 static/uploads/
 
+# Partner portal front end (public-site/): dependencies, and the build
+# Flask serves — rebuilt on every deploy, see DEPLOY.md
+public-site/node_modules/
+static/public-site/
+
 # Local tooling and test output
 .pytest_cache/
 .coverage

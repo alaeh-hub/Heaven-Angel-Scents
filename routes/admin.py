@@ -24,7 +24,8 @@ from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_be
 from utils import (
     BATCH_VOLUME_UNITS, BOTTLE_UNITS, FORMULA_UNITS, ML_PER_BATCH_UNIT, MATERIAL_UNITS, PARTNER_TYPES,
     PAYMENT_METHODS, PRODUCT_CATEGORIES, PRODUCT_UNITS, SALE_TYPES, ValidationError,
-    bottle_size_ml, build_sku, consume_form_token, generate_temp_password, issue_form_token,
+    bottle_size_ml, build_sku, compatible_material_units, consume_form_token, convert_material_qty,
+    generate_temp_password, issue_form_token,
     parse_base_code, parse_non_negative_decimal, parse_non_negative_int, parse_optional_id,
     parse_optional_text, parse_past_date, parse_positive_decimal, parse_positive_int,
     parse_required_text,
@@ -338,7 +339,8 @@ def products():
         # reasoning as sale_type == "Freebie" forcing payment_method to
         # Cash in record_sale() below. A Bottled product must pick one of
         # the four real bottle sizes; BULK is never a valid choice for it.
-        unit = "BULK" if category == "Bulk/Refill" else request.form.get("unit")
+        unit = "BULK" if category == "Bulk/Refill" else request.form.get(
+            "unit")
 
         try:
             base_code = parse_base_code(request.form.get("base_code"))
@@ -621,7 +623,7 @@ def import_products():
         # this same row further down (or the Edit form) untouched.
         if not existing:
             sibling_skus = [build_sku(base_code, u)
-                             for u in BOTTLE_UNITS if u != unit]
+                            for u in BOTTLE_UNITS if u != unit]
             if sibling_skus:
                 placeholders = ",".join(["%s"] * len(sibling_skus))
                 sibling = query(
@@ -743,7 +745,8 @@ def production():
             except ValidationError as err:
                 flash(str(err), "error")
                 return redirect(url_for("admin.production"))
-            total_cogs = (cogs_per_unit * qty).quantize(decimal.Decimal("0.01"))
+            total_cogs = (cogs_per_unit *
+                          qty).quantize(decimal.Decimal("0.01"))
         else:
             # A Bottled run still requires picking a bulk batch — that's
             # what enforces "materials go into a batch before they're
@@ -767,9 +770,11 @@ def production():
                 (product["unit"],), fetchone=True,
             )
             cogs_per_unit = (
-                cogs_setting["base_cost_per_unit"] if cogs_setting else decimal.Decimal("0")
+                cogs_setting["base_cost_per_unit"] if cogs_setting else decimal.Decimal(
+                    "0")
             ).quantize(decimal.Decimal("0.0001"))
-            total_cogs = (cogs_per_unit * qty).quantize(decimal.Decimal("0.01"))
+            total_cogs = (cogs_per_unit *
+                          qty).quantize(decimal.Decimal("0.01"))
 
         try:
             with transaction() as conn:
@@ -1238,7 +1243,7 @@ def record_sale():
                         (after_qty, HQ_BRANCH_ID, sku),
                     )
                 movement_type = {"Sale": "SALE", "Refill": "REFILL",
-                                  "Freebie": "FREEBIE"}[sale_type]
+                                 "Freebie": "FREEBIE"}[sale_type]
                 if sale_type == "Freebie":
                     notes = "Freebie / giveaway (HQ)"
                 else:
@@ -1304,7 +1309,8 @@ def record_sale():
     )
     return render_template(
         "admin/record_sale.html", inventory=inventory, recent_sales=recent_sales, employees=employees,
-        customers=customers, bulk_rate=bulk_rate, form_token=issue_form_token("admin_record_sale"),
+        customers=customers, bulk_rate=bulk_rate, form_token=issue_form_token(
+            "admin_record_sale"),
         import_form_token=issue_form_token("admin_import_sales"),
     )
 
@@ -2432,7 +2438,8 @@ def restock_material():
     notify_all(["materials"])
     log_action("restock_material", target=existing["material_name"],
                details=f"+{qty:g} for ₱{cost:,.2f} — now ₱{new_cost_per_unit:,.4f}/unit avg")
-    flash(f"{existing['material_name']} restocked — +{qty:g} in stock.", "success")
+    flash(
+        f"{existing['material_name']} restocked — +{qty:g} in stock.", "success")
     return redirect(url_for("admin.materials"))
 
 
@@ -2463,7 +2470,7 @@ def bulk_batches():
            FROM bulk_batches ORDER BY created_at DESC"""
     )
     ingredient_rows = query(
-        """SELECT bbm.batch_id, bbm.qty_used, bbm.cost_per_unit_snapshot, bbm.line_cost,
+        """SELECT bbm.batch_id, bbm.qty_used, bbm.qty_used_unit, bbm.cost_per_unit_snapshot, bbm.line_cost,
                   rm.material_name, rm.unit AS material_unit
            FROM bulk_batch_materials bbm
            JOIN raw_materials rm ON rm.material_id = bbm.material_id
@@ -2502,6 +2509,12 @@ def bulk_batches():
         # against whatever's being typed in before it's ever submitted.
         bottle_ml_map={u: float(bottle_size_ml(u)) for u in BOTTLE_UNITS},
         ml_per_batch_unit={u: float(v) for u, v in ML_PER_BATCH_UNIT.items()},
+        # Which units the "Qty used" field can be logged in per material
+        # unit (e.g. a Gallon-stocked material can be used in mL/L/Gallon)
+        # — drives the per-line unit <select> in the add-material row (see
+        # utils.compatible_material_units).
+        material_unit_options={
+            u: compatible_material_units(u) for u in MATERIAL_UNITS},
         form_token=issue_form_token("create_bulk_batch"),
     )
 
@@ -2526,6 +2539,7 @@ def create_bulk_batch():
 
     material_ids = request.form.getlist("material_id[]")
     raw_qtys = request.form.getlist("qty_used[]")
+    qty_units = request.form.getlist("qty_unit[]")
 
     try:
         if not scent_name:
@@ -2539,16 +2553,19 @@ def create_bulk_batch():
 
         items = []
         seen_material_ids = set()
-        for raw_id, raw_qty in zip(material_ids, raw_qtys):
+        for raw_id, raw_qty, qty_unit in zip(material_ids, raw_qtys, qty_units):
             material_id = parse_optional_id(raw_id, "Material")
             if material_id is None:
                 continue
             qty_used = parse_positive_decimal(raw_qty, "Quantity used")
+            if qty_unit not in MATERIAL_UNITS:
+                raise ValidationError(
+                    "Select a valid unit for the quantity used.")
             if material_id in seen_material_ids:
                 raise ValidationError(
                     "Each material can only appear once in a batch.")
             seen_material_ids.add(material_id)
-            items.append((material_id, qty_used))
+            items.append((material_id, qty_used, qty_unit))
         if not items:
             raise ValidationError(
                 "Add at least one material used in this batch.")
@@ -2565,29 +2582,46 @@ def create_bulk_batch():
 
             placeholders = ",".join(["%s"] * len(items))
             cur.execute(
-                f"""SELECT material_id, material_name, cost_per_unit, stock_qty
+                f"""SELECT material_id, material_name, unit, cost_per_unit, stock_qty
                     FROM raw_materials WHERE material_id IN ({placeholders}) FOR UPDATE""",
                 tuple(i[0] for i in items),
             )
-            materials_by_id = {row["material_id"]: row for row in cur.fetchall()}
+            materials_by_id = {row["material_id"]                               : row for row in cur.fetchall()}
 
             total_cost = decimal.Decimal("0")
             line_rows = []
-            for material_id, qty_used in items:
+            for material_id, qty_used, qty_unit in items:
                 material = materials_by_id.get(material_id)
                 if not material:
                     raise TransactionAborted(
                         "One of the selected materials no longer exists.")
-                if material["stock_qty"] < qty_used:
+                if qty_unit not in compatible_material_units(material["unit"]):
+                    raise TransactionAborted(
+                        f"{qty_unit} isn't a valid quantity unit for {material['material_name']} "
+                        f"({material['unit']})."
+                    )
+                # qty_used/cost_per_unit_snapshot are both kept in qty_unit —
+                # the unit actually typed in, which may be finer than the
+                # material's own purchase unit (e.g. mL logged against a
+                # material stocked by the Gallon) — see utils.
+                # compatible_material_units()/convert_material_qty() and
+                # migration 39 in schema.sql for why line_cost still just
+                # equals qty_used * cost_per_unit_snapshot either way.
+                cost_per_qty_unit = material["cost_per_unit"] * convert_material_qty(
+                    decimal.Decimal("1"), qty_unit, material["unit"])
+                native_qty_used = convert_material_qty(
+                    qty_used, qty_unit, material["unit"])
+                if material["stock_qty"] < native_qty_used:
                     raise TransactionAborted(
                         f"Not enough {material['material_name']} in stock — "
-                        f"{material['stock_qty']:g} left, {qty_used:g} needed."
+                        f"{material['stock_qty']:g} {material['unit'].lower()} left, "
+                        f"{qty_used:g} {qty_unit.lower()} needed."
                     )
-                line_cost = (qty_used * material["cost_per_unit"]).quantize(
+                line_cost = (qty_used * cost_per_qty_unit).quantize(
                     decimal.Decimal("0.0001"))
                 total_cost += line_cost
                 line_rows.append(
-                    (material_id, qty_used, material["cost_per_unit"], line_cost))
+                    (material_id, qty_used, qty_unit, cost_per_qty_unit, line_cost, native_qty_used))
 
             total_cost = total_cost.quantize(decimal.Decimal("0.01"))
             cost_per_ml = (total_cost / total_volume_ml).quantize(
@@ -2603,17 +2637,17 @@ def create_bulk_batch():
             )
             batch_id = cur.lastrowid
 
-            for material_id, qty_used, cost_per_unit_snapshot, line_cost in line_rows:
+            for material_id, qty_used, qty_unit, cost_per_unit_snapshot, line_cost, native_qty_used in line_rows:
                 cur.execute(
                     """INSERT INTO bulk_batch_materials
-                       (batch_id, material_id, qty_used, cost_per_unit_snapshot, line_cost)
-                       VALUES (%s, %s, %s, %s, %s)""",
-                    (batch_id, material_id, qty_used,
+                       (batch_id, material_id, qty_used, qty_used_unit, cost_per_unit_snapshot, line_cost)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (batch_id, material_id, qty_used, qty_unit,
                      cost_per_unit_snapshot, line_cost),
                 )
                 cur.execute(
                     "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
-                    (qty_used, material_id),
+                    (native_qty_used, material_id),
                 )
             cur.close()
         notify_admin(["production", "materials"])
@@ -2652,13 +2686,15 @@ def formulas():
     bulk_rate = query(
         "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
     )["rate_per_ml"]
-    cogs_rows = query("SELECT unit, base_cost_per_unit FROM unit_cogs_settings")
+    cogs_rows = query(
+        "SELECT unit, base_cost_per_unit FROM unit_cogs_settings")
     cogs_by_unit = {r["unit"]: r["base_cost_per_unit"] for r in cogs_rows}
     # FORMULA_UNITS is PRODUCT_UNITS minus BULK — every bottle size gets a
     # row here (defaulting to 0 if somehow missing) so admins always see
     # the full picture.
     units = [
-        {"unit": u, "base_cost_per_unit": cogs_by_unit.get(u, decimal.Decimal("0"))}
+        {"unit": u, "base_cost_per_unit": cogs_by_unit.get(
+            u, decimal.Decimal("0"))}
         for u in FORMULA_UNITS
     ]
 
@@ -2718,7 +2754,8 @@ def save_unit_cogs():
         (unit, base_cost),
     )
     notify_all(["materials"])
-    log_action("save_unit_cogs", target=unit, details=f"₱{base_cost:,.4f}/unit")
+    log_action("save_unit_cogs", target=unit,
+               details=f"₱{base_cost:,.4f}/unit")
     flash(f"{unit} base cost of goods set to ₱{base_cost:,.4f} per unit.", "success")
     return redirect(url_for("admin.formulas"))
 

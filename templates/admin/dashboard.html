@@ -12,12 +12,12 @@
     <div class="stat-foot">receiving from Main Branch</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Pending Requests</div>
+    <div class="stat-label">Pending requests</div>
     <div class="stat-value accent">{{ stats.pending_requests }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.requests_list') }}" class="text-soft">review queue →</a></div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Low Stock Alerts</div>
+    <div class="stat-label">Low stock alerts</div>
     <div class="stat-value {{ 'danger' if stats.low_stock_count else '' }}">{{ stats.low_stock_count }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.low_stock') }}" class="text-soft">view all →</a></div>
   </div>
@@ -25,23 +25,23 @@
 
 <div class="grid grid-4 stack">
   <div class="card stat-tile">
-    <div class="stat-label">Total Capital</div>
+    <div class="stat-label">Total capital</div>
     <div class="stat-value">{{ financials.capital|peso }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.production') }}" class="text-soft">cost of goods produced →</a></div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Raw Materials Bought</div>
+    <div class="stat-label">Raw materials bought</div>
     <div class="stat-value">{{ financials.raw_materials_purchased|peso }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">for comparison →</a></div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Total Revenue</div>
+    <div class="stat-label">Total revenue</div>
     <div class="stat-value accent">{{ financials.revenue|peso }}</div>
     <div class="stat-foot">{{ financials.branch_sales_revenue|peso }} branches &middot; {{
       financials.package_sales_revenue|peso }} packages</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Net Profit</div>
+    <div class="stat-label">Net profit</div>
     <div class="stat-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|peso }}</div>
     <div class="stat-foot">{{ 'revenue (branches + packages) minus cost of goods' if financials.profit >= 0 else
       'running at a loss — revenue minus cost of goods' }}</div>

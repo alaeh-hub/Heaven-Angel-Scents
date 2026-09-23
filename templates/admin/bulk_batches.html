@@ -20,7 +20,8 @@
 
   .bb-add-row .field { margin-bottom: 0; }
   .bb-add-row .field-material { flex: 1.6; min-width: 180px; }
-  .bb-add-row .field-qty { flex: 0 0 130px; }
+  .bb-add-row .field-qty { flex: 0 0 110px; }
+  .bb-add-row .field-unit { flex: 0 0 130px; }
   .bb-add-row .btn { flex: 0 0 auto; }
 
   .bb-table-wrap {
@@ -33,12 +34,11 @@
   .bb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .bb-table th {
     text-align: left;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .03em;
+    font-size: 12px;
+    letter-spacing: 0;
     color: var(--ink-faint);
     padding: 9px 14px;
-    background: var(--bg);
+    background: var(--field);
     border-bottom: 1px solid var(--border);
   }
   .bb-table td {
@@ -57,13 +57,13 @@
   }
   .bb-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
   .bb-empty-row td { padding: 20px 14px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
-  .bb-total-row td { font-weight: 700; background: var(--bg); }
+  .bb-total-row td { font-weight: 700; background: var(--field); }
   .bb-total-row .bb-total-label { text-align: right; }
 
   .bb-preview {
     margin-top: 14px;
     padding: 12px 14px;
-    background: var(--bg);
+    background: var(--field);
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: var(--radius-sm);
     font-size: 12.5px;
@@ -97,12 +97,12 @@
     margin-top: 4px;
   }
   .bb-yield-card {
-    background: var(--bg);
+    background: var(--field);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 8px 10px;
   }
-  .bb-yield-card .bb-yield-unit { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .03em; }
+  .bb-yield-card .bb-yield-unit { font-size: 12px; color: var(--ink-faint); letter-spacing: 0; }
   .bb-yield-card .bb-yield-count { font-size: 16px; font-weight: 700; margin-top: 2px; }
 </style>
 {% endblock %}
@@ -194,18 +194,27 @@
         <label for="bbQtyInput">Qty used</label>
         <input type="number" id="bbQtyInput" step="0.001" min="0.001" value="1">
       </div>
+      <div class="field field-unit">
+        <label for="bbQtyUnit">In</label>
+        <select id="bbQtyUnit"></select>
+      </div>
       <button type="button" class="btn btn-ghost" id="bbAddBtn">Add</button>
     </div>
+    <p class="text-faint" style="font-size:11.5px; margin:4px 0 0;">
+      A material bought by the Gallon or Liter can still have its per-batch amount logged in mL — pick whichever
+      unit matches how you actually measured it; the cost is converted automatically.
+    </p>
 
     <div class="bb-table-wrap">
       <table class="bb-table">
         <colgroup>
-          <col style="width:34%"><col style="width:20%"><col style="width:22%"><col style="width:24%"><col style="width:40px">
+          <col style="width:30%"><col style="width:18%"><col style="width:14%"><col style="width:20%"><col style="width:18%"><col style="width:40px">
         </colgroup>
         <thead>
           <tr>
             <th>Material</th>
             <th class="num">Qty used</th>
+            <th>Unit</th>
             <th class="num">Cost / unit</th>
             <th class="num">Line cost</th>
             <th></th>
@@ -213,12 +222,12 @@
         </thead>
         <tbody id="bbBody">
           <tr class="bb-empty-row" id="bbEmptyRow">
-            <td colspan="5">No materials added yet — pick one above.</td>
+            <td colspan="6">No materials added yet — pick one above.</td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="bb-total-row" id="bbTotalRow">
-            <td colspan="3" class="bb-total-label">Total cost</td>
+            <td colspan="4" class="bb-total-label">Total cost</td>
             <td class="num mono" id="bbTotal">₱0.00</td>
             <td></td>
           </tr>
@@ -354,9 +363,19 @@
   (function () {
     var mlPerBatchUnit = {{ ml_per_batch_unit | tojson }};
     var bottleMlMap = {{ bottle_ml_map | tojson }};
+    // Which units a material's usage can be logged in, keyed by the
+    // material's own raw_materials.unit (see utils.compatible_material_units)
+    // — e.g. a Gallon-stocked material offers Milliliter/Liter/Gallon.
+    var materialUnitOptions = {{ material_unit_options | tojson }};
+
+    function convertQty(qty, fromUnit, toUnit) {
+      if (fromUnit === toUnit) return qty;
+      return qty * mlPerBatchUnit[fromUnit] / mlPerBatchUnit[toUnit];
+    }
 
     var materialSelect = document.getElementById('bbMaterialSelect');
     var qtyInput = document.getElementById('bbQtyInput');
+    var qtyUnitSelect = document.getElementById('bbQtyUnit');
     var addBtn = document.getElementById('bbAddBtn');
     var body = document.getElementById('bbBody');
     var emptyRow = document.getElementById('bbEmptyRow');
@@ -381,11 +400,24 @@
       };
     });
 
-    // material_id -> qty used
+    // material_id -> { qty, unit } — unit is whatever the amount was
+    // actually typed in (see compatible_material_units), not necessarily
+    // the material's own purchase unit.
     var lines = {};
 
     function formatPeso(n) {
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Cost per whatever unit a line's qty is expressed in, converted from
+    // the material's own cost_per_unit — matches
+    // create_bulk_batch()'s server-side math exactly.
+    function costPerLineUnit(mat, unit) {
+      return mat.costPerUnit * convertQty(1, unit, mat.unit);
+    }
+
+    function lineCost(mat, line) {
+      return line.qty * costPerLineUnit(mat, line.unit);
     }
 
     function totalCost() {
@@ -393,10 +425,28 @@
       Object.keys(lines).forEach(function (id) {
         var mat = materialsById[id];
         if (!mat) return;
-        total += lines[id] * mat.costPerUnit;
+        total += lineCost(mat, lines[id]);
       });
       return total;
     }
+
+    function populateUnitSelect(select, materialUnit, selected) {
+      var options = materialUnitOptions[materialUnit] || [materialUnit];
+      select.innerHTML = options.map(function (u) {
+        return '<option value="' + u + '">' + u + '</option>';
+      }).join('');
+      // Milliliter is the most useful default for a liquid material bought
+      // in a bigger unit (Liter/Gallon) — small per-batch doses are almost
+      // always measured in mL, not fractions of a jug.
+      select.value = selected && options.indexOf(selected) !== -1
+        ? selected
+        : (options.indexOf('Milliliter') !== -1 ? 'Milliliter' : options[0]);
+    }
+
+    materialSelect.addEventListener('change', function () {
+      var mat = materialsById[materialSelect.value];
+      if (mat) populateUnitSelect(qtyUnitSelect, mat.unit);
+    });
 
     function updatePreview() {
       var qty = parseFloat(inputQty.value);
@@ -430,8 +480,7 @@
         ids.forEach(function (id) {
           var mat = materialsById[id];
           if (!mat) return;
-          var qty = lines[id];
-          var lineCost = qty * mat.costPerUnit;
+          var line = lines[id];
 
           var tr = document.createElement('tr');
 
@@ -447,27 +496,39 @@
           qtyEl.type = 'number';
           qtyEl.step = '0.001';
           qtyEl.min = '0.001';
-          qtyEl.value = qty;
+          qtyEl.value = line.qty;
           qtyEl.className = 'bb-qty-input mono';
           qtyEl.addEventListener('change', function () {
             var v = parseFloat(qtyEl.value);
             if (!v || v <= 0) v = 0.001;
-            lines[id] = v;
+            line.qty = v;
             render();
           });
           qtyTd.appendChild(qtyEl);
           tr.appendChild(qtyTd);
 
+          var unitTd = document.createElement('td');
+          unitTd.setAttribute('data-label', 'Unit');
+          var unitEl = document.createElement('select');
+          unitEl.className = 'mono';
+          populateUnitSelect(unitEl, mat.unit, line.unit);
+          unitEl.addEventListener('change', function () {
+            line.unit = unitEl.value;
+            render();
+          });
+          unitTd.appendChild(unitEl);
+          tr.appendChild(unitTd);
+
           var costPerUnitTd = document.createElement('td');
           costPerUnitTd.className = 'num mono text-soft';
           costPerUnitTd.setAttribute('data-label', 'Cost / unit');
-          costPerUnitTd.textContent = '₱' + mat.costPerUnit.toFixed(4) + ' / ' + mat.unit.toLowerCase();
+          costPerUnitTd.textContent = '₱' + costPerLineUnit(mat, line.unit).toFixed(4) + ' / ' + line.unit.toLowerCase();
           tr.appendChild(costPerUnitTd);
 
           var lineCostTd = document.createElement('td');
           lineCostTd.className = 'num mono';
           lineCostTd.setAttribute('data-label', 'Line cost');
-          lineCostTd.textContent = formatPeso(lineCost);
+          lineCostTd.textContent = formatPeso(lineCost(mat, line));
           tr.appendChild(lineCostTd);
 
           var removeTd = document.createElement('td');
@@ -499,8 +560,14 @@
         var qtyHidden = document.createElement('input');
         qtyHidden.type = 'hidden';
         qtyHidden.name = 'qty_used[]';
-        qtyHidden.value = lines[id];
+        qtyHidden.value = lines[id].qty;
         inputsHolder.appendChild(qtyHidden);
+
+        var unitHidden = document.createElement('input');
+        unitHidden.type = 'hidden';
+        unitHidden.name = 'qty_unit[]';
+        unitHidden.value = lines[id].unit;
+        inputsHolder.appendChild(unitHidden);
       });
 
       updatePreview();
@@ -511,13 +578,20 @@
       if (!id) return;
       var qty = parseFloat(qtyInput.value);
       if (!qty || qty <= 0) qty = 1;
-      lines[id] = qty;
+      lines[id] = { qty: qty, unit: qtyUnitSelect.value };
       qtyInput.value = 1;
       render();
     });
 
     inputQty.addEventListener('input', updatePreview);
     inputUnit.addEventListener('change', updatePreview);
+
+    // Seed the unit dropdown for whichever material is selected first
+    // (the browser may already have one picked on page reload).
+    (function () {
+      var mat = materialsById[materialSelect.value];
+      if (mat) populateUnitSelect(qtyUnitSelect, mat.unit);
+    })();
 
     render();
   })();
@@ -551,10 +625,11 @@
       var ingredients = [];
       try { ingredients = JSON.parse(btn.dataset.ingredients || '[]'); } catch (e) { ingredients = []; }
       ingredientsEl.innerHTML = ingredients.map(function (row) {
+        var unit = (row.qty_used_unit || row.material_unit || '').toLowerCase();
         return '<tr>' +
           '<td>' + esc(row.material_name) + '</td>' +
-          '<td class="num mono">' + esc(row.qty_used) + ' ' + esc((row.material_unit || '').toLowerCase()) + '</td>' +
-          '<td class="num mono">' + formatPeso(row.cost_per_unit_snapshot) + '</td>' +
+          '<td class="num mono">' + esc(row.qty_used) + ' ' + esc(unit) + '</td>' +
+          '<td class="num mono">' + formatPeso(row.cost_per_unit_snapshot) + ' / ' + esc(unit) + '</td>' +
           '<td class="num mono">' + formatPeso(row.line_cost) + '</td>' +
           '</tr>';
       }).join('') || '<tr><td colspan="4" class="bb-empty-row">No materials on file for this batch.</td></tr>';
