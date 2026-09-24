@@ -48,19 +48,19 @@
   background: color-mix(in srgb, var(--bg) 50%, transparent);
 }
 
-/* The clips are near-white (pixel values ~160-255); in dark mode they're
-   inverted into dark-grey motion instead of flashing white. Inverted they
-   only span ~0-35, so they're lifted back up to stay visible against the
-   near-black page. Don't add contrast() here: it pivots on mid-grey and
-   crushes these dark values to pure black. */
-@media (prefers-color-scheme: dark) {
-  .backdrop-video video {
-    filter: invert(1) brightness(1.8);
-  }
+/* Some clips are near-white (pixel values ~160-255); on the dark page
+   they're inverted into dark-grey motion instead of flashing white.
+   Inverted they only span ~0-35, so they're lifted back up to stay
+   visible against the near-black page. Don't add contrast() here: it
+   pivots on mid-grey and crushes these dark values to pure black.
+   A clip that's already dark opts out via .backdrop-video-raw (see
+   BackdropVideo's `invert` prop): inverting it would flash it white. */
+.backdrop-video:not(.backdrop-video-raw) video {
+  filter: invert(1) brightness(1.8);
+}
 
-  .backdrop-video-veil {
-    background: color-mix(in srgb, var(--bg) 30%, transparent);
-  }
+.backdrop-video-veil {
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
 }
 
 .section-head {
@@ -104,7 +104,7 @@
 }
 
 .nav-brand img {
-  height: 40px;
+  height: 44px;
   width: auto;
 }
 
@@ -118,7 +118,7 @@
   isolation: isolate;
   padding: 8px 14px;
   border-radius: 999px;
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--ink-2);
   transition: color 0.2s ease;
@@ -135,6 +135,14 @@
   z-index: -1;
   border-radius: 999px;
   background: var(--surface-sunk);
+}
+
+.nav-link-hover {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-sunk) 55%, transparent);
 }
 
 .nav-actions {
@@ -169,6 +177,15 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+.nav-sheet a {
+  color: var(--ink-2);
+  transition: color 0.2s ease;
+}
+
+.nav-sheet a[aria-current="true"] {
+  color: var(--ink);
+}
+
 .nav-sheet a:last-child {
   border-bottom: 0;
 }
@@ -193,55 +210,130 @@
 
 /* =============================================================== hero */
 
-.hero {
+/* The tall section is the scroll distance; the stage pins to the
+   viewport while the opening scene plays (see Hero.jsx). */
+.hero-pin {
   position: relative;
   z-index: 1;
-  background: var(--bg);
-  overflow: clip;
-  min-height: calc(100dvh - var(--nav-h));
-  display: flex;
-  align-items: center;
-  padding: clamp(32px, 5vw, 64px) 0 clamp(56px, 7vw, 96px);
+  height: 400vh;
+  margin-top: calc(var(--nav-h) * -1);
+  background: #000;
 }
 
-.hero-grid {
+.hero-stage {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow: clip;
+  background: #000;
+}
+
+/* The black stage eases into the page colour below the hero. */
+.hero-pin::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 120px;
+  background: linear-gradient(#000, var(--bg));
+}
+
+.hero-caps {
+  position: absolute;
+  top: calc(var(--nav-h) + 20px);
+  left: 0;
+  right: 0;
+  z-index: 3;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.48);
+}
+
+/* The glass scene: a square canvas as tall as the screen allows. Its
+   own background is pure black, so the stage matches it; a vignette
+   and soft edge fades (the scene's coloured haze reaches the square's
+   sides) melt it into the page. */
+.hero-scene-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  place-items: center;
+  will-change: transform;
+}
+
+.hero-scene {
+  position: relative;
+  width: min(100vw, 100dvh);
+  aspect-ratio: 1;
+  /* Soft fade on all four edges: both gradients on one element, where
+     they intersect, rather than a mask here and another nested on the
+     canvas (each mask costs its own compositing pass every frame). */
+  mask-image:
+    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
+    linear-gradient(transparent, #000 10%, #000 90%, transparent);
+  mask-composite: intersect;
+}
+
+.hero-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 52%, #000 100%);
+  pointer-events: none;
+}
+
+.perfume-scene,
+.perfume-scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-logo-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7dvh;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.hero-logo {
+  height: clamp(44px, 6vw, 76px);
+  width: auto;
+}
+
+.hero-copy-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
   align-items: center;
-  gap: clamp(24px, 4vw, 64px);
+  pointer-events: none;
 }
 
 .hero-copy {
   display: grid;
-  gap: 24px;
-}
-
-.hero-title .line {
-  display: block;
-  overflow: hidden;
-  /* Room for the descender in "Angel" inside the clipping line box. */
-  padding-bottom: 0.1em;
-  margin-bottom: -0.1em;
+  gap: 22px;
+  margin-left: 50%;
+  max-width: 560px;
 }
 
 .hero-title {
-  font-size: clamp(40px, 4.1vw, 58px);
+  font-size: clamp(38px, 4.2vw, 60px);
+  letter-spacing: -0.04em;
+  line-height: 1.04;
 }
 
-.hero-title .line > span {
-  display: block;
-}
-
-/* Two lines on desktop, whatever the column width does. */
-@media (min-width: 901px) {
-  .hero-title .line > span {
-    white-space: nowrap;
-  }
-}
-
-.hero-title em {
-  font-style: normal;
-  color: var(--gold-ink);
+.blur-word {
+  display: inline-block;
 }
 
 .hero-ctas {
@@ -249,91 +341,95 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 24px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-.hero-visual {
-  position: relative;
-  height: clamp(420px, 44vw, 620px);
-}
-
-.hero-glow {
+/* Light rising from below, added over the scene rather than painted on
+   it (plus-lighter), so it brightens the black canvas too instead of
+   stopping at its square edge. */
+.hero-glow-rise {
   position: absolute;
-  inset: 12% 8%;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, var(--gold-soft), transparent 70%);
-  filter: blur(20px);
-}
-
-/* A warmer core that slowly breathes behind the bottles once they land. */
-.hero-glow::after {
-  content: "";
-  position: absolute;
-  inset: 18%;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--gold) 26%, transparent), transparent 75%);
-  animation: glow-breathe 7s ease-in-out 1.6s infinite alternate;
-}
-
-@keyframes glow-breathe {
-  from {
-    opacity: 0.55;
-    transform: scale(0.92);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-glow::after {
-    animation: none;
-  }
-}
-
-.hero-bottle {
-  position: absolute;
-  bottom: 0;
-  height: 100%;
-  width: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 30px 40px rgb(20 20 30 / 0.18));
-  will-change: transform;
-}
-
-.hero-bottle-a {
-  left: 4%;
+  inset: 0;
   z-index: 2;
-}
-
-.hero-bottle-b {
-  right: 2%;
-  height: 88%;
-  bottom: 6%;
-  z-index: 1;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 108%, rgb(217 182 75 / 0.26), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 22% 70%, rgb(217 182 75 / 0.08), transparent 70%);
+  mix-blend-mode: plus-lighter;
+  pointer-events: none;
 }
 
 @media (max-width: 900px) {
-  .hero {
-    min-height: 0;
+  /* The hero plays by itself here (see Hero.jsx), so it doesn't pin or
+     overlay everything into one screen: the scene, logo and copy stack
+     as plain, normal-flow content instead, each simply below the last —
+     so nothing is clipped or crowded off-screen if the copy runs tall,
+     and the section is just as long as what's actually in it. */
+  .hero-pin {
+    height: auto;
   }
 
-  .hero-grid {
+  .hero-stage {
+    position: static;
+    height: auto;
+    overflow: visible;
+  }
+
+  .hero-scene-wrap {
+    position: relative;
+    inset: auto;
+  }
+
+  .hero-logo-wrap {
+    position: relative;
+    inset: auto;
+    padding: 28px 0 4px;
+  }
+
+  /* On phones the copy simply follows the logo, in flow. */
+  .hero-copy-wrap {
+    position: relative;
+    inset: auto;
+    display: block;
+    padding: 4px 0 clamp(40px, 9vw, 64px);
+  }
+
+  .hero-copy {
+    margin-left: 0;
+    gap: 16px;
+  }
+
+  .hero-title {
+    font-size: clamp(32px, 8.4vw, 44px);
+  }
+}
+
+/* Reduced motion: a plain split hero. */
+.hero-static {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  padding: clamp(40px, 6vw, 80px) 0;
+}
+
+.hero-static-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(24px, 4vw, 64px);
+}
+
+.hero-copy-static {
+  margin-left: 0;
+}
+
+.hero-scene-static {
+  width: min(100%, 560px);
+  justify-self: center;
+}
+
+@media (max-width: 900px) {
+  .hero-static-grid {
     grid-template-columns: 1fr;
-  }
-
-  .hero-visual {
-    height: clamp(360px, 90vw, 480px);
-  }
-
-  .hero-bottle-a {
-    left: 8%;
-  }
-
-  .hero-bottle-b {
-    right: 6%;
   }
 }
 
@@ -373,9 +469,9 @@
   height: 44px;
   border-radius: 999px;
   color: #f5f5f2;
-  background: rgb(20 20 22 / 0.5);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  /* Solid tint, not backdrop-filter: a blur over a playing video has to
+     be recomputed every frame and makes the film stutter. */
+  background: rgb(20 20 22 / 0.62);
   border: 1px solid rgb(255 255 255 / 0.16);
 }
 
@@ -633,6 +729,26 @@
   overflow: hidden;
 }
 
+/* DotField sizes its canvas off this element's own box, so it always
+   fills its positioned ancestor (here, .collection) on its own, rather
+   than depending on a page happening to size it correctly. */
+.dot-field {
+  position: absolute;
+  inset: 0;
+}
+
+/* Behind the section's own content (unpositioned, so it paints above a
+   negative-z-index layer) but above the section's solid background.
+   Faded at all four edges so the grid reads as part of the section,
+   not a hard-edged panel. */
+.collection-dots {
+  z-index: -1;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent),
+    linear-gradient(transparent, #000 12%, #000 88%, transparent);
+  mask-composite: intersect;
+}
+
 .marquee {
   --gap: 20px;
   display: flex;
@@ -826,6 +942,25 @@
   transition: background-color 0.25s ease;
 }
 
+/* The question's own index (01, 02, ...), a small editorial marker that
+   also keeps every question's left edge lined up regardless of its
+   number's width. */
+.faq-q-label {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.faq-n {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gold-ink);
+  opacity: 0.7;
+}
+
 .faq-q:hover {
   background: color-mix(in srgb, var(--surface-sunk) 45%, transparent);
 }
@@ -965,4 +1100,263 @@
   font-size: 12.5px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* ===================================================== scent journey */
+
+/* The tall section is the scroll distance; the stage inside pins to the
+   viewport while the three layers play out across it. */
+.journey {
+  position: relative;
+  z-index: 1;
+  height: 320vh;
+  background: var(--bg);
+}
+
+.journey-stage {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  overflow: clip;
+}
+
+.journey-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 80px);
+}
+
+.journey-copy {
+  display: grid;
+  gap: 20px;
+  align-content: center;
+}
+
+.journey-tabs {
+  display: inline-flex;
+  justify-self: start;
+  gap: 2px;
+  padding: 4px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  max-width: 100%;
+}
+
+.journey-tab {
+  position: relative;
+  isolation: isolate;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.journey-tab:hover,
+.journey-tab[aria-current="true"] {
+  color: var(--ink);
+}
+
+.journey-tab-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.journey-text {
+  display: grid;
+  margin-top: 8px;
+}
+
+.journey-block {
+  grid-area: 1 / 1;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  max-width: 42ch;
+}
+
+.journey-block[aria-hidden="true"] {
+  pointer-events: none;
+}
+
+.journey-when {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold-ink);
+}
+
+.journey-block h3 {
+  font-size: clamp(26px, 2.6vw, 34px);
+}
+
+.journey-block p {
+  color: var(--ink-2);
+  font-size: 17px;
+}
+
+.journey-visual {
+  position: relative;
+  justify-self: center;
+  /* Square, like the scene's canvas, so the notes sit around the bottles. */
+  width: min(100%, 72dvh, 640px);
+  aspect-ratio: 1;
+}
+
+/* The turntable scene, faded out at all four edges into the page (one
+   element, two intersecting gradients: a single compositing pass). */
+.journey-scene {
+  position: absolute;
+  inset: 0;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
+    linear-gradient(transparent, #000 8%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+
+.journey-note {
+  position: absolute;
+  z-index: 2;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 550;
+  color: var(--ink);
+  background: var(--glass-strong);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+/* Above the two caps, and centred in the floor's reflection below. */
+.journey-note-0 {
+  top: 4%;
+  left: 2%;
+}
+
+.journey-note-1 {
+  top: 4%;
+  right: 2%;
+}
+
+.journey-note-2 {
+  bottom: 5%;
+  left: 50%;
+  /* `translate`, not `transform`: Motion owns the transform. */
+  translate: -50% 0;
+}
+
+@media (max-width: 900px) {
+  .journey {
+    height: 300vh;
+  }
+
+  .journey-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Bottle on top, story below, all inside one screen. */
+  .journey-visual {
+    order: -1;
+    width: min(100%, 36dvh);
+  }
+
+  .journey-lede {
+    display: none;
+  }
+
+  .journey-copy {
+    gap: 12px;
+  }
+
+  .journey-tabs {
+    margin-top: 4px;
+  }
+
+  .journey-tab {
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  .journey-note {
+    padding: 7px 14px;
+    font-size: 13.5px;
+  }
+
+  .journey-note-0 {
+    left: 0;
+  }
+
+  .journey-note-1 {
+    right: 0;
+  }
+}
+
+/* Reduced motion: the three layers as a plain, unpinned list. */
+.journey-static-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(24px, 4vw, 48px);
+}
+
+.journey-static-list li {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline-strong);
+}
+
+.journey-static-list h3 {
+  font-size: 26px;
+}
+
+.journey-static-list p {
+  color: var(--ink-2);
+}
+
+.journey-static-list .journey-notes-inline {
+  font-weight: 550;
+  color: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .journey-static-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.collection-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 8px;
+}
+
+/* "For him" and "For her" wrap as one pair, never splitting apart onto
+   separate lines from each other. */
+.collection-cta-links {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.collection-cta-links .link-arrow {
+  white-space: nowrap;
 }

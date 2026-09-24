@@ -4,6 +4,7 @@ import { SPRING } from '../../motion.js';
 import PackageCard from '../PackageCard.jsx';
 import Reveal from '../Reveal.jsx';
 import Segmented from '../Segmented.jsx';
+import BlurText from '../BlurText.jsx';
 
 export default function PackagesSection({ slug, data, loading, scope, onScopeChange }) {
   const packages = data?.packages || [];
@@ -15,7 +16,7 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
     <section className="section section-alt" id="packages">
       <div className="container">
         <Reveal className="section-head center">
-          <h2 className="title-xl">Packages built for your business.</h2>
+          <BlurText className="title-xl" text="Packages built for your business." />
           <p className="lede">Curated bundles of our best-selling scents, priced for partners who buy in volume.</p>
         </Reveal>
 

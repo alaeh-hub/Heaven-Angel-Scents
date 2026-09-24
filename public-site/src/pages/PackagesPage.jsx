@@ -10,15 +10,16 @@ import Faq from '../components/landing/Faq.jsx';
 import Hero from '../components/landing/Hero.jsx';
 import Nav from '../components/landing/Nav.jsx';
 import PackagesSection from '../components/landing/PackagesSection.jsx';
+import ScentJourney from '../components/landing/ScentJourney.jsx';
 import Stats from '../components/landing/Stats.jsx';
 import Steps from '../components/landing/Steps.jsx';
 import { useToast } from '../components/Toasts.jsx';
 
-// Sections that show each fixed backdrop clip through a transparent
+// Sections that show the fixed backdrop clip through a transparent
 // background (.section-video). About and the film sit back to back, so
-// they share one clip.
+// they share it. The collection has its own interactive dot grid
+// instead (DotField, in Collection.jsx).
 const ABOUT_BACKDROP = ['about', 'craft'];
-const COLLECTION_BACKDROP = ['collection'];
 
 export default function PackagesPage() {
   const { slug } = useParams();
@@ -69,8 +70,7 @@ export default function PackagesPage() {
 
   return (
     <div className="page">
-      <BackdropVideo src="/static/video/white_background.mp4" sectionIds={ABOUT_BACKDROP} />
-      <BackdropVideo src="/static/video/white_background2.mp4" sectionIds={COLLECTION_BACKDROP} />
+      <BackdropVideo src="/static/video/black_background.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
       <Nav />
       <main>
         <Hero />
@@ -79,6 +79,7 @@ export default function PackagesPage() {
         <PackagesSection slug={slug} data={data} loading={loading} scope={scope} onScopeChange={changeScope} />
         <Stats data={data} />
         <Collection />
+        <ScentJourney />
         <Steps />
         <Faq />
       </main>

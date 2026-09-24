@@ -177,3 +177,12 @@
     margin-left: 4px;
   }
 }
+
+/* On phones the count and the pager stack, both centered. */
+@media (max-width: 640px) {
+  .catalog-foot {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+  }
+}

@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import { productsPath } from '../../utils.js';
 import Reveal from '../Reveal.jsx';
+import BlurText from '../BlurText.jsx';
+import DotField from './DotField.jsx';
 
 const BOTTLES = [
   ['/static/img/hero-perfume-male.png', "Men's fragrance"],
@@ -13,22 +15,35 @@ const TILES = Array.from({ length: 8 }, (_, i) => BOTTLES[i % 2]);
 /**
  * The one marquee on the page: a slow, continuous shelf of the two
  * signatures. Pauses on hover; under reduced motion it becomes a
- * still, swipeable row instead. Sits over its own backdrop video
- * (see PackagesPage).
+ * still, swipeable row instead. Sits over its own interactive dot
+ * grid (DotField), lit by the cursor only within this section.
  */
 export default function Collection() {
   const { slug } = useParams();
   return (
-    <section className="section collection section-video" id="collection">
+    <section className="section collection" id="collection">
+      <DotField className="collection-dots" />
       <div className="container">
         <Reveal className="section-head">
-          <h2 className="title-xl">The collection.</h2>
-          <p className="lede">Men&apos;s and women&apos;s signatures, each bottled at 85 ml.</p>
-          <motion.div whileTap={{ scale: 0.97 }} style={{ justifySelf: 'start', marginTop: 8 }}>
-            <Link to={productsPath(slug)} className="btn btn-secondary">
-              View all products <ArrowRightIcon size={16} weight="bold" />
-            </Link>
-          </motion.div>
+          <BlurText className="title-xl" text="The collection." />
+          <p className="lede">Men's and women's signatures, each bottled at 85 ml.</p>
+          <div className="collection-ctas">
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Link to={productsPath(slug)} className="btn btn-secondary">
+                View all products <ArrowRightIcon size={16} weight="bold" />
+              </Link>
+            </motion.div>
+            {/* Grouped so these two wrap as a pair if space runs low,
+                never splitting one onto its own line. */}
+            <div className="collection-cta-links">
+              <Link to={`${productsPath(slug)}?gender=Male`} className="link-arrow">
+                For him <ArrowRightIcon size={16} weight="bold" />
+              </Link>
+              <Link to={`${productsPath(slug)}?gender=Female`} className="link-arrow">
+                For her <ArrowRightIcon size={16} weight="bold" />
+              </Link>
+            </div>
+          </div>
         </Reveal>
       </div>
       <Reveal className="marquee" y={0}>

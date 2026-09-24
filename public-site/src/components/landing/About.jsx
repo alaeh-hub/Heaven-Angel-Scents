@@ -1,6 +1,7 @@
 import { FlaskIcon, HourglassMediumIcon, UsersThreeIcon } from '@phosphor-icons/react';
 import { ABOUT } from '../../content/about.js';
 import Reveal from '../Reveal.jsx';
+import BlurText from '../BlurText.jsx';
 
 const ICONS = { people: UsersThreeIcon, years: HourglassMediumIcon, formula: FlaskIcon };
 
@@ -16,7 +17,7 @@ export default function About() {
       <div className="container about-grid">
         <Reveal className="about-story">
           <div className="eyebrow">About the brand</div>
-          <h2 className="title-xl">{ABOUT.title}</h2>
+          <BlurText className="title-xl" text={ABOUT.title} />
           <p className="lede">{ABOUT.lede}</p>
         </Reveal>
 

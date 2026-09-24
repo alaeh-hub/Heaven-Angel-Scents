@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { motion, useScroll, useSpring } from 'motion/react';
 import { ArrowsClockwiseIcon, ChatCircleTextIcon, MagnifyingGlassIcon } from '@phosphor-icons/react';
 import Reveal from '../Reveal.jsx';
+import BlurText from '../BlurText.jsx';
 
 const STEPS = [
   {
@@ -35,7 +36,7 @@ export default function Steps() {
     <section className="section" id="how-it-works">
       <div className="container steps-grid">
         <Reveal className="steps-intro">
-          <h2 className="title-xl">How it works</h2>
+          <BlurText className="title-xl" text="How it works" />
           <p className="lede">No account and no paperwork. Three steps from browsing to a stocked shelf.</p>
         </Reveal>
 

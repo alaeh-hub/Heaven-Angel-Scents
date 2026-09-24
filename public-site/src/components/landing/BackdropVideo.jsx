@@ -16,8 +16,16 @@ const CROSSFADE = 0.6;
  * the other (rewound) starts and crossfades in over it, then they swap
  * roles for the next cycle. Nothing plays while off screen, and under
  * reduced motion the clip is never shown at all.
+ *
+ * `invert`: some source clips are near-white and get flipped to dark
+ * motion for this dark page (see the CSS); pass `invert={false}` for a
+ * clip that's already dark, so it isn't flipped to white instead.
+ *
+ * `speed`: playback rate (1 = the clip's own pace, 0.7 = 30% slower).
+ * The crossfade still lands in the right place at any speed: it's timed
+ * off the video's own clock, which `playbackRate` doesn't change.
  */
-export default function BackdropVideo({ src, sectionIds }) {
+export default function BackdropVideo({ src, sectionIds, invert = true, speed = 1 }) {
   const reduce = useReducedMotion();
   const wrapRef = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -74,6 +82,7 @@ export default function BackdropVideo({ src, sectionIds }) {
 
     videos.forEach((v) => {
       v.muted = true;
+      v.playbackRate = speed;
       v.addEventListener('timeupdate', onTimeUpdate);
     });
     videos[active].play()?.catch(() => {});
@@ -82,14 +91,14 @@ export default function BackdropVideo({ src, sectionIds }) {
       clearTimeout(swapTimer);
       videos.forEach((v) => v.removeEventListener('timeupdate', onTimeUpdate));
     };
-  }, [visible]);
+  }, [visible, speed]);
 
   if (reduce) return null;
 
   return (
     <motion.div
       ref={wrapRef}
-      className="backdrop-video"
+      className={`backdrop-video${invert ? '' : ' backdrop-video-raw'}`}
       aria-hidden="true"
       initial={false}
       animate={{ opacity: visible ? 1 : 0 }}

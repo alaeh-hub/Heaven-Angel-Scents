@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
 import { EASE_OUT } from '../../motion.js';
+import Reveal from '../Reveal.jsx';
 
 /** A figure that counts up the first time it's seen, and glides to its
     new value whenever it changes (e.g. after switching filters). The
@@ -40,7 +41,7 @@ export default function Stats({ data }) {
 
   return (
     <section className="section" aria-label="At a glance" style={{ paddingBlock: 'clamp(64px, 8vw, 110px)' }}>
-      <div className="container stats-row">
+      <Reveal as="div" className="container stats-row" amount={0.5}>
         <Stat value={packages.length} label={packages.length === 1 ? 'Package available now' : 'Packages available now'} />
         <Stat
           value={bestDiscount}
@@ -50,7 +51,7 @@ export default function Stats({ data }) {
           delay={0.1}
         />
         <Stat value={partnerTypes} label="Partner types welcome" delay={0.2} />
-      </div>
+      </Reveal>
     </section>
   );
 }

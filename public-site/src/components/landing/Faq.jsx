@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { PlusIcon } from '@phosphor-icons/react';
 import { EASE_OUT, SPRING } from '../../motion.js';
 import Reveal from '../Reveal.jsx';
+import BlurText from '../BlurText.jsx';
 
 const FAQS = [
   ["What's the difference between a Distributor and a Reseller?",
@@ -19,12 +20,15 @@ const FAQS = [
     "Start with an inquiry on the package closest to what you have in mind. Mention what you'd like adjusted, and our team will let you know what's possible."],
 ];
 
-function FaqItem({ question, answer, open, onToggle }) {
+function FaqItem({ n, question, answer, open, onToggle }) {
   const id = useId();
   return (
     <div className="faq-item glow-card glow-fill">
       <button type="button" className="faq-q" aria-expanded={open} aria-controls={id} onClick={onToggle}>
-        {question}
+        <span className="faq-q-label">
+          <span className="faq-n" aria-hidden="true">{String(n).padStart(2, '0')}</span>
+          {question}
+        </span>
         <motion.span animate={{ rotate: open ? 45 : 0 }} transition={SPRING} style={{ display: 'inline-flex' }}>
           <PlusIcon size={20} weight="bold" />
         </motion.span>
@@ -52,13 +56,16 @@ export default function Faq() {
   return (
     <section className="section section-alt" id="faq">
       <div className="container faq-inner">
-        <Reveal className="section-head center">
-          <h2 className="title-xl">Questions, answered.</h2>
+        <Reveal className="section-head">
+          <div className="eyebrow">FAQ</div>
+          <BlurText className="title-xl" text="Questions, answered." />
+          <p className="lede">The questions partners ask most, before that first inquiry.</p>
         </Reveal>
         <Reveal className="faq-list" amount={0.15}>
           {FAQS.map(([question, answer], i) => (
             <FaqItem
               key={question}
+              n={i + 1}
               question={question}
               answer={answer}
               open={open === i}

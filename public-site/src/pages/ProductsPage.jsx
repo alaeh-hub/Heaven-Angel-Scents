@@ -16,7 +16,6 @@ const GENDERS = [
   ['all', 'All'],
   ['Male', 'Men'],
   ['Female', 'Women'],
-  ['Unisex', 'Unisex'],
 ];
 
 // Each page of results arrives as a set: the grid fades in and the cards

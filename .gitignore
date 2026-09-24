@@ -48,3 +48,6 @@ skills-lock.json
 
 # Local media assets and generated files
 static/video/*.mp4
+
+# Reference-only prototype experiments and standalone scene demos
+public-site/prototype/

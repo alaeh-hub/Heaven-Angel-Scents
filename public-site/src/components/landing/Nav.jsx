@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { ListIcon, XIcon } from '@phosphor-icons/react';
 import { SPRING } from '../../motion.js';
@@ -10,8 +10,13 @@ export const NAV_LINKS = [
   { id: 'faq', label: 'FAQ' },
 ];
 
-/** Which of `ids` sits across the middle band of the viewport right now. */
-function useActiveSection(ids) {
+/**
+ * Which of `ids` sits across the middle band of the viewport right now.
+ * `lockRef.current` pauses tracking while a nav click scrolls the page, so
+ * the pill heads straight for the chosen link instead of stopping at every
+ * section it passes.
+ */
+function useActiveSection(ids, lockRef) {
   const [active, setActive] = useState(null);
   useEffect(() => {
     // Tracked as a set so leaving a section (into one that isn't in the
@@ -23,37 +28,77 @@ function useActiveSection(ids) {
         if (entry.isIntersecting) inBand.add(entry.target.id);
         else inBand.delete(entry.target.id);
       });
-      setActive(ids.find((id) => inBand.has(id)) ?? null);
+      if (!lockRef.current) setActive(ids.find((id) => inBand.has(id)) ?? null);
     }, { rootMargin: '-45% 0px -50% 0px' });
     ids.forEach((id) => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, [ids]);
-  return active;
+  }, [ids, lockRef]);
+  return [active, setActive];
 }
 
 const SECTION_IDS = NAV_LINKS.map((l) => l.id);
 
+/** Pixels of upward scrolling it takes to bring the hidden bar back. */
+const UP_TO_SHOW = 24;
+
+const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /**
  * Sticky top bar. Transparent over the hero, frosted once the page moves;
- * slides away while reading downward and returns on any scroll up, so
- * it's there when wanted and out of the way otherwise.
+ * slides away while reading downward and returns only on a real scroll
+ * up, so it's there when wanted and out of the way otherwise.
  */
 export default function Nav() {
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const active = useActiveSection(SECTION_IDS);
+  const [hovered, setHovered] = useState(null);
+  const navigatingRef = useRef(false);
+  const unlockTimer = useRef();
+  const [active, setActive] = useActiveSection(SECTION_IDS, navigatingRef);
+
+  // How far the page has moved up since it last moved down.
+  const upTravel = useRef(0);
 
   useMotionValueEvent(scrollY, 'change', (y) => {
-    const previous = scrollY.getPrevious() ?? 0;
+    const dy = y - (scrollY.getPrevious() ?? 0);
     setScrolled(y > 8);
-    setHidden(y > 320 && y > previous + 2 && !menuOpen);
-    if (y < previous - 2) setHidden(false);
+    if (y <= 320 || menuOpen) {
+      upTravel.current = 0;
+      setHidden(false);
+      return;
+    }
+    if (dy > 0) {
+      upTravel.current = 0;
+      // Stay put while a nav click is carrying the page downward.
+      if (!navigatingRef.current) setHidden(true);
+    } else if (dy < 0) {
+      // Only a deliberate scroll up brings it back: the tiny steps at the
+      // tail of a smooth or momentum scroll (and layout nudges) no longer
+      // count as "not scrolling down", which kept popping it back in.
+      upTravel.current -= dy;
+      if (upTravel.current > UP_TO_SHOW) setHidden(false);
+    }
   });
+
+  useEffect(() => () => clearTimeout(unlockTimer.current), []);
+
+  /** Light the chosen link at once, then glide to its section. */
+  const goTo = (e, id) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    e.preventDefault();
+    setActive(id);
+    navigatingRef.current = true;
+    clearTimeout(unlockTimer.current);
+    unlockTimer.current = setTimeout(() => { navigatingRef.current = false; }, 900);
+    target.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    history.replaceState(null, '', `#${id}`);
+  };
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -75,12 +120,37 @@ export default function Nav() {
             <img src="/static/img/logo-wordmark.png" alt="" />
           </a>
 
-          <nav className="nav-links" aria-label="Sections">
+          <nav className="nav-links" aria-label="Sections" onMouseLeave={() => setHovered(null)}>
             {NAV_LINKS.map(({ id, label }) => (
-              <a key={id} href={`#${id}`} className="nav-link" aria-current={active === id}>
+              <motion.a
+                key={id}
+                href={`#${id}`}
+                className="nav-link"
+                aria-current={active === id}
+                onClick={(e) => goTo(e, id)}
+                onMouseEnter={() => setHovered(id)}
+                onFocus={() => setHovered(id)}
+                onBlur={() => setHovered(null)}
+                whileTap={{ scale: 0.94 }}
+                transition={SPRING}
+              >
+                {/* A faint hover pill glides between links; the active pill
+                    sits above it and springs over when a link is chosen. */}
+                <AnimatePresence>
+                  {hovered === id && active !== id && (
+                    <motion.span
+                      layoutId="nav-hover"
+                      className="nav-link-hover"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={SPRING}
+                    />
+                  )}
+                </AnimatePresence>
                 {active === id && <motion.span layoutId="nav-active" className="nav-link-pill" transition={SPRING} />}
                 {label}
-              </a>
+              </motion.a>
             ))}
           </nav>
 
@@ -125,9 +195,11 @@ export default function Nav() {
               <motion.a
                 key={id}
                 href={`#${id}`}
-                onClick={() => setMenuOpen(false)}
+                aria-current={active === id}
+                onClick={(e) => { setMenuOpen(false); goTo(e, id); }}
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
+                whileTap={{ x: 6, opacity: 0.7 }}
                 transition={{ ...SPRING, delay: 0.04 * i }}
               >
                 {label}
