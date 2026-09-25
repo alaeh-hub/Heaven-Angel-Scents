@@ -3166,7 +3166,7 @@ def edit_package(package_id):
     log_action("edit_package", target=name,
                details=f"{discount}% off, {scope}")
     flash("Package updated.", "success")
-    return redirect(url_for("admin.package_detail", package_id=package_id))
+    return redirect(url_for("admin.packages"))
 
 
 @bp.route("/packages/<int:package_id>/items", methods=["POST"])

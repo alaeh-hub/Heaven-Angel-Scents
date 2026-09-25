@@ -236,7 +236,7 @@
 </div>
 
 <div id="editProductOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
+  <div class="card card-pad" style="max-width:600px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit product</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       SKU <strong id="editProductSkuLabel" class="mono"></strong> — the SKU itself can't be changed here.
@@ -244,9 +244,15 @@
     <form method="POST" action="{{ url_for('admin.edit_product') }}" id="editProductForm" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="sku" id="editSku">
-      <div class="field">
-        <label for="editItemName">Fragrance name</label>
-        <input type="text" id="editItemName" name="item_name" required>
+      <div class="form-row">
+        <div class="field">
+          <label for="editItemName">Fragrance name</label>
+          <input type="text" id="editItemName" name="item_name" required>
+        </div>
+        <div class="field">
+          <label for="editPrice">Price for this unit (₱)</label>
+          <input type="number" id="editPrice" name="price" step="0.01" min="0" required>
+        </div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -263,10 +269,6 @@
             style="background:var(--bg); color:var(--ink-faint);">
           <div class="help">Fixed to this SKU — add a new size as its own product instead.</div>
         </div>
-      </div>
-      <div class="field">
-        <label for="editPrice">Price for this unit (₱)</label>
-        <input type="number" id="editPrice" name="price" step="0.01" min="0" required>
       </div>
       <div class="field">
         <label>Product image</label>

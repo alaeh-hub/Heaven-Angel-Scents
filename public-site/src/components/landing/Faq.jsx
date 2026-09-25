@@ -20,15 +20,12 @@ const FAQS = [
     "Start with an inquiry on the package closest to what you have in mind. Mention what you'd like adjusted, and our team will let you know what's possible."],
 ];
 
-function FaqItem({ n, question, answer, open, onToggle }) {
+function FaqItem({ question, answer, open, onToggle }) {
   const id = useId();
   return (
     <div className="faq-item glow-card glow-fill">
       <button type="button" className="faq-q" aria-expanded={open} aria-controls={id} onClick={onToggle}>
-        <span className="faq-q-label">
-          <span className="faq-n" aria-hidden="true">{String(n).padStart(2, '0')}</span>
-          {question}
-        </span>
+        <span>{question}</span>
         <motion.span animate={{ rotate: open ? 45 : 0 }} transition={SPRING} style={{ display: 'inline-flex' }}>
           <PlusIcon size={20} weight="bold" />
         </motion.span>
@@ -65,7 +62,6 @@ export default function Faq() {
           {FAQS.map(([question, answer], i) => (
             <FaqItem
               key={question}
-              n={i + 1}
               question={question}
               answer={answer}
               open={open === i}

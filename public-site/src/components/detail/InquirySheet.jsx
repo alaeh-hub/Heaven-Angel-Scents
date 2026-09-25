@@ -146,52 +146,71 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
                   </div>
 
                   <form onSubmit={submit}>
-                    <div className="field">
-                      <label htmlFor="partner_type">You are a</label>
-                      {fixedType ? (
-                        <input id="partner_type" className="input" value={fixedType} disabled />
-                      ) : (
-                        <select
-                          id="partner_type"
-                          ref={firstFieldRef}
+                    {/* Fields pair up two per .inquiry-row so the dialog stays
+                        short on desktop; the rows stack on phones. */}
+                    <div className="inquiry-row">
+                      <div className="field">
+                        <label htmlFor="partner_type">You are a</label>
+                        {fixedType ? (
+                          <input id="partner_type" className="input" value={fixedType} disabled />
+                        ) : (
+                          <select
+                            id="partner_type"
+                            ref={firstFieldRef}
+                            className="input"
+                            required
+                            value={partnerType}
+                            onChange={(e) => setPartnerType(e.target.value)}
+                          >
+                            <option value="">Select…</option>
+                            {partnerTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor="company_name">{isReseller ? 'Your full name' : 'Business or company name'}</label>
+                        <input
+                          id="company_name"
+                          ref={fixedType ? firstFieldRef : undefined}
                           className="input"
                           required
-                          value={partnerType}
-                          onChange={(e) => setPartnerType(e.target.value)}
-                        >
-                          <option value="">Select…</option>
-                          {partnerTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      )}
+                          maxLength={150}
+                          autoComplete={isReseller ? 'name' : 'organization'}
+                          placeholder={isReseller ? 'e.g. Maria Santos' : 'e.g. Golden Scent Trading'}
+                          value={fields.company_name}
+                          onChange={set('company_name')}
+                        />
+                      </div>
                     </div>
 
-                    <div className="field">
-                      <label htmlFor="company_name">{isReseller ? 'Your full name' : 'Business or company name'}</label>
-                      <input
-                        id="company_name"
-                        ref={fixedType ? firstFieldRef : undefined}
-                        className="input"
-                        required
-                        maxLength={150}
-                        autoComplete={isReseller ? 'name' : 'organization'}
-                        placeholder={isReseller ? 'e.g. Maria Santos' : 'e.g. Golden Scent Trading'}
-                        value={fields.company_name}
-                        onChange={set('company_name')}
-                      />
-                    </div>
+                    <div className="inquiry-row">
+                      <div className="field">
+                        <label htmlFor="contact_person">Contact person</label>
+                        <input
+                          id="contact_person"
+                          className="input"
+                          required
+                          maxLength={100}
+                          autoComplete="name"
+                          value={fields.contact_person}
+                          onChange={set('contact_person')}
+                        />
+                        {isReseller && <p className="help">Inquiring as an individual? This can match your name.</p>}
+                      </div>
 
-                    <div className="field">
-                      <label htmlFor="contact_person">Contact person</label>
-                      <input
-                        id="contact_person"
-                        className="input"
-                        required
-                        maxLength={100}
-                        autoComplete="name"
-                        value={fields.contact_person}
-                        onChange={set('contact_person')}
-                      />
-                      {isReseller && <p className="help">Inquiring as an individual? This can match your name above.</p>}
+                      <div className="field">
+                        <label htmlFor="address">Address <span className="optional">(optional)</span></label>
+                        <input
+                          id="address"
+                          className="input"
+                          maxLength={255}
+                          autoComplete="address-level2"
+                          placeholder="City or area you operate from"
+                          value={fields.address}
+                          onChange={set('address')}
+                        />
+                      </div>
                     </div>
 
                     <div className="inquiry-row">
@@ -232,25 +251,12 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
                     <p className="help" style={{ marginTop: -6 }}>We&apos;ll only use these to follow up about this inquiry.</p>
 
                     <div className="field">
-                      <label htmlFor="address">Address <span className="optional">(optional)</span></label>
-                      <input
-                        id="address"
-                        className="input"
-                        maxLength={255}
-                        autoComplete="address-level2"
-                        placeholder="City or area you operate from"
-                        value={fields.address}
-                        onChange={set('address')}
-                      />
-                    </div>
-
-                    <div className="field">
                       <label htmlFor="message">Message <span className="optional">(optional)</span></label>
                       <textarea
                         id="message"
                         className="input"
                         maxLength={500}
-                        rows={3}
+                        rows={2}
                         placeholder="Anything else we should know?"
                         value={fields.message}
                         onChange={set('message')}

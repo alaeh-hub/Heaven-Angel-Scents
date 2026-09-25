@@ -5,11 +5,13 @@ import PackageCard from '../PackageCard.jsx';
 import Reveal from '../Reveal.jsx';
 import Segmented from '../Segmented.jsx';
 import BlurText from '../BlurText.jsx';
+import { percent } from '../../utils.js';
 
 export default function PackagesSection({ slug, data, loading, scope, onScopeChange }) {
   const packages = data?.packages || [];
   const partnerTypes = data?.partner_types || ['Distributor', 'Reseller'];
   const options = [['all', 'All packages'], ...partnerTypes.map((t) => [t, `${t}s`])];
+  const topDiscount = packages.length ? Math.max(...packages.map((p) => p.discount_percent)) : 0;
   const best = packages.length > 1 ? Math.max(...packages.map((p) => p.discount_percent)) : null;
 
   return (
@@ -17,7 +19,10 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
       <div className="container">
         <Reveal className="section-head center">
           <BlurText className="title-xl" text="Packages built for your business." />
-          <p className="lede">Curated bundles of our best-selling scents, priced for partners who buy in volume.</p>
+          <p className="lede">
+            Curated bundles of our best-selling scents, priced for partners who buy in volume.
+            {topDiscount > 0 && <> Save up to <strong className="lede-accent">{percent(topDiscount)}%</strong>.</>}
+          </p>
         </Reveal>
 
         <Segmented id="packages" label="Filter packages" options={options} value={scope} onChange={onScopeChange} />

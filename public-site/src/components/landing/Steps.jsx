@@ -7,17 +7,17 @@ import BlurText from '../BlurText.jsx';
 const STEPS = [
   {
     Icon: MagnifyingGlassIcon,
-    title: 'Fall in love, fast',
+    title: 'Browse the packages',
     body: 'Browse the bundles above. Pricing and contents are laid out plainly, with no login and no fine print.',
   },
   {
     Icon: ChatCircleTextIcon,
-    title: 'Say the word',
-    body: "Send one quick inquiry and we're already on it. We'll confirm details and get you set up as a partner.",
+    title: 'Send an inquiry',
+    body: "Open a package and send your contact details. We'll confirm the order and set you up as a partner.",
   },
   {
     Icon: ArrowsClockwiseIcon,
-    title: 'Restock on repeat',
+    title: 'Reorder anytime',
     body: 'Come back whenever the shelves run low. Reordering takes minutes, not another round of paperwork.',
   },
 ];
@@ -25,7 +25,8 @@ const STEPS = [
 /**
  * Sticky intro on the left, steps on the right. A gold rail fills as the
  * visitor reads down the steps, so progress through the process is
- * visible at a glance.
+ * visible at a glance. No 3D scene here: the bottles already carry the
+ * hero and the fragrance-notes section right above this one.
  */
 export default function Steps() {
   const listRef = useRef(null);

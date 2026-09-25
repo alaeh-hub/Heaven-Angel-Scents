@@ -11,7 +11,6 @@ import Hero from '../components/landing/Hero.jsx';
 import Nav from '../components/landing/Nav.jsx';
 import PackagesSection from '../components/landing/PackagesSection.jsx';
 import ScentJourney from '../components/landing/ScentJourney.jsx';
-import Stats from '../components/landing/Stats.jsx';
 import Steps from '../components/landing/Steps.jsx';
 import { useToast } from '../components/Toasts.jsx';
 
@@ -74,10 +73,11 @@ export default function PackagesPage() {
       <Nav />
       <main>
         <Hero />
+        {/* The packages are what partners come for, so they follow the
+            hero directly; the brand story comes after. */}
+        <PackagesSection slug={slug} data={data} loading={loading} scope={scope} onScopeChange={changeScope} />
         <About />
         <CraftFilm />
-        <PackagesSection slug={slug} data={data} loading={loading} scope={scope} onScopeChange={changeScope} />
-        <Stats data={data} />
         <Collection />
         <ScentJourney />
         <Steps />

@@ -42,10 +42,9 @@ export default function CraftFilm() {
     <section className="section section-video" id="craft">
       <div className="container">
         <Reveal className="craft-head">
-          <div className="eyebrow">Behind the scent</div>
           <BlurText className="title-xl" text="Made in small runs, from blending to bottling." />
           <p className="lede">
-            Every batch is made in small runs, so quality stays consistent across every package you order.
+            That keeps quality consistent across every package you order.
           </p>
         </Reveal>
 

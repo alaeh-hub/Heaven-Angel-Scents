@@ -3,11 +3,15 @@ import { animate, motion, useMotionValue, useReducedMotion, useScroll, useTransf
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import { ARRIVE, SPRING_SOFT } from '../../motion.js';
 import { useNarrow } from '../../hooks/useNarrow.js';
+import { scrollToSection } from '../../utils.js';
 // three.js is large, so the scene loads as its own chunk after the page.
 const PerfumeScene = lazy(() => import('../PerfumeScene.jsx'));
 
-const HEADLINE = 'Partner with Heaven & Angel Scents.';
-const LEDE = 'Premium fragrances, priced below wholesale. Curated bundles for distributors and resellers.';
+const HEADLINE = 'Premium scents, priced for partners.';
+/** In-page link handler: frame the section the same way the nav does. */
+const jump = (id) => (e) => { if (scrollToSection(id)) e.preventDefault(); };
+
+const LEDE = 'Curated bundles for distributors and resellers, below our regular list prices.';
 
 /** Phones: seconds the whole hero sequence takes when it plays by itself. */
 const AUTOPLAY_S = 9;
@@ -24,25 +28,41 @@ function useSpan(progress, from, to) {
   return useTransform(progress, (v) => Math.min(1, Math.max(0, (v - from) / (to - from))));
 }
 
-/** One headline word, sharpening out of a blur over [from, to] of the scroll. */
+/**
+ * Wipe reveal at 0..1: a mask that uncovers the element left to right
+ * behind a soft 20% edge. Off entirely once fully shown, since a mask
+ * also clips anything outside the element's box (the buttons' glow).
+ */
+function wipeMask(v) {
+  if (v >= 1) return 'none';
+  const edge = v * 120;
+  return `linear-gradient(90deg, #000 ${(edge - 20).toFixed(2)}%, transparent ${edge.toFixed(2)}%)`;
+}
+
+/** Style for an element wiped in along `t` (0..1). */
+function useWipe(t) {
+  const mask = useTransform(t, wipeMask);
+  return { maskImage: mask, WebkitMaskImage: mask };
+}
+
+/** One headline word, wiped in over [from, to] of the scroll. */
 function ScrollWord({ progress, from, to, children }) {
-  const t = useSpan(progress, from, to);
-  const y = useTransform(t, (v) => (1 - v) * 14);
-  const filter = useTransform(t, (v) => (v >= 1 ? 'none' : `blur(${((1 - v) * 10).toFixed(2)}px)`));
-  return <motion.span className="blur-word" style={{ opacity: t, y, filter }}>{children}</motion.span>;
+  const wipe = useWipe(useSpan(progress, from, to));
+  return <motion.span className="wipe-word" style={wipe}>{children}</motion.span>;
 }
 
 /**
- * The opening scene. The hero pins for a few screens of scrolling and
+ * The opening scene. The hero pins for under two screens of scrolling
+ * (kept short so the offer and its CTA arrive quickly) and
  * plays like a film strip scrubbed by the scroll:
- *   on load    two perfume droplets glow in out of the dark (PerfumeScene)
- *   0.00-0.56  the scene plays: a stream pours into each droplet, they
- *              land and rise into Uriel H1 and Raphael A3, and two lit
- *              platforms lift the finished bottles
- *   0.10-0.24  the wordmark sharpens in beneath it
+ *   on load    golden angel wings unfurl under a halo (PerfumeScene)
+ *   0.00-0.56  the scene plays: the wings beat and dissolve into streams
+ *              of light that build Uriel H1 and Raphael A3, while the
+ *              halo splits into the rings of their two lit platforms
+ *   0.10-0.24  the wordmark wipes in beneath it
  *   0.48-0.62  the scene moves aside, the wordmark recedes
- *   0.58-0.72  the headline arrives word by word, each out of a blur
- *   0.70-0.84  the lede, then the buttons
+ *   0.58-0.72  the headline wipes in word by word, left to right
+ *   0.70-0.84  the lede, then the buttons, wipe in the same way
  *   0.82-0.95  a gold glow rises from below
  * On phones the same timeline plays by itself over AUTOPLAY_S seconds as
  * soon as the scene has loaded, and the hero doesn't pin (see .hero-pin):
@@ -88,9 +108,9 @@ function HeroPinned() {
   const caps = useTransform(capsIn, (v) => 1 - v);
   const logoIn = useSpan(p, 0.1, 0.24);
   const logoOut = useSpan(p, 0.38, 0.48);
-  const logoOpacity = useTransform(() => logoIn.get() * (1 - logoOut.get()));
+  const logoOpacity = useTransform(logoOut, (v) => 1 - v);
   const logoScale = useTransform(() => 0.96 + 0.04 * logoIn.get() - 0.2 * logoOut.get());
-  const logoFilter = useTransform(logoIn, (v) => (v >= 1 ? 'none' : `blur(${((1 - v) * 6).toFixed(2)}px)`));
+  const logoWipe = useWipe(logoIn);
 
   // Desktop only: the scene shrinks and slides aside to make room for the
   // copy beside it. On phones the copy sits below the scene instead (see
@@ -98,10 +118,8 @@ function HeroPinned() {
   const stageX = useTransform(p, [0.48, 0.62], ['0vw', '-24vw']);
   const stageScale = useTransform(p, [0.48, 0.62], [1, 0.82]);
 
-  const ledeOpacity = useSpan(p, 0.7, 0.78);
-  const ledeY = useTransform(ledeOpacity, (v) => (1 - v) * 16);
-  const ctaOpacity = useSpan(p, 0.76, 0.84);
-  const ctaY = useTransform(ctaOpacity, (v) => (1 - v) * 16);
+  const ledeWipe = useWipe(useSpan(p, 0.7, 0.78));
+  const ctaWipe = useWipe(useSpan(p, 0.76, 0.84));
   const ctaEvents = useTransform(p, (v) => (v > 0.78 ? 'auto' : 'none'));
   const glow = useSpan(p, 0.82, 0.95);
 
@@ -110,6 +128,10 @@ function HeroPinned() {
   return (
     <section className="hero-pin" id="top" ref={ref}>
       <div className="hero-stage">
+        {/* Desktop: the glow fills the stage itself, outside the scene's
+            box, which shrinks and slides aside (inside it, the glow's
+            edges showed as a rectangle once it moved). */}
+        {!narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
         {/* Scoped to the scene's own box (not the whole stage), so on
             phones — where the stage grows taller than one screen to fit
             the logo and copy below — the glow and eyebrow stay pinned to
@@ -118,7 +140,7 @@ function HeroPinned() {
           className="hero-scene-wrap"
           style={narrow ? undefined : { x: stageX, scale: stageScale }}
         >
-          <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />
+          {narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
 
           {/* Outer fades in on load; inner fades out with the scroll. */}
           <motion.div
@@ -148,7 +170,7 @@ function HeroPinned() {
             src="/static/img/logo-wordmark.png"
             alt=""
             className="hero-logo"
-            style={{ opacity: logoOpacity, scale: logoScale, filter: logoFilter }}
+            style={{ opacity: logoOpacity, scale: logoScale, ...logoWipe }}
           />
         </div>
 
@@ -163,12 +185,12 @@ function HeroPinned() {
                   </span>
                 ))}
               </h1>
-              <motion.p className="lede" style={{ opacity: ledeOpacity, y: ledeY }}>{LEDE}</motion.p>
-              <motion.div className="hero-ctas" style={{ opacity: ctaOpacity, y: ctaY, pointerEvents: ctaEvents }}>
-                <motion.a href="#packages" className="btn btn-primary" whileTap={{ scale: 0.97 }}>
+              <motion.p className="lede" style={ledeWipe}>{LEDE}</motion.p>
+              <motion.div className="hero-ctas" style={{ ...ctaWipe, pointerEvents: ctaEvents }}>
+                <motion.a href="#packages" onClick={jump('packages')} className="btn btn-primary" whileTap={{ scale: 0.97 }}>
                   View packages
                 </motion.a>
-                <a href="#how-it-works" className="link-arrow">
+                <a href="#how-it-works" onClick={jump('how-it-works')} className="link-arrow">
                   How it works <ArrowRightIcon size={16} weight="bold" />
                 </a>
               </motion.div>
@@ -189,8 +211,8 @@ function HeroStatic() {
           <h1 className="hero-title">{HEADLINE}</h1>
           <p className="lede">{LEDE}</p>
           <div className="hero-ctas">
-            <a href="#packages" className="btn btn-primary">View packages</a>
-            <a href="#how-it-works" className="link-arrow">
+            <a href="#packages" onClick={jump('packages')} className="btn btn-primary">View packages</a>
+            <a href="#how-it-works" onClick={jump('how-it-works')} className="link-arrow">
               How it works <ArrowRightIcon size={16} weight="bold" />
             </a>
           </div>

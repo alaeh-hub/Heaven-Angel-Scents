@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { ListIcon, XIcon } from '@phosphor-icons/react';
 import { SPRING } from '../../motion.js';
+import { scrollToSection } from '../../utils.js';
 
 export const NAV_LINKS = [
-  { id: 'about', label: 'About' },
   { id: 'packages', label: 'Packages' },
+  { id: 'about', label: 'About' },
   { id: 'how-it-works', label: 'How it works' },
   { id: 'faq', label: 'FAQ' },
 ];
@@ -43,8 +44,13 @@ const SECTION_IDS = NAV_LINKS.map((l) => l.id);
 
 /** Pixels of upward scrolling it takes to bring the hidden bar back. */
 const UP_TO_SHOW = 24;
-
-const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/**
+ * Without `scrollend`: a nav glide counts as finished once the page has
+ * been still this long (ms).
+ */
+const SETTLE_MS = 180;
+/** Unlock regardless after this long (ms), in case no end is ever reported. */
+const GLIDE_MAX_MS = 4000;
 
 /**
  * Sticky top bar. Transparent over the hero, frosted once the page moves;
@@ -58,7 +64,6 @@ export default function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const navigatingRef = useRef(false);
-  const unlockTimer = useRef();
   const [active, setActive] = useActiveSection(SECTION_IDS, navigatingRef);
 
   // How far the page has moved up since it last moved down.
@@ -85,19 +90,49 @@ export default function Nav() {
     }
   });
 
-  useEffect(() => () => clearTimeout(unlockTimer.current), []);
+  // Ends a nav glide: stops watching the scroll and lets the bar react again.
+  const stopWatch = useRef(() => {});
+  useEffect(() => () => stopWatch.current(), []);
 
   /** Light the chosen link at once, then glide to its section. */
   const goTo = (e, id) => {
-    const target = document.getElementById(id);
-    if (!target) return;
+    // Locked first, so the bar stays put for the whole glide down. It
+    // unlocks once the page has settled rather than after a fixed delay,
+    // since a long glide (hero to packages) outlasts any fixed guess, and
+    // a bar sliding away at the end left a gap above the section.
+    stopWatch.current();
+    navigatingRef.current = true;
+    if (!scrollToSection(id)) {
+      navigatingRef.current = false;
+      return;
+    }
     e.preventDefault();
     setActive(id);
-    navigatingRef.current = true;
-    clearTimeout(unlockTimer.current);
-    unlockTimer.current = setTimeout(() => { navigatingRef.current = false; }, 900);
-    target.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    history.replaceState(null, '', `#${id}`);
+    // `scrollend` fires when the smooth scroll is really done, however
+    // slowly the frames arrive; older browsers fall back to "still for
+    // SETTLE_MS".
+    const hasEnd = 'onscrollend' in window;
+    let timer;
+    const done = () => stopWatch.current();
+    const settle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(done, SETTLE_MS);
+    };
+    const cap = setTimeout(done, GLIDE_MAX_MS);
+    stopWatch.current = () => {
+      clearTimeout(timer);
+      clearTimeout(cap);
+      window.removeEventListener('scroll', settle);
+      window.removeEventListener('scrollend', done);
+      navigatingRef.current = false;
+      stopWatch.current = () => {};
+    };
+    if (hasEnd) {
+      window.addEventListener('scrollend', done, { once: true });
+    } else {
+      window.addEventListener('scroll', settle, { passive: true });
+      settle();
+    }
   };
 
   useEffect(() => {
@@ -155,7 +190,7 @@ export default function Nav() {
           </nav>
 
           <div className="nav-actions">
-            <a href="#packages" className="btn btn-primary btn-sm">View packages</a>
+            <a href="#packages" className="btn btn-primary btn-sm" onClick={(e) => goTo(e, 'packages')}>View packages</a>
             <button
               type="button"
               className="icon-btn nav-menu-btn"

@@ -527,7 +527,7 @@ th.num {
 /* Icon-only mark (icon.svg — the same gold "&" mark as the
    browser-tab favicon) — only ever meant to be seen
    on the sidebar's collapsed rail (see the collapsed-rail override
-   below): the expanded sidebar shows the full logo-wordmark.png
+   below): the expanded sidebar shows the full logo-wordmark.svg
    lockup instead (see .brand-wordmark just below), which already has
    this same mark baked into its own artwork alongside the wordmark
    text, so showing both at once would just duplicate it. Hidden here
@@ -564,7 +564,7 @@ th.num {
   object-fit: cover;
 }
 
-/* Full "Heaven & Angel Scents" lockup (logo-wordmark.png) — the mark
+/* Full "Heaven & Angel Scents" lockup (logo-wordmark.svg) — the mark
    and the wordmark text baked into one image, replacing the old
    separate icon + .brand-mark text spans. 150px is a deliberate
    fraction of .brand's ~220px content box (264px sidebar minus its
@@ -3083,14 +3083,48 @@ input[type="file"]:hover::-webkit-file-upload-button {
   color: var(--gold-contrast);
 }
 
+/* No row-gap: every child is a .field, which already carries its own
+   margin-bottom — when the row wraps on a phone, a row-gap on top of
+   that doubled the space between stacked fields. */
 .form-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.875rem;
+  column-gap: 0.875rem;
+  row-gap: 0;
 }
 
 .form-row>* {
   flex: 1 1 170px;
+}
+
+/* Two side-by-side columns inside a wide modal (Record Sale's New sale
+   dialog) so a long form fits on screen instead of scrolling — drops
+   back to one column on narrow screens. */
+.dialog-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .dialog-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The inline-styled modal overlays (Materials, Products, …) — a form
+   taller than a phone screen used to run off the top and bottom with
+   no way to reach its title or buttons. Scroll inside the panel.
+   Matched by id (every one ends in "Overlay"), not by the inline
+   style — the browser re-serializes that attribute once openOverlay()
+   sets display, so a [style*=...] match stops applying. Record Sale's
+   .rs-dialog sizes its own panel. */
+div[id$="Overlay"]:not(.rs-dialog)>.card {
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .inline-form {

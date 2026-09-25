@@ -101,8 +101,8 @@
   }
 
   @media (max-width: 420px) {
-    .choice-grid {
-      grid-template-columns: 1fr;
+    .choice-card {
+      padding: 8px 10px;
     }
   }
 
@@ -119,35 +119,153 @@
     opacity: 0;
     transform: translateY(4px);
   }
+
+  /* ---- New sale / Import from Excel dialogs. display is still toggled
+     inline by openOverlay()/closeOverlay() in main.js; everything else
+     lives here so the phone layout below can override it. ---- */
+  .rs-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(28, 27, 25, 0.45);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .rs-dialog-panel {
+    width: 100%;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .rs-dialog-panel.is-wide {
+    max-width: 880px;
+  }
+
+  .rs-dialog-panel.is-narrow {
+    max-width: 440px;
+  }
+
+  /* Title + close stay pinned while the form scrolls underneath. The
+     negative margins pull it out to the panel's edges (matching
+     .card-pad's padding) so its background covers the full width, and
+     the negative top pins it flush with the panel's top edge rather
+     than one padding-width below it, where content would peek out. */
+  .rs-dialog-head {
+    position: sticky;
+    top: -1.375rem;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: -1.375rem -1.5rem 4px;
+    padding: 1.375rem 1.5rem 8px;
+    background: var(--surface);
+  }
+
+  .rs-dialog-head h2 {
+    font-size: 16.5px;
+    margin: 0;
+  }
+
+  /* The floating Halo assistant button (base.html) would otherwise sit
+     on top of the dialog's submit button on a phone. */
+  body:has(.rs-dialog[style*="flex"]) .halo-widget {
+    display: none;
+  }
+
+  .rs-header-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+  }
+
+  @media (max-width: 600px) {
+    /* Phones: the dialogs become bottom sheets — full width, rising
+       from the bottom edge, with room for the home-indicator inset. */
+    .rs-dialog {
+      padding: 0;
+      align-items: flex-end;
+    }
+
+    .rs-dialog-panel,
+    .rs-dialog-panel.is-wide,
+    .rs-dialog-panel.is-narrow {
+      max-width: none;
+      max-height: 92vh;
+      max-height: 92dvh;
+      border-radius: 18px 18px 0 0;
+      border-bottom: none;
+      padding: 1rem 1rem calc(1.25rem + env(safe-area-inset-bottom));
+    }
+
+    .rs-dialog-head {
+      top: -1rem;
+      margin: -1rem -1rem 4px;
+      padding: 1rem 1rem 8px;
+    }
+
+    /* Name + address are too cramped side by side at phone width. */
+    .rs-dialog #customerFieldsWrap .form-row>* {
+      flex-basis: 100%;
+    }
+
+    /* Recent sales header: count on its own line, the two buttons
+       sharing the row below it at a comfortable tap size. */
+    .rs-header-actions {
+      width: 100%;
+    }
+
+    .rs-header-actions .hint {
+      flex-basis: 100%;
+    }
+
+    .rs-header-actions .btn {
+      flex: 1;
+      min-height: 40px;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">New sale</h2>
+<!-- New sale / Import from Excel live in dialogs, opened from the
+     buttons in the Recent sales header — see wireOverlay() in main.js. -->
+<div id="newSaleOverlay" class="rs-dialog" role="dialog" aria-modal="true" aria-labelledby="newSaleOverlayTitle" style="display:none;">
+<div class="card card-pad rs-dialog-panel is-wide">
+  <div class="rs-dialog-head">
+    <h2 id="newSaleOverlayTitle">New sale</h2>
+    <button type="button" class="btn btn-ghost btn-sm" id="newSaleCloseBtn" aria-label="Close">✕</button>
+  </div>
   <p class="text-faint" style="font-size:12.5px; margin: 0 0 14px;">
     Deducts from warehouse stock immediately. Use Production to add stock.
   </p>
-
-  <div class="field">
-    <label>Transaction</label>
-    <div class="choice-grid" id="topTypeSwitch">
-      <button type="button" class="choice-card active" data-value="Sale">
-        <span class="choice-card-title">Sale</span>
-        <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
-      </button>
-      <button type="button" class="choice-card" data-value="Refill">
-        <span class="choice-card-title">Refill</span>
-        <span class="choice-card-desc">Customer's own bottle — doesn't deduct stock.</span>
-      </button>
-    </div>
-  </div>
 
   <form method="POST" id="saleForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form_token" value="{{ form_token }}">
     <input type="hidden" name="sale_type" id="sale_type" value="Sale">
+
+    <div class="dialog-cols">
+    <div>
+    <div class="field">
+      <label>Transaction</label>
+      <div class="choice-grid" id="topTypeSwitch">
+        <button type="button" class="choice-card active" data-value="Sale">
+          <span class="choice-card-title">Sale</span>
+          <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
+        </button>
+        <button type="button" class="choice-card" data-value="Refill">
+          <span class="choice-card-title">Refill</span>
+          <span class="choice-card-desc">Customer's own bottle — doesn't deduct stock.</span>
+        </button>
+      </div>
+    </div>
 
     <div class="field">
       <label>Sale kind</label>
@@ -233,6 +351,9 @@
       </div>
     </div>
 
+    </div>
+
+    <div>
     <div class="field">
       <label for="sold_at">Sale date <span class="text-faint">(optional — logging a past sale)</span></label>
       <input type="date" id="sold_at" name="sold_at" max="{{ today }}">
@@ -289,14 +410,21 @@
     </div>
 
     <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
+    </div>
+    </div>
   </form>
 </div>
+</div>
 
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Import from Excel</h2>
+<div id="importSalesOverlay" class="rs-dialog" role="dialog" aria-modal="true" aria-labelledby="importSalesOverlayTitle" style="display:none;">
+<div class="card card-pad rs-dialog-panel is-narrow">
+  <div class="rs-dialog-head">
+    <h2 id="importSalesOverlayTitle">Import from Excel</h2>
+    <button type="button" class="btn btn-ghost btn-sm" id="importSalesCloseBtn" aria-label="Close">✕</button>
+  </div>
   <p class="text-faint" style="font-size:12.5px; margin: 0 0 16px;">
     Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here —
-    every row is inserted at once instead of typing each one in above.
+    every row is inserted at once instead of typing each one in by hand.
   </p>
   <a href="{{ url_for('admin.sales_import_template') }}" class="btn btn-ghost" style="width:100%; margin-bottom:12px;" data-generate-file>
     Download import template (.xlsx)
@@ -314,10 +442,15 @@
 </div>
 </div>
 
-<div class="card mt-24">
+<div class="card">
   <div class="card-header">
-    <h2>Recent sales</h2><span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if
+    <h2>Recent sales</h2>
+    <div class="rs-header-actions">
+      <span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if
       recent_sales|length != 1 }} · at Main Branch</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="openImportSalesBtn">Import from Excel</button>
+      <button type="button" class="btn btn-accent btn-sm" id="openNewSaleBtn">+ New sale</button>
+    </div>
   </div>
   {% if recent_sales %}
   <div data-smart-table data-page-size="10" data-count-target="recentSalesCount" data-count-label="sale">
@@ -411,6 +544,9 @@
 
 {% block scripts %}
 <script>
+  wireOverlay('newSaleOverlay', 'openNewSaleBtn', 'newSaleCloseBtn');
+  wireOverlay('importSalesOverlay', 'openImportSalesBtn', 'importSalesCloseBtn');
+
   (function () {
     function wireSwitch(switchId, hiddenInputId, onChange) {
       var el = document.getElementById(switchId);

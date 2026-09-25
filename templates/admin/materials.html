@@ -343,25 +343,27 @@
 
 <div id="addMaterialOverlay"
   style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
+  <div class="card card-pad" style="max-width:640px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Add a material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Enter it the way you actually buy it — e.g. 140 grams for ₱490 — and the cost per unit is worked out for you.
     </p>
     <form method="POST" id="addMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="material_name">Material name</label>
-        <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
-      </div>
-      <div class="field">
-        <label>Purchased as</label>
-        <div class="rb-mode" id="matModeSwitch">
-          <button type="button" class="rb-mode-opt active" data-value="package">Package (bulk)</button>
-          <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+      <div class="form-row">
+        <div class="field">
+          <label for="material_name">Material name</label>
+          <input type="text" id="material_name" name="material_name" placeholder="Fixative" required>
         </div>
-        <div class="help" id="matModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140 grams
-          for ₱490.</div>
+        <div class="field">
+          <label>Purchased as</label>
+          <div class="rb-mode" id="matModeSwitch">
+            <button type="button" class="rb-mode-opt active" data-value="package">Package (bulk)</button>
+            <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+          </div>
+          <div class="help" id="matModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140 grams
+            for ₱490.</div>
+        </div>
       </div>
       <div class="form-row" id="packageQtyRow">
         <div class="field" id="packageQtyField">
@@ -377,25 +379,27 @@
             {% endfor %}
           </select>
         </div>
+        <div class="field">
+          <label for="package_cost" id="packageCostLabel">Cost for that package (₱)</label>
+          <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
+          <div class="help" id="costPreview" style="display:none;"></div>
+        </div>
       </div>
       <input type="hidden" name="purchase_mode" id="purchase_mode" value="Package">
-      <div class="field">
-        <label for="package_cost" id="packageCostLabel">Cost for that package (₱)</label>
-        <input type="number" id="package_cost" name="package_cost" step="0.01" min="0" placeholder="490.00" required>
-        <div class="help" id="costPreview" style="display:none;"></div>
-      </div>
-      <div class="field">
-        <label for="receipt_number">Receipt / OR number <span class="text-faint">(optional)</span></label>
-        <input type="text" id="receipt_number" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
-      </div>
-      <div class="field">
-        <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
-        <select id="supplier_id" name="supplier_id">
-          <option value="">No supplier on record</option>
-          {% for s in suppliers %}
-          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
-          {% endfor %}
-        </select>
+      <div class="form-row">
+        <div class="field">
+          <label for="receipt_number">Receipt / OR number <span class="text-faint">(optional)</span></label>
+          <input type="text" id="receipt_number" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
+        </div>
+        <div class="field">
+          <label for="supplier_id">Supplier <span class="text-faint">(optional)</span></label>
+          <select id="supplier_id" name="supplier_id">
+            <option value="">No supplier on record</option>
+            {% for s in suppliers %}
+            <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="field">
         <label for="purchased_at">Purchase date <span class="text-faint">(optional — logging a past
@@ -414,7 +418,7 @@
 
 <div id="editMaterialOverlay"
   style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
+  <div class="card card-pad" style="max-width:640px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Changing this updates the reference cost per unit shown on this page only — it has no effect on any formula,
@@ -423,18 +427,20 @@
     <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="material_id" id="editMaterialId">
-      <div class="field">
-        <label for="editMaterialName">Material name</label>
-        <input type="text" id="editMaterialName" name="material_name" required>
-      </div>
-      <div class="field">
-        <label>Purchased as</label>
-        <div class="rb-mode" id="editMatModeSwitch">
-          <button type="button" class="rb-mode-opt" data-value="package">Package (bulk)</button>
-          <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+      <div class="form-row">
+        <div class="field">
+          <label for="editMaterialName">Material name</label>
+          <input type="text" id="editMaterialName" name="material_name" required>
         </div>
-        <div class="help" id="editMatModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140
-          grams for ₱490.</div>
+        <div class="field">
+          <label>Purchased as</label>
+          <div class="rb-mode" id="editMatModeSwitch">
+            <button type="button" class="rb-mode-opt" data-value="package">Package (bulk)</button>
+            <button type="button" class="rb-mode-opt" data-value="individual">Individual unit</button>
+          </div>
+          <div class="help" id="editMatModeHelp">Package (bulk): one purchase covering several units at once, e.g. 140
+            grams for ₱490.</div>
+        </div>
       </div>
       <div class="form-row" id="editPackageQtyRow">
         <div class="field" id="editPackageQtyField">
@@ -449,25 +455,27 @@
             {% endfor %}
           </select>
         </div>
+        <div class="field">
+          <label for="editPackageCost" id="editPackageCostLabel">Cost for that package (₱)</label>
+          <input type="number" id="editPackageCost" name="package_cost" step="0.01" min="0" required>
+          <div class="help" id="editCostPreview" style="display:none;"></div>
+        </div>
       </div>
       <input type="hidden" name="purchase_mode" id="editPurchaseMode" value="Package">
-      <div class="field">
-        <label for="editPackageCost" id="editPackageCostLabel">Cost for that package (₱)</label>
-        <input type="number" id="editPackageCost" name="package_cost" step="0.01" min="0" required>
-        <div class="help" id="editCostPreview" style="display:none;"></div>
-      </div>
-      <div class="field">
-        <label for="editReceiptNumber">Receipt / OR number <span class="text-faint">(optional)</span></label>
-        <input type="text" id="editReceiptNumber" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
-      </div>
-      <div class="field">
-        <label for="editMaterialSupplierId">Supplier <span class="text-faint">(optional)</span></label>
-        <select id="editMaterialSupplierId" name="supplier_id">
-          <option value="">No supplier on record</option>
-          {% for s in suppliers %}
-          <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
-          {% endfor %}
-        </select>
+      <div class="form-row">
+        <div class="field">
+          <label for="editReceiptNumber">Receipt / OR number <span class="text-faint">(optional)</span></label>
+          <input type="text" id="editReceiptNumber" name="receipt_number" maxlength="60" placeholder="OR-2024-00123">
+        </div>
+        <div class="field">
+          <label for="editMaterialSupplierId">Supplier <span class="text-faint">(optional)</span></label>
+          <select id="editMaterialSupplierId" name="supplier_id">
+            <option value="">No supplier on record</option>
+            {% for s in suppliers %}
+            <option value="{{ s.supplier_id }}">{{ s.supplier_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="editMaterialCancelBtn">Cancel</button>
@@ -506,21 +514,23 @@
 <!-- Add supplier -->
 <div id="addSupplierOverlay"
   style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
+  <div class="card card-pad" style="max-width:640px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Only the name is required — fill in what you have and add the rest later from Edit.
     </p>
     <form method="POST" action="{{ url_for('admin.add_supplier') }}" id="addSupplierForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field">
-        <label for="supplier_name">Supplier name</label>
-        <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100"
-          required>
-      </div>
-      <div class="field">
-        <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
-        <input type="text" id="contact_person" name="contact_person" maxlength="100">
+      <div class="form-row">
+        <div class="field">
+          <label for="supplier_name">Supplier name</label>
+          <input type="text" id="supplier_name" name="supplier_name" placeholder="Fragrance Oils PH" maxlength="100"
+            required>
+        </div>
+        <div class="field">
+          <label for="contact_person">Contact person <span class="text-faint">(optional)</span></label>
+          <input type="text" id="contact_person" name="contact_person" maxlength="100">
+        </div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -532,13 +542,15 @@
           <input type="email" id="email" name="email" maxlength="120">
         </div>
       </div>
-      <div class="field">
-        <label for="address">Address <span class="text-faint">(optional)</span></label>
-        <input type="text" id="address" name="address" maxlength="255">
-      </div>
-      <div class="field">
-        <label for="notes">Notes <span class="text-faint">(optional)</span></label>
-        <input type="text" id="notes" name="notes" maxlength="255">
+      <div class="form-row">
+        <div class="field">
+          <label for="address">Address <span class="text-faint">(optional)</span></label>
+          <input type="text" id="address" name="address" maxlength="255">
+        </div>
+        <div class="field">
+          <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+          <input type="text" id="notes" name="notes" maxlength="255">
+        </div>
       </div>
       <div class="field">
         <label for="added_on">Date added <span class="text-faint">(optional — logging a supplier from
@@ -557,7 +569,7 @@
 <!-- Edit supplier -->
 <div id="editSupplierOverlay"
   style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
+  <div class="card card-pad" style="max-width:640px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit supplier</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Changes apply immediately — every material already linked to this supplier will show the updated details.
@@ -565,13 +577,15 @@
     <form method="POST" action="{{ url_for('admin.edit_supplier') }}" id="editSupplierForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="supplier_id" id="editSupplierId">
-      <div class="field">
-        <label for="editSupplierName">Supplier name</label>
-        <input type="text" id="editSupplierName" name="supplier_name" maxlength="100" required>
-      </div>
-      <div class="field">
-        <label for="editContactPerson">Contact person</label>
-        <input type="text" id="editContactPerson" name="contact_person" maxlength="100">
+      <div class="form-row">
+        <div class="field">
+          <label for="editSupplierName">Supplier name</label>
+          <input type="text" id="editSupplierName" name="supplier_name" maxlength="100" required>
+        </div>
+        <div class="field">
+          <label for="editContactPerson">Contact person</label>
+          <input type="text" id="editContactPerson" name="contact_person" maxlength="100">
+        </div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -583,13 +597,15 @@
           <input type="email" id="editEmail" name="email" maxlength="120">
         </div>
       </div>
-      <div class="field">
-        <label for="editAddress">Address</label>
-        <input type="text" id="editAddress" name="address" maxlength="255">
-      </div>
-      <div class="field">
-        <label for="editSupplierNotes">Notes</label>
-        <input type="text" id="editSupplierNotes" name="notes" maxlength="255">
+      <div class="form-row">
+        <div class="field">
+          <label for="editAddress">Address</label>
+          <input type="text" id="editAddress" name="address" maxlength="255">
+        </div>
+        <div class="field">
+          <label for="editSupplierNotes">Notes</label>
+          <input type="text" id="editSupplierNotes" name="notes" maxlength="255">
+        </div>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="editSupplierCancelBtn">Cancel</button>

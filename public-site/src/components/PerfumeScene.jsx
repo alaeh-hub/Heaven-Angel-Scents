@@ -1,19 +1,20 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-// Uriel H1 & Raphael A3: two perfume droplets hang glowing in the dark,
-// a thin stream pours into each, they fall and land on the floor, and
-// each rises into its bottle (tinted liquid-glass first, then it clears
-// and fills, and the collar, cap and label arrive). Two display
-// platforms, each with its own LED ring, lift the finished bottles over
-// a glossy black floor that reflects them. A bloom + ACES pass with a
-// little film grain finishes each frame.
+// Uriel H1 & Raphael A3. variant="story" (the hero) is
+// prototype/wings/index.html: golden angel wings unfurl in the dark under
+// a halo and beat once. The halo splits into two rings that fly down to
+// become the platforms' LED rings, each landing with a flash and a
+// shockwave across the floor, while the feathers dissolve, wingtips
+// first, into streams of light that build each bottle from its base
+// upward behind a glowing gold edge. A glossy black floor reflects it
+// all; bloom, a horizontal anamorphic streak, a shallow depth of field
+// and ACES with a little film grain finish each frame.
 //
-// Ported from prototype/perfume-scene/index.html (which looped it every 10.8 s on three
-// r149, fading to black between loops); here the timeline is driven
-// from outside and there is no fade, since the hero fades the canvas in.
-// The two labels that file embedded as base64 live in
-// static/img/scene-label-*.jpg.
+// The prototypes looped on three r149 and faded to black between loops;
+// here the timeline is driven from outside (the hero scrubs it with the
+// scroll) and there is no fade, since the hero fades the canvas in. The
+// two labels they embedded as base64 live in static/img/scene-label-*.jpg.
 //
 // variant="turntable" is the finished pair from
 // prototype/turntable/*.html (one bottle each there, both here): each
@@ -21,14 +22,19 @@ import * as THREE from 'three';
 // 1.8 s ease-in, while the studio lights come up, caustics drift through
 // the liquid and a shallow depth of field softens the floor.
 //
+// variant="spray" is prototype/spray/index.html: the same studio, but only
+// Raphael A3, overcap off, held at a three-quarter angle on its platform.
+// Every 5 s (first at 1.9 s) the actuator presses and a fine mist bursts
+// from the nozzle across the frame, slows, widens and fades.
+//
 // r149 used "legacy" colour handling (hex colours as-is); turning colour
 // management off keeps every material looking as authored.
 THREE.ColorManagement.enabled = false;
 
 /** Scene time (seconds) of the final frame: both bottles on their platforms. */
 export const SCENE_END = 10;
-/** Scene time when the droplets have glowed in, just before the pour. */
-export const SCENE_INTRO = 1.2;
+/** Scene time when the wings have unfurled under the halo, just before they beat. */
+export const SCENE_INTRO = 2.2;
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const lin = (a, b, t) => clamp((t - a) / (b - a));
@@ -58,11 +64,14 @@ function curve(keys, t) {
   return (2 * u3 - 3 * u2 + 1) * v0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * v1 + (u3 - u2) * m1;
 }
 
-const CAM = { // [time, value]
-  az: [[0, 0.14], [1.5, 0.07], [3, -0.2], [5, -0.3], [7, 0.06], [8, 0], [10, 0]],
-  el: [[0, 0.06], [1.5, 0.05], [3, 0.06], [5, 0.07], [7, 0.09], [8, 0.11], [10, 0.095]],
-  dist: [[0, 5.6], [1.5, 4.7], [3, 6.3], [5, 7.4], [7, 8.3], [8, 8.7], [10, 7.8]],
-  ty: [[0, 1.0], [1.5, 0.99], [3, 0.98], [5, 0.92], [7, 0.95], [8, 0.98], [10, 1.0]],
+/* Story camera, [time, value] keys as in prototype/wings/index.html. */
+const CAM_KEYS = [0, 3.4, 6.2, 10];
+const camKeys = (v) => CAM_KEYS.map((k, i) => [k, v[i]]);
+const CAM = {
+  ty: camKeys([1.2, 1.12, 1.02, 1.02]),
+  dist: camKeys([9.4, 8.6, 8.2, 7.5]),
+  az: camKeys([0.14, -0.05, 0.06, 0.0]),
+  el: camKeys([0.05, 0.06, 0.09, 0.095]),
 };
 
 /** Time constant (ms) of the ease toward the scrolled-to moment (≈ 0.12 per frame at 60 Hz). */
@@ -87,17 +96,27 @@ function spinAngle(t) {
   return t < RAMP ? SPIN * RAMP * (x * x * x - (x * x * x * x) / 2) : SPIN * (RAMP / 2 + (t - RAMP));
 }
 
+/* Spray timing, exactly as in prototype/spray/index.html. */
+const SPRAY_CYCLE = 5; // one spray every 5 s...
+const SPRAY_FIRST = 1.9; // ...the first once the lights are up
+/** Spray scene time of a still frame mid-burst (its default `time`). */
+const SPRAY_STILL = SPRAY_FIRST + 0.45;
+
 // Vertex shader shared by the full-screen post-processing passes.
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
 
 /**
  * Builds the scene and its post-processing on `renderer`. `invalidate`
  * is called when something arrives late (the label images) and the
- * current frame needs drawing again. `turntable` builds the turntable
- * variant instead of the story; `tones` (CSS colours) tint its backdrop
- * glow along render()'s `tone` argument.
+ * current frame needs drawing again. `variant` is 'story', 'turntable'
+ * or 'spray' (all share the studio: caustics, depth of field; the story
+ * adds the wings and its lens effects); `tones` (CSS colours) tint the turntable's backdrop glow along
+ * render()'s `tone` argument.
  */
-function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}) {
+function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}) {
+  const turntable = variant === 'turntable';
+  const spray = variant === 'spray';
+  const story = !turntable && !spray;
   const disposables = [];
   const keep = (x) => { disposables.push(x); return x; };
 
@@ -175,7 +194,7 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
   // Two slow light sweeps (view-space directions) that travel across all the glass.
   // `i` is their strength (the turntable fades them in with its lights).
   const SWEEP = { a: { value: new THREE.Vector3(0, 0, 1) }, b: { value: new THREE.Vector3(0, 0, 1) }, i: { value: 1 } };
-  // Turntable only: time driving the caustics in the liquid.
+  // Time driving the caustics in the liquid.
   const LIQT = { value: 0 };
 
   /** Rim glow + sweep highlights: the shared look of droplets, liquid forms and bottle glass. */
@@ -249,21 +268,14 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
       color: sp.liquid, emissive: sp.liqEm, emissiveIntensity: 1.1, roughness: 0.06,
       clearcoat: 1, clearcoatRoughness: 0.04, envMap: sp.env, envMapIntensity: 1.1,
     });
-    liqMat.onBeforeCompile = turntable
-      ? (sh) => { // plus slow caustics drifting through the liquid
-        sh.uniforms.uTime = LIQT;
-        sh.vertexShader = 'varying vec3 vLoc;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLoc = position;');
-        sh.fragmentShader = 'uniform float uTime; varying vec3 vLoc;\n' + sh.fragmentShader.replace(
-          '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n float fz = abs(dot(normalize(normal), normalize(vViewPosition)));\n totalEmissiveRadiance *= 0.2 + 1.1*pow(fz, 1.4);\n diffuseColor.rgb *= 0.55 + 0.45*fz;\n float ca = sin(vLoc.y*15.0 + uTime*1.3 + sin(vLoc.x*22.0 + uTime*0.8)*1.6) * sin(vLoc.z*19.0 - uTime*1.1 + vLoc.y*6.0);\n totalEmissiveRadiance *= 0.8 + 0.5*pow(abs(ca), 2.4);',
-        );
-      }
-      : (sh) => {
-        sh.fragmentShader = sh.fragmentShader.replace(
-          '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n float fz = abs(dot(normalize(normal), normalize(vViewPosition)));\n totalEmissiveRadiance *= 0.2 + 1.1*pow(fz, 1.4);\n diffuseColor.rgb *= 0.55 + 0.45*fz;',
-        );
-      };
+    liqMat.onBeforeCompile = (sh) => { // plus slow caustics drifting through the liquid
+      sh.uniforms.uTime = LIQT;
+      sh.vertexShader = 'varying vec3 vLoc;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLoc = position;');
+      sh.fragmentShader = 'uniform float uTime; varying vec3 vLoc;\n' + sh.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\n float fz = abs(dot(normalize(normal), normalize(vViewPosition)));\n totalEmissiveRadiance *= 0.2 + 1.1*pow(fz, 1.4);\n diffuseColor.rgb *= 0.55 + 0.45*fz;\n float ca = sin(vLoc.y*15.0 + uTime*1.3 + sin(vLoc.x*22.0 + uTime*0.8)*1.6) * sin(vLoc.z*19.0 - uTime*1.1 + vLoc.y*6.0);\n totalEmissiveRadiance *= 0.8 + 0.5*pow(abs(ca), 2.4);',
+      );
+    };
     const liquid = new THREE.Mesh(lg, liqMat);
     liquid.position.y = 0.05;
     root.add(liquid);
@@ -350,6 +362,12 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, sp.capH * 0.45, 24), pumpMat);
     stem.position.y = sp.capH * 0.22;
     capG.add(stem);
+    // what the spray variant moves: the actuator and nozzle (pressed down),
+    // the overcap (taken off), and where the nozzle sits in bottle space
+    const pump = {
+      act, nozzle, actY: act.position.y, nozY: nozzle.position.y, cap: [capBack, cap, capRim],
+      nozzleLocal: new THREE.Vector3(0, H + sp.collarH + sp.capH * 0.42 + ah * 0.55, ar + 0.004),
+    };
 
     function fade(m, a) {
       if (m.userData.max !== undefined) {
@@ -365,7 +383,7 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
       m.depthWrite = !tr || a > 0.5;
     }
 
-    // Turntable lighting: every lit material dims with the studio lights,
+    // Studio lighting: every lit material dims with the studio lights,
     // from the strength it was authored with.
     let lightMats = null;
     function setLight(light, rim) {
@@ -389,12 +407,13 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
 
     return {
       root,
+      pump,
       /** Switch every fading material to its half-faded (transparent) variant, for warm(). */
       prime() {
         for (const m of partMats) fade(m, 0.5);
         fade(labelMat, 0.5);
       },
-      update(s) { // s: show, tint, fill, parts, label, rotY (+ light, rim on the turntable)
+      update(s) { // s: show, tint, fill, parts, label, rotY (+ light, rim)
         root.visible = s.show;
         tintGlass(glassMat, sp, s.tint);
         liquid.visible = s.fill > 0.002;
@@ -412,226 +431,11 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
     };
   }
 
-  /* ---------------- liquid: floating droplet → fed by a poured stream → lands → rises into the bottle ---------------- */
-  /** Deformable surface of revolution: N rings of M vertices, rewritten every frame. */
-  function surf(N, M, mat) {
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(N * M * 3);
-    const nrm = new Float32Array(N * M * 3);
-    const idx = [];
-    for (let i = 0; i < N - 1; i += 1) {
-      for (let j = 0; j < M; j += 1) {
-        const a = i * M + j;
-        const b = i * M + ((j + 1) % M);
-        const c = (i + 1) * M + j;
-        const d = (i + 1) * M + ((j + 1) % M);
-        idx.push(a, b, c, b, d, c);
-      }
-    }
-    const posAttr = new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage);
-    const nrmAttr = new THREE.BufferAttribute(nrm, 3).setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('position', posAttr);
-    geo.setAttribute('normal', nrmAttr);
-    geo.setIndex(idx);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.frustumCulled = false;
-    const sn = new Float32Array(M);
-    const cs = new Float32Array(M);
-    for (let j = 0; j < M; j += 1) {
-      sn[j] = Math.sin((j / M) * Math.PI * 2);
-      cs[j] = Math.cos((j / M) * Math.PI * 2);
-    }
-
-    // Normals straight from the grid (central differences along the ring
-    // and along the profile) instead of computeVertexNormals(), which walks
-    // every triangle through Vector3s and was the bulk of the per-frame
-    // cost. Same orientation as the triangle winding above.
-    function normals() {
-      for (let i = 0; i < N; i += 1) {
-        const row = i * M;
-        const below = (i > 0 ? i - 1 : i) * M;
-        const above = (i < N - 1 ? i + 1 : i) * M;
-        for (let j = 0; j < M; j += 1) {
-          const a = (row + (j + 1 === M ? 0 : j + 1)) * 3;
-          const b = (row + (j === 0 ? M - 1 : j - 1)) * 3;
-          const c = (above + j) * 3;
-          const d = (below + j) * 3;
-          const ux = pos[a] - pos[b]; const uy = pos[a + 1] - pos[b + 1]; const uz = pos[a + 2] - pos[b + 2];
-          const vx = pos[c] - pos[d]; const vy = pos[c + 1] - pos[d + 1]; const vz = pos[c + 2] - pos[d + 2];
-          const nx = uy * vz - uz * vy;
-          const ny = uz * vx - ux * vz;
-          const nz = ux * vy - uy * vx;
-          const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-          const k = (row + j) * 3;
-          nrm[k] = nx / l; nrm[k + 1] = ny / l; nrm[k + 2] = nz / l;
-        }
-      }
-      // The end rings collapse to a point (so their ring tangent vanishes):
-      // they take the normals of the ring next to them.
-      nrm.copyWithin(0, M * 3, M * 6);
-      nrm.copyWithin((N - 1) * M * 3, (N - 2) * M * 3, (N - 1) * M * 3);
-    }
-
-    return {
-      mesh, geo, pos, N, M, sn, cs,
-      done() {
-        normals();
-        posAttr.needsUpdate = true;
-        nrmAttr.needsUpdate = true;
-      },
-    };
-  }
-
   const PX = 0.56; // bottle / platform centres at x = ±PX
   const PPR = 0.46; // platform radius
   const PPH = 0.16; // platform height
   const mirror = new THREE.Group(); // everything reflected in the floor
   mirror.scale.y = -1;
-
-  function makeDrop(sp, side, ph) {
-    // the bottle profile resampled to one point per ring, so the blob can morph into it
-    const pts = bottleProfile(sp);
-    const L = [0];
-    for (let j = 1; j < pts.length; j += 1) L.push(L[j - 1] + pts[j].distanceTo(pts[j - 1]));
-    const N = 130;
-    const M = 96;
-    const Cr = new Float32Array(N);
-    const Cy = new Float32Array(N);
-    for (let i = 0; i < N; i += 1) {
-      const d = (i / (N - 1)) * L[L.length - 1];
-      let j = 0;
-      while (j < L.length - 2 && L[j + 1] < d) j += 1;
-      const f = (d - L[j]) / Math.max(1e-6, L[j + 1] - L[j]);
-      Cr[i] = lerp(pts[j].x, pts[j + 1].x, f);
-      Cy[i] = lerp(pts[j].y, pts[j + 1].y, f);
-    }
-    const mat = makeGlassMat(sp);
-    mat.ior = 1.36;
-    mat.thickness = 0.5;
-    tintGlass(mat, sp, 1);
-    const blob = surf(N, M, mat);
-    const stream = surf(120, 28, mat);
-    const sn2 = new Float32Array(M);
-    const cs2 = new Float32Array(M);
-    const sn3 = new Float32Array(M);
-    const cs3 = new Float32Array(M);
-    for (let j = 0; j < M; j += 1) {
-      const phi = (j / M) * Math.PI * 2;
-      sn2[j] = Math.sin(2 * phi); cs2[j] = Math.cos(2 * phi);
-      sn3[j] = Math.sin(3 * phi); cs3[j] = Math.cos(3 * phi);
-    }
-    const group = new THREE.Group();
-    group.add(blob.mesh, stream.mesh);
-    scene.add(group);
-    const mGroup = new THREE.Group();
-    const bM = new THREE.Mesh(blob.geo, mat);
-    const sM = new THREE.Mesh(stream.geo, mat);
-    bM.frustumCulled = false;
-    sM.frustumCulled = false;
-    mGroup.add(bM, sM);
-    mirror.add(mGroup);
-    const YF = 1.02; // float height
-    const T_HIT = 1.72; // the stream reaches the droplet
-    const T_LAND = 2.9; // the droplet lands on the floor
-
-    function update(t) {
-      const vis = t < 3.97;
-      group.visible = vis;
-      mGroup.visible = vis;
-      if (!vis) return;
-      group.position.x = lerp(side * 0.62, side * PX, eIOS(lin(1.8, 2.95, t)));
-      mGroup.position.copy(group.position);
-      const glow = ss(0.05, 0.8, t);
-      mat.userData.u.uRim.value = glow;
-      mat.envMapIntensity = 1.7 * glow;
-
-      // ----- blob -----
-      const wAB = ss(T_HIT - 0.02, T_HIT + 0.22, t); // teardrop reshapes as the stream joins it
-      const vol = ss(T_HIT, 2.75, t); // grows while being fed
-      const h = lerp(0.44, 0.94, vol);
-      const r0 = lerp(0.168, 0.24, vol);
-      const yb = lerp(YF - 0.2, 0.0, eIn(lin(1.95, T_LAND, t))); // falls and lands on the floor
-      const dH = t - T_HIT;
-      const hit = dH > 0 ? Math.exp(-1.5 * dH) : 0;
-      const dl = t - T_LAND;
-      const sq = dl > 0 ? 0.16 * Math.exp(-4.2 * dl) * Math.cos(10 * dl) : 0;
-      const feed = ss(T_HIT, T_HIT + 0.1, t) * (1 - ss(2.5, 2.85, t));
-      const front = eIO(lin(2.95, 3.95, t)) * 1.35; // bottle forms from the base upward
-      const idle = 1 - wAB;
-      const P = blob.pos;
-      // sin(2φ + 5t + ph) and sin(3φ − 4t) by angle addition, so the inner
-      // loop needs no trig of its own
-      const cA = Math.cos(5 * t + ph);
-      const sA = Math.sin(5 * t + ph);
-      const cB = Math.cos(4 * t);
-      const sB = Math.sin(4 * t);
-      for (let i = 0; i < N; i += 1) {
-        const u = i / (N - 1);
-        const th = Math.PI * (1 - u);
-        const rA = 0.16 * Math.sin(th) * Math.pow(Math.sin(th / 2), 1.3) * (1 + 0.03 * Math.sin(t * 3.2 + ph) * Math.cos(2 * th));
-        const yA = YF + 0.21 * Math.cos(th) * (1 + 0.025 * Math.sin(t * 3.2 + ph + 1.3));
-        const s = (1 - Math.cos(Math.PI * u)) / 2;
-        let rB = r0 * Math.sin(Math.PI * u) * (1 + 0.24 * (0.5 - s)) * (1 + sq * 0.7 * (1 - s));
-        rB *= 1 + 0.03 * Math.sin(13 * (1 - s) - 11 * dH) * hit * (dH > 0 ? 1 : 0) + 0.012 * Math.sin(15 * (1 - s) - 14 * t + ph) * feed;
-        rB = Math.max(rB, 0.03 * feed * ss(0.86, 1.0, u));
-        const yB = yb + h * (1 - sq) * s + 0.04 * feed * ss(0.9, 1, u);
-        const w = sstep(clamp((front - u) / 0.35));
-        const rr0 = lerp(lerp(rA, rB, wAB), Cr[i], w);
-        const y = lerp(lerp(yA, yB, wAB), Cy[i], w);
-        const live = 1 - w;
-        const sway = live * wAB * Math.sin(Math.PI * u) * (0.03 * Math.sin(t * 2.3 + ph) + 0.02 * Math.sin(t * 3.7 + ph * 2));
-        const swz = live * wAB * Math.sin(Math.PI * u) * 0.02 * Math.cos(t * 2.9 + ph);
-        const wob = live * (0.045 * hit * wAB + 0.012 * idle) * (1 - ss(0.8, 1, u));
-        for (let j = 0; j < M; j += 1) {
-          const r = rr0 * (1 + wob * (sn2[j] * cA + cs2[j] * sA) + 0.4 * wob * (sn3[j] * cB - cs3[j] * sB));
-          const k = (i * M + j) * 3;
-          P[k] = sway + r * blob.sn[j];
-          P[k + 1] = y;
-          P[k + 2] = swz + r * blob.cs[j];
-        }
-      }
-      blob.done();
-      const rot = idle * (t * 0.5 * side);
-      blob.mesh.rotation.y = rot;
-      bM.rotation.y = rot;
-      blob.mesh.rotation.z = 0.1 * Math.sin(t * 0.8 + ph) * idle;
-      bM.rotation.z = blob.mesh.rotation.z;
-
-      // ----- poured stream -----
-      const blobTop = lerp(YF + 0.21, yb + h * (1 - sq) + 0.04 * feed, wAB);
-      const detach = lin(2.42, 2.86, t);
-      const yBot = t < T_HIT ? lerp(4.0, YF + 0.19, eIn(lin(1.25, T_HIT, t))) : blobTop - 0.07;
-      const yTop = t < 2.42 ? 4.0 : lerp(4.0, blobTop - 0.02, eIn(detach));
-      const sOn = t > 1.25 && t < 2.86 && yTop - yBot > 0.015;
-      stream.mesh.visible = sOn;
-      sM.visible = sOn;
-      if (sOn) {
-        const S = stream.pos;
-        const SN = stream.N;
-        const SM = stream.M;
-        const len = yTop - yBot;
-        const thin = 1 - 0.45 * ss(0, 1, detach);
-        const amp = 0.1 + 0.55 * detach;
-        for (let i = 0; i < SN; i += 1) {
-          const u = i / (SN - 1);
-          const y = yBot + len * u;
-          let r = 0.028 * thin * (1 + amp * Math.sin(y * 44 + t * 18 + ph));
-          if (t < T_HIT) r += 0.02 * Math.exp(-(y - yBot) / 0.035); // falling tip bead
-          r *= Math.sqrt(clamp((y - yBot) / 0.014)) * (t >= 2.42 ? Math.sqrt(clamp((yTop - y) / 0.014)) : 1);
-          const cx = 0.03 * Math.sin(y * 1.9 + t * 1.4 + ph) * clamp((y - yBot) / 1.5);
-          const cz = 0.02 * Math.cos(y * 1.6 + t * 1.1 + ph) * clamp((y - yBot) / 1.5);
-          for (let j = 0; j < SM; j += 1) {
-            const k = (i * SM + j) * 3;
-            S[k] = cx + r * stream.sn[j];
-            S[k + 1] = y;
-            S[k + 2] = cz + r * stream.cs[j];
-          }
-        }
-        stream.done();
-      }
-    }
-    return { group, update };
-  }
 
   /* ---------------- scene assembly ---------------- */
   const red = makeBottle(SPEC.red);
@@ -641,9 +445,7 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
   scene.add(red.root, blue.root);
   scene.add(mirror);
   mirror.add(redM.root, blueM.root);
-  const dropR = turntable ? null : makeDrop(SPEC.red, -1, 0.0);
-  const dropB = turntable ? null : makeDrop(SPEC.blue, 1, 1.9);
-  // Flat overlays left out of the turntable's depth-of-field depth pass.
+  // Flat overlays left out of the depth-of-field depth pass.
   const noDepth = [];
 
   // reflections fade with depth below the glossy floor (stacked darkening layers)
@@ -749,6 +551,477 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
   platB.g.position.x = PX;
   platBM.g.position.x = PX;
 
+  /* ---------------- spray: Raphael alone, and its mist ---------------- */
+  const SPRAY_X = 0.42; // bottle and platform centre
+  const ROT = -0.72; // three-quarter view: label visible, nozzle sprays across the frame to the left
+  const mists = [];
+  if (spray) {
+    for (const o of [red.root, redM.root, platR.g, platRM.g, floorGlowR, hazeR]) o.visible = false;
+    hazeB.position.set(-0.6, 1.5, -2.2);
+    hazeB.scale.set(4.2, 4.2, 1);
+    for (const b of [blue, blueM]) { // overcap off to spray; the actuator sits down on the collar
+      b.pump.cap.forEach((m) => { m.visible = false; });
+      const drop = SPEC.blue.capH * 0.3;
+      b.pump.actY -= drop;
+      b.pump.nozY -= drop;
+      b.pump.nozzleLocal.y -= drop;
+    }
+  }
+
+  /**
+   * Fine perfume mist: an analytic particle system (drag, turbulence,
+   * spreading, fading) evaluated in the vertex shader from the burst's age.
+   */
+  function makeMist(count, sizeMin, sizeMax, alpha, spread, speed, life) {
+    const g = new THREE.BufferGeometry();
+    const P = new Float32Array(count * 3);
+    const D = new Float32Array(count * 3);
+    const A = new Float32Array(count * 4);
+    for (let i = 0; i < count; i += 1) {
+      // direction in a narrow cone around +x of the spray frame, biased to the centre
+      const r = Math.pow(Math.random(), 1.6) * spread;
+      const th = Math.random() * Math.PI * 2;
+      D[i * 3] = 1; D[i * 3 + 1] = r * Math.sin(th); D[i * 3 + 2] = r * Math.cos(th);
+      A[i * 4] = Math.pow(Math.random(), 1.4) * 0.34; // birth offset in the burst
+      A[i * 4 + 1] = speed * (0.55 + 0.9 * Math.random()); // initial speed
+      A[i * 4 + 2] = lerp(sizeMin, sizeMax, Math.pow(Math.random(), 2)); // size
+      A[i * 4 + 3] = Math.random(); // seed
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+    g.setAttribute('aDir', new THREE.BufferAttribute(D, 3));
+    g.setAttribute('aP', new THREE.BufferAttribute(A, 4));
+    const m = new THREE.ShaderMaterial({
+      uniforms: {
+        uAge: { value: -1 }, uOrigin: { value: new THREE.Vector3() },
+        uX: { value: new THREE.Vector3(1, 0, 0) }, uY: { value: new THREE.Vector3(0, 1, 0) }, uZ: { value: new THREE.Vector3(0, 0, 1) },
+        uScale: { value: 600 }, uAlpha: { value: alpha }, uLife: { value: life },
+        uColA: { value: new THREE.Color(0.55, 0.95, 1.25) }, uColB: { value: new THREE.Color(1.35, 1.05, 0.6) },
+      },
+      vertexShader: `
+        attribute vec3 aDir; attribute vec4 aP;
+        uniform float uAge, uScale, uLife; uniform vec3 uOrigin, uX, uY, uZ;
+        varying float vA; varying float vS;
+        void main(){
+          float age = uAge - aP.x;
+          float k = 2.6;                                         // air drag
+          float travel = aP.y * (1.0 - exp(-k*max(age,0.0))) / k;
+          vec3 d = normalize(aDir);
+          vec3 p = d * travel;
+          float wob = max(age,0.0);
+          p.y += -0.035*wob*wob + 0.05*wob*sin(aP.w*40.0);       // settle + drift
+          p.y += 0.06*sin(aP.w*23.0 + wob*2.3)*wob; p.z += 0.07*cos(aP.w*31.0 + wob*1.9)*wob; // turbulence
+          p.yz *= 1.0 + wob*0.9;                                 // cloud widens as it slows
+          vec3 w = uOrigin + uX*p.x + uY*p.y + uZ*p.z;
+          vec4 mv = modelViewMatrix * vec4(w, 1.0);
+          gl_Position = projectionMatrix * mv;
+          float fadeIn = smoothstep(0.0, 0.05, age), fadeOut = 1.0 - smoothstep(uLife*0.35, uLife, age);
+          vA = (age > 0.0 ? fadeIn*fadeOut : 0.0) * (0.6 + 0.4*fract(aP.w*7.3));
+          vS = aP.w;
+          gl_PointSize = aP.z * (1.0 + 2.2*wob) * uScale / -mv.z;
+        }`,
+      fragmentShader: `
+        uniform float uAlpha; uniform vec3 uColA, uColB; varying float vA; varying float vS;
+        void main(){
+          vec2 c = gl_PointCoord - 0.5; float r = dot(c,c)*4.0;
+          float a = exp(-r*2.8) * vA * uAlpha; if (a < 0.002) discard;
+          vec3 col = mix(uColA, uColB, step(0.82, vS));
+          gl_FragColor = vec4(col*a, a);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const pts = new THREE.Points(g, m);
+    pts.frustumCulled = false;
+    pts.renderOrder = 7;
+    scene.add(pts);
+    const reflected = new THREE.Points(g, m);
+    reflected.frustumCulled = false;
+    mirror.add(reflected);
+    // Not in noDepth: hiding these for the depth pass left the label and
+    // liquid black in the next frame (three r186). They add nothing to it
+    // anyway: under the depth override they draw at their stored positions,
+    // which are all zero (the motion lives in this shader).
+    return pts;
+  }
+  if (spray) {
+    mists.push(
+      makeMist(2600, 0.010, 0.028, 0.55, 0.20, 2.3, 2.6), // fine droplets
+      makeMist(260, 0.07, 0.16, 0.07, 0.26, 1.6, 3.2), // soft vapour
+    );
+  }
+
+  /* ---------------- story: golden wings → streams of light → perfumes ---------------- */
+  /**
+   * Builds the wings, halo, light streams and bottle reveal, and returns
+   * `update(t)` to pose them (bottles, platforms and camera are posed in
+   * poseStory). Everything is a pure function of `t`, so the scroll can
+   * scrub it either way.
+   */
+  function makeWings() {
+    const GOLD_ENV = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [3.6, 1.2, 1.4]], [0.8, 9, [5.5, 0.6, -1.5], [0.6, 1.8, 3.4]], [0.5, 8, [0, 0.8, 6], [3.2, 2.5, 1.6]], TOP, STREAK, GOLD_R, GOLD_F]);
+
+    // one feather, drawn once: vane, barbs and rachis (alpha = its shape)
+    function featherTexture() {
+      const W = 512;
+      const H = 128;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const g = c.getContext('2d');
+      const half = (u) => {
+        const q = Math.min(1, u * 1.12);
+        let w = Math.pow(Math.sin(Math.PI * q * 0.5), 0.55);
+        w *= 1 - 0.3 * u;
+        if (u > 0.82) w *= Math.sqrt(Math.max(0, 1 - (u - 0.82) / 0.18));
+        if (u < 0.07) w *= 0.18 + ((0.82 * u) / 0.07) * 0.2;
+        return 0.48 * w;
+      };
+      g.beginPath();
+      g.moveTo(0, H / 2);
+      for (let i = 0; i <= 100; i += 1) { const u = i / 100; g.lineTo(u * W, H / 2 - half(u) * H * (1 + 0.04 * Math.sin(u * 90))); }
+      for (let i = 100; i >= 0; i -= 1) { const u = i / 100; g.lineTo(u * W, H / 2 + half(u) * H * 0.86 * (1 + 0.05 * Math.sin(u * 70 + 1))); }
+      g.closePath();
+      const gr = g.createLinearGradient(0, 0, W, 0);
+      gr.addColorStop(0, '#b8b8b8');
+      gr.addColorStop(0.5, '#ffffff');
+      gr.addColorStop(1, '#e8e8e8');
+      g.fillStyle = gr;
+      g.fill();
+      g.save();
+      g.clip();
+      for (let i = 0; i < 260; i += 1) { // barbs
+        const x = (i / 260) * W;
+        g.strokeStyle = `rgba(90,90,90,${0.12 + 0.12 * Math.random()})`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(x, H / 2);
+        g.lineTo(x + 26, i % 2 === 0 ? 0 : H);
+        g.stroke();
+      }
+      g.restore();
+      g.strokeStyle = 'rgba(120,120,120,0.9)'; // rachis
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(0, H / 2);
+      g.lineTo(W * 0.93, H / 2);
+      g.stroke();
+      const tx = new THREE.CanvasTexture(c);
+      tx.anisotropy = 8;
+      return keep(tx);
+    }
+    const fTex = featherTexture();
+    // a gently cupped, curved plane, pivoting at its base
+    const fGeo = new THREE.PlaneGeometry(1, 1, 18, 2);
+    fGeo.translate(0.5, 0, 0);
+    const fp = fGeo.attributes.position;
+    for (let i = 0; i < fp.count; i += 1) {
+      const x = fp.getX(i);
+      const y = fp.getY(i);
+      fp.setZ(i, 0.06 * Math.sin(Math.PI * x) - 0.05 * y * y);
+      fp.setY(i, y - 0.04 * x * x);
+    }
+    fGeo.computeVertexNormals();
+    const wingMat = (col) => rimify(new THREE.MeshPhysicalMaterial({
+      color: 0xe6b563, metalness: 0.9, roughness: 0.3, map: fTex, alphaMap: fTex, alphaTest: 0.35, side: THREE.DoubleSide,
+      clearcoat: 0.4, clearcoatRoughness: 0.2, envMap: GOLD_ENV, envMapIntensity: 1.6, emissive: 0x3a2208, emissiveIntensity: 0.5,
+    }), col);
+
+    // feather rows: count, arm range, angle range (deg), length range, width, depth offset
+    const ROWS = [
+      [10, 0.55, 1.00, -28, 62, 0.62, 0.74, 0.15, 0.000],
+      [12, 0.04, 0.55, -95, -36, 0.62, 0.66, 0.17, 0.004],
+      [14, 0.04, 0.96, -88, 46, 0.40, 0.36, 0.16, 0.016],
+      [14, 0.04, 0.94, -82, 40, 0.26, 0.24, 0.15, 0.028],
+      [12, 0.03, 0.86, -70, 30, 0.15, 0.14, 0.13, 0.040],
+    ];
+    const FEATHERS = [];
+    ROWS.forEach((r, row) => {
+      for (let i = 0; i < r[0]; i += 1) {
+        const k = r[0] > 1 ? i / (r[0] - 1) : 0;
+        FEATHERS.push({
+          row, a: lerp(r[1], r[2], k), th: (lerp(r[3], r[4], k) * Math.PI) / 180, len: lerp(r[5], r[6], k), wid: r[7], z: r[8],
+        });
+      }
+    });
+    // wingtips dissolve first: each feather's dissolve time `td`
+    for (const f of FEATHERS) f.order = 1 - f.a + f.row * 0.06;
+    const oMax = Math.max(...FEATHERS.map((f) => f.order));
+    const oMin = Math.min(...FEATHERS.map((f) => f.order));
+    for (const f of FEATHERS) f.td = 3.45 + (0.95 * (f.order - oMin)) / (oMax - oMin);
+    const WING_Y = 1.08;
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+    const _p = new THREE.Vector3();
+    const _s = new THREE.Vector3();
+    /** Feather `f`'s matrix (into `out`) at wing `spread` and `flap`, time `t`. */
+    function featherMatrix(f, spread, flap, t, out) {
+      const { a } = f;
+      const ox = lerp(0.07 + 0.34 * a, 0.1 + 1.0 * a, spread);
+      const oy = lerp(0.1 * a, 0.3 * a + 0.36 * a * a, spread);
+      const oz = lerp(-0.04 * a, -0.15 * a * a, spread);
+      const fl = flap * Math.pow(a, 0.6);
+      const c = Math.cos(fl);
+      const s = Math.sin(fl);
+      _p.set(ox * c - oy * s, ox * s + oy * c, oz + f.z);
+      const th = lerp(-1.45 + 0.25 * a, f.th, spread) + fl;
+      const twist = 0.4 * (1 - a) + f.row * 0.05 + 0.04 * Math.sin(t * 1.3 + a * 5);
+      _e.set(twist, 0, th, 'ZYX');
+      _q.setFromEuler(_e);
+      const k = t < f.td ? 1 : 1 - ss(f.td, f.td + 0.32, t);
+      _s.set(f.len * lerp(0.75, 1, spread) * Math.max(k, 0.0001), f.wid * Math.max(k, 0.0001), 1);
+      return out.compose(_p, _q, _s);
+    }
+    function makeWing(side, col) {
+      const g = new THREE.Group();
+      g.position.set(0, WING_Y, 0);
+      g.scale.x = side;
+      scene.add(g);
+      const mat = wingMat(col);
+      const im = new THREE.InstancedMesh(fGeo, mat, FEATHERS.length);
+      im.frustumCulled = false;
+      g.add(im);
+      const mg = new THREE.Group();
+      mg.position.copy(g.position);
+      mg.scale.x = side;
+      mirror.add(mg);
+      const imM = new THREE.InstancedMesh(fGeo, mat, FEATHERS.length);
+      imM.instanceMatrix = im.instanceMatrix;
+      imM.frustumCulled = false;
+      mg.add(imM);
+      return { g, mg, im, mat, side };
+    }
+    const wingL = makeWing(-1, PINK);
+    const wingR = makeWing(1, CYAN);
+    /** Wings unfurl over 0.35-2.3 s, then beat once (2.2-3.4 s). */
+    const wingPose = (t) => ({
+      spread: eIO(lin(0.35, 2.3, t)),
+      flap: t < 3.4 ? -0.2 * Math.sin(Math.PI * lin(2.2, 3.4, t)) + 0.1 * (1 - eIO(lin(0.35, 2.3, t))) : 0,
+    });
+
+    // the halo, and the two rings it splits into (they become the platform LED rings)
+    const haloMat = new THREE.MeshPhysicalMaterial({
+      color: 0xf0c46a, metalness: 1, roughness: 0.2, emissive: 0xffc766, emissiveIntensity: 1.6, envMap: GOLD_ENV, envMapIntensity: 1.5,
+    });
+    const HALO_Y = 2.0;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.014, 16, 128), haloMat);
+    halo.rotation.x = 1.25;
+    scene.add(halo);
+    const LAND = [5.1, 5.3]; // when each ring lands on its platform
+    const haloRings = [[-PX, PINK, LAND[0]], [PX, CYAN, LAND[1]]].map(([x, col, tl]) => {
+      const m = haloMat.clone();
+      const r = new THREE.Mesh(halo.geometry, m);
+      r.visible = false;
+      scene.add(r);
+      const rm = new THREE.Mesh(halo.geometry, m);
+      rm.visible = false;
+      mirror.add(rm);
+      return { r, rm, m, x, col, tl };
+    });
+    // warm glow behind the wings
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: softTex, color: new THREE.Color(1.0, 0.72, 0.35), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    core.position.set(0, WING_Y + 0.25, -0.3);
+    core.scale.set(2.4, 2.4, 1);
+    core.renderOrder = 4;
+    scene.add(core);
+    noDepth.push(core);
+
+    // LED shockwave rings that ripple across the floor as each halo ring lands
+    const ringTex = radialTex([[0, 'rgba(255,255,255,0)'], [0.78, 'rgba(255,255,255,0)'], [0.9, 'rgba(255,255,255,1)'], [0.95, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
+    const waves = [];
+    for (const [x, col, t0] of [[-PX, PINK, LAND[0]], [PX, CYAN, LAND[1]]]) {
+      for (let k = 0; k < 2; k += 1) {
+        const m = new THREE.MeshBasicMaterial({
+          map: ringTex, color: col.clone().multiplyScalar(2.2), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const p = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+        p.rotation.x = -Math.PI / 2;
+        p.position.set(x, 0.004, 0);
+        p.renderOrder = 3;
+        scene.add(p);
+        noDepth.push(p);
+        waves.push({ p, m, t0: t0 + k * 0.22 });
+      }
+    }
+
+    // feathers → streams of light → bottles. Each bottle is revealed from
+    // its base upward over `dur` seconds from `t0`, and each particle
+    // arrives at the height being revealed as it lands.
+    const REVEAL = [
+      { t0: 4.45, dur: 1.5, x: -PX, u: { value: -1 } },
+      { t0: 4.65, dur: 1.5, x: PX, u: { value: -1 } },
+    ];
+    const HTOT = BOTTLE.H + BOTTLE.collarH + BOTTLE.capH;
+    function makeStream(wing, rv, tint) {
+      const PER = 95;
+      const N = FEATHERS.length * PER;
+      const S = new Float32Array(N * 3); // start: on the feather
+      const E = new Float32Array(N * 3); // end: on the bottle's surface
+      const C = new Float32Array(N * 3); // control point of the arc between
+      const T = new Float32Array(N * 3); // birth, arrival, seed
+      const pose = wingPose(3.45);
+      const wm = new THREE.Matrix4().compose(new THREE.Vector3(0, WING_Y, 0), new THREE.Quaternion(), new THREE.Vector3(wing.side, 1, 1));
+      const fm = new THREE.Matrix4();
+      const v = new THREE.Vector3();
+      let n = 0;
+      for (const f of FEATHERS) {
+        featherMatrix(f, pose.spread, pose.flap, 3.44, fm);
+        fm.premultiply(wm);
+        for (let k = 0; k < PER; k += 1, n += 1) {
+          const u = 0.08 + 0.87 * Math.random();
+          const w = (Math.random() - 0.5) * 0.75 * Math.sin(Math.PI * Math.min(1, u * 1.1));
+          v.set(u, w, 0).applyMatrix4(fm);
+          S.set([v.x, v.y, v.z], n * 3);
+          const h = Math.pow(Math.random(), 0.9) * HTOT;
+          const rr = h < BOTTLE.H ? BOTTLE.R : h < BOTTLE.H + BOTTLE.collarH ? BOTTLE.collarR : BOTTLE.capR;
+          const ph = (Math.random() - 0.5) * Math.PI * 1.6;
+          E.set([rv.x + rr * Math.sin(ph), PPH + h, rr * Math.cos(ph)], n * 3);
+          C.set([
+            (v.x + rv.x) / 2 + wing.side * (0.35 + 0.5 * Math.random()),
+            Math.max(v.y, PPH + h) + 0.25 + 0.6 * Math.random(),
+            0.5 + 0.9 * (Math.random() - 0.3),
+          ], n * 3);
+          const birth = f.td + 0.28 * Math.random();
+          const arrive = Math.max(rv.t0 + rv.dur * (h / HTOT) + 0.05, birth + 0.7);
+          T.set([birth, arrive, Math.random()], n * 3);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(S, 3));
+      g.setAttribute('aEnd', new THREE.BufferAttribute(E, 3));
+      g.setAttribute('aCtl', new THREE.BufferAttribute(C, 3));
+      g.setAttribute('aT', new THREE.BufferAttribute(T, 3));
+      const m = new THREE.ShaderMaterial({
+        uniforms: { uT: { value: 0 }, uScale: { value: 600 }, uTint: { value: tint.clone() } },
+        vertexShader: `
+          attribute vec3 aEnd, aCtl, aT; uniform float uT, uScale; varying float vA; varying float vK; varying float vR;
+          void main(){
+            float p = clamp((uT - aT.x)/(aT.y - aT.x), 0.0, 1.0);
+            float e = p*p*(3.0 - 2.0*p);
+            vec3 q = mix(mix(position, aCtl, e), mix(aCtl, aEnd, e), e);
+            float sw = (1.0 - e)*e*0.35; q.x += sw*sin(e*18.0 + aT.z*30.0); q.z += sw*cos(e*18.0 + aT.z*30.0);
+            vec4 mv = modelViewMatrix * vec4(q, 1.0); gl_Position = projectionMatrix * mv;
+            float on = step(aT.x, uT) * (1.0 - step(aT.y, uT));
+            vA = on * smoothstep(0.0, 0.08, p) * (1.0 - smoothstep(0.9, 1.0, p)) * (0.55 + 0.45*sin(uT*22.0 + aT.z*60.0));
+            vK = e; vR = aT.z;
+            gl_PointSize = (0.026 + 0.024*aT.z) * (1.3 - 0.6*e) * uScale / -mv.z;
+          }`,
+        fragmentShader: `
+          uniform vec3 uTint; varying float vA; varying float vK; varying float vR;
+          void main(){
+            vec2 c = gl_PointCoord - 0.5; float a = exp(-dot(c,c)*14.0) * vA; if (a < 0.003) discard;
+            vec3 gold = vec3(1.6, 1.1, 0.45);
+            vec3 col = mix(gold, uTint*1.6, smoothstep(0.35, 0.95, vK)*0.7);
+            gl_FragColor = vec4(col*a*1.4, a);
+          }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const pts = new THREE.Points(g, m);
+      pts.frustumCulled = false;
+      pts.renderOrder = 8;
+      scene.add(pts);
+      const reflected = new THREE.Points(g, m);
+      reflected.frustumCulled = false;
+      mirror.add(reflected);
+      noDepth.push(pts, reflected);
+      return m;
+    }
+    const streams = [makeStream(wingL, REVEAL[0], PINK), makeStream(wingR, REVEAL[1], CYAN)];
+
+    // Bottles build upward behind a glowing gold edge: every fragment above
+    // the reveal height (|y|, so the reflection builds too) is discarded.
+    function addReveal(root, u) {
+      root.traverse((o) => {
+        if (!o.isMesh || o.material.userData.revealed) return;
+        const m = o.material;
+        m.userData.revealed = true;
+        const prev = m.onBeforeCompile;
+        const prevKey = m.customProgramCacheKey();
+        m.onBeforeCompile = (sh, r) => {
+          prev.call(m, sh, r);
+          sh.uniforms.uReveal = u;
+          sh.vertexShader = 'varying vec3 vRevW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vRevW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+          sh.fragmentShader = 'uniform float uReveal; varying vec3 vRevW;\n' + sh.fragmentShader
+            .replace('void main() {', 'void main() {\n if (abs(vRevW.y) > uReveal) discard;')
+            .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vec3(3.2, 2.1, 0.8) * (1.0 - smoothstep(0.0, 0.045, uReveal - abs(vRevW.y))) * step(uReveal, 2.4);');
+        };
+        // three caches programs by onBeforeCompile's source, which this
+        // wrapper makes identical for every material: key by the original.
+        m.customProgramCacheKey = () => `reveal|${prevKey}`;
+        m.needsUpdate = true;
+      });
+    }
+    addReveal(red.root, REVEAL[0].u);
+    addReveal(redM.root, REVEAL[0].u);
+    addReveal(blue.root, REVEAL[1].u);
+    addReveal(blueM.root, REVEAL[1].u);
+
+    const fmTmp = new THREE.Matrix4();
+    const bufTmp = new THREE.Vector2();
+    return {
+      update(t) {
+        const pose = wingPose(t);
+        const wingsOn = t < 4.9;
+        const glow = ss(0.1, 1.2, t);
+        for (const w of [wingL, wingR]) {
+          w.g.visible = wingsOn;
+          w.mg.visible = wingsOn;
+          if (wingsOn) {
+            FEATHERS.forEach((f, i) => { w.im.setMatrixAt(i, featherMatrix(f, pose.spread, pose.flap, t, fmTmp)); });
+            w.im.instanceMatrix.needsUpdate = true;
+          }
+          w.mat.envMapIntensity = 1.6 * glow;
+          w.mat.userData.u.uRim.value = 0.9 * glow;
+          w.mat.emissiveIntensity = 0.5 * glow;
+        }
+        core.material.opacity = 0.35 * ss(0.3, 1.6, t) * (1 - ss(3.6, 4.6, t));
+
+        halo.visible = t < 3.62;
+        haloMat.emissiveIntensity = 1.8 * ss(0.9, 1.7, t);
+        halo.scale.setScalar(lerp(0.6, 1, ss(0.9, 1.7, t)));
+        halo.position.set(0, HALO_Y + 0.03 * Math.sin(t * 1.6), 0);
+        halo.rotation.z = t * 0.3;
+        for (const h of haloRings) {
+          const on = t >= 3.62 && t < h.tl;
+          h.r.visible = on;
+          h.rm.visible = on;
+          if (!on) continue;
+          const u = eIO(lin(3.62, h.tl, t));
+          h.r.position.set(lerp(0, h.x, u), lerp(HALO_Y, PPH * 0.42, u) + 0.5 * Math.sin(Math.PI * u), 0.25 * Math.sin(Math.PI * u));
+          h.r.rotation.set(lerp(1.25, Math.PI / 2, u), 0, t * 2.0 * (1 - u));
+          h.r.scale.setScalar(lerp(1, (PPR + 0.004) / 0.22, u));
+          h.m.emissive.setRGB(lerp(1, h.col.r, u), lerp(0.78, h.col.g, u), lerp(0.4, h.col.b, u));
+          h.m.emissiveIntensity = 1.8 + 1.2 * u;
+          h.rm.position.copy(h.r.position);
+          h.rm.rotation.copy(h.r.rotation);
+          h.rm.scale.copy(h.r.scale);
+        }
+
+        const scale = renderer.getDrawingBufferSize(bufTmp).y * 0.62;
+        for (const m of streams) {
+          m.uniforms.uT.value = t;
+          m.uniforms.uScale.value = scale;
+        }
+        for (const rv of REVEAL) {
+          rv.u.value = t < rv.t0 ? -1
+            : t > rv.t0 + rv.dur + 0.4 ? 9
+              : PPH - 0.02 + (HTOT + 0.06) * eIO(lin(rv.t0, rv.t0 + rv.dur, t));
+        }
+        for (const w of waves) {
+          const a = t - w.t0;
+          const on = a > 0 && a < 1.6;
+          w.p.visible = on;
+          if (!on) continue;
+          const sc = 0.9 + a * 4.2;
+          w.p.scale.set(sc, sc, 1);
+          w.m.opacity = 0.85 * Math.exp(-a * 2.2) * ss(0, 0.05, a);
+        }
+      },
+      land: LAND,
+    };
+  }
+  const wings = story ? makeWings() : null;
+
   /* ---------------- bloom + tone-mapping pipeline ---------------- */
   // Multisampled HDR scene target (this is where the antialiasing happens).
   const sceneRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true, stencilBuffer: false });
@@ -789,17 +1062,18 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
         gl_FragColor = vec4(o + n*0.022, 1.0);
       }`;
 
-  // Turntable depth of field: a depth pass (overlays hidden) gives each
-  // pixel's distance, and the scene is mixed toward two blurred copies of
-  // itself the further it sits from the focus distance.
-  const dof = turntable ? {
+  // Depth of field: a depth pass (overlays hidden) gives each pixel's
+  // distance, and the scene is mixed toward two blurred copies of itself
+  // the further it sits from the focus distance.
+  const APERTURE = story ? 0.2 : 0.18;
+  const dof = {
     depthRT: new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter }),
     a: [new THREE.WebGLRenderTarget(1, 1, rtOpts), new THREE.WebGLRenderTarget(1, 1, rtOpts)],
     b: [new THREE.WebGLRenderTarget(1, 1, rtOpts), new THREE.WebGLRenderTarget(1, 1, rtOpts)],
     depthMat: new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }),
     on: true,
-  } : null;
-  if (dof) {
+  };
+  {
     compFS = compFS
       .replace('uniform sampler2D tScene, b0, b1, b2, b3, b4;', `#include <packing>
       uniform sampler2D tScene, b0, b1, b2, b3, b4, tDepth, d1, d2; uniform float focus, aperture, cNear, cFar;`)
@@ -809,14 +1083,25 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
         c = mix(c, texture2D(d1, vUv).rgb, smoothstep(0.0, 0.5, coc));
         c = mix(c, texture2D(d2, vUv).rgb, smoothstep(0.5, 1.0, coc));`);
   }
+  // Story only: an anamorphic streak (a long, horizontal-only blur of the
+  // bright pass, added back in cool blue) and a brief flash as each halo
+  // ring lands.
+  const streakRT = story ? [new THREE.WebGLRenderTarget(1, 1, rtOpts), new THREE.WebGLRenderTarget(1, 1, rtOpts)] : null;
+  if (streakRT) {
+    compFS = compFS
+      .replace('uniform float strength, exposure, time;', 'uniform float strength, exposure, time; uniform sampler2D tS; uniform float flash, streak;')
+      .replace('vec3 bl = ', `c += texture2D(tS, vUv).rgb * streak * vec3(0.55, 0.8, 1.25);
+        vec3 bl = `)
+      .replace('vec3 o = toSRGB(aces(c));', `c = c*(1.0 + flash*3.0) + flash*vec3(0.5, 0.55, 0.6);
+        vec3 o = toSRGB(aces(c));`);
+  }
   const compMat = new THREE.ShaderMaterial({
     uniforms: {
       tScene: { value: sceneRT.texture }, b0: { value: rtA[0].texture }, b1: { value: rtA[1].texture }, b2: { value: rtA[2].texture },
       b3: { value: rtA[3].texture }, b4: { value: rtA[4].texture }, strength: { value: 0.85 }, exposure: { value: 1.0 }, time: { value: 0 },
-      ...(dof && {
-        tDepth: { value: dof.depthRT.texture }, d1: { value: dof.a[0].texture }, d2: { value: dof.a[1].texture },
-        focus: { value: 8 }, aperture: { value: 0.18 }, cNear: { value: camera.near }, cFar: { value: camera.far },
-      }),
+      tDepth: { value: dof.depthRT.texture }, d1: { value: dof.a[0].texture }, d2: { value: dof.a[1].texture },
+      focus: { value: 8 }, aperture: { value: APERTURE }, cNear: { value: camera.near }, cFar: { value: camera.far },
+      ...(streakRT && { tS: { value: streakRT[0].texture }, flash: { value: 0 }, streak: { value: 0.25 } }),
     },
     vertexShader: QUAD_VS, depthTest: false, depthWrite: false,
     fragmentShader: compFS,
@@ -832,9 +1117,9 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
     compMat.uniforms.time.value = (compMat.uniforms.time.value + 1) % 1000;
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
-    if (dof) {
+    {
       // Low quality tiers skip the depth pass; aperture 0 means nothing blurs.
-      compMat.uniforms.aperture.value = dof.on ? 0.18 : 0;
+      compMat.uniforms.aperture.value = dof.on ? APERTURE : 0;
       if (dof.on) {
         for (const o of noDepth) { o.userData.v = o.visible; o.visible = false; }
         scene.overrideMaterial = dof.depthMat;
@@ -867,56 +1152,76 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
       blurMat.uniforms.dir.value.set(0, 1 / rtA[i].height);
       pass(blurMat, rtA[i]);
     }
+    if (streakRT) {
+      let src = rtA[1].texture;
+      for (const k of [1.5, 4, 10, 24]) {
+        blurMat.uniforms.tex.value = src;
+        blurMat.uniforms.dir.value.set(k / streakRT[0].width, 0);
+        pass(blurMat, streakRT[1]);
+        blurMat.uniforms.tex.value = streakRT[1].texture;
+        blurMat.uniforms.dir.value.set((k * 1.7) / streakRT[0].width, 0);
+        pass(blurMat, streakRT[0]);
+        src = streakRT[0].texture;
+      }
+    }
     pass(compMat, null);
   }
 
   /* ---------------- timeline ---------------- */
-  function bottleState(t, r0, r1, r2) {
-    return {
-      show: t >= 3.95, tint: 1 - ss(4.2, 5.3, t), fill: ss(3.97, 5.0, t), parts: ss(4.6, 5.4, t), label: ss(5.0, 5.8, t),
-      rotY: t < 8 ? lerp(r0, r1, eIOS(lin(3.95, 7.6, t))) : lerp(r1, r2, eIOS(lin(8, 10, t))),
-    };
-  }
-
   /** Story: pose everything for scene time `t` (0 to SCENE_END). */
   function poseStory(t) {
-    dropR.update(t);
-    dropB.update(t);
-    const rs = bottleState(t, -1.25, 0.14, -0.1);
-    const bs = bottleState(t, 1.25, -0.14, 0.1);
-    const rise = eIO(lin(7.0, 8.0, t));
-    const py = PPH * rise;
-    red.root.position.set(-PX, py, 0);
-    blue.root.position.set(PX, py, 0);
-    red.update(rs);
-    blue.update(bs);
+    LIQT.value = t;
+    SWEEP.i.value = 1;
+    wings.update(t);
+
+    // the bottles, revealed standing on their platforms as the lights come up
+    const light = ss(4.4, 6.4, t);
+    const base = { show: t > 4.4, tint: 0, fill: 1, parts: 1, label: 1, light: 0.35 + 0.65 * light, rim: 0.45 - 0.2 * light };
+    const turn = eIOS(lin(4.4, 10, t));
+    const rs = { ...base, rotY: lerp(-0.35, 0.08, turn) };
+    const bs = { ...base, rotY: lerp(0.35, -0.08, turn) };
+    red.root.position.set(-PX, PPH, 0);
+    blue.root.position.set(PX, PPH, 0);
     redM.root.position.copy(red.root.position);
     blueM.root.position.copy(blue.root.position);
+    red.update(rs);
+    blue.update(bs);
     redM.update(rs);
     blueM.update(bs);
-    for (const p of [platR, platB, platRM, platBM]) {
+
+    // the platforms rise; each LED ring switches on (with a pulse) as its halo ring lands
+    const rise = eIO(lin(4.15, 4.9, t));
+    const [landR, landB] = wings.land;
+    for (const [p, tl] of [[platR, landR], [platRM, landR], [platB, landB], [platBM, landB]]) {
       p.g.visible = rise > 0.001;
       p.g.scale.y = Math.max(rise, 0.001);
-      p.mat.envMapIntensity = 0.8 * rise;
-      for (const m of p.leds) m.opacity = m.userData.base * ss(7.2, 8.1, t);
+      p.mat.envMapIntensity = 0.8 * (0.2 + 0.8 * light);
+      const on = ss(tl - 0.02, tl + 0.05, t);
+      const pulse = t > tl ? Math.exp(-(t - tl) * 3.5) : 0;
+      for (const m of p.leds) m.opacity = m.userData.base * on * (1 + 0.8 * pulse);
     }
-    const g = ss(0.1, 1.2, t);
-    floorGlowR.position.x = dropR.group.visible ? dropR.group.position.x : -PX;
-    floorGlowB.position.x = dropB.group.visible ? dropB.group.position.x : PX;
-    floorGlowR.material.opacity = 0.22 * g + 0.22 * ss(7.2, 8.2, t);
-    floorGlowB.material.opacity = floorGlowR.material.opacity;
-    hazeR.material.opacity = 0.17 * g;
+    floorGlowR.position.x = -PX;
+    floorGlowB.position.x = PX;
+    const wingGlow = 0.15 * ss(0.3, 1.5, t) * (1 - ss(3.5, 4.5, t));
+    floorGlowR.material.opacity = 0.4 * ss(landR, landR + 0.2, t) + wingGlow;
+    floorGlowB.material.opacity = 0.4 * ss(landB, landB + 0.2, t) + wingGlow;
+    hazeR.material.opacity = 0.17 * ss(0.2, 1.5, t);
     hazeB.material.opacity = hazeR.material.opacity;
 
+    // camera and lens
+    const d = curve(CAM.dist, t);
     const az = curve(CAM.az, t);
     const el = curve(CAM.el, t);
-    const d = curve(CAM.dist, t);
     const ty = curve(CAM.ty, t);
     camera.position.set(d * Math.sin(az) * Math.cos(el), ty + d * Math.sin(el), d * Math.cos(az) * Math.cos(el));
     camera.lookAt(0, ty, 0);
     camera.updateMatrixWorld();
-    const sa = -1.3 + t * 0.26;
-    const sb = 1.5 - t * 0.22;
+    compMat.uniforms.focus.value = d - 0.1;
+    const flashAt = (tl) => 0.12 * Math.exp(-Math.pow((t - (tl + 0.02)) / 0.05, 2));
+    compMat.uniforms.flash.value = flashAt(landR) + flashAt(landB);
+    compMat.uniforms.streak.value = 0.3 + 0.35 * ss(3.5, 5.0, t) * (1 - ss(5.6, 6.6, t)) + 0.3 * ss(7.5, 9.0, t);
+    const sa = -1.4 + t * 0.3;
+    const sb = 1.6 - t * 0.24;
     SWEEP.a.value.set(Math.sin(sa), 0.35, Math.cos(sa)).normalize().transformDirection(camera.matrixWorldInverse);
     SWEEP.b.value.set(Math.sin(sb), 0.55, Math.cos(sb)).normalize().transformDirection(camera.matrixWorldInverse);
   }
@@ -977,16 +1282,90 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
     SWEEP.b.value.set(Math.sin(sb), 0.55, Math.cos(sb)).normalize().transformDirection(camera.matrixWorldInverse);
   }
 
-  /** Pose for time `t` (story: scene time; turntable: seconds in view, with `tone`) and draw. */
+  /**
+   * Spray: pose Raphael `t` seconds after it first came into view. The
+   * lights come up as in the turntable, then the pump presses every
+   * SPRAY_CYCLE seconds and the mist bursts from the nozzle.
+   */
+  const nozW = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const ex = new THREE.Vector3();
+  const ey = new THREE.Vector3(0, 1, 0);
+  const ez = new THREE.Vector3();
+  const buf = new THREE.Vector2();
+  function poseSpray(t) {
+    const light = ss(0.4, 1.8, t);
+    const rim = 0.95 * ss(0.1, 0.8, t) * (1 - 0.72 * ss(1.0, 2.0, t));
+    const led = ss(0.0, 0.8, t);
+    SWEEP.i.value = ss(0.3, 1.2, t);
+    LIQT.value = t;
+
+    // the spray cycle: a quick press, a held beat, then the actuator springs back
+    const c = t < SPRAY_FIRST ? -1 : (t - SPRAY_FIRST) % SPRAY_CYCLE;
+    const press = c < 0 ? 0 : (c < 0.1 ? sstep(c / 0.1) : 1 - ss(0.32, 0.62, c));
+    const s = { show: true, tint: 0, fill: 1, parts: 1, label: 1, light, rim, rotY: ROT + 0.03 * Math.sin(t * 0.4) };
+    blue.root.position.set(SPRAY_X, PPH, 0);
+    blueM.root.position.copy(blue.root.position);
+    for (const b of [blue, blueM]) {
+      b.update(s);
+      b.pump.act.position.y = b.pump.actY - 0.022 * press;
+      b.pump.nozzle.position.y = b.pump.nozY - 0.022 * press;
+    }
+
+    // the mist's frame: out of the nozzle (x), world up (y), across (z)
+    blue.root.updateMatrixWorld(true);
+    nozW.copy(blue.pump.nozzleLocal).applyMatrix4(blue.root.matrixWorld);
+    blue.root.getWorldQuaternion(q);
+    ex.set(0, 0, 1).applyQuaternion(q);
+    ez.crossVectors(ex, ey).normalize();
+    const scale = renderer.getDrawingBufferSize(buf).y * 0.62;
+    for (const m of mists) {
+      const u = m.material.uniforms;
+      u.uAge.value = c < 0 ? -1 : c;
+      u.uOrigin.value.copy(nozW);
+      u.uX.value.copy(ex);
+      u.uY.value.copy(ey);
+      u.uZ.value.copy(ez);
+      u.uScale.value = scale;
+    }
+
+    for (const p of [platB, platBM]) {
+      p.g.visible = true;
+      p.g.scale.y = 1;
+      p.g.position.x = SPRAY_X;
+      p.mat.envMapIntensity = 0.8 * (0.15 + 0.85 * light);
+      for (const m of p.leds) m.opacity = m.userData.base * led;
+    }
+    floorGlowB.position.x = SPRAY_X;
+    floorGlowB.material.opacity = 0.45 * led;
+    hazeB.material.opacity = 0.2 * light;
+
+    // framed wider than the turntable, so the mist has room to drift left
+    const d = lerp(7.0, 7.7, eIOS(lin(0, 2.2, t)));
+    const az = 0.05 * Math.sin(t * 0.23);
+    const el = 0.07 + 0.012 * Math.sin(t * 0.19);
+    const ty = 1.12;
+    camera.position.set(d * Math.sin(az) * Math.cos(el), ty + d * Math.sin(el), d * Math.cos(az) * Math.cos(el));
+    camera.lookAt(0, ty, 0);
+    camera.updateMatrixWorld();
+    compMat.uniforms.focus.value = d - 0.1;
+    const sa = -0.75 + 0.12 * Math.sin(t * 0.21);
+    const sb = 0.95 + 0.1 * Math.sin(t * 0.17 + 1.0);
+    SWEEP.a.value.set(Math.sin(sa), 0.35, Math.cos(sa)).normalize().transformDirection(camera.matrixWorldInverse);
+    SWEEP.b.value.set(Math.sin(sb), 0.55, Math.cos(sb)).normalize().transformDirection(camera.matrixWorldInverse);
+  }
+
+  /** Pose for time `t` (story: scene time; studio: seconds in view, turntable with `tone`) and draw. */
   function render(t, tone = 0) {
     if (turntable) poseTurntable(t, tone);
+    else if (spray) poseSpray(t);
     else poseStory(t);
     renderFrame();
   }
 
   /** Apply a QUALITY tier's scene-side settings (the renderer's are set by the caller). */
   function setQuality(q) {
-    if (dof) dof.on = q.dof;
+    dof.on = q.dof;
   }
 
   /**
@@ -1016,7 +1395,8 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
       rtA[i].setSize(w, w);
       rtB[i].setSize(w, w);
     }
-    if (dof) {
+    if (streakRT) for (const rt of streakRT) rt.setSize(Math.max(1, px >> 2), Math.max(1, px >> 3));
+    {
       dof.depthRT.setSize(Math.max(1, px >> 1), Math.max(1, px >> 1));
       for (let i = 0; i < 2; i += 1) {
         const w = Math.max(1, px >> (i + 1));
@@ -1028,12 +1408,12 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
 
   function dispose() {
     scene.traverse((o) => {
-      if (o.isMesh) o.geometry.dispose();
-      if (o.isMesh || o.isSprite) o.material.dispose();
+      if (o.isMesh || o.isPoints) o.geometry.dispose();
+      if (o.isMesh || o.isSprite || o.isPoints) o.material.dispose();
     });
     quad.geometry.dispose();
     [brightMat, blurMat, compMat, sceneRT, ...rtA, ...rtB, ...disposables].forEach((x) => x.dispose());
-    if (dof) [dof.depthRT, ...dof.a, ...dof.b, dof.depthMat].forEach((x) => x.dispose());
+    [dof.depthRT, ...dof.a, ...dof.b, dof.depthMat, ...(streakRT || [])].forEach((x) => x.dispose());
   }
 
   return { render, warm, setQuality, setSize, dispose };
@@ -1054,10 +1434,14 @@ function buildScene(renderer, invalidate, { turntable = false, tones = [] } = {}
  * where it left off). `tone` (a 0..1 value with .get()) moves the
  * backdrop glow through `tones` (hex colours).
  *
+ * variant="spray": Raphael A3 alone, spraying every 5 s while on screen
+ * (same pausing clock as the turntable). With `paused`, it holds the
+ * still frame at `time` instead (by default, mid-burst).
+ *
  * `onReady` fires after the first frame.
  */
 export default function PerfumeScene({
-  variant = 'story', progress, time = SCENE_END, tone, tones, onReady, className = '',
+  variant = 'story', progress, time: timeProp, paused = false, tone, tones, onReady, className = '',
 }) {
   const mountRef = useRef(null);
   const progressRef = useRef(progress);
@@ -1068,7 +1452,9 @@ export default function PerfumeScene({
   tonesRef.current = tones;
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
-  const turntable = variant === 'turntable';
+  const time = timeProp ?? (variant === 'spray' ? SPRAY_STILL : SCENE_END);
+  // The studio variants run on their own clock unless held still.
+  const running = variant !== 'story' && !paused;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -1085,7 +1471,7 @@ export default function PerfumeScene({
     // can't oscillate) when the frame rate sags while the scene is moving.
     let tier = 0;
     let dirty = true;
-    const view = buildScene(renderer, () => { dirty = true; }, { turntable, tones: tonesRef.current ?? [] });
+    const view = buildScene(renderer, () => { dirty = true; }, { variant, tones: tonesRef.current ?? [] });
     const applyTier = () => {
       const q = QUALITY[tier];
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr));
@@ -1117,7 +1503,7 @@ export default function PerfumeScene({
       return Math.max(intro, lerp(SCENE_INTRO, SCENE_END, clamp(p.get())));
     };
     let current = progressRef.current ? 0 : time;
-    let clock = 0; // turntable: seconds rendered on screen
+    let clock = 0; // studio: seconds rendered on screen
     let frame = 0;
     let first = true;
     let last = 0; // timestamp of the previous rendered frame (0: none in a row)
@@ -1127,9 +1513,9 @@ export default function PerfumeScene({
     const tick = (now) => {
       frame = requestAnimationFrame(tick);
       let dt;
-      if (turntable) {
+      if (running) {
         // Always moving: advance the clock by the real frame time, so the
-        // turn keeps its exact speed at any refresh rate.
+        // turn (or spray) keeps its exact speed at any refresh rate.
         dt = last ? Math.min(now - last, 100) : 16.7;
         clock += dt / 1000;
         current = clock;
@@ -1189,7 +1575,7 @@ export default function PerfumeScene({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [time, turntable]);
+  }, [time, variant, running]);
 
   return <div ref={mountRef} className={`perfume-scene ${className}`} aria-hidden="true" />;
 }

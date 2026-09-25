@@ -215,7 +215,7 @@
 .hero-pin {
   position: relative;
   z-index: 1;
-  height: 400vh;
+  height: 240vh;
   margin-top: calc(var(--nav-h) * -1);
   background: #000;
 }
@@ -228,7 +228,7 @@
   background: #000;
 }
 
-/* The black stage eases into the page colour below the hero. */
+/* The black stage eases into the packages section right below it. */
 .hero-pin::after {
   content: "";
   position: absolute;
@@ -236,7 +236,7 @@
   right: 0;
   bottom: 0;
   height: 120px;
-  background: linear-gradient(#000, var(--bg));
+  background: linear-gradient(#000, var(--bg-alt));
 }
 
 .hero-caps {
@@ -256,19 +256,21 @@
 /* The glass scene: a square canvas as tall as the screen allows. Its
    own background is pure black, so the stage matches it; a vignette
    and soft edge fades (the scene's coloured haze reaches the square's
-   sides) melt it into the page. */
+   sides) melt it into the page. It sits below the fixed nav (the stage
+   itself starts under it), with a little air in between. */
 .hero-scene-wrap {
   position: absolute;
   inset: 0;
   z-index: 1;
   display: grid;
   place-items: center;
+  padding-top: var(--nav-h);
   will-change: transform;
 }
 
 .hero-scene {
   position: relative;
-  width: min(100vw, 100dvh);
+  width: min(100vw, calc(100dvh - var(--nav-h) - 32px));
   aspect-ratio: 1;
   /* Soft fade on all four edges: both gradients on one element, where
      they intersect, rather than a mask here and another nested on the
@@ -336,6 +338,15 @@
   display: inline-block;
 }
 
+/* Hero headline words (wiped in, see Hero.jsx). The extra block padding,
+   cancelled by the negative margin, lets the wipe's mask cover the
+   descenders instead of cutting them off at the line box. */
+.wipe-word {
+  display: inline-block;
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+}
+
 .hero-ctas {
   display: flex;
   flex-wrap: wrap;
@@ -368,15 +379,33 @@
     height: auto;
   }
 
+  /* At least one full screen, so on first load the hero is all there is:
+     the next section never peeks in below it. Content starts below the
+     fixed nav, and the column is centred in whatever height is left. */
   .hero-stage {
     position: static;
     height: auto;
+    min-height: 100svh;
     overflow: visible;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: calc(var(--nav-h) + 16px);
   }
 
   .hero-scene-wrap {
     position: relative;
     inset: auto;
+    padding-top: 0;
+  }
+
+  .hero-scene {
+    width: min(100vw, calc(100svh - var(--nav-h) - 32px));
+  }
+
+  /* The wrap is in flow here, so the eyebrow sits at the scene's top. */
+  .hero-caps {
+    top: 4px;
   }
 
   .hero-logo-wrap {
@@ -403,12 +432,16 @@
   }
 }
 
-/* Reduced motion: a plain split hero. */
+/* Reduced motion: a plain split hero, filling the first screen below
+   the nav so the next section doesn't show on load. */
 .hero-static {
   position: relative;
   z-index: 1;
   background: var(--bg);
   padding: clamp(40px, 6vw, 80px) 0;
+  min-height: calc(100svh - var(--nav-h));
+  display: grid;
+  align-content: center;
 }
 
 .hero-static-grid {
@@ -668,59 +701,10 @@
   max-width: 40ch;
 }
 
-/* ============================================================== stats */
-
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.stat {
-  display: grid;
-  gap: 6px;
-  padding: 8px clamp(16px, 3vw, 40px);
-  border-left: 1px solid var(--hairline-strong);
-}
-
-.stat:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-
-.stat-value {
-  font-size: clamp(48px, 6vw, 80px);
-  font-weight: 600;
-  letter-spacing: -0.045em;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-value .unit {
+/* The best discount, called out inside the packages lede. */
+.lede-accent {
   color: var(--gold-ink);
-}
-
-.stat-label {
-  color: var(--ink-2);
-  font-size: 15.5px;
-}
-
-@media (max-width: 720px) {
-  .stats-row {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .stat,
-  .stat:first-child {
-    border-left: 0;
-    padding: 0 0 28px;
-    border-bottom: 1px solid var(--hairline-strong);
-  }
-
-  .stat:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
+  font-weight: 600;
 }
 
 /* ======================================================== collection */
@@ -940,25 +924,6 @@
   font-weight: 550;
   letter-spacing: -0.015em;
   transition: background-color 0.25s ease;
-}
-
-/* The question's own index (01, 02, ...), a small editorial marker that
-   also keeps every question's left edge lined up regardless of its
-   number's width. */
-.faq-q-label {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-}
-
-.faq-n {
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--gold-ink);
-  opacity: 0.7;
 }
 
 .faq-q:hover {
