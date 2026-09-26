@@ -5,7 +5,9 @@ import Footer from '../components/Footer.jsx';
 import About from '../components/landing/About.jsx';
 import BackdropVideo from '../components/landing/BackdropVideo.jsx';
 import Collection from '../components/landing/Collection.jsx';
+import ClosingCta from '../components/landing/ClosingCta.jsx';
 import CraftFilm from '../components/landing/CraftFilm.jsx';
+import Earnings, { earningOptions } from '../components/landing/Earnings.jsx';
 import Faq from '../components/landing/Faq.jsx';
 import Hero from '../components/landing/Hero.jsx';
 import Nav from '../components/landing/Nav.jsx';
@@ -70,20 +72,26 @@ export default function PackagesPage() {
   return (
     <div className="page">
       <BackdropVideo src="/static/video/black_background.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
-      <Nav />
+      <Nav hiddenIds={earningOptions(data?.packages || []).length ? [] : ['earnings']} />
       <main>
         <Hero />
-        {/* The packages are what partners come for, so they follow the
-            hero directly; the brand story comes after. */}
+        {/* What a partner comes for leads: the packages, what they'd
+            earn on them, and what happens after "Inquire". The brand
+            story comes after, and the page closes on one clear next
+            step. */}
         <PackagesSection slug={slug} data={data} loading={loading} scope={scope} onScopeChange={changeScope} />
+        <Earnings packages={data?.packages || []} />
+        <Steps />
         <About />
         <CraftFilm />
         <Collection />
         <ScentJourney />
-        <Steps />
         <Faq />
       </main>
-      <Footer />
+      {/* The closing band is what slides up to uncover the footer. */}
+      <Footer>
+        <ClosingCta />
+      </Footer>
     </div>
   );
 }

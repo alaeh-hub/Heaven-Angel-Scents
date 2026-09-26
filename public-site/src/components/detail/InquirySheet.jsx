@@ -1,34 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react';
-import { ApiError, fetchPackage, sendInquiry } from '../../api.js';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock.js';
 import { EASE_OUT, SPRING, SPRING_SHEET } from '../../motion.js';
 
 const EMPTY = { company_name: '', contact_person: '', phone: '', email: '', address: '', message: '' };
+const ANY = '';
+/** How each contact method reads in "We reach you by ___." */
+const VIA = { Call: 'phone call', SMS: 'SMS', Viber: 'Viber', Email: 'email' };
 
 /**
- * "Inquire about this package" dialog. A package scoped to one partner
- * type fixes "You are a"; a 'Both' package asks. The name field relabels
- * for a Reseller, who may be an individual rather than a business (it's
- * stored as company_name either way, see routes/portal.py's inquire()).
+ * The inquiry dialog, for one package (from its detail view) or for no
+ * package at all (the general "Send an inquiry" buttons, see
+ * InquiryProvider). `fixedType` fixes "You are a" for a package scoped
+ * to one partner type; otherwise it's asked. The name field relabels for
+ * a Reseller, who may be an individual rather than a business (it's
+ * stored as company_name either way, see routes/portal.py).
  *
- * Server errors show inline above the buttons; success swaps the form
- * for a confirmation in place.
+ * `submit(payload)` does the actual request (and any CSRF retry) and
+ * resolves to the server's {message, reference}. Server errors show
+ * inline above the buttons; success swaps the form for a confirmation
+ * with the inquiry's reference and what happens next.
  *
- * Rendered inside the detail view, so within the package sheet its fixed
- * overlay covers the sheet (the sheet's transform makes it the
- * containing block) rather than the whole page.
+ * Inside the package sheet its fixed overlay covers the sheet (the
+ * sheet's transform makes it the containing block); opened from the
+ * page itself, it covers the whole page.
  */
-export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open, onClose }) {
-  const fixedType = pkg.partner_scope === 'Both' ? '' : pkg.partner_scope;
+export default function InquirySheet({
+  title,
+  intro,
+  fixedType = '',
+  partnerTypes,
+  contactMethods = [],
+  replyTime,
+  initialMessage = '',
+  open,
+  onClose,
+  submit,
+}) {
   const [partnerType, setPartnerType] = useState(fixedType);
   const [fields, setFields] = useState(EMPTY);
+  const [preferred, setPreferred] = useState(ANY);
   const [status, setStatus] = useState('idle'); // idle | sending | sent
   const [error, setError] = useState('');
-  const [sentMessage, setSentMessage] = useState('');
+  const [sent, setSent] = useState({ message: '', reference: '', via: '' });
   const firstFieldRef = useRef(null);
   useBodyScrollLock(open);
+
+  // A general inquiry can arrive pre-filled ("I'm interested in ..."
+  // from a product card); only fill an untouched message box.
+  useEffect(() => {
+    if (open && initialMessage) setFields((f) => (f.message ? f : { ...f, message: initialMessage }));
+  }, [open, initialMessage]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -51,36 +74,34 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
     if (status !== 'sent') return;
     setStatus('idle');
     setFields(EMPTY);
+    setPreferred(ANY);
     setPartnerType(fixedType);
   };
 
   const isReseller = partnerType === 'Reseller';
   const set = (name) => (e) => setFields((f) => ({ ...f, [name]: e.target.value }));
 
-  const submit = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
     setStatus('sending');
     setError('');
-    const payload = { ...fields, partner_type: partnerType };
     try {
-      let result;
-      try {
-        result = await sendInquiry(slug, pkg.package_id, payload, csrfToken.current);
-      } catch (err) {
-        // A non-JSON 400 is Flask-WTF rejecting the CSRF token, usually
-        // because the page sat open past the token's lifetime. Get a
-        // fresh one and try once more before giving up.
-        if (!(err instanceof ApiError) || err.status !== 400 || err.fromServer) throw err;
-        csrfToken.current = (await fetchPackage(slug, pkg.package_id)).csrf_token;
-        result = await sendInquiry(slug, pkg.package_id, payload, csrfToken.current);
-      }
-      setSentMessage(result.message);
+      const result = await submit({ ...fields, partner_type: partnerType, preferred_contact: preferred });
+      setSent({ message: result.message, reference: result.reference, via: preferred });
       setStatus('sent');
     } catch (err) {
       setError(err.message);
       setStatus('idle');
     }
   };
+
+  // The server's message already carries the reply time, so it isn't
+  // repeated here.
+  const nextSteps = [
+    'Our team reviews your inquiry.',
+    `We reach you by ${VIA[sent.via] || 'phone or email'}.`,
+    'We confirm the details and set you up as a partner.',
+  ];
 
   return (
     <AnimatePresence onExitComplete={resetAfterClose}>
@@ -122,7 +143,33 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
                     <CheckIcon size={34} weight="bold" />
                   </motion.span>
                   <h2 id="inquiry-title">Inquiry sent</h2>
-                  <p>{sentMessage}</p>
+                  <p>{sent.message}</p>
+                  {sent.reference && (
+                    <p className="inquiry-ref">
+                      Your reference <strong>{sent.reference}</strong>
+                    </p>
+                  )}
+                  {/* The next steps tick in one after another, after the check. */}
+                  <ol className="inquiry-next">
+                    {nextSteps.map((step, i) => (
+                      <motion.li
+                        key={step}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ ...SPRING, delay: 0.35 + i * 0.12 }}
+                      >
+                        <motion.span
+                          className="inquiry-next-mark"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 22, delay: 0.42 + i * 0.12 }}
+                        >
+                          <CheckIcon size={12} weight="bold" />
+                        </motion.span>
+                        {step}
+                      </motion.li>
+                    ))}
+                  </ol>
                   <button type="button" className="btn btn-secondary" onClick={onClose} style={{ marginTop: 8 }}>
                     Done
                   </button>
@@ -137,15 +184,18 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
                 >
                   <div className="inquiry-head">
                     <div>
-                      <h2 id="inquiry-title">Inquire about {pkg.package_name}</h2>
-                      <p>Tell us a bit about your business. Our team will follow up by phone or email.</p>
+                      <h2 id="inquiry-title">{title}</h2>
+                      <p>
+                        {intro}
+                        {replyTime && <> We reply {replyTime}.</>}
+                      </p>
                     </div>
                     <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
                       <XIcon size={16} weight="bold" />
                     </button>
                   </div>
 
-                  <form onSubmit={submit}>
+                  <form onSubmit={onSubmit}>
                     {/* Fields pair up two per .inquiry-row so the dialog stays
                         short on desktop; the rows stack on phones. */}
                     <div className="inquiry-row">
@@ -248,7 +298,30 @@ export default function InquirySheet({ slug, pkg, partnerTypes, csrfToken, open,
                         />
                       </div>
                     </div>
-                    <p className="help" style={{ marginTop: -6 }}>We&apos;ll only use these to follow up about this inquiry.</p>
+
+                    {contactMethods.length > 0 && (
+                      <fieldset className="field contact-pref">
+                        <legend>Best way to reach you <span className="optional">(optional)</span></legend>
+                        <div className="contact-pref-options">
+                          {[ANY, ...contactMethods].map((method) => (
+                            <label key={method || 'any'} className="contact-pref-option">
+                              <input
+                                type="radio"
+                                name="preferred_contact"
+                                value={method}
+                                checked={preferred === method}
+                                onChange={() => setPreferred(method)}
+                              />
+                              {preferred === method && (
+                                <motion.span layoutId="contact-pref-pill" className="contact-pref-pill" transition={SPRING} />
+                              )}
+                              <span className="contact-pref-label">{method || 'Any'}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="help">We&apos;ll only use your details to follow up about this inquiry.</p>
+                      </fieldset>
+                    )}
 
                     <div className="field">
                       <label htmlFor="message">Message <span className="optional">(optional)</span></label>

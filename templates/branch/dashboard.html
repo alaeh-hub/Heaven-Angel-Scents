@@ -5,24 +5,25 @@
 {% block heading %}Welcome, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="bento-grid stack">
-  <div class="card stat-tile">
+<div class="bento-grid stack stat-grid-highlight">
+  <div class="card stat-tile bento-span-2">
     <div class="stat-label">SKUs carried</div>
-    <div class="stat-value">{{ inventory|length }}</div>
+    <div class="stat-value">{{ sku_count }}</div>
     <div class="stat-foot">in your branch</div>
   </div>
-  <div class="card stat-tile">
+  <div class="card stat-tile bento-span-2">
     <div class="stat-label">Low stock</div>
     <div class="stat-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
     <div class="stat-foot"><a href="{{ url_for('branch.request_stock') }}" class="text-soft">request more →</a></div>
   </div>
-  <div class="card stat-tile bento-hero">
+  <div class="card stat-tile bento-hero bento-hero-end">
     <div>
       <div class="stat-label">Today's sales</div>
     </div>
     <div>
       <div class="stat-value accent">{{ today_sales.units }}</div>
       <div class="stat-foot">{{ today_sales.revenue|peso }} in revenue</div>
+      {{ m.trend(today_sales.trend, 'revenue vs. same time yesterday') }}
     </div>
   </div>
 </div>
@@ -59,8 +60,10 @@
             <td class="num" style="min-width:150px;" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level
               * 3) }}</td>
             <td data-label="" class="mobile-inline-action">
+              {% if row.requestable %}
               <a href="{{ url_for('branch.request_stock', sku=row.sku, qty=row.suggested_qty) }}"
                 class="btn btn-ghost btn-sm">Reorder</a>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

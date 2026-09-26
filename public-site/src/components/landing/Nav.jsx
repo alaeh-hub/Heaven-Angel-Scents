@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { ListIcon, XIcon } from '@phosphor-icons/react';
 import { SPRING } from '../../motion.js';
 import { scrollToSection } from '../../utils.js';
+import { useSite } from '../InquiryProvider.jsx';
 
 export const NAV_LINKS = [
   { id: 'packages', label: 'Packages' },
-  { id: 'about', label: 'About' },
+  { id: 'earnings', label: 'Earnings' },
   { id: 'how-it-works', label: 'How it works' },
+  { id: 'about', label: 'About' },
   { id: 'faq', label: 'FAQ' },
 ];
 
@@ -40,7 +42,6 @@ function useActiveSection(ids, lockRef) {
   return [active, setActive];
 }
 
-const SECTION_IDS = NAV_LINKS.map((l) => l.id);
 
 /** Pixels of upward scrolling it takes to bring the hidden bar back. */
 const UP_TO_SHOW = 24;
@@ -57,14 +58,22 @@ const GLIDE_MAX_MS = 4000;
  * slides away while reading downward and returns only on a real scroll
  * up, so it's there when wanted and out of the way otherwise.
  */
-export default function Nav() {
+export default function Nav({ hiddenIds = [] }) {
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const navigatingRef = useRef(false);
-  const [active, setActive] = useActiveSection(SECTION_IDS, navigatingRef);
+  const { openInquiry } = useSite();
+  // Sections that aren't on the page right now (Earnings, with no
+  // discounted package to estimate) get no link, rather than a dead one.
+  const hiddenKey = hiddenIds.join(' ');
+  const links = useMemo(() => NAV_LINKS.filter((l) => !hiddenKey.split(' ').includes(l.id)), [hiddenKey]);
+  // A new list whenever a section appears or goes, so the tracker below
+  // re-observes and picks up sections that render after the first load.
+  const sectionIds = useMemo(() => links.map((l) => l.id), [links]);
+  const [active, setActive] = useActiveSection(sectionIds, navigatingRef);
 
   // How far the page has moved up since it last moved down.
   const upTravel = useRef(0);
@@ -156,7 +165,7 @@ export default function Nav() {
           </a>
 
           <nav className="nav-links" aria-label="Sections" onMouseLeave={() => setHovered(null)}>
-            {NAV_LINKS.map(({ id, label }) => (
+            {links.map(({ id, label }) => (
               <motion.a
                 key={id}
                 href={`#${id}`}
@@ -190,7 +199,9 @@ export default function Nav() {
           </nav>
 
           <div className="nav-actions">
-            <a href="#packages" className="btn btn-primary btn-sm" onClick={(e) => goTo(e, 'packages')}>View packages</a>
+            {/* Packages has its own link beside this, so the one button
+                is the other thing a visitor comes to do: get in touch. */}
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => openInquiry()}>Send an inquiry</button>
             <button
               type="button"
               className="icon-btn nav-menu-btn"
@@ -226,7 +237,7 @@ export default function Nav() {
             exit={{ opacity: 0, y: -12 }}
             transition={SPRING}
           >
-            {NAV_LINKS.map(({ id, label }, i) => (
+            {links.map(({ id, label }, i) => (
               <motion.a
                 key={id}
                 href={`#${id}`}
@@ -240,6 +251,16 @@ export default function Nav() {
                 {label}
               </motion.a>
             ))}
+            <motion.button
+              type="button"
+              className="btn btn-primary nav-sheet-cta"
+              onClick={() => { setMenuOpen(false); openInquiry(); }}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...SPRING, delay: 0.04 * links.length }}
+            >
+              Send an inquiry
+            </motion.button>
           </motion.nav>
         )}
       </AnimatePresence>

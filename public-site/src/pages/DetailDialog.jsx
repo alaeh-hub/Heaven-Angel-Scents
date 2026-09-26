@@ -11,10 +11,30 @@ const DISMISS_PX = 140;
 const DISMISS_VELOCITY = 700;
 
 /**
+ * Where the sheet should grow from: the clicked card's centre (carried
+ * as `state.origin` by PackageCard), as a transform-origin inside the
+ * sheet's own box. The sheet's box mirrors `.sheet` in detail.css: up
+ * to 1180px wide and centred, with 40px of the page left showing above
+ * it (12px on phones). Null without an origin (opened from inside the
+ * sheet, a shared link, back/forward), where it simply rises.
+ */
+function growFrom(origin) {
+  if (!origin) return null;
+  const width = Math.min(1180, window.innerWidth);
+  const top = window.matchMedia('(max-width: 720px)').matches ? 12 : 40;
+  const x = origin.x - (window.innerWidth - width) / 2;
+  const y = origin.y - top;
+  return `${Math.round(x)}px ${Math.round(y)}px`;
+}
+
+/**
  * The package detail as a sheet that rises over the package list,
  * rendered by App.jsx when the URL is a package's but the navigation
  * carried a `background` location (see PackageCard). The URL is still
  * the package's own, so it can be shared or reloaded as-is.
+ *
+ * Opened from a card, it grows out of that card instead of rising from
+ * the bottom edge, so it's clear which package it is (see growFrom).
  *
  * Close with the X, Escape, a tap on the dimmed page, or by dragging the
  * top bar down. The route only changes once the exit animation has
@@ -27,6 +47,8 @@ export default function DetailDialog() {
   const [open, setOpen] = useState(true);
   const dragControls = useDragControls();
   const scrollRef = useRef(null);
+  // Read once: only the opening itself grows out of the card.
+  const [transformOrigin] = useState(() => growFrom(location.state?.origin));
   useBodyScrollLock(true);
 
   // Another package picked from inside the sheet: start it at the top.
@@ -71,8 +93,9 @@ export default function DetailDialog() {
           role="dialog"
           aria-modal="true"
           aria-label="Package details"
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
+          style={transformOrigin ? { transformOrigin } : undefined}
+          initial={transformOrigin ? { y: 0, scale: 0.35, opacity: 0 } : { y: '100%' }}
+          animate={{ y: 0, scale: 1, opacity: 1 }}
           exit={{ y: '100%' }}
           transition={SPRING_SHEET}
           drag="y"

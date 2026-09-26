@@ -130,6 +130,24 @@ class Config:
     # and send to a distributor or reseller.
     PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
 
+    # Direct contact details shown on the partner portal (the closing
+    # "talk to us" band, the inquiry form's confirmation). Each is
+    # optional: anything left blank is simply not shown, so the portal
+    # never displays a placeholder number or address. PORTAL_REPLY_TIME
+    # is the follow-up promise shown next to the inquiry form, phrased to
+    # complete "We reply ..." (e.g. "within 1 business day").
+    PORTAL_CONTACT_PHONE = os.environ.get("PORTAL_CONTACT_PHONE", "")
+    PORTAL_CONTACT_EMAIL = os.environ.get("PORTAL_CONTACT_EMAIL", "")
+    PORTAL_CONTACT_VIBER = os.environ.get("PORTAL_CONTACT_VIBER", "")
+    PORTAL_CONTACT_MESSENGER_URL = os.environ.get("PORTAL_CONTACT_MESSENGER_URL", "")
+    PORTAL_REPLY_TIME = os.environ.get("PORTAL_REPLY_TIME", "")
+
+    # Development only: enables Admin > Clear Data (admin.clear_data),
+    # which wipes every business record in the database. Off unless
+    # explicitly opted into, and hard-disabled in ProductionConfig below
+    # regardless of the environment variable.
+    ALLOW_DATA_RESET = os.environ.get("ALLOW_DATA_RESET", "0") == "1"
+
 
 class ProductionConfig(Config):
     """Settings for deployment behind 
@@ -138,6 +156,7 @@ class ProductionConfig(Config):
 
     DEBUG = False
     TESTING = False
+    ALLOW_DATA_RESET = False
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SESSION_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = "https"

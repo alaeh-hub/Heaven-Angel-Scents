@@ -4,6 +4,7 @@ import { SPRING } from '../../motion.js';
 import PackageCard from '../PackageCard.jsx';
 import Reveal from '../Reveal.jsx';
 import Segmented from '../Segmented.jsx';
+import StatsBand from './StatsBand.jsx';
 import BlurText from '../BlurText.jsx';
 import { percent } from '../../utils.js';
 
@@ -60,6 +61,8 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
             <p>New packages land here as soon as our team publishes them. Try another filter, or check back soon.</p>
           </motion.div>
         )}
+
+        <StatsBand topDiscount={topDiscount} />
       </div>
     </section>
   );

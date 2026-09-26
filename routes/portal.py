@@ -23,6 +23,12 @@ root). This blueprint only does two things for it:
       GET  /api/packages/<id>         — one package, its products, a few
                                         other packages, and a CSRF token.
       GET  /api/products              — the catalog (?gender=, ?page=).
+      GET  /api/site                  — portal-wide facts: contact details,
+                                        catalog/package counts, and a CSRF
+                                        token for the general inquiry form.
+      POST /api/inquire               — a general inquiry, not tied to any
+                                        one package (same steps as below,
+                                        minus the order amount).
       POST /api/packages/<id>/inquire — submitting the inquiry form:
        a. Saves the inquiry permanently to partner_inquiries (see
           schema.sql) — the history admins review on the Partner
@@ -93,7 +99,8 @@ def _package_value(discount_percent, reference_total):
     return reference_total, discounted_total
 
 
-def _find_or_create_partner(partner_type, company_name, contact_person, phone, email, address):
+def _find_or_create_partner(partner_type, company_name, contact_person, phone, email, address,
+                            source="package inquiry"):
     """Match an inquiry to an existing partner by email, then phone, so
     the same distributor/reseller inquiring more than once doesn't pile
     up duplicate partner rows. No match -> create a new partner from
@@ -135,7 +142,7 @@ def _find_or_create_partner(partner_type, company_name, contact_person, phone, e
                 last_inquiry_at, inquiry_count)
            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
         (partner_type, company_name, contact_person, phone, email, address,
-         "Added automatically from a partner portal package inquiry."),
+         f"Added automatically from a partner portal {source}."),
     )
     notify_admin(["partners"])
     return partner_id
@@ -190,10 +197,12 @@ def _money(value):
     return float(decimal.Decimal(value).quantize(decimal.Decimal("0.01")))
 
 
-def _package_summary(row, item_count=None):
+def _package_summary(row, item_count=None, previews=None):
     """One package as the React app sees it — the same fields the old
     Jinja templates read, with totals already discounted via
-    _package_value()."""
+    _package_value(). `unit_count` is the total pieces (sum of qty), for
+    the per-piece price on the cards; `previews` is a few of its
+    products (see _package_previews()) for the card's bottle stack."""
     reference_total, discounted_total = _package_value(
         row["discount_percent"], row["reference_total"])
     return {
@@ -205,7 +214,39 @@ def _package_summary(row, item_count=None):
         "item_count": int(row["item_count"] if item_count is None else item_count),
         "reference_total": _money(reference_total),
         "discounted_total": _money(discounted_total),
+        "unit_count": int(row.get("unit_count") or 0),
+        "previews": previews or [],
     }
+
+
+PACKAGE_PREVIEWS = 3
+
+
+def _package_previews(package_ids):
+    """Up to PACKAGE_PREVIEWS products per package (largest qty first),
+    as {item_name, variant, image_url}, keyed by package_id. The app
+    falls back to the gender's placeholder bottle when image_url is None
+    (see ProductVisual), the same as everywhere else products show."""
+    if not package_ids:
+        return {}
+    placeholders = ", ".join(["%s"] * len(package_ids))
+    rows = query(
+        f"""SELECT pi.package_id, p.item_name, p.variant, p.image_path
+            FROM package_items pi JOIN products p ON p.sku = pi.sku
+            WHERE pi.package_id IN ({placeholders})
+            ORDER BY pi.package_id, pi.qty DESC, p.item_name""",
+        tuple(package_ids),
+    )
+    previews = {}
+    for r in rows:
+        bucket = previews.setdefault(r["package_id"], [])
+        if len(bucket) < PACKAGE_PREVIEWS:
+            bucket.append({
+                "item_name": r["item_name"],
+                "variant": r["variant"],
+                "image_url": url_for("static", filename=r["image_path"]) if r["image_path"] else None,
+            })
+    return previews
 
 
 def _serve_public_site():
@@ -347,6 +388,7 @@ def api_packages(slug):
 
     package_rows = query(
         f"""SELECT pkg.*, COUNT(pi.package_item_id) AS item_count,
+                   COALESCE(SUM(pi.qty), 0) AS unit_count,
                    COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
             FROM packages pkg
             LEFT JOIN package_items pi ON pi.package_id = pkg.package_id
@@ -357,8 +399,10 @@ def api_packages(slug):
         params,
     )
 
+    previews = _package_previews([row["package_id"] for row in package_rows])
     return jsonify(
-        packages=[_package_summary(row) for row in package_rows],
+        packages=[_package_summary(row, previews=previews.get(row["package_id"]))
+                  for row in package_rows],
         scope=scope_filter,
         partner_types=list(PARTNER_TYPES),
     )
@@ -394,6 +438,7 @@ def api_package_detail(slug, package_id):
          for i in items),
         decimal.Decimal("0"),
     )
+    pkg["unit_count"] = sum(int(i["qty"]) for i in items)
 
     # A handful of other active packages (same visibility rule as the
     # main list — scoped to this package's own partner_scope, or 'Both'
@@ -436,20 +481,163 @@ def api_package_detail(slug, package_id):
     )
 
 
+CONTACT_METHODS = ("Call", "SMS", "Viber", "Email")
+GENERAL_INQUIRY_LABEL = "General inquiry"
+
+# The inquiry endpoints are the only writes (and the only endpoints that
+# fan out to email + a DB row per hit) anywhere in the unauthenticated
+# portal blueprint — there's no login to throttle abuse through the way
+# auth.login() does ("10 per minute"), so they get their own limit
+# instead. Two windows, same style as AI_CHAT_RATE_LIMIT in config.py:
+# tight enough to blunt a scripted flood of fake inquiries, loose enough
+# that a real distributor fumbling the form a few times in a row (or
+# several people behind the same office/shared IP) never gets blocked.
+# Shared between the package and general endpoints, so alternating
+# between the two doesn't double what one visitor can send.
+_inquiry_limit = limiter.shared_limit("5 per minute;30 per day", scope="portal-inquire")
+
+
+def _inquiry_reference(inquiry_id):
+    """The short reference shown to the visitor after sending ("HA-00042"),
+    so they can quote it when they follow up; it's just the inquiry_id."""
+    return f"HA-{inquiry_id:05d}"
+
+
+def _parse_inquiry(data):
+    """Validate the inquiry form's JSON body (shared by the package and
+    general inquiry endpoints). Returns a dict of clean fields, or raises
+    ValidationError with a message to show the visitor.
+
+    Every field is required except address, message and
+    preferred_contact. A Distributor fills this in on behalf of a
+    business, a Reseller on behalf of themselves (the form relabels
+    "Business / company name" to "Your full name" for a Reseller;
+    resellers don't necessarily have a registered company). Either way
+    the underlying column is still company_name; only the label changes.
+    """
+    partner_type = str(data.get("partner_type") or "").strip()
+    message = str(data.get("message") or "").strip() or None
+    preferred_contact = str(data.get("preferred_contact") or "").strip() or None
+
+    if partner_type not in PARTNER_TYPES:
+        raise ValidationError("Select whether you're a distributor or a reseller.")
+
+    name_field_label = "Business / company name" if partner_type == "Distributor" else "Your full name"
+    fields = dict(
+        partner_type=partner_type,
+        company_name=parse_required_text(data.get("company_name"), name_field_label, max_length=150),
+        contact_person=parse_required_text(data.get("contact_person"), "Contact person", max_length=100),
+        phone=parse_phone(data.get("phone")),
+        email=parse_email(data.get("email")),
+        address=parse_optional_text(data.get("address"), "Address", max_length=255),
+        message=message,
+        preferred_contact=preferred_contact,
+    )
+    if len(message or "") > 500:
+        raise ValidationError("Message is too long. Please keep it under 500 characters.")
+    if preferred_contact and preferred_contact not in CONTACT_METHODS:
+        raise ValidationError("Choose how you'd like us to reach you: call, SMS, Viber, or email.")
+    return fields
+
+
+def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order_amount):
+    """Steps (a)-(d) from the module docstring, shared by both inquiry
+    endpoints: save the inquiry, link it to a partner, email HQ off the
+    request thread, and ping every open admin tab. Returns the visitor's
+    201 response, carrying the inquiry's reference."""
+    partner_id = _find_or_create_partner(
+        fields["partner_type"], fields["company_name"], fields["contact_person"],
+        fields["phone"], fields["email"], fields["address"],
+        source="package inquiry" if package_id else "general inquiry",
+    )
+
+    inquiry_id, _ = execute(
+        """INSERT INTO partner_inquiries
+               (package_id, partner_id, partner_type, company_name, contact_person,
+                phone, email, address, message, preferred_contact,
+                package_name_snapshot, order_amount)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (package_id, partner_id, fields["partner_type"], fields["company_name"],
+         fields["contact_person"], fields["phone"], fields["email"], fields["address"],
+         fields["message"], fields["preferred_contact"], package_snapshot, order_amount),
+    )
+
+    # Off the request thread — see _send_inquiry_notification_async()'s
+    # docstring above. The inquiry row is already committed at this
+    # point, so the visitor's own response below no longer waits on
+    # mailer.py's smtplib call (up to a 10s timeout) at all.
+    threading.Thread(
+        target=_send_inquiry_notification_async,
+        args=(
+            current_app._get_current_object(),
+            inquiry_id,
+            dict(package_name=package_name, reference=_inquiry_reference(inquiry_id),
+                 order_amount=order_amount, **fields),
+        ),
+        daemon=True,
+    ).start()
+
+    # Realtime: every open HQ Admin tab's "Partner Inquiries" sidebar
+    # badge (and the Partners page, since a new partner may have just
+    # been created) updates immediately — see main.js's initRealtime(),
+    # which already refetches that badge on the "partner_inquiries" scope.
+    notify_admin(["partners", "partner_inquiries"])
+    notify_bell(
+        f"New {fields['partner_type'].lower()} inquiry from {fields['company_name']} — {package_name}",
+        room="admin", level="success",
+    )
+
+    reply_time = current_app.config.get("PORTAL_REPLY_TIME", "").strip()
+    follow_up = f"Our team will reach out {reply_time}." if reply_time else "Our team will reach out shortly."
+    return jsonify(
+        message=f"Thanks! Your inquiry has been sent. {follow_up}",
+        reference=_inquiry_reference(inquiry_id),
+    ), 201
+
+
+@bp.route("/<slug>/api/site")
+def api_site(slug):
+    """Portal-wide facts for the landing page: the direct contact details
+    configured in config.py (blank ones are left out, never shown as
+    placeholders), the reply-time promise, real catalog and package
+    counts for the stats band, and a CSRF token for the general inquiry
+    form (package inquiries get theirs from the package detail endpoint
+    instead)."""
+    _verify_slug(slug)
+    cfg = current_app.config
+    contact = {}
+    for key, name in (
+        ("phone", "PORTAL_CONTACT_PHONE"),
+        ("email", "PORTAL_CONTACT_EMAIL"),
+        ("viber", "PORTAL_CONTACT_VIBER"),
+        ("messenger_url", "PORTAL_CONTACT_MESSENGER_URL"),
+    ):
+        value = (cfg.get(name) or "").strip()
+        if value:
+            contact[key] = value
+
+    counts = query(
+        """SELECT
+               (SELECT COUNT(*) FROM (SELECT 1 FROM products GROUP BY item_name, variant) g) AS scents,
+               (SELECT COUNT(*) FROM packages WHERE is_active = TRUE) AS packages""",
+        fetchone=True,
+    )
+    return jsonify(
+        contact=contact,
+        reply_time=(cfg.get("PORTAL_REPLY_TIME") or "").strip() or None,
+        stats={"scents": int(counts["scents"]), "packages": int(counts["packages"])},
+        partner_types=list(PARTNER_TYPES),
+        contact_methods=list(CONTACT_METHODS),
+        csrf_token=generate_csrf(),
+    )
+
+
 @bp.route("/<slug>/api/packages/<int:package_id>/inquire", methods=["POST"])
-# This is the only write (and the only endpoint that fans out to email +
-# a DB row per hit) anywhere in the unauthenticated portal blueprint —
-# there's no login to throttle abuse through the way auth.login() does
-# ("10 per minute"), so it gets its own limit here instead. Two windows,
-# same style as AI_CHAT_RATE_LIMIT in config.py: tight enough to blunt a
-# scripted flood of fake inquiries, loose enough that a real distributor
-# fumbling the form a few times in a row (or several people behind the
-# same office/shared IP) never gets blocked.
-@limiter.limit("5 per minute;30 per day")
+@_inquiry_limit
 def inquire(slug, package_id):
     """Takes a JSON body with the inquiry form's fields. Responds 201
-    {"message"} on success, or 4xx {"error"} with a message to show the
-    visitor."""
+    {"message", "reference"} on success, or 4xx {"error"} with a message
+    to show the visitor."""
     _verify_slug(slug)
 
     pkg = query(
@@ -463,39 +651,10 @@ def inquire(slug, package_id):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify(error="Something went wrong sending your inquiry. Please try again."), 400
-
-    partner_type = str(data.get("partner_type") or "").strip()
-    message = str(data.get("message") or "").strip() or None
-
-    # Every field below is required except address and message — a
-    # Distributor is filling this in on behalf of a business, a Reseller
-    # on behalf of themselves (the form relabels "Business / company
-    # name" to "Your full name" for a Reseller — resellers don't
-    # necessarily have a registered company). Either way the underlying
-    # column is still company_name; only the label changes per type.
     try:
-        if partner_type not in PARTNER_TYPES:
-            raise ValidationError("Select whether you're a distributor or a reseller.")
-
-        name_field_label = "Business / company name" if partner_type == "Distributor" else "Your full name"
-        company_name = parse_required_text(
-            data.get("company_name"), name_field_label, max_length=150
-        )
-        contact_person = parse_required_text(
-            data.get("contact_person"), "Contact person", max_length=100
-        )
-        phone = parse_phone(data.get("phone"))
-        email = parse_email(data.get("email"))
-        address = parse_optional_text(
-            data.get("address"), "Address", max_length=255
-        )
-        if len(message or "") > 500:
-            raise ValidationError("Message is too long. Please keep it under 500 characters.")
+        fields = _parse_inquiry(data)
     except ValidationError as err:
         return jsonify(error=str(err)), 400
-
-    partner_id = _find_or_create_partner(
-        partner_type, company_name, contact_person, phone, email, address)
 
     # order_amount snapshots what this partner would actually pay for the
     # package right now — same reference-total-then-discount math as
@@ -514,41 +673,35 @@ def inquire(slug, package_id):
     _, order_amount = _package_value(
         pkg["discount_percent"], item_totals["reference_total"])
 
-    package_snapshot = f"{pkg['package_name']} ({pkg['discount_percent']}% off)"
-    inquiry_id, _ = execute(
-        """INSERT INTO partner_inquiries
-               (package_id, partner_id, partner_type, company_name, contact_person,
-                phone, email, address, message, package_name_snapshot, order_amount)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (package_id, partner_id, partner_type, company_name, contact_person,
-         phone, email, address, message, package_snapshot, order_amount),
+    return _record_inquiry(
+        fields,
+        package_id=package_id,
+        package_name=pkg["package_name"],
+        package_snapshot=f"{pkg['package_name']} ({pkg['discount_percent']}% off)",
+        order_amount=order_amount,
     )
 
-    # Off the request thread — see _send_inquiry_notification_async()'s
-    # docstring above. The inquiry row is already committed at this
-    # point, so the visitor's own response below no longer waits on
-    # mailer.py's smtplib call (up to a 10s timeout) at all.
-    threading.Thread(
-        target=_send_inquiry_notification_async,
-        args=(
-            current_app._get_current_object(),
-            inquiry_id,
-            dict(
-                package_name=pkg["package_name"], partner_type=partner_type, company_name=company_name,
-                contact_person=contact_person, phone=phone, email=email, address=address, message=message,
-            ),
-        ),
-        daemon=True,
-    ).start()
 
-    # Realtime: every open HQ Admin tab's "Partner Inquiries" sidebar
-    # badge (and the Partners page, since a new partner may have just
-    # been created) updates immediately — see main.js's initRealtime(),
-    # which already refetches that badge on the "partner_inquiries" scope.
-    notify_admin(["partners", "partner_inquiries"])
-    notify_bell(
-        f"New {partner_type.lower()} inquiry from {company_name} — {pkg['package_name']}",
-        room="admin", level="success",
+@bp.route("/<slug>/api/inquire", methods=["POST"])
+@_inquiry_limit
+def inquire_general(slug):
+    """A question or partnership request not tied to one package (the
+    "Send an inquiry" buttons around the landing page and catalog). Same
+    fields, validation and follow-up as inquire(); saved with no package
+    and no order amount."""
+    _verify_slug(slug)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="Something went wrong sending your inquiry. Please try again."), 400
+    try:
+        fields = _parse_inquiry(data)
+    except ValidationError as err:
+        return jsonify(error=str(err)), 400
+
+    return _record_inquiry(
+        fields,
+        package_id=None,
+        package_name=GENERAL_INQUIRY_LABEL,
+        package_snapshot=GENERAL_INQUIRY_LABEL,
+        order_amount=None,
     )
-
-    return jsonify(message="Thanks! Your inquiry has been sent. Our team will reach out shortly."), 201

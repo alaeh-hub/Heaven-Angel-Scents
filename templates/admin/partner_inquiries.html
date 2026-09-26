@@ -564,6 +564,7 @@
               </div>
               {% endif %}
               {% if not inq.phone and not inq.email %}<span class="text-faint">—</span>{% endif %}
+              {% if inq.preferred_contact %}<div class="item-sub">Prefers {{ inq.preferred_contact }}</div>{% endif %}
             </td>
             <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
             </td>

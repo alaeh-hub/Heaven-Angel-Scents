@@ -248,6 +248,20 @@ def parse_base_code(raw, field_label="Product code"):
     return code
 
 
+def base_code_from_sku(sku, unit):
+    """Reverse of build_sku(): strip the unit's suffix off a stored SKU
+    to recover its base code ('A1-85ML' + '85ML' -> 'A1'). Used for CSV
+    export and for counting SKUs by base code (A1-85ML, A1-50ML and
+    A1-BULK are one product). Returns the SKU unchanged if it doesn't
+    end with the expected suffix (legacy data), rather than raising.
+    """
+    suffix = _PRODUCT_UNIT_SUFFIXES.get(unit)
+    tail = f"-{suffix}" if suffix else None
+    if tail and sku.endswith(tail):
+        return sku[: -len(tail)]
+    return sku
+
+
 def build_sku(base_code, unit):
     """Combine a validated base product code with a unit into the actual
     SKU stored in `products.sku`. E.g. build_sku('A1', '85ML') -> 'A1-85ML'.
@@ -389,6 +403,18 @@ def product_avatar(name):
     else:
         initials = "?"
     return {"initials": initials}
+
+
+def percent_change(current, previous):
+    """Percent change from `previous` to `current`, rounded to one
+    decimal — the figure behind a dashboard stat's trend arrow (see the
+    trend() Jinja macro). Returns None when there's no baseline to
+    compare against (previous period was zero), since "up from nothing"
+    has no meaningful percentage.
+    """
+    if not previous:
+        return None
+    return round(float((current - previous) / previous * 100), 1)
 
 
 def generate_temp_password(length=12):

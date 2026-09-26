@@ -186,3 +186,18 @@
     text-align: center;
   }
 }
+
+/* "Ask about this scent": opens the general inquiry form, pre-filled. */
+.product-card-ask {
+  justify-self: start;
+  margin: 2px 6px 0;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--gold-ink);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.product-card-ask:hover {
+  border-bottom-color: currentColor;
+}

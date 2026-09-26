@@ -14,7 +14,7 @@ const jump = (id) => (e) => { if (scrollToSection(id)) e.preventDefault(); };
 const LEDE = 'Curated bundles for distributors and resellers, below our regular list prices.';
 
 /** Phones: seconds the whole hero sequence takes when it plays by itself. */
-const AUTOPLAY_S = 9;
+const AUTOPLAY_S = 10;
 /** Phones: start anyway if the scene hasn't drawn by then (slow load, no WebGL). */
 const AUTOPLAY_FALLBACK_MS = 2500;
 
@@ -52,18 +52,20 @@ function ScrollWord({ progress, from, to, children }) {
 }
 
 /**
- * The opening scene. The hero pins for under two screens of scrolling
- * (kept short so the offer and its CTA arrive quickly) and
- * plays like a film strip scrubbed by the scroll:
+ * The opening scene. The hero pins for under one extra screen of
+ * scrolling (180vh, see .hero-pin), and the offer and its CTA are fully
+ * in place by about 60% of it, i.e. roughly half a screen of scrolling
+ * in; the rest is a short hold so the copy can be read before the
+ * packages scroll up. It plays like a film strip scrubbed by the scroll:
  *   on load    golden angel wings unfurl under a halo (PerfumeScene)
- *   0.00-0.56  the scene plays: the wings beat and dissolve into streams
+ *   0.00-0.40  the scene plays: the wings beat and dissolve into streams
  *              of light that build Uriel H1 and Raphael A3, while the
  *              halo splits into the rings of their two lit platforms
- *   0.10-0.24  the wordmark wipes in beneath it
- *   0.48-0.62  the scene moves aside, the wordmark recedes
- *   0.58-0.72  the headline wipes in word by word, left to right
- *   0.70-0.84  the lede, then the buttons, wipe in the same way
- *   0.82-0.95  a gold glow rises from below
+ *   0.06-0.16  the wordmark wipes in beneath it
+ *   0.30-0.44  the scene moves aside, the wordmark recedes
+ *   0.38-0.50  the headline wipes in word by word, left to right
+ *   0.48-0.60  the lede, then the buttons, wipe in the same way
+ *   0.58-0.75  a gold glow rises from below
  * On phones the same timeline plays by itself over AUTOPLAY_S seconds as
  * soon as the scene has loaded, and the hero doesn't pin (see .hero-pin):
  * the scene, logo and copy sit in one normal, non-overlaid column (see
@@ -87,7 +89,7 @@ function HeroPinned() {
     return narrowRef.current ? byTime : byScroll;
   });
 
-  const scene = useSpan(p, 0, 0.56);
+  const scene = useSpan(p, 0, 0.4);
   const [sceneReady, setSceneReady] = useState(false);
 
   // Phones: play the timeline once the scene is on screen (or after the
@@ -104,10 +106,10 @@ function HeroPinned() {
     return () => run.stop();
   }, [narrow, sceneReady, autoStart, clock]);
 
-  const capsIn = useSpan(p, 0.04, 0.1);
+  const capsIn = useSpan(p, 0.03, 0.08);
   const caps = useTransform(capsIn, (v) => 1 - v);
-  const logoIn = useSpan(p, 0.1, 0.24);
-  const logoOut = useSpan(p, 0.38, 0.48);
+  const logoIn = useSpan(p, 0.06, 0.16);
+  const logoOut = useSpan(p, 0.26, 0.34);
   const logoOpacity = useTransform(logoOut, (v) => 1 - v);
   const logoScale = useTransform(() => 0.96 + 0.04 * logoIn.get() - 0.2 * logoOut.get());
   const logoWipe = useWipe(logoIn);
@@ -115,13 +117,13 @@ function HeroPinned() {
   // Desktop only: the scene shrinks and slides aside to make room for the
   // copy beside it. On phones the copy sits below the scene instead (see
   // the CSS), so the scene just stays put at full size.
-  const stageX = useTransform(p, [0.48, 0.62], ['0vw', '-24vw']);
-  const stageScale = useTransform(p, [0.48, 0.62], [1, 0.82]);
+  const stageX = useTransform(p, [0.3, 0.44], ['0vw', '-24vw']);
+  const stageScale = useTransform(p, [0.3, 0.44], [1, 0.82]);
 
-  const ledeWipe = useWipe(useSpan(p, 0.7, 0.78));
-  const ctaWipe = useWipe(useSpan(p, 0.76, 0.84));
-  const ctaEvents = useTransform(p, (v) => (v > 0.78 ? 'auto' : 'none'));
-  const glow = useSpan(p, 0.82, 0.95);
+  const ledeWipe = useWipe(useSpan(p, 0.48, 0.55));
+  const ctaWipe = useWipe(useSpan(p, 0.53, 0.6));
+  const ctaEvents = useTransform(p, (v) => (v > 0.55 ? 'auto' : 'none'));
+  const glow = useSpan(p, 0.58, 0.75);
 
   const words = HEADLINE.split(' ');
 
@@ -180,7 +182,7 @@ function HeroPinned() {
               <h1 className="hero-title" aria-label={HEADLINE}>
                 {words.map((word, i) => (
                   <span key={i} aria-hidden="true">
-                    <ScrollWord progress={p} from={0.58 + i * 0.022} to={0.64 + i * 0.022}>{word}</ScrollWord>
+                    <ScrollWord progress={p} from={0.38 + i * 0.016} to={0.43 + i * 0.016}>{word}</ScrollWord>
                     {i < words.length - 1 && ' '}
                   </span>
                 ))}

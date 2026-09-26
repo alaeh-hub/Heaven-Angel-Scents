@@ -102,6 +102,9 @@ def test_package_list_includes_discounted_totals(client, sql, slug):
     assert pkg["reference_total"] == 450.0
     assert pkg["discounted_total"] == 405.0
     assert pkg["discount_percent"] == 10.0
+    assert pkg["unit_count"] == 3
+    assert len(pkg["previews"]) == 2
+    assert pkg["previews"][0].keys() == {"item_name", "variant", "image_url"}
 
 
 def test_package_list_scope_filter_keeps_both_scoped_packages(client, sql, slug):
@@ -172,6 +175,81 @@ def test_inquiry_is_saved_with_a_server_computed_order_amount(client, sql, slug)
     assert row["partner_type"] == "Distributor"
     assert row["partner_id"] is not None
     assert row["order_amount"] == decimal.Decimal("405.00")
+    assert row["preferred_contact"] is None
+    assert resp.get_json()["reference"] == f"HA-{row['inquiry_id']:05d}"
+
+
+def test_inquiry_saves_the_preferred_contact_method(client, sql, slug):
+    package_id = make_filled_package(sql)
+    payload = inquiry_payload(preferred_contact="Viber")
+
+    resp = client.post(f"/partner-portal/{slug}/api/packages/{package_id}/inquire", json=payload)
+
+    assert resp.status_code == 201
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT preferred_contact FROM partner_inquiries WHERE company_name = %s",
+                (payload["company_name"],))
+    assert cur.fetchone()["preferred_contact"] == "Viber"
+    cur.close()
+
+
+def test_inquiry_rejects_an_unknown_contact_method(client, sql, slug):
+    package_id = make_filled_package(sql)
+
+    resp = client.post(
+        f"/partner-portal/{slug}/api/packages/{package_id}/inquire",
+        json=inquiry_payload(preferred_contact="Carrier pigeon"),
+    )
+
+    assert resp.status_code == 400
+    assert "reach you" in resp.get_json()["error"]
+
+
+def test_general_inquiry_is_saved_without_a_package(client, sql, slug):
+    payload = inquiry_payload(partner_type="Reseller", preferred_contact="SMS")
+
+    resp = client.post(f"/partner-portal/{slug}/api/inquire", json=payload)
+
+    assert resp.status_code == 201
+    assert resp.get_json()["reference"].startswith("HA-")
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT * FROM partner_inquiries WHERE company_name = %s", (payload["company_name"],))
+    row = cur.fetchone()
+    cur.close()
+    assert row["package_id"] is None
+    assert row["package_name_snapshot"] == "General inquiry"
+    assert row["order_amount"] is None
+    assert row["partner_id"] is not None
+    assert row["preferred_contact"] == "SMS"
+
+
+def test_general_inquiry_validates_like_a_package_inquiry(client, slug):
+    resp = client.post(f"/partner-portal/{slug}/api/inquire", json=inquiry_payload(email="not-an-email"))
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_general_inquiry_wrong_slug_is_a_404(client):
+    resp = client.post("/partner-portal/not-the-slug/api/inquire", json=inquiry_payload())
+    assert resp.status_code == 404
+
+
+# --------------------------------------------------------- site API
+
+def test_site_facts_hide_unset_contact_details(client, app, sql, slug, monkeypatch):
+    make_filled_package(sql)
+    monkeypatch.setitem(app.config, "PORTAL_CONTACT_PHONE", "0917 555 0199")
+    monkeypatch.setitem(app.config, "PORTAL_CONTACT_EMAIL", "")
+    monkeypatch.setitem(app.config, "PORTAL_REPLY_TIME", "within 1 business day")
+
+    body = client.get(f"/partner-portal/{slug}/api/site").get_json()
+
+    assert body["contact"] == {"phone": "0917 555 0199"}
+    assert body["reply_time"] == "within 1 business day"
+    assert body["stats"]["packages"] >= 1
+    assert body["stats"]["scents"] >= 1
+    assert body["contact_methods"] == ["Call", "SMS", "Viber", "Email"]
+    assert body["csrf_token"]
 
 
 def test_inquiry_validation_error_comes_back_as_json(client, sql, slug):

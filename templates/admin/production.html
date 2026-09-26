@@ -6,116 +6,6 @@
 
 {% block head %}
 <style>
-  /* Searchable product combobox (Log a production run). Reuses the
-     same field/input styling as everything else — the input itself
-     picks up the global input[type="text"] rules automatically, this
-     just adds the floating suggestion menu underneath it. */
-  .ac-combo {
-    position: relative;
-  }
-
-  .ac-combo-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    background: var(--surface);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
-    max-height: 260px;
-    overflow-y: auto;
-    /* Scrollable, just not visibly so (same as .cs-panel in style.css). */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    /* Bottom padding so a scrolled-to-the-end list's last option has
-       breathing room before the menu's own edge, instead of sitting
-       flush against it with the next option sliced off mid-row (same
-       fix as .cs-panel in style.css). */
-    padding: 4px 0 8px;
-    z-index: 500;
-    transform-origin: top center;
-    /* No opacity transition — this menu opens directly over Unit/Qty
-       produced/Batch code in the same card, and a fade briefly let
-       those show through mid-transition, reading as a z-index bug
-       even though it wasn't one (see .cs-panel's own comment in
-       style.css for the same fix). */
-    visibility: hidden;
-    transform: translateY(-4px) scale(0.98);
-    pointer-events: none;
-    transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.14s;
-  }
-
-  .ac-combo-menu.open {
-    visibility: visible;
-    transform: translateY(0) scale(1);
-    pointer-events: auto;
-    transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  /* Flips above the input instead of below, and reversed slide
-     direction to match — set by production.html's own script, same
-     reasoning and mechanism as .cs-select.cs-open-up in style.css. */
-  .ac-combo.ac-open-up .ac-combo-menu {
-    top: auto;
-    bottom: calc(100% + 6px);
-    transform-origin: bottom center;
-  }
-
-  /* Same reasoning as .cs-select.cs-open in style.css: a long product
-     list can overhang past the bottom of this card, and .ac-combo-menu's
-     own z-index isn't enough on its own to guarantee it paints above a
-     *different* card/table sitting right below (e.g. the production
-     log table under this form) — promoting the whole combo to its own
-     stacking context while its menu is open makes that reliable.
-
-     Toggled by production.html's own script (.ac-open, alongside
-     .ac-combo-menu's own .open) rather than :has() — :has() support
-     isn't universal on older browsers/webviews, and silently failing
-     here is exactly what let the menu paint underneath the table
-     below it. */
-  .ac-combo.ac-open {
-    z-index: 500;
-  }
-
-  .ac-combo-menu::-webkit-scrollbar {
-    display: none;
-  }
-
-  .ac-combo-option {
-    padding: 9px 12px;
-    font-size: 13.5px;
-    color: var(--ink);
-    cursor: pointer;
-  }
-
-  .ac-combo-option .ac-match {
-    font-weight: 700;
-    color: var(--accent-ink);
-  }
-
-  /* Every SKU/size a matched product has on file, shown under its name
-     so a search by SKU (e.g. "A1-85ML") — see scoreProduct()'s own
-     comment below — has something visible to point at, instead of
-     surfacing the right product with no sign of why it matched. */
-  .ac-combo-option .ac-match-skus {
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 11px;
-    color: var(--ink-faint);
-    margin-top: 2px;
-  }
-
-  .ac-combo-option:hover,
-  .ac-combo-option.active {
-    background: var(--accent-soft);
-  }
-
-  .ac-combo-empty {
-    padding: 10px 12px;
-    font-size: 12.5px;
-    color: var(--ink-faint);
-  }
-
   /* Fixed column widths (see .table-fixed in style.css) so a long item
      name can't stretch these columns — and therefore the whole table —
      wider than the others; it wraps in place instead. Same pattern as
@@ -188,12 +78,14 @@
 {% set bottle_logs = logs|selectattr('category', 'ne', 'Bulk/Refill')|list if logs else [] %}
 {% set bulk_logs = logs|selectattr('category', 'equalto', 'Bulk/Refill')|list if logs else [] %}
 {% set total_produced_bottles = bottle_logs|sum(attribute='qty_produced') %}
+{# SKUs counted by base code (A1-85ML/A1-BULK = one "A1"), not per size row. #}
+{% set hq_sku_total = hq_stock|map(attribute='base_code')|unique|list|length %}
 {% set total_produced_bulk_ml = bulk_logs|sum(attribute='qty_produced') %}
 
 <div class="grid grid-4 stack">
   <div class="card stat-tile">
     <div class="stat-label">Warehouse SKUs</div>
-    <div class="stat-value">{{ hq_stock|length }}</div>
+    <div class="stat-value">{{ hq_sku_total }}</div>
     <div class="stat-foot">carried at Main Branch</div>
   </div>
   <div class="card stat-tile">
@@ -292,12 +184,12 @@
 
   <div class="card">
     <div class="card-header">
-      <h2>Main Stock</h2><span class="hint" id="hqStockCount">{{ hq_stock|length }} SKU{{ 's' if hq_stock|length
+      <h2>Main Stock</h2><span class="hint" id="hqStockCount">{{ hq_sku_total }} SKU{{ 's' if hq_sku_total
         != 1 }}</span>
     </div>
     {% if hq_stock %}
     <div class="table-compact" data-smart-table data-page-size="5" data-count-target="hqStockCount"
-      data-count-label="SKU">
+      data-count-label="SKU" data-count-distinct>
       <div class="table-toolbar">
         <div class="table-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -322,7 +214,8 @@
           </thead>
           <tbody>
             {% for row in hq_stock %}
-            <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}">
+            <tr data-search="{{ (row.item_name ~ ' ' ~ row.sku)|lower }}" data-variant="{{ row.variant }}"
+              data-count-key="{{ row.base_code }}">
               <td data-label="Item">
                 <div class="item-name">{{ row.item_name }}</div>
                 <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit"> · {{ row.unit }}</span></div>
@@ -331,7 +224,7 @@
                 </div>
               </td>
               <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
-              <td class="mono text-soft mobile-fold" data-label="Unit">{{ 'Bulk/Refill' if row.unit == 'BULK' else row.unit }}</td>
+              <td class="mono text-soft mobile-fold" data-label="Unit" style="white-space:nowrap;">{{ 'Bulk' if row.unit == 'BULK' else row.unit }}</td>
               {% if row.category == 'Bulk/Refill' %}
               <td data-label="On hand">{{ m.fill_bar(row.stock_qty, max_bulk_stock, 'mL') }}</td>
               {% else %}
@@ -408,11 +301,11 @@
                 {% else %}
                 <span class="text-faint">—</span>
                 {% endif %}
-                <span class="mono">{{ 'Bulk/Refill' if l.unit == 'BULK' else l.unit }}</span>
+                <span class="mono">{{ 'Bulk' if l.unit == 'BULK' else l.unit }}</span>
                 <span class="mono">{{ l.produced_at.strftime('%b %d, %Y %I:%M %p') }}</span>
               </div>
             </td>
-            <td class="mono text-soft mobile-fold" data-label="Unit">{{ 'Bulk/Refill' if l.unit == 'BULK' else l.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit" style="white-space:nowrap;">{{ 'Bulk' if l.unit == 'BULK' else l.unit }}</td>
             <td class="mobile-fold" data-label="Batch">
               {% if l.batch_code %}
               <span class="badge badge-pending">{{ l.batch_code }}</span>

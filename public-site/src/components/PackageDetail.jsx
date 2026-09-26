@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, motion, useInView } from 'motion/react';
 import { ArrowRightIcon, CheckIcon, PackageIcon, SealPercentIcon } from '@phosphor-icons/react';
-import { fetchPackage } from '../api.js';
+import { fetchPackage, sendInquiry, withCsrfRetry } from '../api.js';
 import { ARRIVE, SPRING } from '../motion.js';
 import { packagePath, peso, percent, plural } from '../utils.js';
+import AnimatedNumber from './AnimatedNumber.jsx';
 import Gallery from './detail/Gallery.jsx';
 import InquirySheet from './detail/InquirySheet.jsx';
+import { useSite } from './InquiryProvider.jsx';
 import ProductVisual from './ProductVisual.jsx';
 import ScopeIcon, { scopeLabel } from './ScopeIcon.jsx';
 import { useToast } from './Toasts.jsx';
@@ -33,22 +35,45 @@ function DetailSkeleton() {
   );
 }
 
-function Summary({ pkg, onInquire }) {
+/**
+ * The price card. Under the price, what the package is worth to a
+ * reseller: what it sells for at our list price and the profit left
+ * after paying the partner price (rolled in, see AnimatedNumber).
+ * `onCtaVisible` reports whether its Inquire button is on screen, so the
+ * mobile bar knows when it has scrolled away.
+ */
+function Summary({ pkg, onInquire, onCtaVisible }) {
+  const profit = pkg.reference_total - pkg.discounted_total;
+  const ctaRef = useRef(null);
+  const ctaInView = useInView(ctaRef, { initial: true });
+  useEffect(() => onCtaVisible(ctaInView), [ctaInView, onCtaVisible]);
   return (
     <div className="summary glow-card">
       <div>
         <div className="summary-label">Your price</div>
         <div className="summary-price">{peso(pkg.discounted_total)}</div>
-      </div>
-      <div className="summary-was">
-        Reference value <s>{peso(pkg.reference_total)}</s>
+        {pkg.unit_count > 0 && (
+          <div className="summary-unit">{peso(pkg.discounted_total / pkg.unit_count)} per piece, {plural(pkg.unit_count, 'piece')}</div>
+        )}
       </div>
       {pkg.discount_percent > 0 && (
         <span className="chip chip-success" style={{ justifySelf: 'start' }}>
           <SealPercentIcon size={16} weight="fill" /> {percent(pkg.discount_percent)}% off list price
         </span>
       )}
-      <motion.button type="button" className="btn btn-primary" onClick={onInquire} whileTap={{ scale: 0.97 }}>
+      {profit > 0.005 && (
+        <dl className="summary-earn">
+          <div>
+            <dt>Sells for, at our list price</dt>
+            <dd>{peso(pkg.reference_total)}</dd>
+          </div>
+          <div className="summary-earn-profit">
+            <dt>Your estimated profit</dt>
+            <dd><AnimatedNumber value={profit} from={0} whenInView /></dd>
+          </div>
+        </dl>
+      )}
+      <motion.button ref={ctaRef} type="button" className="btn btn-primary" onClick={onInquire} whileTap={{ scale: 0.97 }}>
         Inquire about this package
       </motion.button>
       <ul className="summary-points">
@@ -57,6 +82,37 @@ function Summary({ pkg, onInquire }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * Phones and tablets: once the price card's Inquire button has scrolled
+ * out of view, a bar with the price and the button slides up from the
+ * bottom edge, so the next step is always one tap away. Hidden while the
+ * form itself is open. (Desktop keeps the price card pinned beside the
+ * content instead, so the bar is CSS-hidden there.)
+ */
+function InquireBar({ pkg, show, onInquire }) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="detail-bar"
+          initial={{ y: '110%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '110%' }}
+          transition={SPRING}
+        >
+          <div>
+            <div className="detail-bar-price">{peso(pkg.discounted_total)}</div>
+            <div className="detail-bar-name">{pkg.package_name}</div>
+          </div>
+          <motion.button type="button" className="btn btn-primary" onClick={onInquire} whileTap={{ scale: 0.97 }}>
+            Inquire
+          </motion.button>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -75,6 +131,8 @@ export default function PackageDetail({ slug, packageId, inDialog = false, linkS
   const [inquireOpen, setInquireOpen] = useState(false);
   const [[active, dir], setSlide] = useState([0, 0]);
   const csrfToken = useRef('');
+  const [ctaInView, setCtaInView] = useState(true);
+  const { site } = useSite();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -102,6 +160,11 @@ export default function PackageDetail({ slug, packageId, inDialog = false, linkS
   }, [inDialog, data]);
 
   const closeInquiry = useCallback(() => setInquireOpen(false), []);
+  const submitInquiry = (payload) => withCsrfRetry(
+    csrfToken,
+    (token) => sendInquiry(slug, packageId, payload, token),
+    async () => (await fetchPackage(slug, packageId)).csrf_token,
+  );
   const select = useCallback((index, direction) => setSlide([index, direction]), []);
 
   if (failed) {
@@ -208,18 +271,23 @@ export default function PackageDetail({ slug, packageId, inDialog = false, linkS
             animate={{ opacity: 1, x: 0 }}
             transition={{ ...ARRIVE, delay: 0.15 }}
           >
-            <Summary pkg={pkg} onInquire={() => setInquireOpen(true)} />
+            <Summary pkg={pkg} onInquire={() => setInquireOpen(true)} onCtaVisible={setCtaInView} />
           </motion.aside>
         </div>
       </div>
 
+      <InquireBar pkg={pkg} show={!ctaInView && !inquireOpen} onInquire={() => setInquireOpen(true)} />
+
       <InquirySheet
-        slug={slug}
-        pkg={pkg}
+        title={`Inquire about ${pkg.package_name}`}
+        intro="Tell us a bit about your business. Our team will follow up by phone or email."
+        fixedType={pkg.partner_scope === 'Both' ? '' : pkg.partner_scope}
         partnerTypes={partnerTypes}
-        csrfToken={csrfToken}
+        contactMethods={site?.contact_methods || ['Call', 'SMS', 'Viber', 'Email']}
+        replyTime={site?.reply_time}
         open={inquireOpen}
         onClose={closeInquiry}
+        submit={submitInquiry}
       />
     </div>
   );

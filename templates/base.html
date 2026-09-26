@@ -137,6 +137,25 @@
             display: none;
         }
 
+        /* On phones a 320px panel pinned to the bell's right edge runs
+           off the left of the screen (the theme toggle sits to the
+           bell's right). Un-positioning .notif-wrap makes the sticky,
+           full-width .topbar the panel's anchor instead, so it spans
+           the screen with a small gutter, just below the topbar. */
+        @media (max-width: 680px) {
+            .notif-wrap {
+                position: static;
+            }
+
+            .notif-panel {
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-height: min(380px, 70vh);
+                transform-origin: top center;
+            }
+        }
+
         .notif-panel.open {
             visibility: visible;
             transform: translateY(0) scale(1);
@@ -627,9 +646,17 @@
          (see app.py's inject_login_splash() and auth.py's login()) —
          a brief centered-logo moment before the app itself appears,
          same idea as the splash Facebook/Instagram show right after
-         signing in. main.js's initLoginSplash() fades this out and
-         removes it from the DOM a moment after the page loads. -->
-    <div class="login-splash" id="loginSplash" role="status" aria-live="polite" aria-label="Signing you in">
+         signing in. main.js's initLoginSplash() plays the logo-reveal
+         video (static/video/logo_reveal.mp4 — static/video/heaven-angel-
+         scents-reveal.mp4 re-encoded at 2x speed), then fades this out and
+         removes it from the DOM. The static wordmark is the fallback
+         for reduced-motion users or if the video can't play. -->
+    <div class="login-splash login-splash--video" id="loginSplash" role="status" aria-live="polite"
+        aria-label="Signing you in">
+        <video class="login-splash-video" id="loginSplashVideo" muted playsinline autoplay preload="auto"
+            disablepictureinpicture disableremoteplayback aria-hidden="true">
+            <source src="{{ url_for('static', filename='video/logo_reveal.mp4') }}" type="video/mp4">
+        </video>
         <img class="login-splash-logo" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
             alt="Heaven &amp; Angel Scents">
     </div>
@@ -825,6 +852,16 @@
                     </svg>
                     Login Activity
                 </a>
+                {% if config.ALLOW_DATA_RESET %}
+                <!-- Development only — see config.py's ALLOW_DATA_RESET. -->
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.clear_data' }}"
+                    href="{{ url_for('admin.clear_data') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                    </svg>
+                    Clear Data
+                </a>
+                {% endif %}
             </nav>
             <nav class="nav-group">
                 <div class="nav-label">Partners &amp; Distribution</div>

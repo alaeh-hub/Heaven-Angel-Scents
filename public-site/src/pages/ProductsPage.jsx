@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ArrowLeftIcon, DropIcon } from '@phosphor-icons/react';
+import { useSite } from '../components/InquiryProvider.jsx';
 import { fetchProducts } from '../api.js';
 import Pagination from '../components/catalog/Pagination.jsx';
 import ProductCard from '../components/catalog/ProductCard.jsx';
@@ -43,6 +44,7 @@ export default function ProductsPage() {
   const showToast = useToast();
   const reduce = useReducedMotion();
   const gridTopRef = useRef(null);
+  const { openInquiry } = useSite();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -96,68 +98,71 @@ export default function ProductsPage() {
         </div>
       </header>
 
-      <main className="catalog">
-        <div className="container">
-          <Reveal className="section-head center catalog-head">
-            <h1 className="title-xl">The collection.</h1>
-            <p className="lede">Every scent we make, in one place.</p>
-          </Reveal>
+      <Footer>
+        <main className="catalog">
+          <div className="container">
+            <Reveal className="section-head center catalog-head">
+              <h1 className="title-xl">The collection.</h1>
+              <p className="lede">Every scent we make, in one place. Ask about any of them, or pick a ready-made package.</p>
+            </Reveal>
 
-          <div ref={gridTopRef} className="catalog-anchor" />
-          <Segmented
-            id="catalog"
-            label="Filter by gender"
-            options={options}
-            value={gender}
-            onChange={(g) => go({ gender: g, page: 1 })}
-          />
+            <div ref={gridTopRef} className="catalog-anchor" />
+            <Segmented
+              id="catalog"
+              label="Filter by gender"
+              options={options}
+              value={gender}
+              onChange={(g) => go({ gender: g, page: 1 })}
+            />
 
-          {!data && loading && (
-            <div className="catalog-grid" aria-busy="true" aria-label="Loading products">
-              {Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton catalog-skeleton" />)}
-            </div>
-          )}
-
-          {data && products.length === 0 && (
-            <motion.div className="empty" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-              <DropIcon size={36} weight="duotone" />
-              <h3 className="title-lg" style={{ fontSize: 24 }}>No scents here yet.</h3>
-              <p>Nothing in the catalog matches this filter right now. Try another one.</p>
-            </motion.div>
-          )}
-
-          {data && products.length > 0 && (
-            <>
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={`${data.gender}-${data.page}`}
-                  className="catalog-grid"
-                  variants={grid}
-                  initial="enter"
-                  animate="show"
-                  exit="leave"
-                  aria-busy={loading}
-                >
-                  {products.map((product) => (
-                    <motion.div key={`${product.item_name}-${product.variant}`} variants={cell}>
-                      <ProductCard product={product} />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
-
-              <div className="catalog-foot">
-                <p className="muted">
-                  Showing {first}-{last} of {data.total} {data.total === 1 ? 'scent' : 'scents'}
-                </p>
-                <Pagination page={data.page} pages={data.pages} onChange={(p) => go({ gender, page: p })} />
+            {!data && loading && (
+              <div className="catalog-grid" aria-busy="true" aria-label="Loading products">
+                {Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton catalog-skeleton" />)}
               </div>
-            </>
-          )}
-        </div>
-      </main>
+            )}
 
-      <Footer />
+            {data && products.length === 0 && (
+              <motion.div className="empty" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+                <DropIcon size={36} weight="duotone" />
+                <h3 className="title-lg" style={{ fontSize: 24 }}>No scents here yet.</h3>
+                <p>Nothing in the catalog matches this filter right now. Try another one.</p>
+              </motion.div>
+            )}
+
+            {data && products.length > 0 && (
+              <>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={`${data.gender}-${data.page}`}
+                    className="catalog-grid"
+                    variants={grid}
+                    initial="enter"
+                    animate="show"
+                    exit="leave"
+                    aria-busy={loading}
+                  >
+                    {products.map((product) => (
+                      <motion.div key={`${product.item_name}-${product.variant}`} variants={cell}>
+                        <ProductCard
+                          product={product}
+                          onAsk={() => openInquiry({ message: `I'm interested in ${product.item_name} (${product.variant}).` })}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
+
+                <div className="catalog-foot">
+                  <p className="muted">
+                    Showing {first}-{last} of {data.total} {data.total === 1 ? 'scent' : 'scents'}
+                  </p>
+                  <Pagination page={data.page} pages={data.pages} onChange={(p) => go({ gender, page: p })} />
+                </div>
+              </>
+            )}
+          </div>
+        </main>
+      </Footer>
     </div>
   );
 }

@@ -1666,8 +1666,28 @@ th.num {
   justify-content: space-between;
 }
 
+/* Pins the hero to the right half, spanning both rows, so the span-2
+   tiles before it stack on top of each other in the left half (used
+   on the branch dashboard). Only on the 4-column layout — the
+   breakpoints below reset grid-column/grid-row to plain spans. */
+.bento-hero-end {
+  grid-column: 3 / span 2;
+  grid-row: 1 / span 2;
+}
+
+/* Sized up to match the hero card's bigger footprint. */
 .bento-hero .stat-value {
-  font-size: 2.5rem;
+  font-size: clamp(3rem, 5vw, 4.5rem);
+  line-height: 1;
+}
+
+.bento-hero .stat-foot {
+  font-size: 0.9375rem;
+  margin-top: 0.5rem;
+}
+
+.bento-hero .stat-trend {
+  font-size: 0.875rem;
 }
 
 .bento-hero>div:first-child {
@@ -1719,6 +1739,42 @@ th.num {
 
 .stat-tile {
   padding: 1.25rem 1.375rem;
+}
+
+/* Highlighted stat tiles — opt-in per grid (admin and branch
+   dashboards), since .stat-tile is used on many other pages. Each tile
+   gets a tinted outline plus a highlight bar along its top edge, both
+   in --tile-tone: gold by default, red/green when the tile's value is
+   flagged .danger/.success (low stock, loss, profit). */
+.stat-grid-highlight .stat-tile {
+  --tile-tone: var(--accent);
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--tile-tone) 32%, transparent);
+  transition: transform 0.35s var(--ease-out), box-shadow 0.35s var(--ease-out),
+    border-color 0.35s var(--ease-out);
+}
+
+.stat-grid-highlight .stat-tile:has(.stat-value.danger) {
+  --tile-tone: var(--danger);
+}
+
+.stat-grid-highlight .stat-tile:has(.stat-value.success) {
+  --tile-tone: var(--success);
+}
+
+.stat-grid-highlight .stat-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--tile-tone), color-mix(in srgb, var(--tile-tone) 25%, transparent));
+  pointer-events: none;
+}
+
+.stat-grid-highlight .stat-tile:hover {
+  border-color: color-mix(in srgb, var(--tile-tone) 60%, transparent);
+  box-shadow: var(--shadow-md), 0 0 0 3px color-mix(in srgb, var(--tile-tone) 12%, transparent);
 }
 
 .stat-icon {
@@ -1828,6 +1884,67 @@ th.num {
   font-size: 0.7813rem;
   color: var(--ink-faint);
   margin-top: 0.375rem;
+}
+
+/* Up/down percentage on a stat tile — see the trend() macro in
+   _macros.html. Green up, red down, neutral when flat. */
+.stat-trend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font-size: 0.7813rem;
+}
+
+.stat-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.125rem 0.5rem 0.125rem 0.375rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-trend-badge svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex-shrink: 0;
+}
+
+.stat-trend-up .stat-trend-badge {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: var(--success-border);
+}
+
+.stat-trend-down .stat-trend-badge {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+.stat-trend-flat .stat-trend-badge {
+  color: var(--ink-faint);
+}
+
+.stat-trend-label {
+  color: var(--ink-faint);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .fill-track {
@@ -2444,6 +2561,48 @@ th.num {
     opacity: 0;
     transform: scale(0.88);
   }
+}
+
+/* Logo-reveal video variant (main.js's initLoginSplash()). The video
+   is black-backed, so the splash stays black in both themes. */
+.login-splash--video {
+  background: #000;
+  cursor: pointer;
+}
+
+/* The video variant is the default markup, so the static wordmark is
+   hidden from first paint (no flash of it before the video starts).
+   It only shows for reduced-motion users, or once main.js drops
+   .login-splash--video because the video couldn't play. */
+.login-splash--video .login-splash-logo {
+  display: none;
+}
+
+.login-splash:not(.login-splash--video) .login-splash-video {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-splash--video .login-splash-logo {
+    display: block;
+  }
+
+  .login-splash--video .login-splash-video {
+    display: none;
+  }
+}
+
+/* Kept well short of full-screen; the video's black edges blend into
+   the splash's black background, so no frame is visible. */
+.login-splash-video {
+  width: min(640px, 80vw);
+  max-height: 60vh;
+  object-fit: contain;
+  background: #000;
+  /* Decorative only: no hover means no browser video overlays (Edge's
+     picture-in-picture button), and clicks fall through to the splash,
+     which handles skip. */
+  pointer-events: none;
 }
 
 .login-splash.login-splash-exit {
@@ -4050,4 +4209,124 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
     left: 0.75rem;
     width: auto;
   }
+}
+
+/* ================================================================
+   Searchable product combobox (Production's "Log a production run",
+   a package's "Add a product"). Reuses the same field/input styling
+   as everything else: the input itself picks up the global
+   input[type="text"] rules automatically, this just adds the floating
+   suggestion menu underneath it. Each page's own script drives it.
+   ================================================================ */
+.ac-combo {
+  position: relative;
+}
+
+.ac-combo-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: var(--border-width-strong) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  max-height: 260px;
+  overflow-y: auto;
+  /* Scrollable, just not visibly so (same as .cs-panel in style.css). */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Bottom padding so a scrolled-to-the-end list's last option has
+     breathing room before the menu's own edge, instead of sitting
+     flush against it with the next option sliced off mid-row (same
+     fix as .cs-panel in style.css). */
+  padding: 4px 0 8px;
+  z-index: 500;
+  transform-origin: top center;
+  /* No opacity transition — this menu opens directly over Unit/Qty
+     produced/Batch code in the same card, and a fade briefly let
+     those show through mid-transition, reading as a z-index bug
+     even though it wasn't one (see .cs-panel's own comment in
+     style.css for the same fix). */
+  visibility: hidden;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.14s;
+}
+
+.ac-combo-menu.open {
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Flips above the input instead of below, and reversed slide
+   direction to match — set by production.html's own script, same
+   reasoning and mechanism as .cs-select.cs-open-up in style.css. */
+.ac-combo.ac-open-up .ac-combo-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+}
+
+/* Same reasoning as .cs-select.cs-open in style.css: a long product
+   list can overhang past the bottom of this card, and .ac-combo-menu's
+   own z-index isn't enough on its own to guarantee it paints above a
+   *different* card/table sitting right below (e.g. the production
+   log table under this form) — promoting the whole combo to its own
+   stacking context while its menu is open makes that reliable.
+
+   Toggled by production.html's own script (.ac-open, alongside
+   .ac-combo-menu's own .open) rather than :has() — :has() support
+   isn't universal on older browsers/webviews, and silently failing
+   here is exactly what let the menu paint underneath the table
+   below it. */
+.ac-combo.ac-open {
+  z-index: 500;
+}
+
+.ac-combo-menu::-webkit-scrollbar {
+  display: none;
+}
+
+.ac-combo-option {
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ac-combo-option .ac-match {
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
+/* Every SKU/size a matched product has on file, shown under its name
+   so a search by SKU (e.g. "A1-85ML") — see scoreProduct()'s own
+   comment below — has something visible to point at, instead of
+   surfacing the right product with no sign of why it matched. */
+.ac-combo-option .ac-match-skus {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.ac-combo-option:hover,
+.ac-combo-option.active {
+  background: var(--accent-soft);
+}
+
+.ac-combo-empty {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+/* The card holding an open combobox, lifted above the cards after it
+   so its suggestion list isn't painted over by the next card down. */
+.card.ac-host-open {
+  position: relative;
+  z-index: 400;
 }

@@ -66,3 +66,31 @@ export function sendInquiry(slug, packageId, fields, csrfToken) {
     body: JSON.stringify(fields),
   });
 }
+
+export function fetchSite(slug, signal) {
+  return request(`${apiBase(slug)}/site`, { signal });
+}
+
+export function sendGeneralInquiry(slug, fields, csrfToken) {
+  return request(`${apiBase(slug)}/inquire`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    body: JSON.stringify(fields),
+  });
+}
+
+/**
+ * Send a form POST with the CSRF token in `tokenRef`. A non-JSON 400 is
+ * Flask-WTF rejecting the token, usually because the page sat open past
+ * its lifetime: `refresh()` fetches a fresh one and the send is tried
+ * once more before giving up.
+ */
+export async function withCsrfRetry(tokenRef, send, refresh) {
+  try {
+    return await send(tokenRef.current);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 400 || err.fromServer) throw err;
+    tokenRef.current = await refresh();
+    return send(tokenRef.current);
+  }
+}

@@ -22,14 +22,15 @@ export default function PackageDetailPage() {
           </Link>
         </div>
       </header>
-      <main>
-        <PackageDetail
-          slug={slug}
-          packageId={packageId}
-          onMissing={() => navigate(listUrl, { replace: true })}
-        />
-      </main>
-      <Footer note="Send an inquiry from this page. It's the fastest way to reach our team." />
+      <Footer>
+        <main>
+          <PackageDetail
+            slug={slug}
+            packageId={packageId}
+            onMissing={() => navigate(listUrl, { replace: true })}
+          />
+        </main>
+      </Footer>
     </div>
   );
 }

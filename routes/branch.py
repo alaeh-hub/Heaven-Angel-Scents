@@ -10,11 +10,11 @@ from decorators import branch_required
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
-from sockets import notify_admin_and_branch
+from sockets import notify_admin_and_branch, notify_bell
 from utils import (
-    PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
+    BOTTLE_UNITS, PAYMENT_METHODS, base_code_from_sku, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
     issue_form_token, parse_non_negative_int, parse_optional_text, parse_past_date,
-    parse_positive_decimal, parse_positive_int,
+    parse_positive_decimal, parse_positive_int, percent_change,
 )
 
 bp = Blueprint("branch", __name__, url_prefix="/branch")
@@ -54,13 +54,18 @@ def _branch_id():
 def dashboard():
     bid = _branch_id()
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant, bi.stock_qty, bi.reorder_level
+        """SELECT p.sku, p.item_name, p.variant, p.unit, bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
            WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (bid,),
     )
-    low_stock = [row for row in inventory if row["stock_qty"]
-                 <= row["reorder_level"]]
+    # BULK (Bulk/Refill) is left out: branches can't request it from
+    # HQ (see request_stock()), so flagging it as "reorder" is noise.
+    low_stock = [row for row in inventory
+                 if row["unit"] in BOTTLE_UNITS and row["stock_qty"] <= row["reorder_level"]]
+    # "SKUs carried" counts by base code, same as admin's Products page
+    # (A1-85ML, A1-50ML and A1-BULK are one SKU).
+    sku_count = len({base_code_from_sku(row["sku"], row["unit"]) for row in inventory})
 
     # Suggested reorder quantity: top back up to the same "full" reference
     # the dashboard/branch_stock fill-bar visualizations use elsewhere
@@ -70,6 +75,8 @@ def dashboard():
     for row in low_stock:
         row["suggested_qty"] = max(
             (row["reorder_level"] * 3) - row["stock_qty"], 1)
+        # Only bottle sizes can be requested from HQ (see request_stock()).
+        row["requestable"] = row["unit"] in BOTTLE_UNITS
 
     # Pre-built querystring for "Reorder all low stock" — repeated sku/qty
     # pairs that request_stock.html's JS reads with URLSearchParams.getAll()
@@ -78,9 +85,10 @@ def dashboard():
     # but doing it as plain urlencode keeps the two sku[]/qty[] lists
     # trivially guaranteed to line up positionally.
     reorder_all_url = None
-    if low_stock:
-        pairs = [("sku", row["sku"]) for row in low_stock] + \
-            [("qty", row["suggested_qty"]) for row in low_stock]
+    reorderable = [row for row in low_stock if row["requestable"]]
+    if reorderable:
+        pairs = [("sku", row["sku"]) for row in reorderable] + \
+            [("qty", row["suggested_qty"]) for row in reorderable]
         reorder_all_url = url_for(
             "branch.request_stock") + "?" + urlencode(pairs)
 
@@ -105,11 +113,22 @@ def dashboard():
         (bid,), fetchone=True,
     )
 
+    # Trend arrow on the Today's sales tile: today's revenue vs.
+    # yesterday up to this same time of day, so a morning isn't
+    # compared against a whole finished day.
+    yesterday_revenue = query(
+        """SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+           FROM sales WHERE branch_id = %s
+             AND sold_at >= CURDATE() - INTERVAL 1 DAY AND sold_at < NOW() - INTERVAL 1 DAY""",
+        (bid,), fetchone=True,
+    )["revenue"]
+    today_sales["trend"] = percent_change(today_sales["revenue"], yesterday_revenue)
+
     return render_template(
         "branch/dashboard.html",
         inventory=inventory, low_stock=low_stock,
         pending_requests=pending_requests, today_sales=today_sales,
-        reorder_all_url=reorder_all_url,
+        reorder_all_url=reorder_all_url, sku_count=sku_count,
     )
 
 
@@ -126,7 +145,8 @@ def inventory():
            ORDER BY p.item_name""",
         (bid,),
     )
-    return render_template("branch/inventory.html", rows=rows, unit_choices=PRODUCT_UNITS)
+    # Filter offers bottle sizes only; BULK rows still show under "All units".
+    return render_template("branch/inventory.html", rows=rows, unit_choices=BOTTLE_UNITS)
 
 
 # ---------------------------------------------------------------- movement logs
@@ -261,11 +281,17 @@ def request_stock():
             flash("Add at least one product to the delivery.", "error")
             return redirect(url_for("branch.request_stock"))
 
+        # Only bottled products can be requested — BULK (Bulk/Refill)
+        # stock isn't shipped to branches this way. Enforced here, not
+        # just by the product dropdown, so a tampered form can't slip a
+        # BULK SKU through; it reads as "not available to request".
         skus_list = list(line_qty.keys())
         placeholders = ", ".join(["%s"] * len(skus_list))
+        unit_placeholders = ", ".join(["%s"] * len(BOTTLE_UNITS))
         price_rows = query(
-            f"SELECT sku, price FROM products WHERE sku IN ({placeholders})",
-            tuple(skus_list),
+            f"""SELECT sku, price FROM products
+                WHERE sku IN ({placeholders}) AND unit IN ({unit_placeholders})""",
+            tuple(skus_list) + BOTTLE_UNITS,
         )
         price_by_sku = {row["sku"]: row["price"] for row in price_rows}
         if any(sku not in price_by_sku for sku in skus_list):
@@ -301,6 +327,11 @@ def request_stock():
                 cur.close()
             notify_admin_and_branch(bid, "requests")
             item_word = "item" if len(line_qty) == 1 else "items"
+            notify_bell(
+                f"{session.get('branch_name') or 'A branch'} requested delivery {delivery_number} "
+                f"({len(line_qty)} {item_word}).",
+                room="admin",
+            )
             flash(
                 f"Delivery {delivery_number} sent to HQ ({len(line_qty)} {item_word}).", "success")
         except Exception:
@@ -309,9 +340,13 @@ def request_stock():
             flash("Couldn't send this request — please try again.", "error")
         return redirect(url_for("branch.request_stock"))
 
+    # Bottle sizes only — see the matching check in the POST branch above.
     products_list = query(
-        """SELECT sku, item_name, variant, unit, price FROM products
-           ORDER BY item_name""")
+        f"""SELECT sku, item_name, variant, unit, price FROM products
+            WHERE unit IN ({", ".join(["%s"] * len(BOTTLE_UNITS))})
+            ORDER BY item_name""",
+        BOTTLE_UNITS,
+    )
     # One row per delivery, with item count / total qty / total value
     # rolled up from stock_request_items — the line-item breakdown itself
     # only ever needs to be seen on the receipt (once Fulfilled).
@@ -487,6 +522,15 @@ def receive_stock():
 
         notify_admin_and_branch(
             bid, ["requests", "inventory", "movement_logs"])
+        branch_label = session.get("branch_name") or "A branch"
+        if total_shortfall > 0:
+            notify_bell(
+                f"{branch_label} received {delivery_number} — {total_shortfall} unit(s) unaccounted for.",
+                room="admin", level="warning",
+            )
+        else:
+            notify_bell(f"{branch_label} received delivery {delivery_number}.",
+                        room="admin", level="success")
         if total_shortfall > 0:
             flash(
                 f"Delivery {delivery_number} received. Note: {total_shortfall} unit(s) unaccounted for "

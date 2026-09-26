@@ -13,7 +13,7 @@ from PIL import Image, UnidentifiedImageError
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
-from db import TransactionAborted, execute, query, transaction
+from db import TransactionAborted, execute, get_db, query, transaction
 from decorators import admin_required
 from audit import log_action
 import login_activity
@@ -24,11 +24,11 @@ from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_be
 from utils import (
     BATCH_VOLUME_UNITS, BOTTLE_UNITS, FORMULA_UNITS, ML_PER_BATCH_UNIT, MATERIAL_UNITS, PARTNER_TYPES,
     PAYMENT_METHODS, PRODUCT_CATEGORIES, PRODUCT_UNITS, SALE_TYPES, ValidationError,
-    bottle_size_ml, build_sku, compatible_material_units, consume_form_token, convert_material_qty,
+    base_code_from_sku, bottle_size_ml, build_sku, compatible_material_units, consume_form_token, convert_material_qty,
     generate_temp_password, issue_form_token,
     parse_base_code, parse_non_negative_decimal, parse_non_negative_int, parse_optional_id,
     parse_optional_text, parse_past_date, parse_positive_decimal, parse_positive_int,
-    parse_required_text,
+    parse_required_text, percent_change,
 )
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -74,10 +74,14 @@ def dashboard():
         "pending_requests": query(
             "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
         )["c"],
+        # Low stock never counts BULK (Bulk/Refill): branches can't
+        # request it from HQ, so it isn't something to restock them with.
         "low_stock_count": query(
             """SELECT COUNT(*) c FROM branch_inventory bi
                JOIN branches b ON bi.branch_id = b.branch_id
-               WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level""",
+               JOIN products p ON bi.sku = p.sku
+               WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
+                 AND p.unit <> 'BULK'""",
             fetchone=True,
         )["c"],
     }
@@ -88,6 +92,7 @@ def dashboard():
            JOIN branches b ON bi.branch_id = b.branch_id
            JOIN products p ON bi.sku = p.sku
            WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
+             AND p.unit <> 'BULK'
            ORDER BY bi.stock_qty ASC LIMIT 8"""
     )
 
@@ -209,6 +214,32 @@ def dashboard():
         fetchone=True,
     )["v"]
     total_revenue = branch_sales_revenue + package_sales_revenue
+
+    # Trend arrow on the Total revenue tile: month-to-date revenue vs.
+    # the same stretch of last month (1st of last month up to this exact
+    # moment one month ago), so a half-finished month isn't compared
+    # against a whole one. MySQL's `- INTERVAL 1 MONTH` clamps to the
+    # month's last day (Mar 31 -> Feb 28/29). Rows between those two
+    # windows (the rest of last month) fall in neither sum.
+    #
+    # partner_inquiries has no "closed on" date, so a closed package
+    # order counts toward the month its inquiry was created in.
+    month_revenue = query(
+        """SELECT
+               COALESCE(SUM(CASE WHEN t.at >= CURDATE() - INTERVAL (DAY(CURDATE()) - 1) DAY
+                                 THEN t.amount END), 0) AS current_period,
+               COALESCE(SUM(CASE WHEN t.at < NOW() - INTERVAL 1 MONTH
+                                 THEN t.amount END), 0) AS previous_period
+           FROM (
+               SELECT sold_at AS at, qty_sold * unit_price AS amount FROM sales
+               UNION ALL
+               SELECT created_at, order_amount FROM partner_inquiries WHERE status = 'Closed'
+           ) t
+           WHERE t.at >= CURDATE() - INTERVAL (DAY(CURDATE()) - 1) DAY - INTERVAL 1 MONTH
+             AND t.at < NOW()""",
+        fetchone=True,
+    )
+
     financials = {
         "capital": total_cogs,
         "revenue": total_revenue,
@@ -217,6 +248,8 @@ def dashboard():
         "materials_cost": total_cogs,
         "raw_materials_purchased": raw_materials_purchased,
         "profit": total_revenue - total_cogs,
+        "revenue_trend": percent_change(
+            month_revenue["current_period"], month_revenue["previous_period"]),
     }
 
     return render_template(
@@ -408,6 +441,10 @@ def products():
            LEFT JOIN branch_inventory bi ON p.sku = bi.sku
            GROUP BY p.sku ORDER BY p.item_name"""
     )
+    # SKU counts on this page are by base code (A1-85ML, A1-50ML and
+    # A1-BULK are one product, "A1"), not one per size row.
+    for row in catalog:
+        row["base_code"] = base_code_from_sku(row["sku"], row["unit"])
     return render_template(
         "admin/products.html", catalog=catalog, unit_choices=BOTTLE_UNITS, category_choices=PRODUCT_CATEGORIES,
     )
@@ -483,26 +520,6 @@ def edit_product():
 _PRODUCT_CSV_COLUMNS = ["base_code", "item_name", "variant", "unit", "price"]
 
 
-def _base_code_from_sku(sku, unit):
-    """Reverse of build_sku(), for export only: strip the unit's known
-    suffix off the end of a stored SKU to recover the base_code an
-    admin would have typed (e.g. 'A1-85ML' + '85ML' -> 'A1'). Falls
-    back to returning the SKU unchanged if it doesn't end with the
-    expected suffix — shouldn't happen for any row created through the
-    normal add/import path, but keeps export from ever raising on
-    unexpected/legacy data instead of failing the whole download.
-    """
-    # utils._PRODUCT_UNIT_SUFFIXES is the same allow-list build_sku()
-    # itself uses — imported directly rather than duplicated here so
-    # there's exactly one place that maps a unit to its SKU suffix.
-    from utils import _PRODUCT_UNIT_SUFFIXES
-    suffix = _PRODUCT_UNIT_SUFFIXES.get(unit)
-    tail = f"-{suffix}" if suffix else None
-    if tail and sku.endswith(tail):
-        return sku[: -len(tail)]
-    return sku
-
-
 @bp.route("/products/export")
 @admin_required
 def export_products():
@@ -520,7 +537,7 @@ def export_products():
     writer.writerow(_PRODUCT_CSV_COLUMNS)
     for row in catalog:
         writer.writerow([
-            _base_code_from_sku(row["sku"], row["unit"]),
+            base_code_from_sku(row["sku"], row["unit"]),
             row["item_name"],
             row["variant"],
             row["unit"],
@@ -598,12 +615,15 @@ def import_products():
             variant = (row.get("variant") or "").strip()
             unit = (row.get("unit") or "").strip()
             price = parse_non_negative_decimal(row.get("price"), "Price")
-            # Bulk/Refill (unit BULK) isn't importable via CSV — it has no
-            # fixed size/price to round-trip through this sheet; add it
-            # through the manual "Add a product" form instead.
-            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in BOTTLE_UNITS:
+            # Any unit export_products() writes is accepted back,
+            # including BULK. Category isn't a CSV column: it follows from
+            # the unit, same pairing the manual Add form enforces (BULK is
+            # always Bulk/Refill, a bottle size is always Bottled).
+            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
                 raise ValidationError(
-                    "item_name, variant, and unit must all be valid.")
+                    f"item_name, variant, and unit must all be valid (unit is one of "
+                    f"{', '.join(PRODUCT_UNITS)}).")
+            category = "Bulk/Refill" if unit == "BULK" else "Bottled"
             sku = build_sku(base_code, unit)
         except ValidationError as err:
             errors.append(f"Row {row_num}: {err}")
@@ -623,7 +643,7 @@ def import_products():
         # this same row further down (or the Edit form) untouched.
         if not existing:
             sibling_skus = [build_sku(base_code, u)
-                            for u in BOTTLE_UNITS if u != unit]
+                            for u in PRODUCT_UNITS if u != unit]
             if sibling_skus:
                 placeholders = ",".join(["%s"] * len(sibling_skus))
                 sibling = query(
@@ -645,9 +665,9 @@ def import_products():
                 with transaction() as conn:
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO products (sku, item_name, variant, unit, price) "
-                        "VALUES (%s, %s, %s, %s, %s)",
-                        (sku, item_name, variant, unit, price),
+                        "INSERT INTO products (sku, item_name, variant, category, unit, price) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
+                        (sku, item_name, variant, category, unit, price),
                     )
                     cur.execute("SELECT branch_id FROM branches")
                     branch_ids = [r[0] for r in cur.fetchall()]
@@ -901,6 +921,9 @@ def production():
            WHERE bi.branch_id = %s ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
+    # Counted by base code, same as the Products page.
+    for row in hq_stock:
+        row["base_code"] = base_code_from_sku(row["sku"], row["unit"])
     # Per-ingredient audit trail of what every logged run actually drew
     # on — this used to live on the Materials page ("Usage history")
     # alongside the manual "Log material usage" form it was replaced by;
@@ -989,7 +1012,9 @@ def low_stock():
                   COALESCE(SUM(CASE WHEN bi.stock_qty = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock_count
            FROM branch_inventory bi
            JOIN branches b ON bi.branch_id = b.branch_id
+           JOIN products p ON bi.sku = p.sku
            WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
+             AND p.unit <> 'BULK'
            GROUP BY b.branch_id, b.branch_name
            ORDER BY low_stock_count DESC, b.branch_name"""
     )
@@ -1004,7 +1029,8 @@ def low_stock():
              FROM branch_inventory bi
              JOIN branches b ON bi.branch_id = b.branch_id
              JOIN products p ON bi.sku = p.sku
-             WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level"""
+             WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
+               AND p.unit <> 'BULK'"""
     params = []
     if branch_filter != "all":
         sql += " AND b.branch_id = %s"
@@ -1686,6 +1712,8 @@ def dispatch_request(request_id):
             cur.close()
         notify_admin_and_branch(
             req["branch_id"], ["requests", "inventory", "movement_logs"])
+        notify_bell(f"Delivery {req['delivery_number']} is on its way from HQ.",
+                    room=f"branch:{req['branch_id']}", level="success")
         flash(
             f"{req['delivery_number']} dispatched — now in transit to the branch.", "success")
     except TransactionAborted as err:
@@ -1741,6 +1769,8 @@ def reject_request(request_id):
         return redirect(url_for("admin.requests_list"))
 
     notify_admin_and_branch(req["branch_id"], "requests")
+    notify_bell(f"Delivery {req['delivery_number']} was rejected by HQ.",
+                room=f"branch:{req['branch_id']}", level="warning")
     flash(f"{req['delivery_number']} rejected.", "success")
     return redirect(url_for("admin.requests_list"))
 
@@ -1906,6 +1936,116 @@ def announcements():
         return redirect(url_for("admin.announcements"))
 
     return render_template("admin/announcements.html", branch_list=branch_list)
+
+
+# ---------------------------------------------------------------- clear data (dev only)
+# Kept through a reset so everyone can still sign in and the app still
+# has its HQ/branches and pricing settings to run against. Every other
+# table in the database is emptied, including ones added after this was
+# written (the list comes from information_schema, not a hard-coded set).
+CLEAR_DATA_KEEP_TABLES = frozenset({
+    "users", "branches", "bulk_rate_settings", "unit_cogs_settings",
+})
+CLEAR_DATA_CONFIRM_PHRASE = "CLEAR ALL DATA"
+
+
+def _clearable_tables():
+    """Every base table in the current database except the keep-list,
+    with its row count (exact, via COUNT(*) — information_schema's
+    table_rows is only an InnoDB estimate)."""
+    names = [
+        row["t"] for row in query(
+            """SELECT table_name AS t FROM information_schema.tables
+               WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
+               ORDER BY table_name"""
+        )
+        if row["t"] not in CLEAR_DATA_KEEP_TABLES
+    ]
+    tables = []
+    for name in names:
+        # Names come from information_schema, never from the request;
+        # still refuse anything that isn't a plain identifier before it
+        # goes into SQL unparameterized (table names can't be bound).
+        if not name.replace("_", "").isalnum():
+            continue
+        count = query(f"SELECT COUNT(*) AS c FROM `{name}`", fetchone=True)["c"]
+        tables.append({"name": name, "rows": count})
+    return tables
+
+
+@bp.route("/clear-data", methods=["GET", "POST"])
+@admin_required
+def clear_data():
+    """Development-only reset: empties every business table (products,
+    inventory, sales, requests, materials, partners, logs...) while
+    keeping user accounts, branches and pricing settings. Uploaded
+    product photos are deleted too, since nothing references them after.
+
+    Only exists when ALLOW_DATA_RESET is on (see config.py — forced off
+    in production); otherwise this is a plain 404, so the page's very
+    existence isn't advertised. Requires typing CLEAR_DATA_CONFIRM_PHRASE.
+    """
+    if not current_app.config.get("ALLOW_DATA_RESET"):
+        abort(404)
+
+    if request.method == "POST":
+        if request.form.get("confirm", "").strip() != CLEAR_DATA_CONFIRM_PHRASE:
+            flash(f'Type "{CLEAR_DATA_CONFIRM_PHRASE}" exactly to confirm. Nothing was deleted.', "error")
+            return redirect(url_for("admin.clear_data"))
+
+        tables = _clearable_tables()
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            # TRUNCATE (not DELETE) so auto-increment ids restart too —
+            # the next delivery is DR-000001 again. TRUNCATE can't run
+            # against FK-referenced tables with checks on, and it commits
+            # implicitly, so this is not one atomic transaction: a failure
+            # partway leaves the earlier tables already emptied. Fine for
+            # a dev tool, where the answer is simply to run it again.
+            cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+            for table in tables:
+                cur.execute(f"TRUNCATE TABLE `{table['name']}`")
+        except Exception:
+            current_app.logger.exception("clear_data failed partway")
+            flash("Clearing failed partway — some tables may already be empty. Check the server log "
+                  "and run it again.", "error")
+            return redirect(url_for("admin.clear_data"))
+        finally:
+            cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+            cur.close()
+
+        images_dir = os.path.join(current_app.static_folder, *PRODUCT_IMAGE_SUBDIR.split("/"))
+        removed_images = 0
+        if os.path.isdir(images_dir):
+            for entry in os.scandir(images_dir):
+                if entry.is_file():
+                    try:
+                        os.remove(entry.path)
+                        removed_images += 1
+                    except OSError:
+                        current_app.logger.warning("clear_data: couldn't delete %s", entry.path)
+
+        total_rows = sum(t["rows"] for t in tables)
+        # admin_actions was just emptied, so this is the log's first row.
+        log_action("clear_all_data", target="Entire database",
+                   details=f"{total_rows} rows across {len(tables)} tables, {removed_images} product photos")
+        notify_all([
+            "products", "inventory", "sales", "requests", "movement_logs", "production", "materials",
+            "partners", "partner_inquiries", "users", "branches", "ai_drafts",
+        ])
+        flash(f"Cleared {total_rows} rows from {len(tables)} tables and {removed_images} product "
+              "photos. User accounts, branches and pricing settings were kept.", "success")
+        return redirect(url_for("admin.clear_data"))
+
+    tables = _clearable_tables()
+    return render_template(
+        "admin/clear_data.html",
+        tables=tables,
+        total_rows=sum(t["rows"] for t in tables),
+        kept_tables=sorted(CLEAR_DATA_KEEP_TABLES),
+        confirm_phrase=CLEAR_DATA_CONFIRM_PHRASE,
+    )
 
 
 # ---------------------------------------------------------------- audit log
@@ -3095,6 +3235,11 @@ def packages():
     )
 
 
+# Packages hold finished bottles only; Bulk/Refill stock (category, and
+# its BULK packaging size, see utils.PRODUCT_CATEGORIES) is left out.
+_BOTTLED_ONLY = "category <> 'Bulk/Refill' AND unit <> 'BULK'"
+
+
 @bp.route("/packages/<int:package_id>")
 @admin_required
 def package_detail(package_id):
@@ -3116,10 +3261,19 @@ def package_detail(package_id):
     reference_total, discounted_total = _package_value(
         pkg["discount_percent"], reference_total)
 
+    # Bottled products only: packages are bundles of finished bottles,
+    # so Bulk/Refill stock never shows up as an option here (and
+    # add_package_item() refuses it too). Sent to the page as JSON for
+    # its searchable product field, sorted so each scent's sizes sit
+    # together, smallest first.
     existing_skus = {i["sku"] for i in items}
     catalog = query(
-        "SELECT sku, item_name, variant, unit, price FROM products ORDER BY item_name")
-    available_products = [p for p in catalog if p["sku"] not in existing_skus]
+        f"""SELECT sku, item_name, variant, unit, price FROM products
+            WHERE {_BOTTLED_ONLY}
+            ORDER BY item_name, variant, FIELD(unit, '3ML', '10ML', '50ML', '85ML')""")
+    available_products = [
+        {**p, "price": float(p["price"])} for p in catalog if p["sku"] not in existing_skus
+    ]
 
     return render_template(
         "admin/package_detail.html",
@@ -3178,7 +3332,7 @@ def add_package_item(package_id):
         abort(404)
 
     sku = request.form.get("sku", "").strip()
-    product = query("SELECT sku FROM products WHERE sku = %s",
+    product = query(f"SELECT sku FROM products WHERE sku = %s AND {_BOTTLED_ONLY}",
                     (sku,), fetchone=True)
 
     try:
@@ -3188,7 +3342,7 @@ def add_package_item(package_id):
         return redirect(url_for("admin.package_detail", package_id=package_id))
 
     if not product:
-        flash("Select a valid product.", "error")
+        flash("Select a bottled product from the list. Bulk/Refill products can't go in a package.", "error")
         return redirect(url_for("admin.package_detail", package_id=package_id))
 
     try:

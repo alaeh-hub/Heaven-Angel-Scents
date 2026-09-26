@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Clear Data{% endblock %}
+{% block eyebrow %}Development{% endblock %}
+{% block heading %}Clear Data{% endblock %}
+
+{% block content %}
+<div class="card card-pad" style="max-width:680px; border-color: var(--danger-border);">
+  <h2 style="font-size:16.5px; margin-bottom: 4px; color: var(--danger);">Wipe all business data</h2>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 14px;">
+    For development only. This permanently deletes every record below (products, inventory, sales, deliveries,
+    materials, partners, logs) and all uploaded product photos. There is no undo, so back up first if you might
+    need any of it (see BACKUP.md).
+  </p>
+  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+    <strong>Kept:</strong> {{ kept_tables|join(', ') }}, so every account can still sign in.
+  </p>
+
+  {% if total_rows %}
+  <div class="table-wrap" style="margin-bottom: 18px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th>
+          <th class="num">Rows to delete</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tables if t.rows %}
+        <tr>
+          <td class="mono" data-label="Table">{{ t.name }}</td>
+          <td class="num" data-label="Rows">{{ t.rows }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="margin-bottom: 18px;">Nothing to clear. All business tables are already empty.</div>
+  {% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="confirm">Type <span class="mono">{{ confirm_phrase }}</span> to confirm</label>
+      <input type="text" id="confirm" name="confirm" autocomplete="off" spellcheck="false" required
+        pattern="{{ confirm_phrase }}" placeholder="{{ confirm_phrase }}">
+    </div>
+    <button type="submit" class="btn btn-danger" style="width:100%;">
+      Delete {{ total_rows }} rows permanently
+    </button>
+  </form>
+</div>
+{% endblock %}

@@ -43,7 +43,8 @@ function useShelf(slug) {
 
 /**
  * The one marquee on the page: a slow, continuous shelf of the
- * catalog's scents. Pauses on hover; under reduced motion it becomes a
+ * catalog's scents. Pauses on hover, where the bottle under the pointer
+ * lifts and shows its name; under reduced motion it becomes a
  * still, swipeable row instead. Sits over its own interactive dot
  * grid (DotField), lit by the cursor only within this section.
  */
@@ -82,6 +83,9 @@ export default function Collection() {
             {tiles.map(([src, alt], i) => (
               <div className="bottle-tile glow-card" key={i}>
                 <img src={src} alt={copy === 1 ? '' : alt} loading="lazy" />
+                {/* Revealed under the lifted bottle on hover (the strip
+                    pauses), so the shelf can be browsed by name. */}
+                <span className="bottle-tile-name" aria-hidden="true">{alt}</span>
               </div>
             ))}
           </div>

@@ -265,16 +265,55 @@ function revealContent() {
 // top of nothing. Plain CSS animation + setTimeout, same reasoning as
 // showLoadingOverlay() above: nothing here needs a promise-based
 // animation library, and remove() after a fixed delay is simpler.
+//
+// When motion is allowed, the logo-reveal video plays first and the
+// splash exits when it ends. Clicking or pressing any key skips it,
+// and a hard cap guarantees the app is never stuck behind a stalled
+// video. If autoplay is refused, it falls back to the static wordmark.
 const LOGIN_SPLASH_HOLD_MS = 650;
 const LOGIN_SPLASH_EXIT_MS = 350;
+const LOGIN_SPLASH_VIDEO_MAX_MS = 4500;
 
 function initLoginSplash() {
     const el = document.getElementById('loginSplash');
     if (!el) return;
-    setTimeout(() => {
+
+    let done = false;
+    const dismiss = () => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', dismiss);
         el.classList.add('login-splash-exit');
         setTimeout(() => el.remove(), LOGIN_SPLASH_EXIT_MS);
-    }, LOGIN_SPLASH_HOLD_MS);
+    };
+    const video = document.getElementById('loginSplashVideo');
+    // Swap to the static wordmark (the markup starts in video mode).
+    const holdStatic = () => {
+        el.classList.remove('login-splash--video');
+        if (video) video.pause();
+        setTimeout(dismiss, LOGIN_SPLASH_HOLD_MS);
+    };
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!video || reduceMotion || typeof video.play !== 'function') {
+        holdStatic();
+        return;
+    }
+
+    video.addEventListener('ended', dismiss);
+    video.addEventListener('error', dismiss, true);
+    el.addEventListener('click', dismiss);
+    document.addEventListener('keydown', dismiss);
+    setTimeout(dismiss, LOGIN_SPLASH_VIDEO_MAX_MS);
+
+    const playing = video.play();
+    if (playing && typeof playing.catch === 'function') {
+        playing.catch(() => {
+            // Autoplay blocked (e.g. power-saver mode) — show the
+            // static wordmark instead of a black screen.
+            if (!done) holdStatic();
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -593,9 +632,7 @@ function runPageScripts(freshDoc) {
 // target queued (e.g. "Product added.") — this pulls those in
 // separately, clones them into the live toast stack, and starts their
 // own dismiss timer, same as any flash rendered on a real page load.
-function appendFreshFlashes(freshDoc) {
-    const freshFlashes = freshDoc.querySelectorAll('.flashes .flash');
-    if (!freshFlashes.length) return;
+function getFlashContainer() {
     let liveContainer = document.querySelector('.flashes');
     if (!liveContainer) {
         liveContainer = document.createElement('div');
@@ -604,6 +641,28 @@ function appendFreshFlashes(freshDoc) {
         liveContainer.setAttribute('aria-live', 'polite');
         document.body.appendChild(liveContainer);
     }
+    return liveContainer;
+}
+
+// Pops a toast from the client side, in the same stack and style as
+// server flashes — used for live bell notifications (see initRealtime())
+// so they're seen as they arrive rather than only as a +1 on the bell.
+// level is the bell's "info" | "success" | "warning"; info uses the
+// plain .flash look. textContent, never innerHTML: the message can
+// carry user-entered text (a partner's company name, an announcement).
+function showToast(message, level) {
+    if (!message) return;
+    const el = document.createElement('div');
+    el.className = 'flash' + (level === 'success' || level === 'warning' ? ' flash-' + level : '');
+    el.textContent = message;
+    getFlashContainer().appendChild(el);
+    attachFlashDismiss(el);
+}
+
+function appendFreshFlashes(freshDoc) {
+    const freshFlashes = freshDoc.querySelectorAll('.flashes .flash');
+    if (!freshFlashes.length) return;
+    const liveContainer = getFlashContainer();
     freshFlashes.forEach((el) => {
         const clone = el.cloneNode(true);
         liveContainer.appendChild(clone);
@@ -1813,7 +1872,7 @@ async function runFileGeneration(url) {
             const reader = res.body.getReader();
             let received = 0;
             setGenerateProgress(0);
-            for (;;) {
+            for (; ;) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 chunks.push(value);
@@ -1989,7 +2048,13 @@ function initSmartTables() {
             }
 
             if (countTarget) {
-                countTarget.textContent = filtered.length + ' ' + countLabel + (filtered.length !== 1 ? 's' : '');
+                // data-count-distinct: count unique row data-count-key
+                // values instead of rows (e.g. Products counts SKUs by
+                // base code, so A1-85ML and A1-BULK are one).
+                const count = 'countDistinct' in container.dataset
+                    ? new Set(filtered.map((r) => r.dataset.countKey || r)).size
+                    : filtered.length;
+                countTarget.textContent = count + ' ' + countLabel + (count !== 1 ? 's' : '');
             }
         }
 
@@ -2498,6 +2563,7 @@ function initRealtime(notifBell) {
     });
     socket.on('bell_notification', (payload) => {
         if (notifBell) notifBell.add(payload);
+        if (payload) showToast(payload.message, payload.level);
     });
 }
 

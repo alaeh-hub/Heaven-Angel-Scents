@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { PlusIcon } from '@phosphor-icons/react';
+import { ArrowRightIcon, PlusIcon } from '@phosphor-icons/react';
+import { useSite } from '../InquiryProvider.jsx';
 import { EASE_OUT, SPRING } from '../../motion.js';
 import Reveal from '../Reveal.jsx';
 import BlurText from '../BlurText.jsx';
@@ -13,11 +14,13 @@ const FAQS = [
   ['Do I need an account to inquire?',
     "No. Open any package and send an inquiry with your contact details. There's no login required; our team reaches out directly once we receive it."],
   ['How long until someone follows up?',
-    'Our team is notified as soon as an inquiry comes in and follows up by phone or email using the details you provide.'],
+    'Our team is notified as soon as an inquiry comes in and follows up using the details you provide, by the method you pick on the form (call, SMS, Viber or email).'],
   ['Is there a minimum order for a package?',
     "Each package is already sized as a bundle, so there's no separate minimum on top of it. The quantities and item count shown are exactly what you'd receive."],
   ['Can I ask for a custom mix of products?',
-    "Start with an inquiry on the package closest to what you have in mind. Mention what you'd like adjusted, and our team will let you know what's possible."],
+    "Yes. Send a general inquiry (no package needed) and describe the mix you have in mind, or inquire on the closest package and mention what you'd change. Our team will let you know what's possible."],
+  ['How is the estimated profit worked out?',
+    "It's the difference between the partner price you pay and our own regular list price for the same products. If you sell at a different price, your margin changes with it."],
 ];
 
 function FaqItem({ question, answer, open, onToggle }) {
@@ -50,6 +53,7 @@ function FaqItem({ question, answer, open, onToggle }) {
 
 export default function Faq() {
   const [open, setOpen] = useState(0);
+  const { site, openInquiry } = useSite();
   return (
     <section className="section section-alt" id="faq">
       <div className="container faq-inner">
@@ -69,6 +73,13 @@ export default function Faq() {
             />
           ))}
         </Reveal>
+        <p className="faq-more">
+          Something else?
+          <button type="button" className="link-arrow" onClick={() => openInquiry()}>
+            Send an inquiry <ArrowRightIcon size={16} weight="bold" />
+          </button>
+          {site?.reply_time && <span className="muted">We reply {site.reply_time}.</span>}
+        </p>
       </div>
     </section>
   );

@@ -13,7 +13,8 @@ from flask import request
 from utils import (ValidationError, consume_form_token, issue_form_token,
                     parse_non_negative_decimal, parse_non_negative_int,
                     parse_past_date, parse_positive_decimal,
-                    parse_positive_int, product_avatar)
+                    parse_positive_int, percent_change,
+                    product_avatar)
 
 
 # ---------------------------------------------------------------- parse_positive_int
@@ -162,3 +163,20 @@ def test_consume_form_token_fails_with_the_wrong_value(app):
         issue_form_token("test_form_2")
         request.form = {"form_token": "not-the-real-token"}
         assert consume_form_token("test_form_2") is False
+
+
+# ---------------------------------------------------------------- percent_change
+def test_percent_change_up_and_down():
+    assert percent_change(decimal.Decimal("150"), decimal.Decimal("100")) == 50.0
+    assert percent_change(75, 100) == -25.0
+    assert percent_change(100, 100) == 0.0
+
+
+def test_percent_change_rounds_to_one_decimal():
+    assert percent_change(2, 3) == -33.3
+
+
+def test_percent_change_is_none_without_a_baseline():
+    # Nothing last period -> no meaningful percentage.
+    assert percent_change(500, 0) is None
+    assert percent_change(0, decimal.Decimal("0")) is None

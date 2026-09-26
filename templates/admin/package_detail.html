@@ -22,13 +22,19 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <div class="field">
-        <label for="sku">Product</label>
-        <select id="sku" name="sku" required>
-          <option value="">Select…</option>
-          {% for p in available_products %}
-          <option value="{{ p.sku }}">{{ p.item_name }} — {{ p.unit }} ({{ p.variant }}) · {{ p.price|peso }}</option>
-          {% endfor %}
-        </select>
+        <label for="productSearch">Product</label>
+        {# Type to filter by name or SKU, or open the list and pick. Each
+           option is one exact size (bottled only, see package_detail()),
+           so choosing it fills in the SKU below; the form won't submit
+           until the text matches a real option. #}
+        <div class="ac-combo" id="packageProductCombo" data-products='{{ available_products | tojson }}'>
+          <input type="text" id="productSearch" required autocomplete="off"
+            placeholder="Search by name or SKU, or pick from the list…"
+            role="combobox" aria-expanded="false" aria-controls="packageProductMenu" aria-autocomplete="list">
+          <input type="hidden" id="sku" name="sku">
+          <div class="ac-combo-menu" id="packageProductMenu" role="listbox"></div>
+        </div>
+        <div class="help">Bottled products only. Bulk/Refill can't be added to a package.</div>
       </div>
       <div class="field">
         <label for="qty">Qty per set</label>
@@ -38,7 +44,7 @@
     <button type="submit" class="btn btn-accent" style="width:100%; max-width:280px;">Add to package</button>
   </form>
   {% else %}
-  <p class="text-faint" style="font-size:12.5px;">Every product in the catalog is already in this package.</p>
+  <p class="text-faint" style="font-size:12.5px;">Every bottled product in the catalog is already in this package.</p>
   {% endif %}
 </div>
 
@@ -159,4 +165,234 @@
     <button type="submit" class="btn btn-accent" style="width:100%;">Save changes</button>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // "Add a product": one searchable field instead of a long <select>.
+  // Every option is one SKU (a scent in one size), matched on its name,
+  // its SKU code, or its size; picking one fills the hidden `sku` input
+  // the form posts. Same look and keyboard handling as Production's
+  // product combobox (.ac-combo in style.css).
+  (function () {
+    var combo = document.getElementById('packageProductCombo');
+    var input = document.getElementById('productSearch');
+    var hidden = document.getElementById('sku');
+    var menu = document.getElementById('packageProductMenu');
+    if (!combo || !input || !hidden || !menu) return;
+    var form = input.form;
+    // The card this field sits in: raised while the list is open, so the
+    // list paints over the "Products in this package" card below it
+    // (each card is its own layer, see .ac-host-open in style.css).
+    var host = combo.closest('.card');
+
+    var products = [];
+    try {
+      products = JSON.parse(combo.dataset.products || '[]');
+    } catch (e) {
+      products = [];
+    }
+
+    var MAX_RESULTS = 50;
+    var activeIndex = -1;
+    var currentMatches = [];
+
+    function label(p) { return p.item_name + ', ' + p.unit + ' (' + p.variant + ')'; }
+
+    function peso(n) {
+      return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function highlight(text, query) {
+      if (!query) return escapeHtml(text);
+      var idx = text.toLowerCase().indexOf(query);
+      if (idx === -1) return escapeHtml(text);
+      return escapeHtml(text.slice(0, idx)) +
+        '<span class="ac-match">' + escapeHtml(text.slice(idx, idx + query.length)) + '</span>' +
+        escapeHtml(text.slice(idx + query.length));
+    }
+
+    // Exact matches first, then a name or SKU that starts with the
+    // query, then one containing it anywhere (the size counts too, so
+    // "lacoste 85" narrows to that bottle). -1 = no match.
+    function score(p, query) {
+      var name = p.item_name.toLowerCase();
+      var sku = p.sku.toLowerCase();
+      if (sku === query || label(p).toLowerCase() === query) return 0;
+      if (name.indexOf(query) === 0) return 1;
+      if (sku.indexOf(query) === 0) return 2;
+      if (name.indexOf(query) !== -1) return 3;
+      if (sku.indexOf(query) !== -1) return 4;
+      var haystack = (name + ' ' + sku + ' ' + p.unit + ' ' + p.variant).toLowerCase();
+      var words = query.split(/\s+/).filter(Boolean);
+      if (words.length > 1 && words.every(function (w) { return haystack.indexOf(w) !== -1; })) return 5;
+      return -1;
+    }
+
+    // Empty query: the whole list (already sorted by name, then size),
+    // so the field works as a plain dropdown too.
+    function getMatches(rawQuery) {
+      var query = rawQuery.trim().toLowerCase();
+      if (!query) return products.slice();
+      return products
+        .map(function (p, i) { return { p: p, s: score(p, query), i: i }; })
+        .filter(function (r) { return r.s !== -1; })
+        .sort(function (a, b) { return a.s - b.s || a.i - b.i; })
+        .map(function (r) { return r.p; });
+    }
+
+    function setExpanded(open) { input.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+
+    function closeMenu() {
+      menu.classList.remove('open');
+      combo.classList.remove('ac-open');
+      if (host) host.classList.remove('ac-host-open');
+      setExpanded(false);
+      menu.innerHTML = '';
+      activeIndex = -1;
+    }
+
+    // Same bounding as Production's combobox: stay inside the viewport
+    // and this card, flipping above the input when there's more room.
+    function positionMenu() {
+      combo.classList.remove('ac-open-up');
+      menu.style.maxHeight = '';
+      var rect = input.getBoundingClientRect();
+      var margin = 12;
+      var spaceBelow = window.innerHeight - rect.bottom - margin;
+      var spaceAbove = rect.top - margin;
+      var defaultMax = parseFloat(getComputedStyle(menu).maxHeight) || 260;
+      var menuHeight = menu.scrollHeight || defaultMax;
+      if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+        combo.classList.add('ac-open-up');
+        menu.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceAbove)) + 'px';
+      } else {
+        menu.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceBelow)) + 'px';
+      }
+    }
+
+    function renderMenu(query) {
+      var all = getMatches(query);
+      currentMatches = all.slice(0, MAX_RESULTS);
+      var q = query.trim().toLowerCase();
+      if (!currentMatches.length) {
+        menu.innerHTML = '<div class="ac-combo-empty">No bottled product matches “' + escapeHtml(query.trim()) + '”.</div>';
+      } else {
+        menu.innerHTML = currentMatches.map(function (p, i) {
+          return '<div class="ac-combo-option" role="option" id="pkgOpt' + i + '" data-index="' + i + '">' +
+            '<div class="ac-match-name">' + highlight(p.item_name, q) + ', ' + escapeHtml(p.unit) +
+            ' <span class="text-faint">(' + escapeHtml(p.variant) + ')</span></div>' +
+            '<div class="ac-match-skus">' + highlight(p.sku, q) + ' · ' + peso(p.price) + '</div></div>';
+        }).join('') + (all.length > MAX_RESULTS
+          ? '<div class="ac-combo-empty">' + (all.length - MAX_RESULTS) + ' more. Keep typing to narrow it down.</div>'
+          : '');
+      }
+      menu.classList.add('open');
+      combo.classList.add('ac-open');
+      if (host) host.classList.add('ac-host-open');
+      setExpanded(true);
+      positionMenu();
+      setActive(currentMatches.length ? 0 : -1);
+    }
+
+    function setActive(index) {
+      var opts = menu.querySelectorAll('.ac-combo-option');
+      opts.forEach(function (el) { el.classList.remove('active'); });
+      if (opts[index]) {
+        opts[index].classList.add('active');
+        opts[index].scrollIntoView({ block: 'nearest' });
+        input.setAttribute('aria-activedescendant', opts[index].id);
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+      activeIndex = index;
+    }
+
+    function select(p) {
+      input.value = label(p);
+      hidden.value = p.sku;
+      input.setCustomValidity('');
+      closeMenu();
+    }
+
+    // Typed text that already names exactly one option (its SKU, or its
+    // full label) counts as picking it, without opening the list.
+    function exactMatch(text) {
+      var t = text.trim().toLowerCase();
+      if (!t) return null;
+      var hits = products.filter(function (p) { return p.sku.toLowerCase() === t || label(p).toLowerCase() === t; });
+      return hits.length === 1 ? hits[0] : null;
+    }
+
+    input.addEventListener('input', function () {
+      hidden.value = '';
+      input.setCustomValidity('');
+      renderMenu(input.value);
+    });
+    input.addEventListener('focus', function () { renderMenu(hidden.value ? '' : input.value); });
+    input.addEventListener('click', function () { if (!menu.classList.contains('open')) renderMenu(hidden.value ? '' : input.value); });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' && !menu.classList.contains('open')) {
+        e.preventDefault();
+        renderMenu(input.value);
+        return;
+      }
+      if (!menu.classList.contains('open')) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActive(Math.min(activeIndex + 1, currentMatches.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (currentMatches[activeIndex]) select(currentMatches[activeIndex]);
+      } else if (e.key === 'Escape') {
+        closeMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.ac-combo-option');
+      if (!opt) return;
+      e.preventDefault();
+      var p = currentMatches[parseInt(opt.dataset.index, 10)];
+      if (p) select(p);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!combo.contains(e.target)) closeMenu();
+    });
+
+    input.addEventListener('blur', function () {
+      window.setTimeout(function () {
+        if (hidden.value) return;
+        var p = exactMatch(input.value);
+        if (p) select(p);
+      }, 150);
+    });
+
+    // Never post free text: without a real pick, point at the field.
+    form.addEventListener('submit', function (e) {
+      if (!hidden.value) {
+        var p = exactMatch(input.value);
+        if (p) select(p);
+      }
+      if (!hidden.value) {
+        e.preventDefault();
+        input.setCustomValidity(input.value.trim()
+          ? 'Pick a product from the list (search by name or SKU).'
+          : 'Choose a product to add.');
+        input.reportValidity();
+      }
+    });
+  })();
+</script>
 {% endblock %}

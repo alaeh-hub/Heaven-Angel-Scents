@@ -157,7 +157,9 @@ def _get_low_stock(args, ctx):
         "FROM branch_inventory bi "
         "JOIN branches b ON bi.branch_id = b.branch_id "
         "JOIN products p ON bi.sku = p.sku "
-        "WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level"
+        "WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level "
+        # Same rule as the Low Stock page: BULK isn't restocked by request.
+        "AND p.unit <> 'BULK'"
     )
     params = []
     if branch_ids is not None:

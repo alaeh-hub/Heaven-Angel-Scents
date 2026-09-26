@@ -117,6 +117,7 @@
     Export the current catalog, edit it in a spreadsheet, then import it back — a row whose
     product code + unit already exists updates that product's name/variant/price; a new
     combination adds it to the catalog with zero stock everywhere, same as adding one by hand.
+    Unit can be a bottle size or BULK (a BULK row is added as Bulk/Refill).
     A new size for a code that already has other sizes on file takes that product's existing
     name and variant, so a typo in one row can't rename it differently across its own sizes.
   </p>
@@ -148,10 +149,12 @@
 <div class="card mt-24">
   <div class="card-header">
     <h2>All Products</h2>
-    <span class="hint" id="catalogCount">{{ catalog|length }} SKU{{ 's' if catalog|length != 1 }}</span>
+    {% set sku_total = catalog|map(attribute='base_code')|unique|list|length %}
+    <span class="hint" id="catalogCount">{{ sku_total }} SKU{{ 's' if sku_total != 1 }}</span>
   </div>
   {% if catalog %}
-  <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU">
+  <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU"
+    data-count-distinct>
     <div class="table-toolbar">
       <div class="table-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -189,13 +192,13 @@
         <tbody>
           {% for p in catalog %}
           <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
-            data-unit="{{ p.unit }}">
+            data-unit="{{ p.unit }}" data-count-key="{{ p.base_code }}">
             <td data-label="Item" class="mobile-inline-anchor">
               <div class="item-thumb-row">
                 {{ m.product_thumb(p.image_path, p.item_name) }}
                 <div>
                   <div class="item-name">{{ p.item_name }}</div>
-                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ 'Bulk/Refill' if p.unit == 'BULK' else p.unit }}</span></div>
+                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ 'Bulk' if p.unit == 'BULK' else p.unit }}</span></div>
                   <div class="item-sub item-sub-badge">
                     {{ m.variant_badge(p.variant) }}
                   </div>
@@ -203,7 +206,7 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
-            <td class="mono text-soft mobile-fold" data-label="Unit">{{ 'Bulk/Refill' if p.unit == 'BULK' else p.unit }}</td>
+            <td class="mono text-soft mobile-fold" data-label="Unit" style="white-space:nowrap;">{{ 'Bulk' if p.unit == 'BULK' else p.unit }}</td>
             <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
             <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
             <td data-label="" class="mobile-inline-action">

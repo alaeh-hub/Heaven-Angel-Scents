@@ -25,8 +25,8 @@ const STEPS = [
 /**
  * Sticky intro on the left, steps on the right. A gold rail fills as the
  * visitor reads down the steps, so progress through the process is
- * visible at a glance. No 3D scene here: the bottles already carry the
- * hero and the fragrance-notes section right above this one.
+ * visible at a glance. Sits right after the packages and the earnings
+ * estimate, since it answers "what happens after I click Inquire?".
  */
 export default function Steps() {
   const listRef = useRef(null);

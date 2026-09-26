@@ -5,7 +5,7 @@
 {% block heading %}Welcome, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack">
+<div class="grid grid-3 stack stat-grid-highlight">
   <div class="card stat-tile">
     <div class="stat-label">Branches</div>
     <div class="stat-value">{{ stats.branch_count }}</div>
@@ -23,7 +23,7 @@
   </div>
 </div>
 
-<div class="grid grid-4 stack">
+<div class="grid grid-4 stack stat-grid-highlight">
   <div class="card stat-tile">
     <div class="stat-label">Total capital</div>
     <div class="stat-value">{{ financials.capital|peso }}</div>
@@ -37,6 +37,7 @@
   <div class="card stat-tile">
     <div class="stat-label">Total revenue</div>
     <div class="stat-value accent">{{ financials.revenue|peso }}</div>
+    {{ m.trend(financials.revenue_trend, 'this month vs. same time last month') }}
     <div class="stat-foot">{{ financials.branch_sales_revenue|peso }} branches &middot; {{
       financials.package_sales_revenue|peso }} packages</div>
   </div>

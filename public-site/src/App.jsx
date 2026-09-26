@@ -1,5 +1,7 @@
 import { Route, Routes, useLocation } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
+import BackToTop from './components/BackToTop.jsx';
+import { InquiryProvider } from './components/InquiryProvider.jsx';
 import { ToastProvider } from './components/Toasts.jsx';
 import { useGlowPointer } from './hooks/useGlowPointer.js';
 import { EASE_OUT } from './motion.js';
@@ -36,26 +38,29 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <AnimatePresence mode="wait" initial={false} onExitComplete={() => window.scrollTo(0, 0)}>
-        <motion.div
-          key={pageLocation.pathname}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.35, ease: EASE_OUT } }}
-          exit={{ opacity: 0, transition: { duration: 0.2, ease: 'easeIn' } }}
-        >
-          <Routes location={pageLocation}>
-            <Route path={LIST} element={<PackagesPage />} />
-            <Route path={DETAIL} element={<PackageDetailPage />} />
-            <Route path={PRODUCTS} element={<ProductsPage />} />
-            <Route path="*" element={<p style={{ padding: 40 }}>That page doesn&apos;t exist.</p>} />
+      <InquiryProvider>
+        <AnimatePresence mode="wait" initial={false} onExitComplete={() => window.scrollTo(0, 0)}>
+          <motion.div
+            key={pageLocation.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.35, ease: EASE_OUT } }}
+            exit={{ opacity: 0, transition: { duration: 0.2, ease: 'easeIn' } }}
+          >
+            <Routes location={pageLocation}>
+              <Route path={LIST} element={<PackagesPage />} />
+              <Route path={DETAIL} element={<PackageDetailPage />} />
+              <Route path={PRODUCTS} element={<ProductsPage />} />
+              <Route path="*" element={<p style={{ padding: 40 }}>That page doesn&apos;t exist.</p>} />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
+        <BackToTop />
+        {background && (
+          <Routes>
+            <Route path={DETAIL} element={<DetailDialog />} />
           </Routes>
-        </motion.div>
-      </AnimatePresence>
-      {background && (
-        <Routes>
-          <Route path={DETAIL} element={<DetailDialog />} />
-        </Routes>
-      )}
+        )}
+      </InquiryProvider>
     </ToastProvider>
   );
 }

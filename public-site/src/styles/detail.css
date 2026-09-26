@@ -547,6 +547,9 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  /* Top-aligned, so a field with help text under it doesn't stretch its
+     neighbour's input to match. */
+  align-items: start;
 }
 
 @media (max-width: 520px) {
@@ -626,4 +629,230 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ============================================ summary: earnings, unit */
+
+.summary-unit {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-earn {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: var(--r-inner);
+  background: var(--surface-sunk);
+}
+
+.summary-earn > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-earn dt {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.summary-earn dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-earn-profit dt {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.summary-earn-profit dd {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--gold-ink);
+}
+
+/* ============================================= mobile inquire bar */
+
+/* Phones and tablets only (the price card is pinned beside the content
+   on desktop). Fixed to the bottom edge: of the screen on the
+   standalone page, of the sheet inside the package sheet (its transform
+   makes it the containing block). */
+.detail-bar {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .detail-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
+    background: var(--glass-strong);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 -1px 0 var(--hairline);
+  }
+
+  /* Room at the end of the page, so the bar never covers the last lines. */
+  .detail {
+    padding-bottom: 96px;
+  }
+}
+
+.detail-bar > div {
+  min-width: 0;
+}
+
+.detail-bar-price {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-bar-name {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ================================== inquiry: contact method, success */
+
+.contact-pref {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.contact-pref legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.contact-pref-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.contact-pref-option {
+  position: relative;
+  isolation: isolate;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.contact-pref-option:has(input:checked) {
+  color: var(--ink);
+}
+
+.contact-pref-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.contact-pref-option:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.contact-pref-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.contact-pref-label {
+  position: relative;
+}
+
+/* Phones: the five options share the row equally instead of wrapping. */
+@media (max-width: 520px) {
+  .contact-pref-options {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .contact-pref-option {
+    padding: 8px 4px;
+    text-align: center;
+    font-size: 14px;
+  }
+}
+
+.inquiry-ref {
+  font-size: 15px;
+}
+
+.inquiry-ref strong {
+  margin-left: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--gold-soft);
+  color: var(--gold-ink);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.inquiry-next {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.inquiry-next li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.inquiry-next-mark {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
 }

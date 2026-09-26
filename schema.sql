@@ -710,6 +710,7 @@ CREATE TABLE IF NOT EXISTS partner_inquiries (
     email                     VARCHAR(120) NULL,
     address                   VARCHAR(255) NULL,
     message                   VARCHAR(500) NULL,
+    preferred_contact         ENUM('Call', 'SMS', 'Viber', 'Email') NULL,
     remarks                   TEXT NULL,
     package_name_snapshot     VARCHAR(180) NOT NULL,
     order_amount              DECIMAL(12, 2) NULL,
@@ -2060,3 +2061,32 @@ DELIMITER ;
 
 CALL _migrate_qty_used_unit_and_stock_precision();
 DROP PROCEDURE _migrate_qty_used_unit_and_stock_precision;
+
+-- ----------------------------------------------------------------------------
+-- 40. Migration: partner_inquiries.preferred_contact
+--
+--     How the inquirer would like HQ to reach them, picked on the portal's
+--     inquiry form (optional, so NULL means "no preference"). General
+--     inquiries sent from the portal without a package reuse this table
+--     as-is: package_id is already NULL-able, package_name_snapshot reads
+--     "General inquiry" and order_amount stays NULL. Guarded and re-run
+--     safe like every other step in this file.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_partner_inquiries_preferred_contact()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries'
+              AND column_name = 'preferred_contact'
+    ) THEN
+        ALTER TABLE partner_inquiries
+            ADD COLUMN preferred_contact ENUM('Call', 'SMS', 'Viber', 'Email') NULL AFTER message;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_partner_inquiries_preferred_contact();
+DROP PROCEDURE _migrate_partner_inquiries_preferred_contact;

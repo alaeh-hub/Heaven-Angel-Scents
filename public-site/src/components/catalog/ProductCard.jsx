@@ -13,8 +13,11 @@ const bottle = { rest: { scale: 1, y: 0, rotate: 0 }, hover: { scale: 1.07, y: -
 const glow = { rest: { opacity: 0, scale: 0.7 }, hover: { opacity: 1, scale: 1 } };
 const sizes = { rest: { opacity: 0.75, y: 2 }, hover: { opacity: 1, y: 0 } };
 
-/** One scent in the catalog grid. forwardRef for AnimatePresence. */
-const ProductCard = forwardRef(function ProductCard({ product }, ref) {
+/**
+ * One scent in the catalog grid. forwardRef for AnimatePresence.
+ * `onAsk` opens the general inquiry form about this scent.
+ */
+const ProductCard = forwardRef(function ProductCard({ product, onAsk }, ref) {
   return (
     <motion.article
       ref={ref}
@@ -37,6 +40,11 @@ const ProductCard = forwardRef(function ProductCard({ product }, ref) {
         <motion.p className="product-card-sizes" variants={sizes} transition={SPRING}>
           {product.sizes.map((s) => (s === 'BULK' ? 'Bulk' : s.replace('ML', ' ml'))).join(', ')}
         </motion.p>
+      )}
+      {onAsk && (
+        <button type="button" className="product-card-ask" onClick={onAsk}>
+          Ask about this scent
+        </button>
       )}
     </motion.article>
   );

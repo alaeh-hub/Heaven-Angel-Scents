@@ -9,6 +9,28 @@
   </div>
   {% endmacro %}
 
+  {# Up/down percentage badge for a stat tile. `pct` comes from
+     utils.percent_change(); None (no baseline to compare against)
+     renders nothing. #}
+  {% macro trend(pct, comparison) %}
+  {% if pct is not none %}
+  {% set direction = 'up' if pct > 0 else ('down' if pct < 0 else 'flat') %}
+  <div class="stat-trend stat-trend-{{ direction }}">
+    <span class="stat-trend-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+        stroke-linejoin="round" aria-hidden="true">
+        {% if direction == 'up' %}<path d="M12 19V5M5 12l7-7 7 7" />
+        {% elif direction == 'down' %}<path d="M12 5v14M19 12l-7 7-7-7" />
+        {% else %}<path d="M5 12h14" />{% endif %}
+      </svg>
+      <span class="sr-only">{{ {'up': 'Up', 'down': 'Down', 'flat': 'No change,'}[direction] }}</span>
+      {{ '%.1f'|format(pct|abs) }}%
+    </span>
+    <span class="stat-trend-label">{{ comparison }}</span>
+  </div>
+  {% endif %}
+  {% endmacro %}
+
   {% macro status_badge(status) %}
   {% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
   <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
@@ -101,7 +123,8 @@
   'update_inquiry_status': 'Inquiry Updated',
   'update_inquiry_remarks': 'Remarks Updated',
   'approve_ai_stock_request': 'AI Draft Approved',
-  'reject_ai_stock_request': 'AI Draft Rejected'
+  'reject_ai_stock_request': 'AI Draft Rejected',
+  'clear_all_data': 'All Data Cleared'
   } %}
 
   {{ map.get(action, action|replace('_', ' ')|capitalize) }}
