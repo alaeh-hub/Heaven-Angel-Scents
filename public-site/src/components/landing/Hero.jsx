@@ -13,10 +13,13 @@ const jump = (id) => (e) => { if (scrollToSection(id)) e.preventDefault(); };
 
 const LEDE = 'Curated bundles for distributors and resellers, below our regular list prices.';
 
-/** Phones: seconds the whole hero sequence takes when it plays by itself. */
-const AUTOPLAY_S = 10;
+/** Phones: seconds the scene takes when it plays by itself. */
+const AUTOPLAY_S = 7;
 /** Phones: start anyway if the scene hasn't drawn by then (slow load, no WebGL). */
 const AUTOPLAY_FALLBACK_MS = 2500;
+/** Seconds the offer takes to wipe in on load, and how long it waits first. */
+const INTRO_S = 1.4;
+const INTRO_DELAY_S = 0.25;
 
 /**
  * 0..1 across [from, to] of the scroll. Mapped in a function on purpose:
@@ -45,35 +48,31 @@ function useWipe(t) {
   return { maskImage: mask, WebkitMaskImage: mask };
 }
 
-/** One headline word, wiped in over [from, to] of the scroll. */
-function ScrollWord({ progress, from, to, children }) {
+/** One headline word, wiped in over [from, to] of the intro. */
+function WipeWord({ progress, from, to, children }) {
   const wipe = useWipe(useSpan(progress, from, to));
   return <motion.span className="wipe-word" style={wipe}>{children}</motion.span>;
 }
 
 /**
- * The opening scene. The hero pins for under one extra screen of
- * scrolling (180vh, see .hero-pin), and the offer and its CTA are fully
- * in place by about 60% of it, i.e. roughly half a screen of scrolling
- * in; the rest is a short hold so the copy can be read before the
- * packages scroll up. It plays like a film strip scrubbed by the scroll:
+ * The opening scene. The offer (headline, lede, buttons) is there from
+ * the first second: it wipes in on load, on a short clock of its own,
+ * beside the scene rather than after it, so a partner opening a shared
+ * link knows what the page is before they scroll at all.
+ *
+ * The scene is what the scroll plays. On desktop the hero pins for a
+ * little over half an extra screen (160vh, see .hero-pin) and scrubs it
+ * like a film strip:
  *   on load    golden angel wings unfurl under a halo (PerfumeScene)
- *   0.00-0.40  the scene plays: the wings beat and dissolve into streams
- *              of light that build Uriel H1 and Raphael A3, while the
- *              halo splits into the rings of their two lit platforms
- *   0.06-0.16  the wordmark wipes in beneath it
- *   0.30-0.44  the scene moves aside, the wordmark recedes
- *   0.38-0.50  the headline wipes in word by word, left to right
- *   0.48-0.60  the lede, then the buttons, wipe in the same way
- *   0.58-0.75  a gold glow rises from below
- * On phones the same timeline plays by itself over AUTOPLAY_S seconds as
- * soon as the scene has loaded, and the hero doesn't pin (see .hero-pin):
- * the scene, logo and copy sit in one normal, non-overlaid column (see
- * .hero-scene-wrap etc. at max-width: 900px) — the scene stays full size
- * throughout instead of shrinking aside, and the copy simply follows
- * underneath once it's done, rather than overlaid at a fixed spot that a
- * tall headline could spill past. Under reduced motion none of this
- * runs: see HeroStatic.
+ *   0.00-0.85  the wings beat and dissolve into streams of light that
+ *              build Uriel H1 and Raphael A3, while the halo splits into
+ *              the rings of their two lit platforms
+ *   0.03-0.08  the brand line over the scene fades away
+ *   0.60-0.95  a gold glow rises from below
+ * On phones the hero doesn't pin (see .hero-pin): the scene sits above
+ * the copy in one normal column and plays by itself over AUTOPLAY_S
+ * seconds once it has loaded. Under reduced motion none of this runs:
+ * see HeroStatic.
  */
 function HeroPinned() {
   const ref = useRef(null);
@@ -89,11 +88,11 @@ function HeroPinned() {
     return narrowRef.current ? byTime : byScroll;
   });
 
-  const scene = useSpan(p, 0, 0.4);
+  const scene = useSpan(p, 0, 0.85);
   const [sceneReady, setSceneReady] = useState(false);
 
-  // Phones: play the timeline once the scene is on screen (or after the
-  // fallback delay, so the copy always arrives).
+  // Phones: play the scene once it is on screen (or after the fallback
+  // delay, so a slow or missing scene never holds anything up).
   const [autoStart, setAutoStart] = useState(false);
   useEffect(() => {
     if (!narrow) return undefined;
@@ -106,42 +105,35 @@ function HeroPinned() {
     return () => run.stop();
   }, [narrow, sceneReady, autoStart, clock]);
 
-  const capsIn = useSpan(p, 0.03, 0.08);
-  const caps = useTransform(capsIn, (v) => 1 - v);
-  const logoIn = useSpan(p, 0.06, 0.16);
-  const logoOut = useSpan(p, 0.26, 0.34);
-  const logoOpacity = useTransform(logoOut, (v) => 1 - v);
-  const logoScale = useTransform(() => 0.96 + 0.04 * logoIn.get() - 0.2 * logoOut.get());
-  const logoWipe = useWipe(logoIn);
+  // The offer's own clock: runs once on load, whatever the scroll does.
+  const intro = useMotionValue(0);
+  useEffect(() => {
+    const run = animate(intro, 1, { duration: INTRO_S, delay: INTRO_DELAY_S, ease: 'linear' });
+    return () => run.stop();
+  }, [intro]);
 
-  // Desktop only: the scene shrinks and slides aside to make room for the
-  // copy beside it. On phones the copy sits below the scene instead (see
-  // the CSS), so the scene just stays put at full size.
-  const stageX = useTransform(p, [0.3, 0.44], ['0vw', '-24vw']);
-  const stageScale = useTransform(p, [0.3, 0.44], [1, 0.82]);
+  const capsOut = useSpan(p, 0.03, 0.08);
+  const caps = useTransform(capsOut, (v) => 1 - v);
 
-  const ledeWipe = useWipe(useSpan(p, 0.48, 0.55));
-  const ctaWipe = useWipe(useSpan(p, 0.53, 0.6));
-  const ctaEvents = useTransform(p, (v) => (v > 0.55 ? 'auto' : 'none'));
-  const glow = useSpan(p, 0.58, 0.75);
+  const ledeWipe = useWipe(useSpan(intro, 0.45, 0.75));
+  const ctaWipe = useWipe(useSpan(intro, 0.65, 1));
+  const glow = useSpan(p, 0.6, 0.95);
 
   const words = HEADLINE.split(' ');
+  const wordStep = 0.45 / words.length;
 
   return (
     <section className="hero-pin" id="top" ref={ref}>
       <div className="hero-stage">
         {/* Desktop: the glow fills the stage itself, outside the scene's
-            box, which shrinks and slides aside (inside it, the glow's
-            edges showed as a rectangle once it moved). */}
+            box, which sits off to one side (inside it, the glow's edges
+            showed as a rectangle). */}
         {!narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
         {/* Scoped to the scene's own box (not the whole stage), so on
-            phones — where the stage grows taller than one screen to fit
-            the logo and copy below — the glow and eyebrow stay pinned to
-            the scene instead of stretching down the whole section. */}
-        <motion.div
-          className="hero-scene-wrap"
-          style={narrow ? undefined : { x: stageX, scale: stageScale }}
-        >
+            phones, where the stage grows taller than one screen to fit
+            the copy below, the glow and brand line stay pinned to the
+            scene instead of stretching down the whole section. */}
+        <div className="hero-scene-wrap">
           {narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
 
           {/* Outer fades in on load; inner fades out with the scroll. */}
@@ -165,15 +157,6 @@ function HeroPinned() {
               <PerfumeScene progress={scene} onReady={() => setSceneReady(true)} />
             </Suspense>
           </motion.div>
-        </motion.div>
-
-        <div className="hero-logo-wrap" aria-hidden="true">
-          <motion.img
-            src="/static/img/logo-wordmark.png"
-            alt=""
-            className="hero-logo"
-            style={{ opacity: logoOpacity, scale: logoScale, ...logoWipe }}
-          />
         </div>
 
         <div className="hero-copy-wrap">
@@ -182,13 +165,13 @@ function HeroPinned() {
               <h1 className="hero-title" aria-label={HEADLINE}>
                 {words.map((word, i) => (
                   <span key={i} aria-hidden="true">
-                    <ScrollWord progress={p} from={0.38 + i * 0.016} to={0.43 + i * 0.016}>{word}</ScrollWord>
+                    <WipeWord progress={intro} from={i * wordStep} to={i * wordStep + 0.2}>{word}</WipeWord>
                     {i < words.length - 1 && ' '}
                   </span>
                 ))}
               </h1>
               <motion.p className="lede" style={ledeWipe}>{LEDE}</motion.p>
-              <motion.div className="hero-ctas" style={{ ...ctaWipe, pointerEvents: ctaEvents }}>
+              <motion.div className="hero-ctas" style={ctaWipe}>
                 <motion.a href="#packages" onClick={jump('packages')} className="btn btn-primary" whileTap={{ scale: 0.97 }}>
                   View packages
                 </motion.a>

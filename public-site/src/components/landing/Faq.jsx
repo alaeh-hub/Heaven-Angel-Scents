@@ -4,7 +4,6 @@ import { ArrowRightIcon, PlusIcon } from '@phosphor-icons/react';
 import { useSite } from '../InquiryProvider.jsx';
 import { EASE_OUT, SPRING } from '../../motion.js';
 import Reveal from '../Reveal.jsx';
-import BlurText from '../BlurText.jsx';
 
 const FAQS = [
   ["What's the difference between a Distributor and a Reseller?",
@@ -26,7 +25,7 @@ const FAQS = [
 function FaqItem({ question, answer, open, onToggle }) {
   const id = useId();
   return (
-    <div className="faq-item glow-card glow-fill">
+    <div className="faq-item">
       <button type="button" className="faq-q" aria-expanded={open} aria-controls={id} onClick={onToggle}>
         <span>{question}</span>
         <motion.span animate={{ rotate: open ? 45 : 0 }} transition={SPRING} style={{ display: 'inline-flex' }}>
@@ -59,7 +58,7 @@ export default function Faq() {
       <div className="container faq-inner">
         <Reveal className="section-head">
           <div className="eyebrow">FAQ</div>
-          <BlurText className="title-xl" text="Questions, answered." />
+          <h2 className="title-xl">Questions, answered.</h2>
           <p className="lede">The questions partners ask most, before that first inquiry.</p>
         </Reveal>
         <Reveal className="faq-list" amount={0.15}>

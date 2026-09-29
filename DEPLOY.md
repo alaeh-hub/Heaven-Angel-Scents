@@ -47,6 +47,15 @@ cd ..
 
 Until it's built, the portal URLs answer 503 with a message saying so.
 
+Videos in `static/video/` are gitignored, except the two web-sized clips
+the portal plays (`behind-the-scent.mp4`, `black_background_web.mp4`).
+Copy the rest (`logo_reveal.mp4`, `login_background.mp4`) to the server
+by hand, or the admin intro and login screen play nothing:
+
+```bash
+scp static/video/logo_reveal.mp4 static/video/login_background.mp4     <user>@<server>:/opt/heaven-and-angel/static/video/
+```
+
 ## 3. Database
 
 ```bash

@@ -97,9 +97,15 @@ export default function DotField({ className = '' }) {
     ro.observe(host);
 
     let pointer = null; // {x, y} in the canvas's own CSS px, null when the cursor is elsewhere
+    let visible = false;
     const onMove = (e) => {
       const rect = host.getBoundingClientRect();
       pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      // The loop sleeps while the grid is at rest (see tick); wake it.
+      if (visible && !frame) {
+        last = 0;
+        tick(performance.now());
+      }
     };
     const onLeave = () => { pointer = null; };
     host.addEventListener('pointermove', onMove);
@@ -161,6 +167,16 @@ export default function DotField({ className = '' }) {
       }
       ctx.fill();
 
+      // Pointer gone and every dot back at rest: the frame just drawn is
+      // the resting grid, so stop until the pointer returns instead of
+      // repainting an unchanging canvas every frame.
+      if (!pointer && !active.length && dots.every((d) => Math.abs(d.x - d.rx) < 0.05 && Math.abs(d.y - d.ry) < 0.05)) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        last = 0;
+        return;
+      }
+
       for (let i = 0; i < active.length; i += 2) {
         const d = active[i];
         const glow = active[i + 1];
@@ -176,6 +192,7 @@ export default function DotField({ className = '' }) {
     };
 
     const io = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
       if (entry.isIntersecting && !frame) {
         last = 0;
         tick(performance.now());

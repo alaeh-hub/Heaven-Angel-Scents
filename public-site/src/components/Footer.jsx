@@ -36,8 +36,8 @@ const span = (v, from, to) => clamp01((v - from) / (to - from));
 /**
  * The site footer, as a sticky reveal: it sits still under the page
  * (z-index -1, sticky to the bottom edge) and the content above it
- * slides up to uncover it, while the footer itself fades, rises, scales
- * up and sharpens in step with how much of it is uncovered (useScroll
+ * slides up to uncover it, while the footer itself fades, rises and
+ * scales up in step with how much of it is uncovered (useScroll
  * over its own box, 0 as its top reaches the bottom of the screen, 1 at
  * the very end of the page).
  *
@@ -93,13 +93,12 @@ export default function Footer({ children }) {
     return clamp01((v * viewport) / footer);
   });
   // Mapped through functions on purpose: given plain ranges, Motion can
-  // hand opacity/filter to the browser's native scroll timeline, which
+  // hand opacity to the browser's native scroll timeline, which
   // measures differently from the transforms (same issue as the hero's
   // useSpan). This way every value follows the one progress above.
   const opacity = useTransform(uncovered, (v) => span(v, 0, 0.7));
   const scale = useTransform(uncovered, (v) => 0.94 + 0.06 * v);
   const y = useTransform(uncovered, (v) => 48 * (1 - v));
-  const filter = useTransform(uncovered, (v) => `blur(${(8 * (1 - span(v, 0, 0.8))).toFixed(2)}px)`);
 
   const onLanding = pathname === packagesPath(slug);
   const phone = site?.contact?.phone || FOOTER.phone;
@@ -122,7 +121,7 @@ export default function Footer({ children }) {
         <motion.div
           key={reveal ? 'reveal' : 'static'}
           className="footer-body"
-          style={reveal ? { opacity, scale, y, filter } : undefined}
+          style={reveal ? { opacity, scale, y } : undefined}
         >
           <div className="container">
             <div className="footer-grid">

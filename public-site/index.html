@@ -9,9 +9,13 @@
   <title>Business Partners · Heaven &amp; Angel Scents</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/icon.svg">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/img/icon_180.png">
-  <!-- Above-the-fold product shots, fetched alongside the app bundle. -->
-  <link rel="preload" as="image" href="/static/img/hero-perfume-male.png">
-  <link rel="preload" as="image" href="/static/img/hero-perfume-female.png">
+  <!-- The hero scene's bottle labels (textures in PerfumeScene), fetched
+       alongside the app bundle so the first frame isn't waiting on them.
+       crossorigin matches three.js's TextureLoader (it requests images in
+       anonymous CORS mode); without it the browser can't reuse these and
+       downloads each label a second time. -->
+  <link rel="preload" as="image" href="/static/img/scene-label-uriel.jpg" crossorigin="anonymous">
+  <link rel="preload" as="image" href="/static/img/scene-label-raphael.jpg" crossorigin="anonymous">
 </head>
 
 <body>

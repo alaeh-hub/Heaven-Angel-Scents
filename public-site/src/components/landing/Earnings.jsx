@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import { peso, plural } from '../../utils.js';
 import AnimatedNumber from '../AnimatedNumber.jsx';
-import BlurText from '../BlurText.jsx';
 import Reveal from '../Reveal.jsx';
 
 const MIN_SETS = 1;
@@ -39,7 +38,7 @@ export default function Earnings({ packages }) {
     <section className="section" id="earnings">
       <div className="container earn-grid">
         <Reveal className="earn-controls">
-          <BlurText className="title-xl" text="See what you'd earn." />
+          <h2 className="title-xl">See what you&apos;d earn.</h2>
           <p className="lede">Pick a package and how many sets. Profit is estimated at our regular list price.</p>
 
           <div className="field">
@@ -79,7 +78,7 @@ export default function Earnings({ packages }) {
           </div>
         </Reveal>
 
-        <Reveal className="earn-panel glow-card" delay={0.1}>
+        <Reveal className="earn-panel" delay={0.1}>
           <dl>
             <div className="earn-row">
               <dt>You pay</dt>

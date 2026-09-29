@@ -217,12 +217,12 @@
 /* =============================================================== hero */
 
 /* The tall section is the scroll distance; the stage pins to the
-   viewport while the opening scene plays (see Hero.jsx). Kept short so
-   the offer and its button arrive after about half a screen. */
+   viewport while the opening scene plays (see Hero.jsx). The offer is
+   already on screen, so this only has to be long enough for the scene. */
 .hero-pin {
   position: relative;
   z-index: 1;
-  height: 180vh;
+  height: 160vh;
   margin-top: calc(var(--nav-h) * -1);
   background: #000;
 }
@@ -272,7 +272,9 @@
   display: grid;
   place-items: center;
   padding-top: var(--nav-h);
-  will-change: transform;
+  /* Desktop: aside from the first frame, making room for the copy on
+     the right (reset to the centre in the phone layout below). */
+  transform: translateX(-24vw) scale(0.82);
 }
 
 .hero-scene {
@@ -301,22 +303,6 @@
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.hero-logo-wrap {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 7dvh;
-  z-index: 2;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.hero-logo {
-  height: clamp(44px, 6vw, 76px);
-  width: auto;
 }
 
 .hero-copy-wrap {
@@ -360,6 +346,9 @@
   align-items: center;
   gap: 12px 24px;
   margin-top: 6px;
+  /* The copy layer ignores the pointer so the scene stays hoverable;
+     the buttons opt back in. */
+  pointer-events: auto;
 }
 
 /* Light rising from below, added over the scene rather than painted on
@@ -378,9 +367,8 @@
 
 @media (max-width: 900px) {
   /* The hero plays by itself here (see Hero.jsx), so it doesn't pin or
-     overlay everything into one screen: the scene, logo and copy stack
-     as plain, normal-flow content instead, each simply below the last —
-     so nothing is clipped or crowded off-screen if the copy runs tall,
+     overlay everything into one screen: the scene and copy stack as
+     plain, normal-flow content instead, one below the other, so nothing is clipped or crowded off-screen if the copy runs tall,
      and the section is just as long as what's actually in it. */
   .hero-pin {
     height: auto;
@@ -404,6 +392,7 @@
     position: relative;
     inset: auto;
     padding-top: 0;
+    transform: none;
   }
 
   .hero-scene {
@@ -415,13 +404,7 @@
     top: 4px;
   }
 
-  .hero-logo-wrap {
-    position: relative;
-    inset: auto;
-    padding: 28px 0 4px;
-  }
-
-  /* On phones the copy simply follows the logo, in flow. */
+  /* On phones the copy simply follows the scene, in flow. */
   .hero-copy-wrap {
     position: relative;
     inset: auto;
@@ -570,6 +553,15 @@
 
 .segmented-label {
   position: relative;
+}
+
+/* Narrow phones: tighter tabs, so all three options fit on screen
+   instead of the last one sliding out of view. */
+@media (max-width: 400px) {
+  .segmented-item {
+    padding: 0 13px;
+    font-size: 14px;
+  }
 }
 
 .pkg-grid {
@@ -776,12 +768,6 @@
   max-width: 40ch;
 }
 
-/* The best discount, called out inside the packages lede. */
-.lede-accent {
-  color: var(--gold-ink);
-  font-weight: 600;
-}
-
 /* ======================================================== collection */
 
 .collection {
@@ -833,18 +819,35 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+/* Touch screens and reduced motion: a still row the visitor swipes
+   through, snapping tile by tile, each scent shown once (the second
+   track and the repeats only exist to make the marquee loop). */
+@media (prefers-reduced-motion: reduce), (hover: none) {
   .marquee {
     overflow-x: auto;
     mask-image: none;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--gutter);
+    padding-inline: var(--gutter);
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .marquee::-webkit-scrollbar {
+    display: none;
   }
 
   .marquee-track {
     animation: none;
   }
 
-  .marquee-track[aria-hidden="true"] {
+  .marquee-track[aria-hidden="true"],
+  .bottle-tile[data-repeat] {
     display: none;
+  }
+
+  .bottle-tile {
+    scroll-snap-align: start;
   }
 }
 
@@ -903,33 +906,42 @@
   transform: none;
 }
 
+/* No hover: the name is always shown, so the bottle sits a little
+   higher to leave it a clear strip below the lit platform, and a long
+   name wraps to two lines at most. Tiles are narrower on phones so the
+   next one peeks in, which says "swipe" without a label. */
 @media (hover: none) {
+  .bottle-tile {
+    width: min(62vw, 240px);
+  }
+
+  .bottle-tile img {
+    top: 3%;
+    height: 78%;
+  }
+
   .bottle-tile-name {
+    bottom: 12px;
     opacity: 1;
     transform: none;
+    font-size: 14px;
+    line-height: 1.3;
     color: var(--ink-2);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
 }
 
 /* ============================================================== steps */
 
-.steps-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: clamp(40px, 6vw, 96px);
-  align-items: start;
-}
-
-.steps-intro {
-  position: sticky;
-  top: calc(var(--nav-h) + 48px);
-  display: grid;
-  gap: 16px;
-}
-
+/* Desktop: a horizontal timeline, the rail running through the markers
+   above each step. Phones: the same rail turned vertical, down the left. */
 .steps-list {
   position: relative;
-  padding-left: 36px;
+  padding-top: 52px;
 }
 
 .steps-list ol {
@@ -937,16 +949,17 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: clamp(56px, 8vw, 110px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(32px, 5vw, 72px);
 }
 
 .steps-rail,
 .steps-rail-fill {
   position: absolute;
-  left: 11px;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
+  top: 11px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
   border-radius: 2px;
 }
 
@@ -956,48 +969,73 @@
 
 .steps-rail-fill {
   background: var(--gold);
-  transform-origin: 50% 0;
+  transform-origin: 0 50%;
   box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 70%, transparent);
 }
 
 .step {
   position: relative;
   display: grid;
+  align-content: start;
   gap: 10px;
 }
 
 .step-icon {
   position: absolute;
-  left: -36px;
-  top: 0;
+  left: 0;
+  top: -52px;
   display: inline-grid;
   place-items: center;
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: var(--bg-alt);
+  background: var(--bg);
   color: var(--gold-ink);
 }
 
 .step h3 {
-  font-size: clamp(24px, 2.4vw, 32px);
+  font-size: clamp(22px, 2.2vw, 28px);
   letter-spacing: -0.03em;
 }
 
 .step p {
   color: var(--ink-2);
-  max-width: 44ch;
+  max-width: 36ch;
   font-size: 17px;
 }
 
-
-@media (max-width: 860px) {
-  .steps-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 900px) {
+  .steps-list {
+    padding-top: 0;
+    padding-left: 36px;
   }
 
-  .steps-intro {
-    position: static;
+  .steps-list ol {
+    grid-template-columns: 1fr;
+    gap: clamp(48px, 10vw, 72px);
+  }
+
+  .steps-rail,
+  .steps-rail-fill {
+    top: 6px;
+    bottom: 6px;
+    left: 11px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+
+  .steps-rail-fill {
+    transform-origin: 50% 0;
+  }
+
+  .step-icon {
+    left: -36px;
+    top: 0;
+  }
+
+  .step p {
+    max-width: 44ch;
   }
 }
 
@@ -1272,16 +1310,47 @@
 
 /* ============================================================== about */
 
-.about-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(40px, 6vw, 96px);
-  align-items: start;
+.about-head .lede {
+  max-width: 60ch;
 }
 
-.about-story {
+/* Photos get the wider share; the facts sit beside them, centred on
+   the pair's height. */
+.about-body {
   display: grid;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: clamp(40px, 6vw, 96px);
+  align-items: center;
+}
+
+/* The portrait overlaps the landscape's lower right corner, so the pair
+   reads as one composition rather than two tiles. */
+.about-media {
+  position: relative;
+  padding: 0 clamp(40px, 8%, 88px) clamp(56px, 12%, 120px) 0;
+}
+
+.about-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--r-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.about-photo-main {
+  aspect-ratio: 4 / 3;
+}
+
+.about-photo-detail {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 38%;
+  aspect-ratio: 4 / 5;
+  outline: 6px solid var(--bg);
 }
 
 .about-points {
@@ -1305,7 +1374,6 @@
 }
 
 .about-point-icon {
-  transition: box-shadow 0.4s var(--ease-out);
   display: inline-grid;
   place-items: center;
   width: 48px;
@@ -1313,10 +1381,6 @@
   border-radius: var(--r-inner);
   background: var(--gold-soft);
   color: var(--gold-ink);
-}
-
-.about-point:hover .about-point-icon {
-  box-shadow: 0 0 0 4px var(--gold-soft), 0 8px 24px -8px color-mix(in srgb, var(--gold) 70%, transparent);
 }
 
 .about-point h3 {
@@ -1330,8 +1394,8 @@
   font-size: 16px;
 }
 
-@media (max-width: 860px) {
-  .about-grid {
+@media (max-width: 900px) {
+  .about-body {
     grid-template-columns: 1fr;
   }
 }
@@ -1345,21 +1409,9 @@
 
 /* ===================================================== scent journey */
 
-/* The tall section is the scroll distance; the stage inside pins to the
-   viewport while the three layers play out across it. */
+/* An ordinary section: the layers are picked with the tabs, not
+   scrubbed by a pinned scroll. */
 .journey {
-  position: relative;
-  z-index: 1;
-  height: 220vh;
-  background: var(--bg);
-}
-
-.journey-stage {
-  position: sticky;
-  top: 0;
-  height: 100dvh;
-  display: flex;
-  align-items: center;
   overflow: clip;
 }
 
@@ -1401,7 +1453,7 @@
 }
 
 .journey-tab:hover,
-.journey-tab[aria-current="true"] {
+.journey-tab[aria-selected="true"] {
   color: var(--ink);
 }
 
@@ -1446,6 +1498,28 @@
   font-size: 17px;
 }
 
+/* Each scent's notes for the layer: name above, notes below. */
+.journey-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  margin: 10px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.journey-notes dt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.journey-notes dd {
+  margin: 2px 0 0;
+  font-weight: 550;
+  color: var(--ink);
+}
+
 .journey-visual {
   position: relative;
   justify-self: center;
@@ -1479,7 +1553,7 @@
   white-space: nowrap;
 }
 
-/* Above the two caps, and centred in the floor's reflection below. */
+/* Above the two caps: Uriel H1 on the left, Raphael A3 on the right. */
 .journey-note-0 {
   top: 4%;
   left: 2%;
@@ -1490,43 +1564,36 @@
   right: 2%;
 }
 
-.journey-note-2 {
-  bottom: 5%;
-  left: 50%;
-  /* `translate`, not `transform`: Motion owns the transform. */
-  translate: -50% 0;
-}
-
 @media (max-width: 900px) {
-  .journey {
-    height: 300vh;
-  }
-
   .journey-grid {
     grid-template-columns: 1fr;
     gap: 8px;
   }
 
-  /* Bottle on top, story below, all inside one screen. */
+  /* Bottles on top, story below. */
   .journey-visual {
     order: -1;
-    width: min(100%, 36dvh);
-  }
-
-  .journey-lede {
-    display: none;
+    width: min(100%, 48dvh);
   }
 
   .journey-copy {
     gap: 12px;
   }
 
+  /* Full width, three equal tabs: the bar lines up with the column
+     edges at any phone width instead of stopping short (or, on the
+     narrowest phones, running into the edge), and each tab is a
+     comfortable tap target. */
   .journey-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-self: stretch;
     margin-top: 4px;
   }
 
   .journey-tab {
-    padding: 0 12px;
+    height: 44px;
+    padding: 0 6px;
     font-size: 14px;
   }
 
@@ -1570,11 +1637,6 @@
   color: var(--ink-2);
 }
 
-.journey-static-list .journey-notes-inline {
-  font-weight: 550;
-  color: var(--ink);
-}
-
 @media (max-width: 760px) {
   .journey-static-list {
     grid-template-columns: 1fr;
@@ -1600,6 +1662,44 @@
 
 .collection-cta-links .link-arrow {
   white-space: nowrap;
+}
+
+/* Phones: one block that fills the column. The main button runs full
+   width; "For him" and "For her" sit under it as two equal outlined
+   pills, each a comfortable tap target, instead of loose text links
+   trailing off to one side. */
+@media (max-width: 640px) {
+  .collection-ctas {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .collection-ctas .btn {
+    width: 100%;
+  }
+
+  .collection-cta-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .collection-cta-links .link-arrow {
+    justify-content: center;
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-strong);
+    /* Solid, so the section's dot grid doesn't show through the pill. */
+    background: var(--bg);
+    font-size: 15px;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .collection-cta-links .link-arrow:active {
+    border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+    background: var(--gold-soft);
+  }
 }
 
 /* ======================================================= stats band */
@@ -1682,15 +1782,36 @@
   font-weight: 600;
 }
 
+/* Phones: one row per figure, number left and label right, so any
+   count of figures stacks evenly (a two-column grid left the third one
+   alone beside an empty cell). */
 @media (max-width: 640px) {
   .stats-band {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .stats-item,
   .stats-item + .stats-item {
-    padding: 22px 16px 0 0;
+    padding: 18px 0;
     border-left: 0;
+  }
+
+  .stats-item + .stats-item {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .stats-item dd {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 20px;
+  }
+
+  .stats-value {
+    font-size: 30px;
+  }
+
+  .stats-label {
+    text-align: right;
   }
 }
 

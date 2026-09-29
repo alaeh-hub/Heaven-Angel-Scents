@@ -6,12 +6,11 @@ import { fetchProducts } from '../../api.js';
 import { productsPath } from '../../utils.js';
 import { productImage } from '../ProductVisual.jsx';
 import Reveal from '../Reveal.jsx';
-import BlurText from '../BlurText.jsx';
 import DotField from './DotField.jsx';
 
 const FALLBACK = [
-  ['/static/img/hero-perfume-male.png', "Men's fragrance"],
-  ['/static/img/hero-perfume-female.png', "Women's fragrance"],
+  ['/static/img/hero-perfume-male.webp', "Men's fragrance"],
+  ['/static/img/hero-perfume-female.webp', "Women's fragrance"],
 ];
 /** Enough tiles that one track is wider than the widest screen. */
 const MIN_TILES = 8;
@@ -21,19 +20,23 @@ function fill(items) {
   return Array.from({ length: Math.max(MIN_TILES, items.length) }, (_, i) => items[i % items.length]);
 }
 
+/** The shelf's tiles, plus how many of them are distinct scents (the
+    rest are repeats that only exist to keep the marquee seamless). */
+const shelf = (items) => ({ tiles: fill(items), unique: items.length });
+
 /**
  * The shelf shows the real catalog (first page), each scent with its own
  * photo once one is uploaded (see ProductVisual). Until the request
  * lands, or if it fails, it shows the two signature renders.
  */
 function useShelf(slug) {
-  const [tiles, setTiles] = useState(() => fill(FALLBACK));
+  const [tiles, setTiles] = useState(() => shelf(FALLBACK));
   useEffect(() => {
     const controller = new AbortController();
     fetchProducts(slug, { page: 1 }, controller.signal)
       .then((data) => {
         const items = (data?.products || []).map((p) => [productImage(p), p.item_name]);
-        if (items.length) setTiles(fill(items));
+        if (items.length) setTiles(shelf(items));
       })
       .catch(() => {});
     return () => controller.abort();
@@ -44,19 +47,21 @@ function useShelf(slug) {
 /**
  * The one marquee on the page: a slow, continuous shelf of the
  * catalog's scents. Pauses on hover, where the bottle under the pointer
- * lifts and shows its name; under reduced motion it becomes a
- * still, swipeable row instead. Sits over its own interactive dot
+ * lifts and shows its name. On touch screens (nothing to hover, so no
+ * way to pause it or pick a bottle) and under reduced motion it becomes
+ * a still row the visitor swipes through instead, each scent shown once
+ * (see the CSS). Sits over its own interactive dot
  * grid (DotField), lit by the cursor only within this section.
  */
 export default function Collection() {
   const { slug } = useParams();
-  const tiles = useShelf(slug);
+  const { tiles, unique } = useShelf(slug);
   return (
     <section className="section collection" id="collection">
       <DotField className="collection-dots" />
       <div className="container">
         <Reveal className="section-head">
-          <BlurText className="title-xl" text="The collection." />
+          <h2 className="title-xl">The collection.</h2>
           <p className="lede">Men's and women's signatures, each bottled at 85 ml.</p>
           <div className="collection-ctas">
             <motion.div whileTap={{ scale: 0.97 }}>
@@ -81,7 +86,7 @@ export default function Collection() {
         {[0, 1].map((copy) => (
           <div key={copy} className="marquee-track" aria-hidden={copy === 1 ? 'true' : undefined}>
             {tiles.map(([src, alt], i) => (
-              <div className="bottle-tile glow-card" key={i}>
+              <div className="bottle-tile glow-card" key={i} data-repeat={i >= unique || undefined}>
                 <img src={src} alt={copy === 1 ? '' : alt} loading="lazy" />
                 {/* Revealed under the lifted bottle on hover (the strip
                     pauses), so the shelf can be browsed by name. */}

@@ -5,8 +5,8 @@ import { motion } from 'motion/react';
 // uploaded on the admin Products page, every product without one shows
 // the men's or women's bottle render matching its gender; unisex scents
 // alternate between the two (stable per name, so a product never flips).
-const MALE = '/static/img/hero-perfume-male.png';
-const FEMALE = '/static/img/hero-perfume-female.png';
+const MALE = '/static/img/hero-perfume-male.webp';
+const FEMALE = '/static/img/hero-perfume-female.webp';
 
 function hash(text) {
   let h = 0;

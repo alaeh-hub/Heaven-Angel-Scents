@@ -6,9 +6,20 @@
 // making scents, what makes the formulations different) before sharing
 // the portal link. Keep `lede` to about 2 sentences and each point body
 // to about 25 words so the layout keeps its rhythm.
+//
+// TODO(content): `photos` are PLACEHOLDER slots too. Drop real photos in
+// static/img/ and point `src` at them (WebP or JPG, about 1600px on the
+// long side). `main` shows large and landscape (4:3), e.g. the bottles on
+// a partner's shelf or the blending room; `detail` is a smaller portrait
+// (4:5) that overlaps its corner, e.g. hands, ingredients or the team.
+// Write `alt` as what the photo actually shows.
 
 export const ABOUT = {
   title: 'About Heaven & Angel Scents.',
+  photos: {
+    main: { src: '/static/img/placeholder-photo.svg', alt: 'Photo placeholder' },
+    detail: { src: '/static/img/placeholder-photo.svg', alt: 'Photo placeholder' },
+  },
   lede:
     'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante venenatis dapibus, posuere velit aliquet.',
   points: [

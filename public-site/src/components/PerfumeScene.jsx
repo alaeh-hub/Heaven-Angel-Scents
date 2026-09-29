@@ -85,6 +85,21 @@ const QUALITY = [
   { dpr: 1.25, transmission: 0.5, dof: false },
   { dpr: 1, transmission: 0.5, dof: false },
 ];
+/** Rendered frames the average needs before it may step down (≈ 1/3 s at 60 Hz). */
+const SLOW_STREAK = 20;
+/** Averages this slow (≈ 20 fps) skip a tier: one step wouldn't be enough. */
+const VERY_SLOW_FRAME_MS = 50;
+
+/**
+ * The tier the device has settled on so far, shared by every scene on
+ * the page (the hero's and the notes section's), so the second scene
+ * starts where the first one landed instead of re-learning it, with the
+ * stutter and the render-target rebuilds that come with each step.
+ * Touch devices start two steps down: a phone's GPU at 1.75x with depth
+ * of field is almost always too slow, and every step down taken while
+ * the visitor scrolls is a visible hitch.
+ */
+let sharedTier = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 2 : 0;
 
 /* Turntable timing, exactly as in prototype/turntable/*.html. */
 const SPIN = (Math.PI * 2) / 10; // one full turn every 10 s
@@ -1467,9 +1482,10 @@ export default function PerfumeScene({
     } catch {
       return undefined;
     }
-    // Quality steps, dropped one at a time (never raised again, so it
-    // can't oscillate) when the frame rate sags while the scene is moving.
-    let tier = 0;
+    // Quality steps, dropped (never raised again, so it can't oscillate)
+    // when the frame rate sags while the scene is moving. Starts from the
+    // tier the page has already settled on (see sharedTier).
+    let tier = sharedTier;
     let dirty = true;
     const view = buildScene(renderer, () => { dirty = true; }, { variant, tones: tonesRef.current ?? [] });
     const applyTier = () => {
@@ -1539,8 +1555,9 @@ export default function PerfumeScene({
       if (last && tier < QUALITY.length - 1) {
         avg += (dt - avg) * 0.1;
         streak += 1;
-        if (streak > 45 && avg > SLOW_FRAME_MS) {
-          tier += 1;
+        if (streak > SLOW_STREAK && avg > SLOW_FRAME_MS) {
+          tier = Math.min(QUALITY.length - 1, tier + (avg > VERY_SLOW_FRAME_MS ? 2 : 1));
+          sharedTier = Math.max(sharedTier, tier);
           applyTier();
           resize();
           streak = 0;
