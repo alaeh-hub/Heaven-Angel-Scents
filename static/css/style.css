@@ -86,7 +86,18 @@
   --shadow-md: 0 2px 6px rgb(20 17 10 / 0.05), 0 20px 44px -20px rgb(20 17 10 / 0.24);
   --shadow-lg: 0 30px 80px -24px rgb(20 17 10 / 0.32), 0 6px 18px rgb(20 17 10 / 0.08);
   --sidebar-w: 16.5rem;
-  --sidebar-w-collapsed: 5.25rem;
+  /* Every rail icon sits on one fixed column centred 2.25rem from the
+     sidebar's content edge, in both states, so collapsing only hides
+     text and never slides an icon sideways. The rail is exactly twice
+     that column, plus the scrollbar gutter reserved on each side
+     (--sidebar-gutter, measured by main.js's initSidebarGutter()) and
+     .sidebar's 1px right border. */
+  --sidebar-w-collapsed: calc(4.5rem + 2 * var(--sidebar-gutter, 0.5rem) + 1px);
+  /* Shared expand/collapse timing for the rail's width. Text on the rail
+     only ever fades (never resizes): out fast with no delay, back in
+     after a short delay once the rail has mostly widened. */
+  --sidebar-dur: 0.32s;
+  --sidebar-ease: cubic-bezier(0.32, 0.72, 0, 1);
 
   color-scheme: light;
 }
@@ -414,7 +425,8 @@ th.num {
      padding value elsewhere keeps centering correctly regardless of
      the real scrollbar width on whatever browser renders it. */
   scrollbar-gutter: stable both-edges;
-  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--sidebar-dur) var(--sidebar-ease),
+    box-shadow var(--sidebar-dur) var(--sidebar-ease);
 }
 
 /* Icon-only rail at rest, expanding to full width on hover or
@@ -446,6 +458,26 @@ th.num {
 @media (min-width: 761px) {
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) {
     width: var(--sidebar-w-collapsed);
+  }
+
+  /* Unpinned, the rail only ever takes up its collapsed width in the
+     layout and expands *over* the page instead of pushing it. Letting
+     it push meant every frame of the width animation re-laid out the
+     whole page (tables, charts, ...), which is what made hover-expand
+     stutter. Pinned keeps the in-flow sticky sidebar above. */
+  html:not(.sidebar-pinned) .app-shell {
+    padding-left: var(--sidebar-w-collapsed);
+  }
+
+  html:not(.sidebar-pinned) .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 30;
+  }
+
+  html:not(.sidebar-pinned) .sidebar:is(:hover, :focus-within) {
+    box-shadow: 0.5rem 0 2rem -0.5rem rgba(0, 0, 0, 0.18);
   }
 }
 
@@ -522,6 +554,12 @@ th.num {
    true center by half that gap.) */
 .sidebar .brand-top {
   justify-content: center;
+  position: relative;
+  /* Holds the header at the wordmark's full rendered height (its
+     9.375rem max-width x logo-wordmark.svg's 8000x4493 aspect) in both
+     states, so the collapsed rail's much shorter 38px icon doesn't pull
+     every nav icon below it upward when the sidebar shrinks. */
+  min-height: calc(9.375rem * 4493 / 8000);
 }
 
 /* Icon-only mark (icon.svg — the same gold "&" mark as the
@@ -553,8 +591,19 @@ th.num {
      slightly-misaligned ring around the real one. */
   max-width: 0;
   opacity: 0;
-  transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.07s ease;
+  transition: opacity 0.1s ease;
+}
+
+/* In the sidebar the icon mark is taken out of flow and parked on the
+   rail's icon column (centre 2.25rem from the content edge = 1.375rem
+   .brand padding - 0.3125rem + half its 2.375rem width), so it neither
+   shifts the centred wordmark nor moves when the rail collapses. */
+.sidebar .brand-logo {
+  position: absolute;
+  left: -0.3125rem;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 2.375rem;
 }
 
 .brand-logo img {
@@ -589,8 +638,7 @@ th.num {
   height: auto;
   max-width: 9.375rem;
   flex-shrink: 0;
-  transition: max-width 0.18s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    opacity 0.14s ease 0.05s;
+  transition: opacity 0.2s ease 0.1s;
 }
 
 /* Login hero panel's larger rendering — same reasoning as the old
@@ -620,9 +668,7 @@ th.num {
   max-height: 1.375rem;
   /* Same reveal choreography as .brand-wordmark just above: slow + delayed
      coming out, fast + immediate going in (collapsed-rail rule below). */
-  transition: max-height 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    opacity 0.14s ease 0.05s,
-    margin-top 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s;
+  transition: opacity 0.2s ease 0.1s;
 }
 
 .brand-sub-text {
@@ -670,34 +716,6 @@ th.num {
    max-width: 760px block below), which this never reaches. */
 @media (min-width: 761px) {
 
-  /* Centers the 38px logo box in the collapsed rail via animatable
-     padding rather than justify-content: center on .brand-top below —
-     justify-content is a keyword with no animation defined for it at
-     all, so it used to flip the logo to centered-in-the-still-wide-
-     sidebar the instant the collapse started, then let it drift left as
-     the rail caught up, reading as "everything jumps toward the right
-     edge first".
-
-     calc(50% - 19px), not a fixed 23px: 23px assumed the full 84px rail
-     is always available, but .sidebar's own scrollbar-gutter: stable
-     both-edges (see its rule) reserves gutter space symmetrically
-     *inside* that rail before .brand ever gets a content box to pad —
-     and browsers size that reservation off the platform's real
-     scrollbar width (often 15-17px), not the slimmer width the
-     ::-webkit-scrollbar rules below give it visually. A fixed 23px
-     padding-left then no longer matches the narrower box .brand
-     actually renders into, so the logo drifted right by the gutter's
-     width instead of sitting centered. Percentage padding resolves
-     against .brand's real (possibly gutter-shrunk) box on every frame,
-     so it centers the 38px logo correctly either way. */
-  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand {
-    padding-left: calc(50% - 1.1875rem);
-    padding-right: calc(50% - 1.1875rem);
-    /* Fast + immediate (hide direction) — see the base .brand rule for
-       the slower, delayed reveal-direction transition this overrides. */
-    transition: padding 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
   /* Reverses .brand-logo's own default-hidden state — see its comment
      above. Same fast timing in both directions: unlike the wordmark/
      text elements (asymmetric on purpose — see their own comments),
@@ -708,24 +726,19 @@ th.num {
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-logo {
     max-width: 2.375rem;
     opacity: 1;
-    transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.07s ease;
+    transition: opacity 0.2s ease 0.1s;
   }
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-wordmark {
-    max-width: 0;
     opacity: 0;
-    transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.07s ease;
+    transition: opacity 0.1s ease;
   }
 
+  /* Fades only — keeps its height and margin so the nav below stays
+     at the same vertical position as in the expanded sidebar. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-sub {
-    max-height: 0;
     opacity: 0;
-    margin-top: 0;
-    transition: max-height 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.07s ease,
-      margin-top 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.1s ease;
   }
 }
 
@@ -763,9 +776,7 @@ th.num {
   max-height: 1.75rem;
   /* Same slow+delayed-out/fast+immediate-in choreography as the brand
      wordmark above — see the collapsed-rail rule further down. */
-  transition: max-height 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    opacity 0.13s ease 0.05s,
-    padding 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s;
+  transition: opacity 0.2s ease 0.1s;
 }
 
 .nav-link {
@@ -779,6 +790,11 @@ th.num {
   font-weight: 500;
   margin-bottom: 2px;
   position: relative;
+  /* Labels never wrap; main.js wraps each one in .nav-text (below),
+     which clips it as the rail narrows. The link itself must NOT clip
+     (no overflow: hidden here) or it cuts off the .nav-badge count
+     sitting on the icon's corner in the collapsed rail. */
+  white-space: nowrap;
   /* The label after the <svg> is a raw text node (see base.html), so it
      can't be faded via opacity independently of the icon — font-size is
      the only lever that reaches it, but transitioning it (instead of
@@ -794,9 +810,7 @@ th.num {
      specificity, so this rule (later in the file, same specificity)
      would otherwise silently replace that one instead of adding to it —
      losing the hover/active background fade entirely. */
-  transition: padding 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.02s,
-    font-size 0.14s ease 0.04s,
-    background 0.15s ease, border-color 0.15s ease,
+  transition: background 0.15s ease, border-color 0.15s ease,
     color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
@@ -805,6 +819,13 @@ th.num {
    of the row — without this, a long enough label could run under it.
    Reserves space for it up front instead. Collapsed rail doesn't need
    the same guard: font-size: 0 there empties the label out regardless. */
+/* Shrinks with the rail and clips its own text, so collapsing wipes
+   the label away without reflowing anything or clipping the badge. */
+.nav-text {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .nav-link:has(.nav-badge) {
   padding-right: 2.125rem;
 }
@@ -931,33 +952,11 @@ th.num {
    rail without lingering long enough to trigger the hover-expand. */
 @media (min-width: 761px) {
 
+  /* Fades only, keeping its height — collapsing it too would shift
+     every icon below it up relative to the expanded sidebar. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-label {
-    max-height: 0;
     opacity: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    transition: max-height 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.06s ease,
-      padding 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* calc(50% - 16px) centers the 32px collapsed icon box in whatever
-     .nav-group's real content width is, via animatable padding rather
-     than justify-content: center — see the .brand comment above for
-     why: justify-content can't be animated at all, so it used to snap
-     the icon to centered-in-the-still-wide-sidebar the instant the rail
-     started collapsing, well before the width itself had caught up. A
-     fixed left/right (14px, assuming a ~60px row) drifted off-center
-     the same way .brand's fixed padding did: see the .brand comment
-     above for why .sidebar's scrollbar-gutter reservation makes that
-     assumption wrong. Percentage padding resolves against .nav-link's
-     real box on every frame instead, so it centers correctly either
-     way. */
-  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link {
-    padding: 0.5rem calc(50% - 1rem);
-    font-size: 0;
-    transition: padding 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      font-size 0.07s ease;
+    transition: opacity 0.1s ease;
   }
 
   /* The active link's row-wide accent-soft wash (and the left accent
@@ -972,26 +971,12 @@ th.num {
      other icon on the rail never getting an extra card around it. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link.active {
     background: transparent;
-    transition: padding 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      font-size 0.07s ease, background 0.08s ease;
+    transition: background 0.1s ease;
   }
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link.active::before {
     opacity: 0;
     transition: opacity 0.08s ease;
-  }
-
-  /* A bit bigger at rest (see the comment on the base .nav-link svg
-     rule above) — the rail has nothing else to draw the eye, so a
-     slightly larger icon fills it better than the same size it is
-     next to a label. */
-  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-link svg {
-    width: 1.125rem;
-    height: 1.125rem;
-    padding: 0.4375rem;
-    transition: width 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      height 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      padding 0.09s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-badge {
@@ -1026,7 +1011,10 @@ th.num {
   align-items: center;
   gap: 0.625rem;
   margin-bottom: 0.625rem;
-  padding: 0.5625rem 0.625rem;
+  /* 0.25rem left (not 0.625rem) puts the avatar's centre on the rail's
+     icon column: 0.875rem footer padding + 1px border + 0.25rem +
+     half its 2.125rem width = 2.25rem. */
+  padding: 0.5625rem 0.625rem 0.5625rem 0.25rem;
   border-radius: 0.875rem;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1044,6 +1032,7 @@ th.num {
 }
 
 .avatar {
+  flex-shrink: 0;
   width: 2.125rem;
   height: 2.125rem;
   border-radius: 50%;
@@ -1080,8 +1069,7 @@ th.num {
   white-space: nowrap;
   opacity: 1;
   max-width: 10rem;
-  transition: max-width 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    opacity 0.13s ease 0.05s;
+  transition: opacity 0.2s ease 0.1s;
 }
 
 .logout-link {
@@ -1109,7 +1097,10 @@ th.num {
   display: flex;
   align-items: center;
   gap: 0.5625rem;
-  padding: 0.4688rem 0.5rem;
+  /* 0.75rem left puts the icon's centre on the rail's icon column:
+     0.875rem footer padding - 2px margin + 0.75rem + half its 1.5rem
+     box = 2.25rem. */
+  padding: 0.4688rem 0.5rem 0.4688rem 0.75rem;
   margin: 0 -2px;
   border-radius: 0.625rem;
   font-size: 0.7813rem;
@@ -1126,8 +1117,7 @@ th.num {
      specificity, so this rule (later in the file, same specificity)
      would otherwise silently replace that one instead of adding to it —
      losing the hover background fade entirely. */
-  transition: padding 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    background 0.15s ease, border-color 0.15s ease,
+  transition: background 0.15s ease, border-color 0.15s ease,
     color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
@@ -1155,8 +1145,7 @@ th.num {
   white-space: nowrap;
   opacity: 1;
   max-width: 8.75rem;
-  transition: max-width 0.16s cubic-bezier(0.4, 0, 0.2, 1) 0.03s,
-    opacity 0.14s ease 0.05s;
+  transition: opacity 0.2s ease 0.1s;
 }
 
 .footer-action svg {
@@ -1211,22 +1200,10 @@ th.num {
    above for the transition) and center the icon instead. */
 @media (min-width: 761px) {
 
-  /* calc(50% - 18px) centers the 34px avatar (plus its 1px border on
-     each side) in whatever .sidebar-footer's real content width is —
-     with no gutter reservation in play that resolves to the same 10px
-     the base rule already uses (10 + 1 + 34 + 1 + 10 = 56), which is
-     why an explicit override felt unnecessary here before. But fixed
-     10px padding drifts off-center exactly like .brand's fixed padding
-     did once .sidebar's scrollbar-gutter reservation shrinks the real
-     box below that assumed 56px — see the .brand comment above for the
-     fuller explanation. Deliberately not using justify-content: center
-     the way earlier versions did: that's a keyword with no defined
-     animation, so it snapped the avatar to centered-in-the-still-wide-
-     sidebar the instant collapse started rather than easing with the
-     rest of the rail. */
+  /* Avatar stays put (see .user-chip's padding comment); only the
+     right padding goes so the card fits the rail. */
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .user-chip {
-    padding-left: calc(50% - 1.125rem);
-    padding-right: calc(50% - 1.125rem);
+    padding-right: 0;
     /* The chip's own card look (background + border) only makes sense
        around the name/role text next to the avatar — with that text
        gone, a bordered box this narrow just reads as an ill-fitting
@@ -1247,49 +1224,119 @@ th.num {
   }
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .user-chip>div:not(.avatar) {
-    max-width: 0;
     opacity: 0;
-    transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.07s ease;
-  }
-
-  /* calc(50% - 12px) centers the 28px collapsed icon box (footer-action's
-     margin: 0 -2px widens its own rendered box by 2px past .sidebar-
-     footer's content edge on each side, folded into that -12px) in
-     whatever .sidebar-footer's real content width is, via animatable
-     padding — not justify-content: center, for the same reason as
-     .brand/.nav-link above: that's a keyword with no defined animation,
-     so it snapped the icon to centered-in-the-still-wide-sidebar the
-     instant collapse started. A fixed 16px (assuming a 60px row) drifts
-     off-center the same way .brand's fixed padding did once .sidebar's
-     scrollbar-gutter reservation shrinks the real box below that — see
-     the .brand comment above for the fuller explanation. */
-  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action {
-    padding: 0.4688rem calc(50% - 0.75rem);
-    transition: padding 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.1s ease;
   }
 
   html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action span {
-    max-width: 0;
     opacity: 0;
-    transition: max-width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 0.07s ease;
+    transition: opacity 0.1s ease;
   }
 
-  /* Same "bare icon reads bigger" bump as .nav-link svg above. */
-  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action svg {
-    width: 1rem;
-    height: 1rem;
-    padding: 0.375rem;
-    transition: width 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      height 0.09s cubic-bezier(0.4, 0, 0.2, 1),
-      padding 0.09s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
+/* Expand/collapse motion for the rail's text and logo — transform and
+   opacity only, so none of it triggers layout. Expanding, each piece of
+   text slides in from the left and fades up, staggered top to bottom by
+   --i (set per nav label/link by main.js's initSidebarNavTooltips(),
+   capped so long menus don't lag). Collapsing, everything leaves at
+   once, fast, so nothing is still visible while the rail narrows. The
+   icon mark and full wordmark cross-fade with a small scale, the mark
+   with a slight spring. Declared after every per-element rule above so
+   these transitions win at equal specificity. */
+.sidebar .nav-text,
+.sidebar .nav-label,
+.sidebar .brand-sub,
+.sidebar .user-chip>div:not(.avatar),
+.sidebar .footer-action span {
+  --reveal-delay: calc(0.08s + var(--i, 0) * 0.018s);
+  transition: opacity 0.22s ease var(--reveal-delay),
+    transform 0.34s var(--sidebar-ease) var(--reveal-delay);
+}
+
+.sidebar .sidebar-footer {
+  --i: 4;
+}
+
+.sidebar .brand-wordmark {
+  transition: opacity 0.24s ease 0.1s,
+    transform 0.4s var(--sidebar-ease) 0.1s;
+}
+
+.sidebar .brand-logo {
+  transform: translateY(-50%) scale(0.6) rotate(-25deg);
+  transition: opacity 0.1s ease, transform 0.15s ease;
+}
+
+@media (min-width: 761px) {
+
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-text,
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .nav-label,
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-sub,
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .user-chip>div:not(.avatar),
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .footer-action span {
+    opacity: 0;
+    transform: translateX(-0.5rem);
+    transition: opacity 0.1s ease, transform 0.12s ease;
+  }
+
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-wordmark {
+    transform: scale(0.85);
+    transition: opacity 0.1s ease, transform 0.12s ease;
+  }
+
+  html:not(.sidebar-pinned) .sidebar:not(:hover):not(:focus-within) .brand-logo {
+    transform: translateY(-50%) scale(1) rotate(0deg);
+    transition: opacity 0.2s ease 0.08s,
+      transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .sidebar,
+  .sidebar * {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }
 
 .main {
   flex: 1;
   min-width: 0;
+  /* Own stacking context so the watermark below (z-index: -1) paints
+     above the page background but under every piece of content. */
+  isolation: isolate;
+}
+
+/* Faint black-and-white brand watermark behind the content area. Fixed
+   so it stays put while pages scroll, and offset by the sidebar's
+   footprint (the collapsed rail at rest, the full width when pinned,
+   nothing on the mobile drawer layout) so it stays centred in the
+   visible content area rather than the whole window. */
+.main::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--watermark-left, 0px);
+  z-index: -1;
+  background: url("../img/logo-wordmark.svg") center / min(34rem, 62%) no-repeat;
+  filter: grayscale(1);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media (min-width: 761px) {
+  html:not(.sidebar-pinned) {
+    --watermark-left: var(--sidebar-w-collapsed);
+  }
+
+  html.sidebar-pinned {
+    --watermark-left: var(--sidebar-w);
+  }
 }
 
 .topbar {
@@ -1592,7 +1639,7 @@ th.num {
    exactly what was happening to the Ledger movement chart and its
    siblings under Edge/Brave's mobile emulation. This mirrors the same
    min-width fix already applied below to the inline-styled grid. */
-.grid > * {
+.grid>* {
   min-width: 0;
 }
 
@@ -1614,7 +1661,7 @@ th.num {
    to a data table). Classic grid/flex min-width:auto gotcha — grid
    items default to a content-based automatic minimum size unless told
    otherwise. */
-.grid[style*="grid-template-columns"] > * {
+.grid[style*="grid-template-columns"]>* {
   min-width: 0;
 }
 
@@ -2059,6 +2106,57 @@ th.num {
   white-space: normal;
 }
 
+/* One line per value, desktop only (the <=680px mobile card layout
+   keeps wrapping). Long text in a .table-fixed table is truncated with
+   an ellipsis instead of wrapping, so a long name/address/email never
+   makes its row taller than the rest (or, in an auto-layout table,
+   stretches the table wider). The full value shows as a tooltip on
+   hover — see main.js's initTruncatedCellTitles().
+
+   Stacked cells (e.g. .item-name over .item-sub) keep their lines, each
+   truncated on its own: nested divs/ps and flex children get the same
+   clip + ellipsis, with min-width: 0 so flex items can actually shrink
+   below their text width.
+
+   Cells holding controls (buttons, inputs, selects, forms) are left
+   alone, since clipping them would hide the control or any dropdown it
+   opens. Date/time cells (td.mono.text-soft) keep wrapping at spaces:
+   they're short and bounded, and cutting off the time would hide data
+   rather than tidy it. */
+@media (min-width: 681px) {
+
+  table.table-fixed>tbody>tr>td:not(:has(button, input, select, textarea, form, .btn, > .badge, > .pk-discount-chip)),
+  table.table-fixed>thead>tr>th:not(:has(button, input, select, .btn)) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+  }
+
+  /* Badge/pill cells are never clipped or ellipsised: a badge is a short
+     bounded label, so a cut-off "Distribu…" hides data rather than tidying
+     it. Tighter side padding lets the pill fit narrow % columns. */
+  table.table-fixed>tbody>tr>td:has(> .badge, > .pk-discount-chip) {
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  table.table-fixed>tbody>tr>td:not(:has(button, input, select, textarea, form, .btn, > .badge, > .pk-discount-chip)) :is(div, p, a, span:not(.badge)) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  table.table-fixed>tbody>tr>td.mono.text-soft {
+    white-space: normal;
+    overflow-wrap: normal;
+  }
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -2207,6 +2305,48 @@ th.num {
      the one variant someone happened to hit this bug on before. */
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* Bottles over bulk mL in one quantity cell (qty_stack macro). */
+.qty-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.25;
+}
+
+.qty-stack>div {
+  max-width: 100%;
+}
+
+.qty-stack-word {
+  font-family: var(--font);
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+
+.qty-stack-sub {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+/* Name + trailing badge in one cell (e.g. "Main Branch [HQ]"): the name
+   ellipsises, the badge never shrinks or clips. */
+.loc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.loc-cell .loc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badge::before {
@@ -2947,7 +3087,7 @@ textarea:focus {
   width: 100%;
 }
 
-.dp > input {
+.dp>input {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -3360,6 +3500,7 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
 }
 
 @media (max-width: 680px) {
+
   /* Flex items shrink by default, and .tab has no white-space rule of
      its own — on a narrow screen that squeezed every tab down until
      multi-word labels ("Follow-up", "On Hold") broke mid-word onto a
@@ -3657,6 +3798,7 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    flex-wrap: wrap;
   }
 
   /* The column(s) .item-sub-badge duplicates — a badge/status/type
@@ -3695,12 +3837,12 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
     align-items: start;
   }
 
-  .table-wrap tr:has(> td.mobile-inline-action) > td.mobile-inline-anchor {
+  .table-wrap tr:has(> td.mobile-inline-action)>td.mobile-inline-anchor {
     grid-row: 1;
     grid-column: 1;
   }
 
-  .table-wrap tr:has(> td.mobile-inline-action) > td:not(.mobile-inline-anchor):not(.mobile-inline-action) {
+  .table-wrap tr:has(> td.mobile-inline-action)>td:not(.mobile-inline-anchor):not(.mobile-inline-action) {
     grid-column: 1 / -1;
   }
 
@@ -3719,7 +3861,7 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
      to overflow sideways instead of wrapping/eliding like a normal
      stacked row does. min-width: 0 lets each cell shrink to the
      column it's actually been given. */
-  .table-wrap tr:has(> td.mobile-inline-action) > td {
+  .table-wrap tr:has(> td.mobile-inline-action)>td {
     min-width: 0;
   }
 
@@ -4079,6 +4221,70 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
    grid hasn't finished settling into its final one-column width yet —
    these rules stop the canvas from ever visually exceeding (or getting
    stuck below) the wrapper regardless of what Chart.js measured. */
+/* HTML legend under a chart (renderChartLegend() in main.js): wrapping
+   chips on desktop, an even 2-column grid on phones. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.375rem 0.5rem;
+  margin-top: 0.875rem;
+}
+
+.chart-legend:empty {
+  display: none;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chart-legend-item[aria-pressed="false"] {
+  opacity: 0.45;
+}
+
+.chart-legend-item[aria-pressed="false"] .chart-legend-label {
+  text-decoration: line-through;
+}
+
+.chart-legend-swatch {
+  flex-shrink: 0;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+}
+
+.chart-legend-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .chart-legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart-legend-item {
+    justify-content: flex-start;
+    border-radius: 0.625rem;
+  }
+}
+
 .chart-canvas-wrap canvas {
   width: 100% !important;
   height: 100% !important;

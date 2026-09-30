@@ -61,7 +61,7 @@ import threading
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, url_for
 from flask_wtf.csrf import generate_csrf
 
-from db import execute, query
+from db import execute, query, transaction
 from extensions import limiter
 from mailer import send_partner_inquiry_email
 from sockets import notify_admin, notify_bell
@@ -540,7 +540,7 @@ def _parse_inquiry(data):
     return fields
 
 
-def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order_amount):
+def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order_amount, items=()):
     """Steps (a)-(d) from the module docstring, shared by both inquiry
     endpoints: save the inquiry, link it to a partner, email HQ off the
     request thread, and ping every open admin tab. Returns the visitor's
@@ -551,16 +551,29 @@ def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order
         source="package inquiry" if package_id else "general inquiry",
     )
 
-    inquiry_id, _ = execute(
-        """INSERT INTO partner_inquiries
-               (package_id, partner_id, partner_type, company_name, contact_person,
-                phone, email, address, message, preferred_contact,
-                package_name_snapshot, order_amount)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (package_id, partner_id, fields["partner_type"], fields["company_name"],
-         fields["contact_person"], fields["phone"], fields["email"], fields["address"],
-         fields["message"], fields["preferred_contact"], package_snapshot, order_amount),
-    )
+    # The inquiry and its package-contents snapshot (partner_inquiry_items,
+    # what Fulfill later takes out of HQ stock) are saved together, so an
+    # inquiry can never exist without the items it was quoted for.
+    with transaction() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO partner_inquiries
+                   (package_id, partner_id, partner_type, company_name, contact_person,
+                    phone, email, address, message, preferred_contact,
+                    package_name_snapshot, order_amount)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (package_id, partner_id, fields["partner_type"], fields["company_name"],
+             fields["contact_person"], fields["phone"], fields["email"], fields["address"],
+             fields["message"], fields["preferred_contact"], package_snapshot, order_amount),
+        )
+        inquiry_id = cur.lastrowid
+        if items:
+            cur.executemany(
+                """INSERT INTO partner_inquiry_items (inquiry_id, sku, item_name, unit, qty, unit_price)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                [(inquiry_id, i["sku"], i["item_name"], i["unit"], i["qty"], i["price"]) for i in items],
+            )
+        cur.close()
 
     # Off the request thread — see _send_inquiry_notification_async()'s
     # docstring above. The inquiry row is already committed at this
@@ -664,14 +677,16 @@ def inquire(slug, package_id):
     # package_name_snapshot itself — see schema.sql's note on
     # partner_inquiries.order_amount for why this only counts once an
     # admin marks the inquiry Closed.
-    item_totals = query(
-        """SELECT COALESCE(SUM(pi.qty * p.price), 0) AS reference_total
+    # The item rows themselves are also snapshotted onto the inquiry
+    # (partner_inquiry_items) — they're what Fulfill takes out of HQ stock.
+    items = query(
+        """SELECT pi.sku, pi.qty, p.item_name, p.unit, p.price
            FROM package_items pi JOIN products p ON p.sku = pi.sku
-           WHERE pi.package_id = %s""",
-        (package_id,), fetchone=True,
+           WHERE pi.package_id = %s ORDER BY p.item_name""",
+        (package_id,),
     )
-    _, order_amount = _package_value(
-        pkg["discount_percent"], item_totals["reference_total"])
+    reference_total = sum((i["qty"] * i["price"] for i in items), decimal.Decimal("0"))
+    _, order_amount = _package_value(pkg["discount_percent"], reference_total)
 
     return _record_inquiry(
         fields,
@@ -679,6 +694,7 @@ def inquire(slug, package_id):
         package_name=pkg["package_name"],
         package_snapshot=f"{pkg['package_name']} ({pkg['discount_percent']}% off)",
         order_amount=order_amount,
+        items=items,
     )
 
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Branch Performance{% endblock %}
 {% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Branch Performance{% endblock %}
@@ -38,9 +39,9 @@
     <div class="stat-foot">branch sales, all-time</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Combined units sold</div>
-    <div class="stat-value">{{ totals.units_sold }}</div>
-    <div class="stat-foot">across every retail branch</div>
+    <div class="stat-label">Combined bottles sold</div>
+    <div class="stat-value">{{ totals.units_sold|int }}</div>
+    <div class="stat-foot">across every retail branch{% if totals.bulk_ml_sold %} · + {{ totals.bulk_ml_sold|int }} mL bulk{% endif %}</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Combined discrepancies</div>
@@ -107,10 +108,10 @@
             <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
             <td class="item-name" data-label="Branch">{{ r.branch_name }}</td>
             <td class="num mono" data-label="Revenue">{{ r.revenue|peso }}</td>
-            <td class="num mono" data-label="Units sold">{{ r.units_sold }}</td>
+            <td class="num mono" data-label="Units sold">{{ m.qty_split(r.units_sold, r.bulk_ml_sold) }}</td>
             <td class="num mono" data-label="Sales">{{ r.sales_count }}</td>
             <td class="num mono {{ 'qty-down' if r.discrepancy_count }}" data-label="Discrepancies">{{ r.discrepancy_count }}</td>
-            <td class="num mono" data-label="Current stock">{{ r.total_stock }}</td>
+            <td class="num mono" data-label="Current stock">{{ m.qty_split(r.total_stock, r.bulk_ml_stock) }}</td>
             <td class="num mono" data-label="Turnover">{{ (r.turnover|string ~ 'x') if r.turnover is not none else '—' }}</td>
           </tr>
           {% endfor %}

@@ -10,6 +10,8 @@ from decorators import branch_required
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
+from sale_stock import apply_sale_stock, void_sale
+from audit import log_action
 from sockets import notify_admin_and_branch, notify_bell
 from utils import (
     BOTTLE_UNITS, PAYMENT_METHODS, base_code_from_sku, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
@@ -108,8 +110,11 @@ def dashboard():
     )
 
     today_sales = query(
-        """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales WHERE branch_id = %s AND DATE(sold_at) = CURDATE()""",
+        """SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku
+           WHERE s.branch_id = %s AND DATE(s.sold_at) = CURDATE()""",
         (bid,), fetchone=True,
     )
 
@@ -141,11 +146,13 @@ def inventory():
         """SELECT p.sku, p.item_name, p.variant, p.unit, p.price, p.image_path,
                   bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s
+           WHERE bi.branch_id = %s AND p.unit <> 'BULK'
            ORDER BY p.item_name""",
         (bid,),
     )
-    # Filter offers bottle sizes only; BULK rows still show under "All units".
+    # Bottles only: branches never stock BULK (Bulk/Refill) — they can't
+    # request it, and a refill doesn't deduct branch stock — so a BULK
+    # row here would only ever read as a meaningless low-stock alert.
     return render_template("branch/inventory.html", rows=rows, unit_choices=BOTTLE_UNITS)
 
 
@@ -671,7 +678,11 @@ def record_sale():
             return redirect(url_for("branch.record_sale"))
 
         if sale_type not in SALE_TYPES:
-            flash("Select whether this is a sale, a refill, or a freebie.", "error")
+            flash("Select whether this is a sale or a freebie.", "error")
+            return redirect(url_for("branch.record_sale"))
+        if sale_type == "Refill":
+            # Refills pour from bulk, and bulk is only ever held at HQ.
+            flash("Refills are only recorded at HQ — branches don't hold bulk stock.", "error")
             return redirect(url_for("branch.record_sale"))
         # Freebie is never actually paid for — payment_method only means
         # something for a real charge (Cash vs. Credit), so it's forced
@@ -701,36 +712,10 @@ def record_sale():
         try:
             with transaction() as conn:
                 cur = conn.cursor(dictionary=True)
-                # Row-lock this branch/SKU for the rest of the transaction.
-                # A second, concurrent sale of the same SKU has to wait
-                # here until this one commits or rolls back, so two
-                # cashiers can no longer both "see" the last unit as
-                # available and both sell it.
-                cur.execute(
-                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
-                    (bid, sku),
-                )
-                stock_row = cur.fetchone()
-                if not stock_row:
-                    cur.close()
-                    flash("That product isn't stocked at this branch.", "error")
-                    return redirect(url_for("branch.record_sale"))
-                # AFTER
-                # See admin.py's record_sale() for the reasoning: a Refill
-                # doesn't draw down countable branch_inventory the way a
-                # Sale does — it's still a real sales row (counts toward
-                # revenue and "today's sales") and still gets its own
-                # ledger entry, just with a zero stock change.
-                is_refill = sale_type == "Refill"
-
-                if not is_refill and stock_row["stock_qty"] < qty:
-                    cur.close()
-                    flash("Not enough stock on hand for that sale.", "error")
-                    return redirect(url_for("branch.record_sale"))
-
-                before_qty = stock_row["stock_qty"]
-                after_qty = before_qty if is_refill else before_qty - qty
-
+                cur.execute("SELECT sku, item_name, unit FROM products WHERE sku = %s", (sku,))
+                product = cur.fetchone()
+                if not product:
+                    raise TransactionAborted("That product no longer exists.")
                 cur.execute(
                     """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
                                           buyer_name, customer_name, customer_address, sold_at)
@@ -738,31 +723,22 @@ def record_sale():
                     (bid, sku, qty, unit_price, sale_type,
                      payment_method, buyer_name, customer_name, customer_address, sold_at),
                 )
-                if not is_refill:
-                    cur.execute(
-                        "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                        (after_qty, bid, sku),
-                    )
-                movement_type = {"Sale": "SALE", "Refill": "REFILL",
-                                  "Freebie": "FREEBIE"}[sale_type]
                 if sale_type == "Freebie":
                     notes = "Freebie / giveaway"
                 else:
                     notes = "Point-of-sale" if payment_method == "Cash" else f"Credit — {buyer_name}"
-                if is_refill:
-                    notes += " · no stock deducted (refill)"
-                cur.execute(
-                    """INSERT INTO stock_movement_logs
-                       (branch_id, sku, change_qty, movement_type, notes,
-                        created_by_user_id, reference_type, before_qty, after_qty)
-                       VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
-                    (bid, sku, 0 if is_refill else -qty, movement_type, notes,
-                     session.get("user_id"), before_qty, after_qty),
-                )
+                # Row-locks this branch/SKU's stock (a concurrent sale of the
+                # same SKU waits), blocks if there isn't enough, deducts and
+                # logs it — see sale_stock.py.
+                apply_sale_stock(cur, sale_id=cur.lastrowid, branch_id=bid, product=product,
+                                 qty=qty, sale_type=sale_type, notes=notes,
+                                 user_id=session.get("user_id"))
                 cur.close()
             notify_admin_and_branch(
                 bid, ["inventory", "sales", "movement_logs"])
             flash(f"{sale_type} recorded.", "success")
+        except TransactionAborted as err:
+            flash(str(err), "error")
         except Exception:
             current_app.logger.exception(
                 "record_sale failed for branch_id=%s sku=%s", bid, sku)
@@ -779,7 +755,7 @@ def record_sale():
         "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
     )["rate_per_ml"]
     recent_sales = query(
-        """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
+        """SELECT s.*, p.item_name, p.unit, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
@@ -877,13 +853,17 @@ def import_sales():
 def sales_history():
     bid = _branch_id()
     sales = query(
-        """SELECT s.*, p.item_name, p.variant FROM sales s JOIN products p ON s.sku = p.sku
+        # voidable: branch staff can void only what was recorded today.
+        """SELECT s.*, p.item_name, p.variant, p.unit, DATE(s.recorded_at) = CURDATE() AS voidable
+           FROM sales s JOIN products p ON s.sku = p.sku
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 200""",
         (bid,),
     )
     totals = query(
-        """SELECT COALESCE(SUM(qty_sold),0) AS units, COALESCE(SUM(qty_sold*unit_price),0) AS revenue
-           FROM sales WHERE branch_id = %s""",
+        """SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END),0) AS units,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END),0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku WHERE s.branch_id = %s""",
         (bid,), fetchone=True,
     )
     return render_template("branch/sales_history.html", sales=sales, totals=totals)
@@ -904,17 +884,20 @@ def customers():
     bid = _branch_id()
     rows = query(
         """SELECT s.customer_name AS name, s.customer_address AS address,
-                  agg.purchase_count, agg.total_units, agg.total_spent, agg.last_purchase_at
+                  agg.purchase_count, agg.total_units, agg.total_bulk_ml, agg.total_spent, agg.last_purchase_at
            FROM (
-               SELECT customer_name,
+               SELECT sa.customer_name,
                       COUNT(*) AS purchase_count,
-                      COALESCE(SUM(qty_sold), 0) AS total_units,
-                      COALESCE(SUM(qty_sold * unit_price), 0) AS total_spent,
-                      MIN(sold_at) AS first_sold_at,
-                      MAX(sold_at) AS last_purchase_at
-               FROM sales
-               WHERE branch_id = %s AND customer_name IS NOT NULL AND customer_name <> ''
-               GROUP BY customer_name
+                      -- Bulk sales store qty_sold in mL: kept apart from bottles.
+                      COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN sa.qty_sold ELSE 0 END), 0) AS total_units,
+                      COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN sa.qty_sold ELSE 0 END), 0) AS total_bulk_ml,
+                      COALESCE(SUM(sa.qty_sold * sa.unit_price), 0) AS total_spent,
+                      MIN(sa.sold_at) AS first_sold_at,
+                      MAX(sa.sold_at) AS last_purchase_at
+               FROM sales sa
+               JOIN products p ON p.sku = sa.sku
+               WHERE sa.branch_id = %s AND sa.customer_name IS NOT NULL AND sa.customer_name <> ''
+               GROUP BY sa.customer_name
            ) agg
            JOIN sales s
              ON s.customer_name = agg.customer_name AND s.sold_at = agg.first_sold_at AND s.branch_id = %s
@@ -946,10 +929,12 @@ def credit_purchases():
     rows = query(
         """SELECT COALESCE(s.buyer_name, bu.username) AS buyer_name,
                   COUNT(*) AS transaction_count,
-                  COALESCE(SUM(s.qty_sold), 0) AS total_units,
+                  COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS total_units,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS total_bulk_ml,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS total_amount,
                   MAX(s.sold_at) AS last_taken_at
            FROM sales s
+           JOIN products p ON p.sku = s.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s AND s.payment_method = 'Credit'
            GROUP BY COALESCE(s.buyer_name, bu.username)
@@ -1029,10 +1014,14 @@ def reports_data():
     """
     bid = _branch_id()
 
+    # Unit figures below count bottles only: a bulk product's qty_sold
+    # (and stock_qty) is mL, which would swamp the bottle counts if added
+    # in. Bulk volume is reported separately as bulk_ml where it matters.
     by_variant = query(
         """SELECT p.variant, COALESCE(SUM(s.qty_sold), 0) AS units_sold
            FROM products p
            LEFT JOIN sales s ON p.sku = s.sku AND s.branch_id = %s
+           WHERE p.unit <> 'BULK'
            GROUP BY p.variant""",
         (bid,),
     )
@@ -1041,17 +1030,17 @@ def reports_data():
     # for the admin page's "units sold by branch" chart, which doesn't
     # make sense when there's only one branch to look at.
     sales_trend = query(
-        """SELECT DATE(sold_at) AS day, COALESCE(SUM(qty_sold), 0) AS units_sold
-           FROM sales
-           WHERE branch_id = %s AND sold_at >= NOW() - INTERVAL 14 DAY
-           GROUP BY DATE(sold_at) ORDER BY day""",
+        f"""SELECT DATE(s.sold_at) AS day, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold
+           FROM sales s JOIN products p ON p.sku = s.sku
+           WHERE s.branch_id = %s AND s.sold_at >= NOW() - INTERVAL 14 DAY
+           GROUP BY DATE(s.sold_at) ORDER BY day""",
         (bid,),
     )
 
     top_products = query(
         """SELECT p.item_name, COALESCE(SUM(s.qty_sold), 0) AS units_sold
            FROM sales s JOIN products p ON s.sku = p.sku
-           WHERE s.branch_id = %s
+           WHERE s.branch_id = %s AND p.unit <> 'BULK'
            GROUP BY p.sku, p.item_name
            ORDER BY units_sold DESC LIMIT 8""",
         (bid,),
@@ -1060,7 +1049,7 @@ def reports_data():
     stock_by_variant = query(
         """SELECT p.variant, COALESCE(SUM(bi.stock_qty), 0) AS total_stock
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s
+           WHERE bi.branch_id = %s AND p.unit <> 'BULK'
            GROUP BY p.variant""",
         (bid,),
     )
@@ -1079,21 +1068,24 @@ def reports_data():
     # Cash sales vs. employee purchases deducted from salary, and plain
     # sales vs. refills — both scoped to this branch only.
     payment_breakdown = query(
-        """SELECT payment_method, COALESCE(SUM(qty_sold), 0) AS units_sold,
-                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales WHERE branch_id = %s GROUP BY payment_method""",
+        f"""SELECT s.payment_method, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku
+           WHERE s.branch_id = %s GROUP BY s.payment_method""",
         (bid,),
     )
     sale_type_breakdown = query(
-        """SELECT sale_type, COALESCE(SUM(qty_sold), 0) AS units_sold,
-                  COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales WHERE branch_id = %s GROUP BY sale_type""",
+        f"""SELECT s.sale_type, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku
+           WHERE s.branch_id = %s GROUP BY s.sale_type""",
         (bid,),
     )
 
     totals = query(
-        """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales WHERE branch_id = %s""",
+        f"""SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku WHERE s.branch_id = %s""",
         (bid,), fetchone=True,
     )
 
@@ -1107,3 +1099,36 @@ def reports_data():
         stock_by_variant=stock_by_variant, movement_trend=movement_trend,
         payment_breakdown=payment_breakdown, sale_type_breakdown=sale_type_breakdown, totals=totals,
     )
+
+
+# ---------------------------------------------------------------- void a sale
+@bp.route("/sales/<int:sale_id>/void", methods=["POST"])
+@branch_required
+def void_sale_route(sale_id):
+    """Branch staff may void their own branch's sales recorded today (a
+    counter mistake); older ones go through HQ. See sale_stock.void_sale()."""
+    bid = _branch_id()
+    back = redirect(url_for("branch.sales_history"))
+    reason = (request.form.get("reason") or "").strip()[:255]
+    if not reason:
+        flash("Give a reason for voiding this sale.", "error")
+        return back
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            sale = void_sale(cur, sale_id=sale_id, reason=reason,
+                             user_id=session.get("user_id"), username=session.get("username"),
+                             branch_id=bid, today_only=True)
+            cur.close()
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return back
+    except Exception:
+        current_app.logger.exception("branch void sale %s failed", sale_id)
+        flash("Couldn't void that sale — please try again.", "error")
+        return back
+    notify_admin_and_branch(bid, ["inventory", "sales", "movement_logs"])
+    log_action("void_sale", target=f"sale #{sale_id} — {sale['item_name']}",
+               details=f"{session.get('branch_name', 'branch')} · {sale['sale_type']} × {sale['qty_sold']} · {reason}"[:255])
+    flash(f"Voided the {sale['sale_type'].lower()} of {sale['item_name']} — its stock was returned.", "success")
+    return back

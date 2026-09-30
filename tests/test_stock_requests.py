@@ -342,3 +342,50 @@ def test_rejecting_an_already_dispatched_request_is_a_no_op(client, sql):
 
     assert resp.status_code == 302
     assert get_request_status(sql, request_id) == "In Transit"
+
+
+
+def test_discrepancies_page_counts_units_from_the_delivery(app, client, sql):
+    """dispatched=4, received 2, 1 damaged -> 1 unaccounted. Damage and
+    shortfall rows are logged with change_qty = 0 (the units never hit
+    branch stock), so the Discrepancies page has to take the units from
+    the delivery line: 1 damaged + 1 short = 2, on 1 delivery."""
+    import re
+
+    branch_id = _signed_in_branch(client, sql)
+    sku = make_product(sql, price="10.00")
+    make_inventory(sql, branch_id, sku, stock_qty=0)
+    request_id = make_stock_request(
+        sql, branch_id, [{"sku": sku, "requested_qty": 4, "dispatched_qty": 4}],
+        status="In Transit",
+    )
+    item = get_request_item(sql, request_id, sku)
+    client.post(RECEIVE_STOCK_URL, data={
+        "request_id": str(request_id),
+        "item_id[]": [str(item["item_id"])],
+        "received_qty[]": ["2"],
+        "damaged_qty[]": ["1"],
+    })
+
+    admin_client = app.test_client()
+    _signed_in_admin(admin_client, sql)
+    html = admin_client.get(
+        f"/admin/discrepancies?branch_id={branch_id}").get_data(as_text=True)
+
+    # The summary lists every branch; pick this test branch's row.
+    cur = sql.cursor(dictionary=True)
+    cur.execute("SELECT branch_name FROM branches WHERE branch_id = %s", (branch_id,))
+    name = cur.fetchone()["branch_name"]
+    cur.close()
+    rows = re.findall(r"<tr>(?:(?!</tr>).)*</tr>", html, re.S)
+    ours = next(r for r in rows if f'data-label="Branch">{name}<' in r)
+
+    def cell(label):
+        m = re.search(rf'data-label="{label}">\s*(\d+)\s*<', ours)
+        return int(m.group(1)) if m else None
+
+    assert cell("Deliveries affected") == 1
+    assert cell("Damaged units") == 1
+    assert cell("Shortfall units") == 1
+    assert cell("Total discrepancies") == 2
+    assert re.findall(r'data-label="Units">\s*(\d+)\s*<', html) == ["1", "1"]

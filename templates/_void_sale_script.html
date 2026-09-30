@@ -1,0 +1,25 @@
+{# Behaviour for _void_sale_modal.html — include it in the page's scripts block. #}
+<script>
+  (function () {
+    var overlay = document.getElementById('voidSaleOverlay');
+    var form = document.getElementById('voidSaleForm');
+    var reason = document.getElementById('voidSaleReason');
+    var label = document.getElementById('voidSaleLabel');
+    if (!overlay || !form) return;
+    function close() { closeOverlay(overlay); }
+    document.querySelectorAll('.void-sale-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        form.action = btn.dataset.url;
+        label.textContent = btn.dataset.label || 'This sale';
+        reason.value = '';
+        openOverlay(overlay);
+        reason.focus();
+      });
+    });
+    document.getElementById('voidSaleCancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') close();
+    });
+  })();
+</script>

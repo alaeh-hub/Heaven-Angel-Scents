@@ -9,6 +9,28 @@
   </div>
   {% endmacro %}
 
+  {# Location name with an HQ badge beside it. The name truncates on its
+     own while the badge always stays whole (see .loc-cell in style.css);
+     a bare "name <badge>" cell would be exempt from truncation as a
+     badge cell and spill long names out of the column. #}
+  {% macro location_cell(name, is_hq) %}<span class="loc-cell"><span class="loc-name">{{ name }}</span>{% if is_hq %}<span class="badge badge-transit">HQ</span>{% endif %}</span>{% endmacro %}
+
+  {# Bottles on one line, bulk mL on its own muted line beneath — for a
+     table cell where "2 · 100 mL" squeezed onto one line would get cut
+     off. A bulk-only customer shows just the mL line. #}
+  {% macro qty_stack(units, ml) %}
+  {%- set units = (units or 0)|int -%}{%- set ml = (ml or 0)|int -%}
+  <div class="qty-stack">
+    {%- if units or not ml %}<div class="qty-stack-main">{{ '{:,}'.format(units) }} <span class="qty-stack-word">bottle{{ '' if units == 1 else 's' }}</span></div>{% endif -%}
+    {%- if ml %}<div class="{{ 'qty-stack-sub' if units else 'qty-stack-main' }}">{{ '{:,}'.format(ml) }} <span class="qty-stack-word">mL bulk</span></div>{% endif -%}
+  </div>
+  {% endmacro %}
+
+  {# Bottle count with bulk volume kept separate. Bulk sales store
+     qty_sold in mL, so adding them to bottle counts would be meaningless;
+     `ml` only shows when there was some bulk. #}
+  {% macro qty_split(units, ml) %}{{ (units or 0)|int }}{% if ml %} <span class="text-faint" style="white-space:nowrap;">· {{ ml|int }} mL</span>{% endif %}{% endmacro %}
+
   {# Up/down percentage badge for a stat tile. `pct` comes from
      utils.percent_change(); None (no baseline to compare against)
      renders nothing. #}
@@ -57,8 +79,9 @@
 
   {% macro movement_badge(mtype) %}
   {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL':
-  'female', 'FREEBIE': 'pending', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected'} %}
-  <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype }}</span>
+  'female', 'FREEBIE': 'pending', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected',
+  'PACKAGE_ORDER': 'transit', 'PACKAGE_RETURN': 'inactive', 'SALE_VOID': 'rejected'} %}
+  <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype|replace('_', ' ') }}</span>
   {% endmacro %}
 
   {# A Sale is the normal case (customer takes a bottle). A Refill is a

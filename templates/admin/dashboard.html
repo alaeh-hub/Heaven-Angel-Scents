@@ -52,7 +52,7 @@
 <div class="grid grid-2 stack">
   <div class="card">
     <div class="card-header">
-      <h2>Low stock across branches</h2>
+      <h2>Low stock across HQ &amp; branches</h2>
       <a href="{{ url_for('admin.low_stock') }}" class="hint">view all →</a>
     </div>
     {% if low_stock %}
@@ -65,7 +65,7 @@
         </colgroup>
         <thead>
           <tr>
-            <th>Branch</th>
+            <th>Location</th>
             <th>Item</th>
             <th class="num">On hand</th>
           </tr>
@@ -73,7 +73,7 @@
         <tbody>
           {% for row in low_stock %}
           <tr>
-            <td data-label="Branch">{{ row.branch_name }}</td>
+            <td data-label="Location">{{ m.location_cell(row.branch_name, row.is_hq) }}</td>
             <td data-label="Item">
               <div class="item-name">{{ row.item_name }}</div>
               <div class="item-sub mono">{{ row.sku }}</div>
@@ -88,7 +88,7 @@
     {% else %}
     <div class="empty-state">
       <div class="glyph">✓</div>
-      <p>All branch inventory is above its reorder threshold.</p>
+      <p>All HQ and branch inventory is above its reorder threshold.</p>
     </div>
     {% endif %}
   </div>
@@ -155,7 +155,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th style="width:36px;"></th>
+          <th></th>
           <th>Item</th>
           <th class="num">Units sold</th>
           <th class="num">Revenue</th>
@@ -201,7 +201,7 @@
         </colgroup>
         <thead>
           <tr>
-            <th style="width:36px;"></th>
+            <th></th>
             <th>Package</th>
             <th class="num">Orders</th>
             <th class="num">Revenue</th>
@@ -240,15 +240,15 @@
     <div class="table-wrap">
       <table class="table-fixed">
         <colgroup>
-          <col style="width:40px">
-          <col style="width:34%">
-          <col style="width:20%">
-          <col style="width:20%">
+          <col style="width:56px">
+          <col style="width:30%">
+          <col style="width:28%">
+          <col style="width:16%">
           <col style="width:26%">
         </colgroup>
         <thead>
           <tr>
-            <th style="width:36px;"></th>
+            <th></th>
             <th>Partner</th>
             <th>Type</th>
             <th class="num">Orders</th>

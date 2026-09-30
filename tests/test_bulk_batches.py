@@ -16,12 +16,16 @@ genuinely deducted by a bulk batch and genuinely added to by a restock,
 unlike the abandoned earlier attempt at raw_materials.stock_qty (see that
 column's own migration history in schema.sql).
 """
+import json
+import re
 from decimal import Decimal
 
 from factories import (get_bulk_batch, get_cogs_logs, get_form_token,
                         get_inventory_qty, get_raw_material, log_production,
                         login, make_bulk_batch, make_product,
                         make_raw_material, make_user, set_unit_cogs)
+
+ADD_FORMULA_ITEM_URL = "/admin/formulas/add-item"
 
 BULK_BATCHES_URL = "/admin/bulk-batches"
 CREATE_BULK_BATCH_URL = "/admin/bulk-batches/create"
@@ -300,3 +304,67 @@ def test_dashboard_capital_is_cogs_not_raw_material_purchases(client, sql):
     # two figures move independently.
     assert Decimal(str(after_batch["raw_materials_purchased"])) == Decimal(
         str(after_purchase["raw_materials_purchased"]))
+
+
+def _packaging_total(sql, unit):
+    """Sum of qty_per_unit x current cost_per_unit across every material
+    on file for `unit` — same math as routes/admin.py's own
+    _formula_items_by_unit(), used here to compute an expected delta
+    since other test files sharing this session's database may have
+    already left formula lines on file for the same unit (see this file's
+    own module docstring — nothing is cleaned up between tests)."""
+    cur = sql.cursor(dictionary=True)
+    cur.execute(
+        """SELECT COALESCE(SUM(ufi.qty_per_unit * rm.cost_per_unit), 0) AS total
+           FROM unit_formula_items ufi
+           JOIN raw_materials rm ON rm.material_id = ufi.material_id
+           WHERE ufi.unit = %s""", (unit,))
+    total = cur.fetchone()["total"]
+    cur.close()
+    return Decimal(str(total))
+
+
+def test_bulk_batch_yields_fold_in_the_packaging_formula_as_a_reference_cost(client, sql):
+    """Each yield's total_cost_per_bottle is this batch's own liquid
+    cost/mL x the size's mL, plus that size's packaging formula total
+    (see tests/test_formulas.py's own add_formula_item tests) — purely a
+    reference figure, never what production() actually charges (that's
+    still the flat base cost on unit_cogs_settings)."""
+    _signed_in_admin(client, sql)
+    mat_a = make_raw_material(sql)
+    # ₱0.10/mL over 1000 mL -> cost_per_ml = 0.10
+    make_bulk_batch(sql, [(mat_a, "1000", "0.10")],
+                     input_qty="1000", input_unit="Milliliter",
+                     scent_name="Yield Reference")
+
+    before_85 = _packaging_total(sql, "85ML")
+
+    mat_b = make_raw_material(
+        sql, unit="Piece", package_qty="10.000", package_cost="20.00")  # ₱2.00/piece
+    client.post(ADD_FORMULA_ITEM_URL, data={
+        "unit": "85ML", "material_id": str(mat_b), "qty_per_unit": "1"})
+
+    resp = client.get(BULK_BATCHES_URL)
+    assert resp.status_code == 200
+
+    tag_match = re.search(
+        rb'<button[^>]*data-scent-name="Yield Reference"[^>]*>', resp.data)
+    assert tag_match, "No Details button rendered for this batch"
+    yields_match = re.search(rb"data-yields='([^']*)'", tag_match.group(0))
+    assert yields_match, "No data-yields attribute rendered on the batch's Details button"
+    yields = json.loads(yields_match.group(1))
+
+    yield_85 = next(y for y in yields if y["unit"] == "85ML")
+    # 85mL x ₱0.10/mL liquid (₱8.50) + this unit's packaging total
+    # (whatever was already on file, plus the ₱2.00 line just added).
+    expected_85 = (Decimal("8.50") + before_85 +
+                   Decimal("2.00")).quantize(Decimal("0.01"))
+    assert Decimal(str(yield_85["total_cost_per_bottle"])) == expected_85
+
+    # A fresh size with nothing added in this test still gets a reference
+    # figure — just the liquid share, whatever packaging total (if any)
+    # other tests left behind.
+    before_50 = _packaging_total(sql, "50ML")
+    yield_50 = next(y for y in yields if y["unit"] == "50ML")
+    expected_50 = (Decimal("5.00") + before_50).quantize(Decimal("0.01"))
+    assert Decimal(str(yield_50["total_cost_per_bottle"])) == expected_50

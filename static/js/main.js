@@ -55,6 +55,61 @@ function isSamePageNoOpLink(link) {
     });
 })();
 
+// Measures the scrollbar gutter .sidebar reserves on each side
+// (scrollbar-gutter: stable both-edges) and exposes it as
+// --sidebar-gutter, which style.css's --sidebar-w-collapsed adds back
+// so the rail's icons sit exactly centred. The gutter's real width
+// depends on the browser and zoom level, so CSS can't know it. Runs
+// immediately (this script loads at the end of <body>) to settle the
+// rail width before first paint, and again on resize for zoom changes.
+(function initSidebarGutter() {
+    const sidebar = document.getElementById('sidebar');
+    const brand = sidebar && sidebar.querySelector('.brand');
+    if (!brand) return;
+
+    function measure() {
+        const cs = getComputedStyle(sidebar);
+        const chrome = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)
+            + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const gutter = (sidebar.getBoundingClientRect().width - chrome
+            - brand.getBoundingClientRect().width) / 2;
+        if (gutter >= 0) {
+            document.documentElement.style.setProperty('--sidebar-gutter', gutter + 'px');
+        }
+    }
+
+    measure();
+    window.addEventListener('resize', measure);
+})();
+
+// Long table values are cut to one line with an ellipsis (style.css,
+// the .table-fixed desktop rules). On hover, whichever element under
+// the pointer is actually truncated gets a native title tooltip with
+// its full text, so nothing is lost. Delegated from document so it
+// covers rows added later (soft nav, JS-rendered modal tables), and
+// re-checked every hover so it tracks resizes. Elements that already
+// carry their own title are left untouched.
+(function initTruncatedCellTitles() {
+    document.addEventListener('mouseover', (e) => {
+        const cell = e.target.closest && e.target.closest('table.table-fixed td, table.table-fixed th');
+        if (!cell) return;
+        for (let el = e.target; el && el !== cell.parentElement; el = el.parentElement) {
+            const own = el.hasAttribute('title') && !el.dataset.autoTitle;
+            if (own) return;
+            const truncated = el.scrollWidth > el.clientWidth + 1;
+            if (truncated) {
+                el.title = el.textContent.replace(/\s+/g, ' ').trim();
+                el.dataset.autoTitle = '1';
+                return;
+            }
+            if (el.dataset.autoTitle) {
+                el.removeAttribute('title');
+                delete el.dataset.autoTitle;
+            }
+        }
+    });
+})();
+
 function initMobileSidebar() {
     const sidebar = document.getElementById('sidebar');
     const backdrop = document.getElementById('sidebarBackdrop');
@@ -108,17 +163,33 @@ function initSidebarNavTooltips() {
     // hover/keyboard-focus purely via CSS (see style.css's :not(:hover)
     // :not(:focus-within) rules) — no JS involved in that part at all.
     //
-    // Collapsed nav-link labels are hidden with font-size: 0, not
+    // Collapsed nav-link labels are only clipped out of view, not
     // display: none (see style.css), so a screen reader still gets the
     // text, but there's no visible label to read at a glance. Mirror
     // each one into a native title tooltip as a fallback for anyone who
     // mouses over the rail without lingering long enough to trigger the
     // hover-expand.
     sidebar.querySelectorAll('.nav-link').forEach((link) => {
+        // Wrap the raw label text node in its own span so style.css can
+        // slide/fade it on expand without touching the icon or badge.
+        link.childNodes.forEach((node) => {
+            if (node.nodeType !== Node.TEXT_NODE || !node.textContent.trim()) return;
+            const span = document.createElement('span');
+            span.className = 'nav-text';
+            span.textContent = node.textContent.trim();
+            link.replaceChild(span, node);
+        });
+
         const clone = link.cloneNode(true);
         const badge = clone.querySelector('.nav-badge');
         if (badge) badge.remove();
         link.title = clone.textContent.trim();
+    });
+
+    // Stagger index for the expand animation (see style.css's
+    // --reveal-delay), top to bottom, capped so long menus don't lag.
+    sidebar.querySelectorAll('.nav-label, .nav-text').forEach((el, i) => {
+        el.style.setProperty('--i', String(Math.min(i, 14)));
     });
 }
 
@@ -372,20 +443,21 @@ function attachFlashDismiss(el) {
 // request, a new inquiry) — the same feedback treatment the theme
 // toggle already uses on click, applied here to a real, sparse state
 // change rather than every render.
-// baseTransform preserves whatever positioning transform the badge
-// already relies on in CSS (e.g. .nav-badge's translateY(-50%) for
-// vertical centering) — animating `transform` directly would otherwise
-// replace it outright for the duration of the pulse and visibly knock
-// the badge out of position.
-function pulseBadge(el, baseTransform) {
-    if (!el || !window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const base = baseTransform ? baseTransform + ' ' : '';
-    const anim = window.Motion.animate(
-        el,
-        { transform: [base + 'scale(1)', base + 'scale(1.35)', base + 'scale(1)'] },
-        { duration: 0.4, easing: [0.34, 1.56, 0.64, 1] }
+// Animates the standalone CSS `scale` property rather than `transform`,
+// so it composes with whatever positioning transform the badge already
+// has from CSS (e.g. .nav-badge's translateY(-50%), which the collapsed
+// sidebar rail swaps for translateY(0)) instead of replacing it. Plain
+// WAAPI with no fill, so nothing is left behind as an inline style once
+// it ends — an earlier Motion-based version pinned the expanded rail's
+// translateY(-50%) inline after every pulse, knocking the badge half
+// out of view on the collapsed rail.
+function pulseBadge(el) {
+    if (!el || typeof el.animate !== 'function'
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    el.animate(
+        { scale: ['1', '1.35', '1'] },
+        { duration: 400, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
     );
-    if (anim && typeof anim.then === 'function') anim.then(null, () => { });
 }
 
 // Copies sidebar nav-link state (unread-count badges, and which link
@@ -409,12 +481,12 @@ function patchSidebarNav(freshDoc) {
         } else if (freshBadge && !liveBadge) {
             const added = freshBadge.cloneNode(true);
             link.appendChild(added);
-            pulseBadge(added, 'translateY(-50%)');
+            pulseBadge(added);
         } else if (freshBadge && liveBadge) {
             const before = parseInt(liveBadge.textContent, 10) || 0;
             const after = parseInt(freshBadge.textContent, 10) || 0;
             liveBadge.textContent = freshBadge.textContent;
-            if (after > before) pulseBadge(liveBadge, 'translateY(-50%)');
+            if (after > before) pulseBadge(liveBadge);
         }
 
         link.classList.toggle('active', freshLink.classList.contains('active'));
@@ -908,6 +980,55 @@ function initSoftNav() {
 // initRealtime() below — the same way initSmartTables()/
 // initSmartLists() are. dataset.csEnhanced makes re-running this on
 // the *same* elements a no-op, so calling it more than once is safe.
+// Stock-movement types in the order they happen (make, ship, receive,
+// sell, correct), so the Ledger movement legend reads the same way every
+// time instead of in whatever order the data happened to come back.
+var MOVEMENT_TYPE_ORDER = ['PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE',
+    'PACKAGE_ORDER', 'PACKAGE_RETURN', 'SALE_VOID'];
+
+function sortMovementTypes(types) {
+    function rank(t) {
+        var i = MOVEMENT_TYPE_ORDER.indexOf(t);
+        return i === -1 ? MOVEMENT_TYPE_ORDER.length : i;
+    }
+    return types.slice().sort(function (a, b) { return rank(a) - rank(b); });
+}
+
+function titleCaseLabel(text) {
+    return String(text).toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+}
+
+// HTML legend for a Chart.js chart, rendered into `container`. Chart.js's
+// canvas legend wraps into ragged centred rows on a phone and eats into
+// the plot's fixed height; this one is a real grid (see .chart-legend in
+// style.css) under the canvas. Each chip still toggles its dataset on and
+// off, same as clicking the built-in legend.
+function renderChartLegend(chart, container) {
+    if (!container) return;
+    container.innerHTML = '';
+    chart.data.datasets.forEach(function (ds, i) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chart-legend-item';
+        btn.setAttribute('aria-pressed', 'true');
+        var swatch = document.createElement('span');
+        swatch.className = 'chart-legend-swatch';
+        swatch.style.background = ds.borderColor;
+        var label = document.createElement('span');
+        label.className = 'chart-legend-label';
+        label.textContent = ds.label;
+        btn.appendChild(swatch);
+        btn.appendChild(label);
+        btn.addEventListener('click', function () {
+            var visible = chart.isDatasetVisible(i);
+            chart.setDatasetVisibility(i, !visible);
+            btn.setAttribute('aria-pressed', String(!visible));
+            chart.update();
+        });
+        container.appendChild(btn);
+    });
+}
+
 function initCustomSelects(root) {
     (root || document).querySelectorAll('select').forEach(enhanceSelect);
 }

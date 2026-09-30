@@ -10,8 +10,9 @@ every other multi-write route in this app — see db.TransactionAborted).
 
 Row shape mirrors exactly what routes/branch.py's and routes/admin.py's
 own record_sale() insert by hand: one sales row + one stock_movement_logs
-row per line, with stock checked/decremented the same way (a Refill
-never draws down branch_inventory).
+row per line, with stock checked/decremented by the same
+sale_stock.apply_sale_stock() (a Refill takes HQ bulk, and is refused
+for a branch).
 """
 import datetime
 import decimal
@@ -23,6 +24,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from db import TransactionAborted, transaction
 from reports import XL_BORDER, XL_HEADER_FILL, XL_MONEY_FMT
+from sale_stock import apply_sale_stock
 from utils import (
     PAYMENT_METHODS, SALE_TYPES, ValidationError, parse_optional_text,
     parse_positive_decimal, parse_positive_int,
@@ -298,40 +300,13 @@ def import_sales_rows(branch_id, raw_rows, user_id):
     inserted = 0
     with transaction() as conn:
         cur = conn.cursor(dictionary=True)
-        # One FOR UPDATE lock per distinct SKU touched by this file —
-        # same row-locking contract as the single-sale record_sale()
-        # routes, just amortized across every line for that SKU instead
-        # of re-locking (and re-reading a stale value for) it each time.
-        stock_by_sku = {}
         for item in parsed:
             sku = item["sku"]
-            if sku in stock_by_sku:
-                continue
-            cur.execute(
-                "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
-                (branch_id, sku),
-            )
-            stock_row = cur.fetchone()
-            if not stock_row:
+            cur.execute("SELECT sku, item_name, unit FROM products WHERE sku = %s", (sku,))
+            product = cur.fetchone()
+            if not product:
                 cur.close()
-                raise TransactionAborted(
-                    f"Row {item['row']}: SKU '{sku}' isn't stocked at this branch.")
-            stock_by_sku[sku] = stock_row["stock_qty"]
-
-        for item in parsed:
-            sku = item["sku"]
-            is_refill = item["sale_type"] == "Refill"
-            before_qty = stock_by_sku[sku]
-
-            if not is_refill and before_qty < item["qty"]:
-                cur.close()
-                raise TransactionAborted(
-                    f"Row {item['row']}: not enough stock for '{sku}' "
-                    f"(have {before_qty}, this file needs {item['qty']} here).")
-
-            after_qty = before_qty if is_refill else before_qty - item["qty"]
-            stock_by_sku[sku] = after_qty
-
+                raise TransactionAborted(f"Row {item['row']}: SKU '{sku}' doesn't exist.")
             cur.execute(
                 """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
                                       buyer_name, customer_name, customer_address, sold_at)
@@ -340,27 +315,21 @@ def import_sales_rows(branch_id, raw_rows, user_id):
                  item["payment_method"], item["buyer_name"], item["customer_name"],
                  item["customer_address"], item["sold_at"]),
             )
-            if not is_refill:
-                cur.execute(
-                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                    (after_qty, branch_id, sku),
-                )
-            movement_type = {"Sale": "SALE", "Refill": "REFILL",
-                              "Freebie": "FREEBIE"}[item["sale_type"]]
             if item["sale_type"] == "Freebie":
                 notes = "Freebie / giveaway (imported)"
             else:
                 notes = "Imported from Excel" if item["payment_method"] == "Cash" else f"Imported from Excel — Credit — {item['buyer_name']}"
-            if is_refill:
-                notes += " · no stock deducted (refill)"
-            cur.execute(
-                """INSERT INTO stock_movement_logs
-                   (branch_id, sku, change_qty, movement_type, notes,
-                    created_by_user_id, reference_type, before_qty, after_qty)
-                   VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
-                (branch_id, sku, 0 if is_refill else -item["qty"], movement_type, notes,
-                 user_id, before_qty, after_qty),
-            )
+            # Same stock rules as Record Sale (sale_stock.py): each row
+            # re-locks its stock row, so several rows for one SKU in the
+            # same file draw down one running total; a Refill takes HQ
+            # bulk and is refused at a branch.
+            try:
+                apply_sale_stock(cur, sale_id=cur.lastrowid, branch_id=branch_id, product=product,
+                                 qty=item["qty"], sale_type=item["sale_type"], notes=notes,
+                                 user_id=user_id)
+            except TransactionAborted as err:
+                cur.close()
+                raise TransactionAborted(f"Row {item['row']}: {err}") from None
             inserted += 1
         cur.close()
 

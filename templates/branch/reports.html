@@ -92,6 +92,7 @@
           <option value="FREEBIE">Freebie</option>
           <option value="ADJUSTMENT">Adjustment</option>
           <option value="DAMAGE">Damage</option>
+          <option value="SALE_VOID">Sale void</option>
         </select>
       </div>
       <div class="field" data-filter="sale_type" style="display:none;">
@@ -193,9 +194,9 @@
 
 <div class="grid grid-2 stack">
   <div class="card stat-tile">
-    <div class="stat-label">Total units sold</div>
+    <div class="stat-label">Total bottles sold</div>
     <div class="stat-value" id="totalUnits">—</div>
-    <div class="stat-foot">at {{ session.branch_name }}</div>
+    <div class="stat-foot" id="totalUnitsFoot" data-base="at {{ session.branch_name }}">at {{ session.branch_name }}</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Total revenue</div>
@@ -267,6 +268,7 @@
       </div>
     </div>
     <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="chart-legend" id="trendLegend"></div>
   </div>
 </div>
 {% endblock %}
@@ -289,6 +291,11 @@
   const PALETTE = (isDark
     ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181']
     : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4']);
+  // One color per movement type, in MOVEMENT_TYPE_ORDER (main.js) slot
+  // order: the palette above plus more, so every movement type stays distinct.
+  const MOVEMENT_PALETTE = (isDark
+    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#3d9fd6', '#b07cc6', '#9aa33a', '#c0392b']
+    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#1f78b4', '#8e44ad', '#6f7d0e', '#a93226']);
   const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink'), Unisex: themeColor('--ink-soft') };
   const SALE_TYPE_COLORS = { Sale: themeColor('--success'), Refill: themeColor('--accent'), Freebie: themeColor('--warning') };
   const PAYMENT_COLORS = { Cash: themeColor('--success'), Credit: themeColor('--warning') };
@@ -366,6 +373,14 @@
     // other during a burst of resize events and grow unbounded.
     Chart.defaults.maintainAspectRatio = false;
 
+    // "3 bottles" or "3 bottles + 250 mL" — bulk mL never added to bottles.
+    function qtyLabel(row) {
+      const units = Number(row.units_sold) || 0;
+      const ml = Number(row.bulk_ml) || 0;
+      const label = units + (units === 1 ? ' bottle' : ' bottles');
+      return ml ? label + ' + ' + ml.toLocaleString() + ' mL' : label;
+    }
+
     fetch("{{ url_for('branch.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
       .then(r => {
         if (!r.ok) throw new Error('Request failed: ' + r.status);
@@ -375,7 +390,11 @@
         clearChartError();
         destroyCharts();
 
-        document.getElementById('totalUnits').textContent = data.totals.units;
+        document.getElementById('totalUnits').textContent = Number(data.totals.units).toLocaleString();
+        // Bulk is sold by the mL, so it's shown beside the bottle count, never added to it.
+        const unitsFoot = document.getElementById('totalUnitsFoot');
+        const bulkMl = Number(data.totals.bulk_ml) || 0;
+        unitsFoot.textContent = unitsFoot.dataset.base + (bulkMl ? ' · + ' + bulkMl.toLocaleString() + ' mL bulk' : '');
         document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
 
         charts.variant = new Chart(document.getElementById('variantChart'), {
@@ -440,7 +459,7 @@
                 callbacks: {
                   label: (ctx) => {
                     const row = data.sale_type_breakdown[ctx.dataIndex];
-                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${qtyLabel(row)})`;
                   }
                 }
               }
@@ -465,7 +484,7 @@
                 callbacks: {
                   label: (ctx) => {
                     const row = data.payment_breakdown[ctx.dataIndex];
-                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${row.units_sold} units)`;
+                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${qtyLabel(row)})`;
                   }
                 }
               }
@@ -477,25 +496,33 @@
         if (trendLabelEl) trendLabelEl.textContent = TREND_WINDOW_LABELS[trendGranularity] || '';
 
         const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
-        const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
-        const datasets = types.map((t, i) => ({
-          label: t,
-          data: days.map(day => {
-            const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
-            return row ? row.total : 0;
-          }),
-          borderColor: PALETTE[i % PALETTE.length],
-          backgroundColor: PALETTE[i % PALETTE.length],
-          pointBackgroundColor: PALETTE[i % PALETTE.length],
-          pointRadius: 3,
-          tension: 0.35,
-          fill: false,
-        }));
+        // Fixed order (MOVEMENT_TYPE_ORDER in main.js), and each type's
+        // color keyed to its slot in that order, so a type keeps the same
+        // color whichever other types happen to appear in the window.
+        const types = sortMovementTypes([...new Set(data.movement_trend.map(d => d.movement_type))]);
+        const datasets = types.map((t, i) => {
+          const slot = MOVEMENT_TYPE_ORDER.indexOf(t);
+          const color = MOVEMENT_PALETTE[(slot === -1 ? i : slot) % MOVEMENT_PALETTE.length];
+          return {
+            label: titleCaseLabel(t),
+            data: days.map(day => {
+              const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
+              return row ? row.total : 0;
+            }),
+            borderColor: color,
+            backgroundColor: color,
+            pointBackgroundColor: color,
+            pointRadius: 3,
+            tension: 0.35,
+            fill: false,
+          };
+        });
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'line',
           data: { labels: days, datasets },
-          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
         });
+        renderChartLegend(charts.trend, document.getElementById('trendLegend'));
       })
       .catch(err => {
         console.error('Reports data failed to load:', err);
@@ -573,8 +600,10 @@
       inventory_log: ['movement_type', 'search', 'window'],
       sales_history: ['variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
       credit_purchases: ['sale_type', 'search', 'window'],
+      voided_sales: ['search', 'window'],
       customers: ['search'],
-      discrepancies: ['search', 'window'],
+      discrepancies: ['movement_type', 'search', 'window'],
+      low_stock: ['search'],
     };
 
     // "search" filters a different column depending on the report — the
@@ -586,7 +615,35 @@
       sales_history: { label: 'Search item / SKU / customer', placeholder: 'e.g. Golden Hour, HAS-001, or a customer' },
       customers: { label: 'Search customer', placeholder: 'e.g. Maria Santos' },
       discrepancies: { label: 'Search item / SKU / delivery', placeholder: 'e.g. Golden Hour or a delivery number' },
+      stock_requests: { label: 'Search item / SKU / delivery', placeholder: 'e.g. Golden Hour or DR-000123' },
+      voided_sales: { label: 'Search item / SKU / reason', placeholder: 'e.g. Golden Hour or wrong item' },
     };
+    // Per report type, only the option values that report can actually
+    // match — a Credit purchase is never a Freebie (Freebies are always
+    // Cash), Discrepancies are only Damage or Adjustment, and My Inventory never lists Bulk/Refill.
+    // Options are removed rather than hidden so the custom select
+    // (main.js) re-renders without them; the full list is cached once.
+    const OPTION_LIMITS = {
+      credit_purchases: { rb_sale_type: (v) => v !== 'Freebie' },
+      discrepancies: { rb_movement_type: (v) => ['all', 'DAMAGE', 'ADJUSTMENT'].includes(v) },
+      branch_stock: { rb_unit: (v) => v !== 'BULK' },
+    };
+    // Summary reports have no "latest N rows" — Recent reads as all time
+    // server-side, so the option isn't offered for them.
+    const NO_RECENT_MODE = [];
+    const optionCache = new Map();
+
+    function limitOptions(select, allow) {
+      if (!select) return;
+      if (!optionCache.has(select)) {
+        optionCache.set(select, Array.from(select.options).map((o) => o.cloneNode(true)));
+      }
+      const all = optionCache.get(select);
+      const keep = allow ? all.filter((o) => allow(o.value)) : all;
+      const current = select.value;
+      select.replaceChildren(...keep.map((o) => o.cloneNode(true)));
+      select.value = keep.some((o) => o.value === current) ? current : keep[0].value;
+    }
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 
     const searchLabelEl = document.getElementById('rb_search_label');
@@ -597,11 +654,28 @@
     const modeInput = document.getElementById('rb_mode');
 
     function applyReportType() {
-      const fields = REPORT_FIELDS[typeSelect.value] || [];
+      const type = typeSelect.value;
+      const fields = REPORT_FIELDS[type] || [];
       document.querySelectorAll('#reportForm [data-filter]').forEach((el) => {
-        el.style.display = fields.includes(el.dataset.filter) ? '' : 'none';
+        const on = fields.includes(el.dataset.filter);
+        el.style.display = on ? '' : 'none';
+        // display:none alone still submits the field — disabling it is
+        // what keeps a stale value (e.g. a Branch picked for another
+        // report type) out of this report's filters and subtitle.
+        el.querySelectorAll('input, select, textarea').forEach((c) => { c.disabled = !on; });
       });
-      const searchCopy = SEARCH_LABELS[typeSelect.value] || DEFAULT_SEARCH_LABEL;
+      const limits = OPTION_LIMITS[type] || {};
+      ['rb_sale_type', 'rb_movement_type', 'rb_unit'].forEach((id) => {
+        limitOptions(document.getElementById(id), limits[id]);
+      });
+      const noRecent = NO_RECENT_MODE.includes(type);
+      const recentBtn = modeSwitch.querySelector('[data-mode="recent"]');
+      if (recentBtn) recentBtn.style.display = noRecent ? 'none' : '';
+      if (noRecent && modeInput.value === 'recent') {
+        modeInput.value = 'all';
+        applyMode();
+      }
+      const searchCopy = SEARCH_LABELS[type] || DEFAULT_SEARCH_LABEL;
       searchLabelEl.textContent = searchCopy.label;
       searchInputEl.placeholder = searchCopy.placeholder;
     }

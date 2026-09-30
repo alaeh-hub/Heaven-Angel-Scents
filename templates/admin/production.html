@@ -30,8 +30,12 @@
        in the app — 20% was wrapping it onto a second line at
        ordinary desktop widths, so it gets extra room here at the
        other columns' expense. */
-    .ph-table th:nth-child(1), .ph-table td:nth-child(1) { width: 17%; }
-    .ph-table th:nth-child(2), .ph-table td:nth-child(2) { width: 22%; }
+    .ph-table th:nth-child(1), .ph-table td:nth-child(1) { width: 20%; }
+    .ph-table th:nth-child(2), .ph-table td:nth-child(2) { width: 19%; }
+    /* Keep the whole date+time on one line; the column is sized for it,
+       and a lone "PM" wrapping onto its own line reads as a glitch. */
+    table.table-fixed.ph-table>tbody>tr>td.mono.text-soft:nth-child(1),
+    table.table-fixed.pu-table>tbody>tr>td.mono.text-soft:nth-child(1) { white-space: nowrap; }
     .ph-table th:nth-child(3), .ph-table td:nth-child(3) { width: 9%; }
     .ph-table th:nth-child(4), .ph-table td:nth-child(4) { width: 12%; }
     .ph-table th:nth-child(5), .ph-table td:nth-child(5) { width: 10%; }
@@ -275,7 +279,7 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed ph-table">
         <colgroup>
-          <col style="width:17%"><col style="width:22%"><col style="width:9%">
+          <col style="width:20%"><col style="width:19%"><col style="width:9%">
           <col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:16%">
         </colgroup>
         <thead>

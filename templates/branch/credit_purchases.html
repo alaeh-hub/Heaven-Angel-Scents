@@ -80,7 +80,7 @@
             <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
             <td class="item-name" data-label="Name">{{ r.buyer_name or '—' }}</td>
             <td class="num mono" data-label="Transactions">{{ r.transaction_count }}</td>
-            <td class="num mono" data-label="Units">{{ r.total_units }}</td>
+            <td class="num mono" data-label="Units">{{ m.qty_split(r.total_units, r.total_bulk_ml) }}</td>
             <td class="num mono" data-label="Total owed">{{ r.total_amount|peso }}</td>
             <td class="mono text-soft" data-label="Last taken">{{ r.last_taken_at.strftime('%b %d, %Y') }}</td>
           </tr>

@@ -20,8 +20,8 @@
      narrow box wrapped a long name one character per line. -->
   @media (min-width: 681px) {
     .cu-table th:nth-child(1), .cu-table td:nth-child(1) { width: 30%; }
-    .cu-table th:nth-child(2), .cu-table td:nth-child(2) { width: 14%; }
-    .cu-table th:nth-child(3), .cu-table td:nth-child(3) { width: 14%; }
+    .cu-table th:nth-child(2), .cu-table td:nth-child(2) { width: 12%; }
+    .cu-table th:nth-child(3), .cu-table td:nth-child(3) { width: 16%; }
     .cu-table th:nth-child(4), .cu-table td:nth-child(4) { width: 18%; }
     .cu-table th:nth-child(5), .cu-table td:nth-child(5) { width: 24%; }
   }
@@ -64,14 +64,14 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed cu-table table-collapsible">
         <colgroup>
-          <col style="width:30%"><col style="width:14%"><col style="width:14%">
+          <col style="width:30%"><col style="width:12%"><col style="width:16%">
           <col style="width:18%"><col style="width:24%">
         </colgroup>
         <thead>
           <tr>
             <th>Customer</th>
             <th class="num">Purchases</th>
-            <th class="num">Units</th>
+            <th class="num">Qty bought</th>
             <th class="num">Total spent</th>
             <th>Last purchase</th>
           </tr>
@@ -84,7 +84,7 @@
               {% if c.address %}<div class="item-sub">{{ c.address }}</div>{% endif %}
             </td>
             <td class="num mono mobile-detail" data-label="Purchases">{{ c.purchase_count }}</td>
-            <td class="num mono mobile-detail" data-label="Units">{{ c.total_units }}</td>
+            <td class="num mono mobile-detail" data-label="Qty bought">{{ m.qty_stack(c.total_units, c.total_bulk_ml) }}</td>
             <td class="num mono mobile-detail" data-label="Total spent">{{ c.total_spent|peso }}</td>
             <td class="mono text-soft mobile-detail" data-label="Last purchase">{{ c.last_purchase_at.strftime('%b %d, %Y') }}</td>
             <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in

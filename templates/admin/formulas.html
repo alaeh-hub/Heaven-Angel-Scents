@@ -27,6 +27,58 @@
     width: 120px;
     text-align: right;
   }
+
+  /* Packaging-materials reference cart, one shared add-row + table across
+     all four sizes (a `unit` column tells them apart) — same shape/
+     reasoning as the Bulk Batches page's own bb-add-row/bb-table (see
+     templates/admin/bulk_batches.html), duplicated here rather than
+     shared since this cart's rows carry a packaging-size field theirs
+     doesn't need. */
+  .fm-add-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    padding: 0 22px 14px;
+  }
+  .fm-add-row .field { margin-bottom: 0; }
+  .fm-add-row .field-unit { flex: 0 0 110px; }
+  .fm-add-row .field-material { flex: 1.6; min-width: 180px; }
+  .fm-add-row .field-qty { flex: 0 0 130px; }
+  .fm-add-row .btn { flex: 0 0 auto; }
+
+  .fm-table-wrap {
+    margin: 0 22px 22px;
+    border: var(--border-width-strong) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+  }
+  .fm-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .fm-table th {
+    text-align: left;
+    font-size: 12px;
+    letter-spacing: 0;
+    color: var(--ink-faint);
+    padding: 9px 14px;
+    background: var(--field);
+    border-bottom: 1px solid var(--border);
+  }
+  .fm-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+  .fm-table td.num, .fm-table th.num { text-align: right; white-space: nowrap; }
+  .fm-empty-row td { padding: 20px 14px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
+  .fm-total-row td { font-weight: 700; background: var(--field); }
+  .fm-total-row .fm-total-label { text-align: right; }
+  .fm-remove {
+    background: none; border: none; color: var(--danger);
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+  }
+  .fm-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
 </style>
 {% endblock %}
 
@@ -107,6 +159,99 @@
           </td>
         </tr>
         {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Packaging materials per bottle <span class="text-faint" style="font-weight:400;">(reference)</span></h2>
+    <span class="hint">computed, not hand-typed</span>
+  </div>
+  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
+    What it actually costs, materials-wise, to package one bottle of each size — e.g. the bottle itself, cap,
+    sprayer, label, box. Each line's cost is computed live from the material's current price (qty per unit ×
+    cost per unit), so it always stays up to date. This is a reference only — it does not feed the base cost of
+    goods above; update that by hand once you've checked it against this breakdown, plus (for the liquid itself)
+    a batch's own cost per mL on the <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a> page.
+  </p>
+
+  <form method="POST" action="{{ url_for('admin.add_formula_item') }}" class="fm-add-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field field-unit">
+      <label for="fmUnit">Size</label>
+      <select id="fmUnit" name="unit" required>
+        {% for u in units %}
+        <option value="{{ u.unit }}">{{ u.unit }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field field-material">
+      <label for="fmMaterial">Material</label>
+      <select id="fmMaterial" name="material_id" required>
+        <option value="">Select…</option>
+        {% for mat in materials %}
+        <option value="{{ mat.material_id }}">{{ mat.material_name }} (₱{{ '%.4f'|format(mat.cost_per_unit) }}/{{ mat.unit.lower() }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field field-qty">
+      <label for="fmQty">Qty per unit</label>
+      <input type="number" id="fmQty" name="qty_per_unit" step="0.0001" min="0.0001" required>
+    </div>
+    <button type="submit" class="btn btn-ghost">Add</button>
+  </form>
+
+  {% set any_items = units|selectattr('formula_items')|list %}
+  <div class="fm-table-wrap">
+    <table class="fm-table table-fixed">
+      <colgroup>
+        <col style="width:14%"><col style="width:30%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:40px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Size</th>
+          <th>Material</th>
+          <th class="num">Qty / unit</th>
+          <th class="num">Cost / unit</th>
+          <th class="num">Line cost</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if any_items %}
+          {% for u in units %}
+            {% for item in u.formula_items %}
+            <tr>
+              <td class="mono text-soft" data-label="Size">{{ u.unit }}</td>
+              <td data-label="Material">{{ item.material_name }}</td>
+              <td class="num mono" data-label="Qty / unit">{{ item.qty_per_unit|round(4)|string|replace('.0000','') }} {{ item.material_unit.lower() }}</td>
+              <td class="num mono" data-label="Cost / unit">₱{{ '%.4f'|format(item.cost_per_unit) }}</td>
+              <td class="num mono" data-label="Line cost">₱{{ '%.4f'|format(item.line_cost) }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('admin.delete_formula_item') }}"
+                  onsubmit="return confirm('Remove this material from the {{ u.unit }} formula?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="formula_item_id" value="{{ item.formula_item_id }}">
+                  <button type="submit" class="fm-remove" title="Remove" aria-label="Remove">&times;</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if u.formula_items %}
+            <tr class="fm-total-row">
+              <td colspan="4" class="fm-total-label">{{ u.unit }} packaging total</td>
+              <td class="num mono">₱{{ '%.4f'|format(u.formula_total) }}</td>
+              <td></td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+        <tr class="fm-empty-row">
+          <td colspan="6">No packaging materials added yet — pick a size and material above.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>

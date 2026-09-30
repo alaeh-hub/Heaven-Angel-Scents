@@ -18,11 +18,11 @@
   </div>
   <div class="card stat-tile bento-hero bento-hero-end">
     <div>
-      <div class="stat-label">Today's sales</div>
+      <div class="stat-label">Today's revenue</div>
     </div>
     <div>
-      <div class="stat-value accent">{{ today_sales.units }}</div>
-      <div class="stat-foot">{{ today_sales.revenue|peso }} in revenue</div>
+      <div class="stat-value accent">{{ today_sales.revenue|peso }}</div>
+      <div class="stat-foot">{{ today_sales.units|int }} bottle{{ '' if today_sales.units|int == 1 else 's' }} sold{% if today_sales.bulk_ml %} · {{ today_sales.bulk_ml|int }} mL bulk{% endif %}</div>
       {{ m.trend(today_sales.trend, 'revenue vs. same time yesterday') }}
     </div>
   </div>

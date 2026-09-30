@@ -4,11 +4,22 @@
 {% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Sales History{% endblock %}
 
+{% block head %}
+<style>
+  .sh-actions {
+    display: flex;
+    gap: 0.375rem;
+    justify-content: flex-end;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="grid grid-2 stack">
   <div class="card stat-tile">
-    <div class="stat-label">Total units sold</div>
-    <div class="stat-value">{{ totals.units }}</div>
+    <div class="stat-label">Total bottles sold</div>
+    <div class="stat-value">{{ totals.units|int }}</div>
+    {% if totals.bulk_ml %}<div class="stat-foot">+ {{ totals.bulk_ml|int }} mL bulk</div>{% endif %}
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Total revenue</div>
@@ -28,8 +39,8 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:14%"><col style="width:22%"><col style="width:12%">
-          <col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:14%">
+          <col style="width:13%"><col style="width:21%"><col style="width:11%">
+          <col style="width:9%"><col style="width:13%"><col style="width:13%"><col style="width:20%">
         </colgroup>
         <thead><tr><th>Date</th><th>Item</th><th>Variant</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>
@@ -44,11 +55,19 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(s.variant) }}</td>
-            <td class="num mono" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
             <td class="num mono" data-label="Unit price">{{ s.unit_price|peso }}</td>
             <td class="num mono" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td data-label="" class="mobile-inline-action">
-              <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
+              <div class="sh-actions">
+                <a href="{{ url_for('branch.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
+                {% if s.voidable %}
+                {# Same-day only — older sales are voided by HQ. #}
+                <button type="button" class="btn btn-ghost btn-sm void-sale-btn"
+                  data-url="{{ url_for('branch.void_sale_route', sale_id=s.sale_id) }}"
+                  data-label="{{ s.sale_type }} of {{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }} × {{ s.item_name }}">Void</button>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -69,4 +88,9 @@
   <div class="empty-state"><div class="glyph">—</div><p>No sales recorded yet.</p></div>
   {% endif %}
 </div>
+{% include "_void_sale_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_void_sale_script.html" %}
 {% endblock %}

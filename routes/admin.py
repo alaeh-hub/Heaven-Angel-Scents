@@ -18,8 +18,10 @@ from decorators import admin_required
 from audit import log_action
 import login_activity
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
-from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from reports import (DISCREPANCY_ITEM_JOIN, DISCREPANCY_UNITS_SQL, LOW_STOCK_WHERE, REPORT_TYPES, get_report,
+                     parse_report_filters, render_report_excel, render_report_pdf)
 from sales_import import build_sales_import_template, import_sales_rows, parse_sales_import_workbook
+from sale_stock import apply_sale_stock, void_sale
 from sockets import notify_admin, notify_admin_and_branch, notify_all, notify_bell
 from utils import (
     BATCH_VOLUME_UNITS, BOTTLE_UNITS, FORMULA_UNITS, ML_PER_BATCH_UNIT, MATERIAL_UNITS, PARTNER_TYPES,
@@ -64,6 +66,13 @@ _TREND_GRANULARITIES = {
 }
 
 
+# LOW_STOCK_WHERE (imported from reports.py) is the shared low-stock
+# condition for the dashboard, Low Stock page, the Low Stock / Stock
+# reports and ai_tools.py's get_low_stock: HQ's warehouse plus every
+# branch, at or below its own reorder level, never BULK (Bulk/Refill
+# has no reorder level anywhere, HQ included).
+
+
 # ---------------------------------------------------------------- dashboard
 @bp.route("/")
 @admin_required
@@ -74,25 +83,22 @@ def dashboard():
         "pending_requests": query(
             "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
         )["c"],
-        # Low stock never counts BULK (Bulk/Refill): branches can't
-        # request it from HQ, so it isn't something to restock them with.
+        # HQ's warehouse plus every branch — see LOW_STOCK_WHERE.
         "low_stock_count": query(
-            """SELECT COUNT(*) c FROM branch_inventory bi
+            f"""SELECT COUNT(*) c FROM branch_inventory bi
                JOIN branches b ON bi.branch_id = b.branch_id
                JOIN products p ON bi.sku = p.sku
-               WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
-                 AND p.unit <> 'BULK'""",
+               WHERE {LOW_STOCK_WHERE}""",
             fetchone=True,
         )["c"],
     }
 
     low_stock = query(
-        """SELECT b.branch_name, p.item_name, p.sku, bi.stock_qty, bi.reorder_level
+        f"""SELECT b.branch_name, b.is_hq, p.item_name, p.sku, bi.stock_qty, bi.reorder_level
            FROM branch_inventory bi
            JOIN branches b ON bi.branch_id = b.branch_id
            JOIN products p ON bi.sku = p.sku
-           WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
-             AND p.unit <> 'BULK'
+           WHERE {LOW_STOCK_WHERE}
            ORDER BY bi.stock_qty ASC LIMIT 8"""
     )
 
@@ -129,6 +135,7 @@ def dashboard():
                   SUM(s.qty_sold * s.unit_price) AS total_revenue
            FROM sales s
            JOIN products p ON p.sku = s.sku
+           WHERE p.unit <> 'BULK'  -- bulk qty_sold is mL, not bottles
            GROUP BY p.sku, p.item_name, p.variant
            ORDER BY total_units DESC LIMIT 3"""
     )
@@ -999,24 +1006,26 @@ def low_stock():
     guessing which ones fell off that preview. This page is that place:
     every low-stock row, filterable per branch, with a per-branch
     summary up top so HQ can prioritize which branch to restock first.
+    HQ's own warehouse is listed too (first), so HQ also sees what it
+    needs to produce or buy for itself.
     """
     branch_filter = request.args.get("branch_id", "all")
+    # HQ's warehouse first, then branches alphabetically.
     branch_list = query(
-        "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
+        "SELECT branch_id, branch_name, is_hq FROM branches ORDER BY is_hq DESC, branch_name")
 
     # Per-branch rollup, always fleet-wide (the tabs below only filter
     # the row list) — same convention as discrepancies()'s summary.
     summary = query(
-        """SELECT b.branch_id, b.branch_name,
+        f"""SELECT b.branch_id, b.branch_name, b.is_hq,
                   COUNT(*) AS low_stock_count,
                   COALESCE(SUM(CASE WHEN bi.stock_qty = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock_count
            FROM branch_inventory bi
            JOIN branches b ON bi.branch_id = b.branch_id
            JOIN products p ON bi.sku = p.sku
-           WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
-             AND p.unit <> 'BULK'
-           GROUP BY b.branch_id, b.branch_name
-           ORDER BY low_stock_count DESC, b.branch_name"""
+           WHERE {LOW_STOCK_WHERE}
+           GROUP BY b.branch_id, b.branch_name, b.is_hq
+           ORDER BY b.is_hq DESC, low_stock_count DESC, b.branch_name"""
     )
     totals = {
         "low_stock_count": sum(s["low_stock_count"] for s in summary),
@@ -1024,13 +1033,12 @@ def low_stock():
         "branches_affected": len(summary),
     }
 
-    sql = """SELECT b.branch_id, b.branch_name, p.sku, p.item_name, p.variant, p.unit, p.image_path,
-                    bi.stock_qty, bi.reorder_level
+    sql = f"""SELECT b.branch_id, b.branch_name, b.is_hq, p.sku, p.item_name, p.variant, p.unit,
+                    p.image_path, bi.stock_qty, bi.reorder_level
              FROM branch_inventory bi
              JOIN branches b ON bi.branch_id = b.branch_id
              JOIN products p ON bi.sku = p.sku
-             WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level
-               AND p.unit <> 'BULK'"""
+             WHERE {LOW_STOCK_WHERE}"""
     params = []
     if branch_filter != "all":
         sql += " AND b.branch_id = %s"
@@ -1072,27 +1080,39 @@ def branch_performance():
         sort = "revenue"
 
     rows = query(
-        """SELECT b.branch_id, b.branch_name,
+        f"""SELECT b.branch_id, b.branch_name,
                   COALESCE(sales_agg.units_sold, 0) AS units_sold,
+                  COALESCE(sales_agg.bulk_ml_sold, 0) AS bulk_ml_sold,
                   COALESCE(sales_agg.revenue, 0) AS revenue,
                   COALESCE(sales_agg.sales_count, 0) AS sales_count,
                   COALESCE(stock_agg.total_stock, 0) AS total_stock,
+                  COALESCE(stock_agg.bulk_ml_stock, 0) AS bulk_ml_stock,
                   COALESCE(disc_agg.discrepancy_count, 0) AS discrepancy_count
            FROM branches b
            LEFT JOIN (
-               SELECT branch_id, SUM(qty_sold) AS units_sold,
-                      SUM(qty_sold * unit_price) AS revenue, COUNT(*) AS sales_count
-               FROM sales GROUP BY branch_id
+               -- Bottles and bulk mL kept apart: a bulk product's
+               -- qty_sold/stock_qty is mL, not a bottle count.
+               SELECT s.branch_id,
+                      SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END) AS units_sold,
+                      SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END) AS bulk_ml_sold,
+                      SUM(s.qty_sold * s.unit_price) AS revenue, COUNT(*) AS sales_count
+               FROM sales s JOIN products p ON p.sku = s.sku GROUP BY s.branch_id
            ) sales_agg ON sales_agg.branch_id = b.branch_id
            LEFT JOIN (
-               SELECT branch_id, SUM(stock_qty) AS total_stock
-               FROM branch_inventory GROUP BY branch_id
+               SELECT bi.branch_id,
+                      SUM(CASE WHEN p.unit <> 'BULK' THEN bi.stock_qty ELSE 0 END) AS total_stock,
+                      SUM(CASE WHEN p.unit = 'BULK' THEN bi.stock_qty ELSE 0 END) AS bulk_ml_stock
+               FROM branch_inventory bi JOIN products p ON p.sku = bi.sku GROUP BY bi.branch_id
            ) stock_agg ON stock_agg.branch_id = b.branch_id
            LEFT JOIN (
-               SELECT branch_id, COUNT(*) AS discrepancy_count
-               FROM stock_movement_logs
-               WHERE reference_type = 'STOCK_REQUEST' AND movement_type IN ('DAMAGE', 'ADJUSTMENT')
-               GROUP BY branch_id
+               -- Units damaged + short, same figure as the Discrepancies
+               -- page (see reports.py's DISCREPANCY_UNITS_SQL).
+               SELECT sml.branch_id, SUM({DISCREPANCY_UNITS_SQL}) AS discrepancy_count
+               FROM stock_movement_logs sml
+               {DISCREPANCY_ITEM_JOIN}
+               WHERE sml.reference_type = 'STOCK_REQUEST'
+                 AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+               GROUP BY sml.branch_id
            ) disc_agg ON disc_agg.branch_id = b.branch_id
            WHERE b.is_hq = FALSE"""
     )
@@ -1124,6 +1144,7 @@ def branch_performance():
     totals = {
         "revenue": sum(r["revenue"] for r in rows),
         "units_sold": sum(r["units_sold"] for r in rows),
+        "bulk_ml_sold": sum(r["bulk_ml_sold"] for r in rows),
         "discrepancy_count": sum(r["discrepancy_count"] for r in rows),
     }
 
@@ -1234,28 +1255,10 @@ def record_sale():
         try:
             with transaction() as conn:
                 cur = conn.cursor(dictionary=True)
-                # Row-lock HQ's own stock for this SKU for the rest of the
-                # transaction — same reasoning as branch.record_sale().
-                cur.execute(
-                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
-                    (HQ_BRANCH_ID, sku),
-                )
-                stock_row = cur.fetchone()
-                if not stock_row:
-                    cur.close()
-                    flash("That product isn't stocked at the HQ warehouse.", "error")
-                    return redirect(url_for("admin.record_sale"))
-
-                is_refill = sale_type == "Refill"
-
-                if not is_refill and stock_row["stock_qty"] < qty:
-                    cur.close()
-                    flash("Not enough HQ warehouse stock on hand for that.", "error")
-                    return redirect(url_for("admin.record_sale"))
-
-                before_qty = stock_row["stock_qty"]
-                after_qty = before_qty if is_refill else before_qty - qty
-
+                cur.execute("SELECT sku, item_name, unit FROM products WHERE sku = %s", (sku,))
+                product = cur.fetchone()
+                if not product:
+                    raise TransactionAborted("That product no longer exists.")
                 cur.execute(
                     """INSERT INTO sales (branch_id, sku, qty_sold, unit_price, sale_type, payment_method,
                                           buyer_name, customer_name, customer_address, sold_at)
@@ -1263,40 +1266,39 @@ def record_sale():
                     (HQ_BRANCH_ID, sku, qty, unit_price,
                      sale_type, payment_method, buyer_name, customer_name, customer_address, sold_at),
                 )
-                if not is_refill:
-                    cur.execute(
-                        "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
-                        (after_qty, HQ_BRANCH_ID, sku),
-                    )
-                movement_type = {"Sale": "SALE", "Refill": "REFILL",
-                                 "Freebie": "FREEBIE"}[sale_type]
                 if sale_type == "Freebie":
                     notes = "Freebie / giveaway (HQ)"
                 else:
                     notes = "Point-of-sale (HQ)" if payment_method == "Cash" else f"Credit — {buyer_name}"
-                if is_refill:
-                    notes += " · no stock deducted (refill)"
-                cur.execute(
-                    """INSERT INTO stock_movement_logs
-                       (branch_id, sku, change_qty, movement_type, notes,
-                        created_by_user_id, reference_type, before_qty, after_qty)
-                       VALUES (%s, %s, %s, %s, %s, %s, 'SALE', %s, %s)""",
-                    (HQ_BRANCH_ID, sku, 0 if is_refill else -qty, movement_type, notes,
-                     session.get("user_id"), before_qty, after_qty),
-                )
+                # Sale/Freebie take the bottle(s) from HQ stock; a Refill
+                # takes the scent's bulk mL instead (see sale_stock.py).
+                apply_sale_stock(cur, sale_id=cur.lastrowid, branch_id=HQ_BRANCH_ID, product=product,
+                                 qty=qty, sale_type=sale_type, notes=notes,
+                                 user_id=session.get("user_id"))
                 cur.close()
             notify_admin(["inventory", "sales", "movement_logs"])
             flash(f"{sale_type} recorded.", "success")
+        except TransactionAborted as err:
+            flash(str(err), "error")
         except Exception:
             current_app.logger.exception(
                 "admin record_sale failed for sku=%s", sku)
             flash("Couldn't record that — please try again.", "error")
         return redirect(url_for("admin.record_sale"))
 
+    # bulk_ml: HQ's stock of each bottle size's scent bulk (same base
+    # code, unit BULK — see sale_stock.refill_source()). A Refill pours
+    # from that, so a bottle size can be refilled even with no bottles
+    # left, as long as its scent's bulk is there.
     inventory = query(
-        """SELECT p.sku, p.item_name, p.variant, p.category, p.unit, p.price, bi.stock_qty
+        """SELECT p.sku, p.item_name, p.variant, p.category, p.unit, p.price, bi.stock_qty,
+                  COALESCE(bb.stock_qty, 0) AS bulk_ml
            FROM branch_inventory bi JOIN products p ON bi.sku = p.sku
-           WHERE bi.branch_id = %s AND bi.stock_qty > 0 ORDER BY p.item_name""",
+           LEFT JOIN branch_inventory bb
+             ON p.unit <> 'BULK' AND bb.branch_id = bi.branch_id
+            AND bb.sku = CONCAT(LEFT(p.sku, CHAR_LENGTH(p.sku) - CHAR_LENGTH(p.unit) - 1), '-BULK')
+           WHERE bi.branch_id = %s AND (bi.stock_qty > 0 OR bb.stock_qty > 0)
+           ORDER BY p.item_name""",
         (HQ_BRANCH_ID,),
     )
     bulk_rate = query(
@@ -1306,7 +1308,7 @@ def record_sale():
     # re-select p.sku separately; it's used below for the Item column's
     # SKU + Name display.
     recent_sales = query(
-        """SELECT s.*, p.item_name, COALESCE(s.buyer_name, bu.username) AS buyer_username
+        """SELECT s.*, p.item_name, p.unit, COALESCE(s.buyer_name, bu.username) AS buyer_username
            FROM sales s JOIN products p ON s.sku = p.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
            WHERE s.branch_id = %s ORDER BY s.sold_at DESC LIMIT 10""",
@@ -1828,36 +1830,45 @@ def discrepancies():
     branch_list = query(
         "SELECT branch_id, branch_name FROM branches WHERE is_hq = FALSE ORDER BY branch_name")
 
-    # Per-branch rollup, always fleet-wide regardless of the tab below —
-    # change_qty is stored negative for both DAMAGE and ADJUSTMENT (both
-    # deduct stock), so negating it back to a positive "units lost"
-    # figure here keeps the summary readable without the reader having
-    # to mentally flip the sign themselves.
+    # Per-branch rollup, always fleet-wide regardless of the tab below.
+    # Units come from each delivery line (see reports.py's
+    # DISCREPANCY_UNITS_SQL): the log rows themselves carry
+    # change_qty = 0, so summing that always showed 0 damaged/shortfall
+    # units. The total is damaged + shortfall units, so the three
+    # columns always add up.
     summary = query(
-        """SELECT b.branch_id, b.branch_name,
-                  COUNT(sml.log_id) AS discrepancy_count,
+        f"""SELECT b.branch_id, b.branch_name,
                   COUNT(DISTINCT sml.reference_id) AS deliveries_affected,
-                  COALESCE(SUM(CASE WHEN sml.movement_type = 'DAMAGE' THEN -sml.change_qty ELSE 0 END), 0) AS damaged_units,
-                  COALESCE(SUM(CASE WHEN sml.movement_type = 'ADJUSTMENT' THEN -sml.change_qty ELSE 0 END), 0) AS shortfall_units
+                  COALESCE(SUM(CASE WHEN sml.movement_type = 'DAMAGE'
+                                    THEN {DISCREPANCY_UNITS_SQL} ELSE 0 END), 0) AS damaged_units,
+                  COALESCE(SUM(CASE WHEN sml.movement_type = 'ADJUSTMENT'
+                                    THEN {DISCREPANCY_UNITS_SQL} ELSE 0 END), 0) AS shortfall_units
            FROM branches b
            LEFT JOIN stock_movement_logs sml
              ON sml.branch_id = b.branch_id
             AND sml.reference_type = 'STOCK_REQUEST'
             AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+           {DISCREPANCY_ITEM_JOIN}
            WHERE b.is_hq = FALSE
-           GROUP BY b.branch_id, b.branch_name
-           ORDER BY discrepancy_count DESC, damaged_units DESC, b.branch_name"""
+           GROUP BY b.branch_id, b.branch_name"""
     )
+    for s in summary:
+        s["damaged_units"] = int(s["damaged_units"])
+        s["shortfall_units"] = int(s["shortfall_units"])
+        s["total_units"] = s["damaged_units"] + s["shortfall_units"]
+    summary.sort(key=lambda s: (-s["total_units"], -s["damaged_units"], s["branch_name"]))
 
     # Detail log — same shape as branch.py's discrepancies(), just
     # joined across every branch and filterable by one, same
     # all/per-branch tabs convention as low_stock().
-    sql = """SELECT sml.*, p.item_name, b.branch_name, sr.delivery_number
+    sql = f"""SELECT sml.*, p.item_name, b.branch_name, sr.delivery_number,
+                     {DISCREPANCY_UNITS_SQL} AS units_lost
               FROM stock_movement_logs sml
               JOIN products p ON sml.sku = p.sku
               JOIN branches b ON sml.branch_id = b.branch_id
               LEFT JOIN stock_requests sr
                 ON sml.reference_type = 'STOCK_REQUEST' AND sml.reference_id = sr.request_id
+              {DISCREPANCY_ITEM_JOIN}
               WHERE sml.reference_type = 'STOCK_REQUEST'
                 AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')"""
     params = []
@@ -1868,7 +1879,7 @@ def discrepancies():
     logs = query(sql, tuple(params))
 
     totals = {
-        "discrepancy_count": sum(s["discrepancy_count"] for s in summary),
+        "total_units": sum(s["total_units"] for s in summary),
         "damaged_units": sum(s["damaged_units"] for s in summary),
         "shortfall_units": sum(s["shortfall_units"] for s in summary),
     }
@@ -2176,9 +2187,13 @@ def generate_report():
 @bp.route("/api/reports-data")
 @admin_required
 def reports_data():
+    # Bottles only: a bulk product's qty_sold is mL, not a unit count, so
+    # it would swamp the bottle figures if added in. Same for every
+    # "units" figure below — bulk mL is reported separately as bulk_ml.
     by_variant = query(
         """SELECT p.variant, COALESCE(SUM(s.qty_sold), 0) AS units_sold
            FROM products p LEFT JOIN sales s ON p.sku = s.sku
+           WHERE p.unit <> 'BULK'
            GROUP BY p.variant"""
     )
 
@@ -2188,9 +2203,11 @@ def reports_data():
     # charge different prices from HQ and from each other.
     by_branch = query(
         """SELECT b.branch_name,
-                  COALESCE(SUM(s.qty_sold), 0) AS units_sold,
+                  COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM branches b LEFT JOIN sales s ON b.branch_id = s.branch_id
+           LEFT JOIN products p ON p.sku = s.sku
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
@@ -2218,8 +2235,11 @@ def reports_data():
     )
 
     stock_by_branch = query(
-        """SELECT b.branch_name, SUM(bi.stock_qty) AS total_stock
+        """SELECT b.branch_name,
+                  COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN bi.stock_qty ELSE 0 END), 0) AS total_stock,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN bi.stock_qty ELSE 0 END), 0) AS bulk_ml
            FROM branch_inventory bi JOIN branches b ON bi.branch_id = b.branch_id
+           JOIN products p ON p.sku = bi.sku
            WHERE b.is_hq = FALSE GROUP BY b.branch_id, b.branch_name ORDER BY b.branch_name"""
     )
 
@@ -2235,8 +2255,10 @@ def reports_data():
     # together, since "a unit sold at a branch" and "a package order" are
     # not the same kind of count.
     branch_totals = query(
-        """SELECT COALESCE(SUM(qty_sold), 0) AS units, COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
-           FROM sales""",
+        """SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units,
+                  COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM sales s JOIN products p ON p.sku = s.sku""",
         fetchone=True,
     )
     package_totals = query(
@@ -2246,6 +2268,7 @@ def reports_data():
     )
     totals = {
         "units": branch_totals["units"],
+        "bulk_ml": branch_totals["bulk_ml"],
         "revenue": branch_totals["revenue"] + package_totals["revenue"],
         "branch_revenue": branch_totals["revenue"],
         "package_revenue": package_totals["revenue"],
@@ -2594,10 +2617,13 @@ def bulk_batches():
     batch's real cost (from what was actually used to make it) and
     remaining mL, and, for each fixed bottle size, how many more of that
     size it can still fill — "how many 85ml bottles can this batch still
-    make" answered right here. What a bottled run actually gets charged,
-    though, is the flat base price set per size on the Formulas page
-    (see unit_cogs_settings) — this page's own cost/mL is informational,
-    not what production() logs.
+    make" answered right here — plus a reference "all-in cost per bottle"
+    (this batch's liquid cost/mL x the size's mL, plus that size's
+    packaging formula total — see _formula_items_by_unit()). What a
+    bottled run actually gets charged, though, is the flat base price set
+    per size on the Formulas page (see unit_cogs_settings) — this page's
+    own cost/mL, and the per-bottle figure computed from it, are both
+    informational only, not what production() logs.
     """
     materials_list = query(
         """SELECT material_id, material_name, unit, stock_qty, cost_per_unit
@@ -2606,36 +2632,77 @@ def bulk_batches():
     batch_rows = query(
         """SELECT batch_id, batch_code, scent_name, input_qty, input_unit,
                   total_volume_ml, total_cost, cost_per_ml, remaining_ml,
-                  notes, created_at
+                  notes, target_unit, target_bottle_qty, created_at
            FROM bulk_batches ORDER BY created_at DESC"""
     )
     ingredient_rows = query(
-        """SELECT bbm.batch_id, bbm.qty_used, bbm.qty_used_unit, bbm.cost_per_unit_snapshot, bbm.line_cost,
+        """SELECT bbm.batch_id, bbm.qty_used, bbm.qty_used_unit, bbm.cost_per_unit_snapshot,
+                  bbm.line_cost, bbm.is_packaging,
                   rm.material_name, rm.unit AS material_unit
            FROM bulk_batch_materials bbm
            JOIN raw_materials rm ON rm.material_id = bbm.material_id
-           ORDER BY rm.material_name"""
+           ORDER BY bbm.is_packaging, rm.material_name"""
     )
     ingredients_by_batch = {}
     for row in ingredient_rows:
         ingredients_by_batch.setdefault(row["batch_id"], []).append(row)
+
+    # Packaging total per size (see _formula_items_by_unit()) — folded
+    # into each batch's own liquid cost/mL below into one reference
+    # "all-in cost per bottle" figure. Still purely informational: what a
+    # production run actually gets charged is the flat base price on
+    # unit_cogs_settings, not either of these (see production()'s own
+    # comment for why). Also embedded below (formula_items_by_unit) for
+    # the create-batch form's own live "this will also add ..." preview
+    # when a target bottle size is picked.
+    formula_items_by_unit = _formula_items_by_unit()
+    formula_totals = {
+        unit: sum((i["line_cost"] for i in items), decimal.Decimal("0"))
+        for unit, items in formula_items_by_unit.items()
+    }
 
     batches = []
     for b in batch_rows:
         yields = []
         for unit in BOTTLE_UNITS:
             size_ml = bottle_size_ml(unit)
-            # Bottle count only — not a cost per bottle, since what a
-            # production run actually gets charged is the flat base
-            # price on unit_cogs_settings, not this batch's own cost/mL
-            # (see production()'s own comment for why).
+            liquid_cost = (b["cost_per_ml"] * size_ml).quantize(
+                decimal.Decimal("0.0001"))
+            packaging_cost = formula_totals.get(unit, decimal.Decimal("0"))
             yields.append({
                 "unit": unit,
                 "bottle_count": int(b["remaining_ml"] // size_ml),
+                "liquid_cost": liquid_cost,
+                "packaging_cost": packaging_cost,
+                "total_cost_per_bottle": (liquid_cost + packaging_cost).quantize(
+                    decimal.Decimal("0.01")),
             })
         b["yields"] = yields
         b["depleted"] = b["remaining_ml"] <= 0
-        b["ingredients"] = ingredients_by_batch.get(b["batch_id"], [])
+        ingredients = ingredients_by_batch.get(b["batch_id"], [])
+        b["ingredients"] = ingredients
+
+        # This batch's own real plan, when a target bottle size was
+        # picked at creation (see create_bulk_batch()) — liquid/packaging
+        # subtotals split straight from this batch's own materials (not
+        # the generic per-size reference above), same SUMIF(Category=...)
+        # split the "Timpla Costing" spreadsheet does. Cost per NEW
+        # bottle is liquid+packaging / yield; cost per REFILL is
+        # liquid-only / yield (a refill doesn't need a new bottle/sticker/
+        # seal) — matching that spreadsheet's own two result rows.
+        if b["target_unit"] and b["target_bottle_qty"]:
+            liquid_subtotal = sum(
+                (i["line_cost"] for i in ingredients if not i["is_packaging"]),
+                decimal.Decimal("0"))
+            packaging_subtotal = sum(
+                (i["line_cost"] for i in ingredients if i["is_packaging"]),
+                decimal.Decimal("0"))
+            b["liquid_subtotal"] = liquid_subtotal
+            b["packaging_subtotal"] = packaging_subtotal
+            b["cost_per_new_bottle"] = (
+                b["total_cost"] / b["target_bottle_qty"]).quantize(decimal.Decimal("0.01"))
+            b["cost_per_refill_bottle"] = (
+                liquid_subtotal / b["target_bottle_qty"]).quantize(decimal.Decimal("0.01"))
         batches.append(b)
 
     return render_template(
@@ -2649,6 +2716,23 @@ def bulk_batches():
         # against whatever's being typed in before it's ever submitted.
         bottle_ml_map={u: float(bottle_size_ml(u)) for u in BOTTLE_UNITS},
         ml_per_batch_unit={u: float(v) for u, v in ML_PER_BATCH_UNIT.items()},
+        # Which packaging materials (and how much of each per bottle) a
+        # target size would fold into this batch — drives the create-batch
+        # form's own live preview of what picking that size adds (see
+        # bulk_batches.html's own script). Same live-computed source as
+        # the Formulas page itself (_formula_items_by_unit()).
+        formula_items_by_unit={
+            unit: [
+                {
+                    "material_name": i["material_name"],
+                    "qty_per_unit": float(i["qty_per_unit"]),
+                    "material_unit": i["material_unit"],
+                    "cost_per_unit": float(i["cost_per_unit"]),
+                }
+                for i in items
+            ]
+            for unit, items in formula_items_by_unit.items()
+        },
         # Which units the "Qty used" field can be logged in per material
         # unit (e.g. a Gallon-stocked material can be used in mL/L/Gallon)
         # — drives the per-line unit <select> in the add-material row (see
@@ -2665,9 +2749,21 @@ def create_bulk_batch():
     """Mix specific raw materials at specific quantities into one new
     bulk batch — deducts stock_qty from each material used (this is what
     actually enforces materials being in stock before they're used) and
-    computes the batch's real total cost / cost per mL from what was
+    computes the batch's real liquid cost / cost per mL from what was
     used, not a hand-typed guess (see bulk_batches/bulk_batch_materials in
     schema.sql).
+
+    Picking a target bottle size (optional) also folds that size's
+    packaging formula (see unit_formula_items/_formula_items_by_unit())
+    into this SAME batch — qty = target_bottle_qty (the batch's whole
+    planned yield for that size, frozen at creation, same math as the
+    existing "how many bottles can this batch still make" calc) x each
+    packaging material's qty_per_unit. Those packaging lines deduct stock
+    and add to total_cost exactly like the liquid ones, just tagged
+    is_packaging — matching how the business's own "Timpla Costing"
+    spreadsheet bundles a batch's bottles/stickers/seals into the same
+    total as its liquid ingredients, bought for the whole batch up front.
+    Leave target size blank to keep the old liquid-only behavior.
     """
     if not consume_form_token("create_bulk_batch"):
         flash("This batch was already logged, or the form expired — check the list below before resending.", "error")
@@ -2676,6 +2772,7 @@ def create_bulk_batch():
     scent_name = request.form.get("scent_name", "").strip()
     batch_code = request.form.get("batch_code", "").strip() or None
     input_unit = request.form.get("input_unit")
+    target_unit = request.form.get("target_unit") or None
 
     material_ids = request.form.getlist("material_id[]")
     raw_qtys = request.form.getlist("qty_used[]")
@@ -2686,6 +2783,8 @@ def create_bulk_batch():
             raise ValidationError("Scent / batch name is required.")
         if input_unit not in BATCH_VOLUME_UNITS:
             raise ValidationError("Select a valid batch size unit.")
+        if target_unit is not None and target_unit not in BOTTLE_UNITS:
+            raise ValidationError("Select a valid target bottle size.")
         input_qty = parse_positive_decimal(
             request.form.get("input_qty"), "Batch size")
         notes = parse_optional_text(
@@ -2716,6 +2815,15 @@ def create_bulk_batch():
     total_volume_ml = (input_qty * ML_PER_BATCH_UNIT[input_unit]).quantize(
         decimal.Decimal("0.001"))
 
+    target_bottle_qty = None
+    if target_unit:
+        target_bottle_qty = int(total_volume_ml // bottle_size_ml(target_unit))
+        if target_bottle_qty < 1:
+            flash(
+                f"This batch isn't big enough to fill even one {target_unit} bottle — "
+                "leave the target size blank, or enter a bigger batch.", "error")
+            return redirect(url_for("admin.bulk_batches"))
+
     try:
         with transaction() as conn:
             cur = conn.cursor(dictionary=True)
@@ -2728,7 +2836,7 @@ def create_bulk_batch():
             )
             materials_by_id = {row["material_id"]                               : row for row in cur.fetchall()}
 
-            total_cost = decimal.Decimal("0")
+            liquid_subtotal = decimal.Decimal("0")
             line_rows = []
             for material_id, qty_used, qty_unit in items:
                 material = materials_by_id.get(material_id)
@@ -2759,31 +2867,75 @@ def create_bulk_batch():
                     )
                 line_cost = (qty_used * cost_per_qty_unit).quantize(
                     decimal.Decimal("0.0001"))
-                total_cost += line_cost
+                liquid_subtotal += line_cost
                 line_rows.append(
-                    (material_id, qty_used, qty_unit, cost_per_qty_unit, line_cost, native_qty_used))
+                    (material_id, qty_used, qty_unit, cost_per_qty_unit, line_cost,
+                     native_qty_used, False))
 
-            total_cost = total_cost.quantize(decimal.Decimal("0.01"))
-            cost_per_ml = (total_cost / total_volume_ml).quantize(
+            # Fold the target size's packaging formula into this SAME
+            # batch — see this route's own docstring and migration 43 in
+            # schema.sql. Locked (FOR UPDATE) and stock-checked exactly
+            # like the liquid materials above, just driven by
+            # target_bottle_qty instead of a hand-typed amount.
+            packaging_subtotal = decimal.Decimal("0")
+            if target_unit and target_bottle_qty:
+                cur.execute(
+                    """SELECT rm.material_id, rm.material_name, rm.unit, rm.cost_per_unit, rm.stock_qty,
+                              ufi.qty_per_unit
+                       FROM unit_formula_items ufi
+                       JOIN raw_materials rm ON rm.material_id = ufi.material_id
+                       WHERE ufi.unit = %s FOR UPDATE""",
+                    (target_unit,),
+                )
+                for material in cur.fetchall():
+                    qty_used = (material["qty_per_unit"] * target_bottle_qty).quantize(
+                        decimal.Decimal("0.001"))
+                    if material["stock_qty"] < qty_used:
+                        raise TransactionAborted(
+                            f"Not enough {material['material_name']} in stock to package "
+                            f"{target_bottle_qty} {target_unit} bottle(s) — "
+                            f"{material['stock_qty']:g} {material['unit'].lower()} left, "
+                            f"{qty_used:g} needed."
+                        )
+                    line_cost = (qty_used * material["cost_per_unit"]).quantize(
+                        decimal.Decimal("0.0001"))
+                    packaging_subtotal += line_cost
+                    line_rows.append(
+                        (material["material_id"], qty_used, material["unit"],
+                         material["cost_per_unit"], line_cost, qty_used, True))
+
+            liquid_subtotal = liquid_subtotal.quantize(decimal.Decimal("0.01"))
+            packaging_subtotal = packaging_subtotal.quantize(
+                decimal.Decimal("0.01"))
+            total_cost = liquid_subtotal + packaging_subtotal
+            # Cost per mL is, and stays, a LIQUID-only rate — packaging is
+            # piece-counted, not mL-counted, so mixing it in here would
+            # make this figure meaningless everywhere else it's read
+            # (production()'s preview, the Bulk Batches yield grid).
+            cost_per_ml = (liquid_subtotal / total_volume_ml).quantize(
                 decimal.Decimal("0.000001"))
 
             cur.execute(
                 """INSERT INTO bulk_batches
                    (batch_code, scent_name, input_qty, input_unit, total_volume_ml,
-                    total_cost, cost_per_ml, remaining_ml, notes, created_by_user_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    total_cost, cost_per_ml, remaining_ml, notes, target_unit,
+                    target_bottle_qty, created_by_user_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (batch_code, scent_name, input_qty, input_unit, total_volume_ml,
-                 total_cost, cost_per_ml, total_volume_ml, notes, session.get("user_id")),
+                 total_cost, cost_per_ml, total_volume_ml, notes, target_unit,
+                 target_bottle_qty, session.get("user_id")),
             )
             batch_id = cur.lastrowid
 
-            for material_id, qty_used, qty_unit, cost_per_unit_snapshot, line_cost, native_qty_used in line_rows:
+            for (material_id, qty_used, qty_unit, cost_per_unit_snapshot, line_cost,
+                 native_qty_used, is_packaging) in line_rows:
                 cur.execute(
                     """INSERT INTO bulk_batch_materials
-                       (batch_id, material_id, qty_used, qty_used_unit, cost_per_unit_snapshot, line_cost)
-                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                       (batch_id, material_id, qty_used, qty_used_unit, cost_per_unit_snapshot,
+                        line_cost, is_packaging)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                     (batch_id, material_id, qty_used, qty_unit,
-                     cost_per_unit_snapshot, line_cost),
+                     cost_per_unit_snapshot, line_cost, is_packaging),
                 )
                 cur.execute(
                     "UPDATE raw_materials SET stock_qty = stock_qty - %s WHERE material_id = %s",
@@ -2793,7 +2945,8 @@ def create_bulk_batch():
         notify_admin(["production", "materials"])
         notify_all(["materials"])
         log_action("create_bulk_batch", target=scent_name,
-                   details=f"{input_qty:g} {input_unit} — ₱{total_cost:,.2f} total (₱{cost_per_ml:,.6f}/mL)"
+                   details=f"{input_qty:g} {input_unit} — ₱{total_cost:,.2f} total (₱{cost_per_ml:,.6f}/mL liquid)"
+                   + (f", {target_bottle_qty} x {target_unit} packaged" if target_unit else "")
                    + (f" — batch {batch_code}" if batch_code else ""))
         flash(
             f"Batch logged — {total_volume_ml:g} mL at ₱{total_cost:,.2f} total.", "success")
@@ -2806,22 +2959,46 @@ def create_bulk_batch():
     return redirect(url_for("admin.bulk_batches"))
 
 
+def _formula_items_by_unit():
+    """Every packaging size's reference packaging-materials list (see
+    unit_formula_items in schema.sql), keyed by unit, with each line's
+    cost computed LIVE from the material's current cost_per_unit — never
+    trusted from unit_formula_items.line_cost itself, so editing a
+    material's cost is reflected immediately. Shared by formulas() (to
+    edit/display the recipe) and bulk_batches() (to fold a size's
+    packaging total into a batch's own reference cost-per-bottle).
+    """
+    rows = query(
+        """SELECT ufi.formula_item_id, ufi.unit, ufi.material_id, ufi.qty_per_unit,
+                  rm.material_name, rm.unit AS material_unit, rm.cost_per_unit
+           FROM unit_formula_items ufi
+           JOIN raw_materials rm ON rm.material_id = ufi.material_id
+           ORDER BY ufi.unit, rm.material_name"""
+    )
+    items_by_unit = {u: [] for u in FORMULA_UNITS}
+    for row in rows:
+        row["line_cost"] = (row["qty_per_unit"] * row["cost_per_unit"]).quantize(
+            decimal.Decimal("0.0001"))
+        items_by_unit.setdefault(row["unit"], []).append(row)
+    return items_by_unit
+
+
 # ---------------------------------------------------------------- unit formulas (COGS)
 @bp.route("/formulas")
 @admin_required
 def formulas():
     """Cost-of-goods settings: the Bulk/Refill rate per mL (unchanged —
-    see bulk_rate_settings/save_bulk_rate() below) plus a flat base cost
-    per Bottled packaging size (see unit_cogs_settings in schema.sql).
-
-    This used to be a materials-cart formula per size
-    (unit_formula_items) — replaced because it was double bookkeeping: a
-    bulk batch already records exactly which materials and quantities
-    went into it (see bulk_batches/bulk_batch_materials), so a Bottled
-    run's cost of goods is just this one hand-typed number now, not a
-    re-derived recipe. See production() for how this is used — a run
-    still requires picking a bulk batch (that's what deducts its
-    remaining mL), but the cost logged comes from here, not the batch.
+    see bulk_rate_settings/save_bulk_rate() below), a flat base cost per
+    Bottled packaging size (see unit_cogs_settings in schema.sql) — this
+    is what production() actually charges a Bottled run — plus a
+    reference-only packaging materials formula per size (see
+    unit_formula_items/_formula_items_by_unit() and
+    add_formula_item()/delete_formula_item() below). The formula's
+    computed total is only ever a reference for setting the base cost
+    above by hand; nothing here feeds production()'s cogs_per_unit
+    automatically. A batch's own liquid cost/mL for these same sizes is
+    shown alongside this reference on the Bulk Batches page instead,
+    since only there is a specific batch's cost_per_ml known.
     """
     bulk_rate = query(
         "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
@@ -2829,20 +3006,99 @@ def formulas():
     cogs_rows = query(
         "SELECT unit, base_cost_per_unit FROM unit_cogs_settings")
     cogs_by_unit = {r["unit"]: r["base_cost_per_unit"] for r in cogs_rows}
+    formula_items_by_unit = _formula_items_by_unit()
     # FORMULA_UNITS is PRODUCT_UNITS minus BULK — every bottle size gets a
     # row here (defaulting to 0 if somehow missing) so admins always see
     # the full picture.
     units = [
-        {"unit": u, "base_cost_per_unit": cogs_by_unit.get(
-            u, decimal.Decimal("0"))}
+        {
+            "unit": u,
+            "base_cost_per_unit": cogs_by_unit.get(u, decimal.Decimal("0")),
+            "formula_items": formula_items_by_unit.get(u, []),
+            "formula_total": sum(
+                (i["line_cost"] for i in formula_items_by_unit.get(u, [])),
+                decimal.Decimal("0"),
+            ),
+        }
         for u in FORMULA_UNITS
     ]
+    materials_list = query(
+        """SELECT material_id, material_name, unit, cost_per_unit
+           FROM raw_materials ORDER BY material_name"""
+    )
 
     return render_template(
         "admin/formulas.html",
         units=units,
         bulk_rate=bulk_rate,
+        materials=materials_list,
     )
+
+
+@bp.route("/formulas/add-item", methods=["POST"])
+@admin_required
+def add_formula_item():
+    """Add (or update) one material's line in a packaging size's
+    reference packaging-materials formula (see unit_formula_items in
+    schema.sql and this route's own comment on _formula_items_by_unit()).
+    Purely a reference breakdown — production() keeps charging whatever
+    flat base cost is set on unit_cogs_settings, unaffected by this.
+    """
+    unit = request.form.get("unit")
+    if unit not in FORMULA_UNITS:
+        flash("Select a valid packaging size.", "error")
+        return redirect(url_for("admin.formulas"))
+
+    try:
+        material_id = parse_positive_int(
+            request.form.get("material_id"), "Material")
+        qty_per_unit = parse_positive_decimal(
+            request.form.get("qty_per_unit"), "Quantity per unit")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.formulas"))
+
+    material = query(
+        "SELECT material_name, cost_per_unit FROM raw_materials WHERE material_id = %s",
+        (material_id,), fetchone=True,
+    )
+    if not material:
+        flash("That material no longer exists.", "error")
+        return redirect(url_for("admin.formulas"))
+
+    line_cost = (qty_per_unit * material["cost_per_unit"]).quantize(
+        decimal.Decimal("0.0001"))
+    execute(
+        """INSERT INTO unit_formula_items (unit, material_id, qty_per_unit, line_cost)
+           VALUES (%s, %s, %s, %s)
+           ON DUPLICATE KEY UPDATE qty_per_unit = VALUES(qty_per_unit), line_cost = VALUES(line_cost)""",
+        (unit, material_id, qty_per_unit, line_cost),
+    )
+    notify_all(["materials"])
+    log_action("add_formula_item", target=unit,
+               details=f"{material['material_name']} x {qty_per_unit:g}/unit -> ₱{line_cost:,.4f}")
+    flash(f"{unit} packaging formula updated.", "success")
+    return redirect(url_for("admin.formulas"))
+
+
+@bp.route("/formulas/delete-item", methods=["POST"])
+@admin_required
+def delete_formula_item():
+    """Remove one material line from a packaging size's reference
+    packaging-materials formula (see unit_formula_items in schema.sql)."""
+    try:
+        formula_item_id = parse_positive_int(
+            request.form.get("formula_item_id"), "Formula item")
+    except ValidationError as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.formulas"))
+
+    execute("DELETE FROM unit_formula_items WHERE formula_item_id = %s",
+            (formula_item_id,))
+    notify_all(["materials"])
+    log_action("delete_formula_item", target=str(formula_item_id))
+    flash("Removed from the packaging formula.", "success")
+    return redirect(url_for("admin.formulas"))
 
 
 @bp.route("/formulas/save-bulk-rate", methods=["POST"])
@@ -3435,6 +3691,14 @@ def partner_inquiries():
     sql += " ORDER BY created_at DESC LIMIT 300"
     inquiries = query(sql, params)
 
+    # Each inquiry's snapshotted package contents next to what HQ has on
+    # hand right now — what the Fulfill dialog shows (and what still needs
+    # producing before a Closed order can ship).
+    items_by_inquiry = _inquiry_items_with_stock([i["inquiry_id"] for i in inquiries])
+    for inq in inquiries:
+        inq["items"] = items_by_inquiry.get(inq["inquiry_id"], [])
+        inq["short_count"] = sum(1 for it in inq["items"] if it["short"] > 0)
+
     # in_progress_count groups Follow-up and On Hold together for the
     # stat tile — both mean "not new, not decided yet", just for a
     # different reason (needs a nudge vs. the partner asked to wait).
@@ -3447,7 +3711,9 @@ def partner_inquiries():
                COALESCE(SUM(CASE WHEN status = 'Contacted' THEN 1 ELSE 0 END), 0) AS contacted_count,
                COALESCE(SUM(CASE WHEN status IN ('Follow-up', 'On Hold') THEN 1 ELSE 0 END), 0) AS in_progress_count,
                COALESCE(SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END), 0) AS closed_count,
-               COALESCE(SUM(CASE WHEN status = 'Declined' THEN 1 ELSE 0 END), 0) AS declined_count
+               COALESCE(SUM(CASE WHEN status = 'Declined' THEN 1 ELSE 0 END), 0) AS declined_count,
+               COALESCE(SUM(CASE WHEN status = 'Closed' AND fulfilled_at IS NULL
+                                  AND package_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS to_fulfill_count
            FROM partner_inquiries""",
         fetchone=True,
     )
@@ -3474,11 +3740,40 @@ def update_inquiry_status(inquiry_id):
         return redirect(url_for("admin.partner_inquiries", status=return_status))
 
     inquiry = query(
-        "SELECT company_name FROM partner_inquiries WHERE inquiry_id = %s",
+        "SELECT company_name, status, fulfilled_at FROM partner_inquiries WHERE inquiry_id = %s",
         (inquiry_id,), fetchone=True,
     )
     if not inquiry:
         flash("That inquiry no longer exists.", "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+    if inquiry["fulfilled_at"] and new_status != "Closed":
+        # Already shipped: the deal falling through puts the package's
+        # items back into HQ stock (logged as PACKAGE_RETURN), in the
+        # same transaction as the status change.
+        try:
+            with transaction() as conn:
+                cur = conn.cursor(dictionary=True)
+                _return_inquiry_stock(cur, inquiry_id, inquiry["company_name"])
+                cur.execute(
+                    """UPDATE partner_inquiries
+                       SET status = %s, fulfilled_at = NULL, fulfilled_by_user_id = NULL
+                       WHERE inquiry_id = %s""",
+                    (new_status, inquiry_id),
+                )
+                cur.close()
+        except TransactionAborted as err:
+            flash(str(err), "error")
+            return redirect(url_for("admin.partner_inquiries", status=return_status))
+        except Exception:
+            current_app.logger.exception("Failed to reopen inquiry %s", inquiry_id)
+            flash("Couldn't update that inquiry — please try again.", "error")
+            return redirect(url_for("admin.partner_inquiries", status=return_status))
+        notify_admin(["partner_inquiries", "inventory", "movement_logs"])
+        log_action("update_inquiry_status", target=inquiry["company_name"],
+                   details=f"{new_status} — fulfilled stock returned to HQ")
+        flash(f"Marked {inquiry['company_name']}'s inquiry as {new_status} and returned "
+              f"its items to HQ stock.", "success")
         return redirect(url_for("admin.partner_inquiries", status=return_status))
 
     execute(
@@ -3491,6 +3786,145 @@ def update_inquiry_status(inquiry_id):
     flash(
         f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
     return redirect(url_for("admin.partner_inquiries", status=return_status))
+
+
+def _inquiry_items_with_stock(inquiry_ids):
+    """{inquiry_id: [item, ...]} — each inquiry's snapshotted package
+    contents (partner_inquiry_items) with HQ's current stock and how many
+    are still short (need - on hand, never below 0)."""
+    if not inquiry_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(inquiry_ids))
+    rows = query(
+        f"""SELECT pii.inquiry_id, pii.sku, pii.item_name, pii.unit, pii.qty,
+                   COALESCE(bi.stock_qty, 0) AS hq_stock
+            FROM partner_inquiry_items pii
+            LEFT JOIN branch_inventory bi ON bi.branch_id = %s AND bi.sku = pii.sku
+            WHERE pii.inquiry_id IN ({placeholders})
+            ORDER BY pii.item_name""",
+        (HQ_BRANCH_ID, *inquiry_ids),
+    )
+    out = {}
+    for r in rows:
+        r["short"] = max(r["qty"] - r["hq_stock"], 0)
+        r["qty_unit"] = "mL" if r["unit"] == "BULK" else ""
+        out.setdefault(r["inquiry_id"], []).append(r)
+    return out
+
+
+def _return_inquiry_stock(cur, inquiry_id, company_name):
+    """Put a fulfilled inquiry's items back into HQ stock (PACKAGE_RETURN).
+    Runs inside the caller's transaction, on its cursor."""
+    cur.execute(
+        "SELECT sku, qty FROM partner_inquiry_items WHERE inquiry_id = %s", (inquiry_id,))
+    for item in cur.fetchall():
+        cur.execute(
+            """INSERT INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, %s)
+               ON DUPLICATE KEY UPDATE stock_qty = stock_qty + VALUES(stock_qty)""",
+            (HQ_BRANCH_ID, item["sku"], item["qty"]),
+        )
+        cur.execute(
+            "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s",
+            (HQ_BRANCH_ID, item["sku"]),
+        )
+        after_qty = cur.fetchone()["stock_qty"]
+        cur.execute(
+            """INSERT INTO stock_movement_logs
+               (branch_id, sku, change_qty, movement_type, notes,
+                created_by_user_id, reference_type, reference_id, before_qty, after_qty)
+               VALUES (%s, %s, %s, 'PACKAGE_RETURN', %s, %s, 'PARTNER_INQUIRY', %s, %s, %s)""",
+            (HQ_BRANCH_ID, item["sku"], item["qty"],
+             f"Returned from {company_name}'s package order (reopened)",
+             session.get("user_id"), inquiry_id, after_qty - item["qty"], after_qty),
+        )
+
+
+@bp.route("/partners/inquiries/<int:inquiry_id>/fulfill", methods=["POST"])
+@admin_required
+def fulfill_inquiry(inquiry_id):
+    """Ship a Closed package order: take its snapshotted items out of HQ
+    stock (PACKAGE_ORDER). Order -> produce -> fulfill — blocked, with
+    the exact shortfall per item, until Production has made enough, so
+    HQ stock never goes negative."""
+    return_status = request.form.get("return_status", "all")
+    back = redirect(url_for("admin.partner_inquiries", status=return_status))
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                "SELECT * FROM partner_inquiries WHERE inquiry_id = %s FOR UPDATE", (inquiry_id,))
+            inq = cur.fetchone()
+            if not inq:
+                raise TransactionAborted("That inquiry no longer exists.")
+            if inq["status"] != "Closed":
+                raise TransactionAborted("Only a Closed inquiry (a confirmed order) can be fulfilled.")
+            if inq["fulfilled_at"]:
+                raise TransactionAborted("That order has already been fulfilled.")
+            cur.execute(
+                """SELECT sku, item_name, unit, qty FROM partner_inquiry_items
+                   WHERE inquiry_id = %s ORDER BY item_name FOR UPDATE""",
+                (inquiry_id,),
+            )
+            items = cur.fetchall()
+            if not items:
+                raise TransactionAborted("This inquiry has no package items to fulfill.")
+
+            # Lock and check every line first, so the message lists every
+            # shortfall at once instead of one per attempt.
+            stock, short = {}, []
+            for item in items:
+                cur.execute(
+                    "SELECT stock_qty FROM branch_inventory WHERE branch_id = %s AND sku = %s FOR UPDATE",
+                    (HQ_BRANCH_ID, item["sku"]),
+                )
+                row = cur.fetchone()
+                have = row["stock_qty"] if row else 0
+                stock[item["sku"]] = have
+                if have < item["qty"]:
+                    unit = " mL" if item["unit"] == "BULK" else ""
+                    short.append(f"{item['item_name']} ({item['unit']}): need {item['qty']}{unit}, "
+                                 f"HQ has {have}{unit}")
+            if short:
+                raise TransactionAborted(
+                    "Not enough HQ stock to fulfill this order — produce the shortfall on "
+                    "Production Log first. " + "; ".join(short) + ".")
+
+            for item in items:
+                before_qty = stock[item["sku"]]
+                after_qty = before_qty - item["qty"]
+                cur.execute(
+                    "UPDATE branch_inventory SET stock_qty = %s WHERE branch_id = %s AND sku = %s",
+                    (after_qty, HQ_BRANCH_ID, item["sku"]),
+                )
+                cur.execute(
+                    """INSERT INTO stock_movement_logs
+                       (branch_id, sku, change_qty, movement_type, notes,
+                        created_by_user_id, reference_type, reference_id, before_qty, after_qty)
+                       VALUES (%s, %s, %s, 'PACKAGE_ORDER', %s, %s, 'PARTNER_INQUIRY', %s, %s, %s)""",
+                    (HQ_BRANCH_ID, item["sku"], -item["qty"],
+                     f"Package order for {inq['company_name']}",
+                     session.get("user_id"), inquiry_id, before_qty, after_qty),
+                )
+            cur.execute(
+                """UPDATE partner_inquiries SET fulfilled_at = NOW(), fulfilled_by_user_id = %s
+                   WHERE inquiry_id = %s""",
+                (session.get("user_id"), inquiry_id),
+            )
+            cur.close()
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return back
+    except Exception:
+        current_app.logger.exception("Failed to fulfill inquiry %s", inquiry_id)
+        flash("Couldn't fulfill that order — please try again.", "error")
+        return back
+
+    notify_admin(["partner_inquiries", "inventory", "movement_logs"])
+    log_action("fulfill_package_order", target=inq["company_name"],
+               details=f"{len(items)} item(s) from HQ stock")
+    flash(f"Fulfilled {inq['company_name']}'s package order — {len(items)} item(s) taken "
+          f"out of HQ stock.", "success")
+    return back
 
 
 @bp.route("/partners/inquiries/<int:inquiry_id>/remarks", methods=["POST"])
@@ -3560,19 +3994,23 @@ def customers():
     rows = query(
         """SELECT s.customer_name AS name, s.customer_address AS address,
                   agg.branch_count, agg.branches, agg.purchase_count,
-                  agg.total_units, agg.total_spent, agg.last_purchase_at,
+                  agg.total_units, agg.total_bulk_ml, agg.total_spent, agg.last_purchase_at,
                   last_b.branch_name AS last_branch_name
            FROM (
                SELECT sa.customer_name,
                       COUNT(DISTINCT sa.branch_id) AS branch_count,
                       GROUP_CONCAT(DISTINCT b.branch_name ORDER BY b.branch_name SEPARATOR ', ') AS branches,
                       COUNT(*) AS purchase_count,
-                      COALESCE(SUM(sa.qty_sold), 0) AS total_units,
+                      -- Bulk sales store qty_sold in mL, so they're totalled
+                      -- separately rather than added to the bottle count.
+                      COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN sa.qty_sold ELSE 0 END), 0) AS total_units,
+                      COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN sa.qty_sold ELSE 0 END), 0) AS total_bulk_ml,
                       COALESCE(SUM(sa.qty_sold * sa.unit_price), 0) AS total_spent,
                       MIN(sa.sold_at) AS first_sold_at,
                       MAX(sa.sold_at) AS last_purchase_at
                FROM sales sa
                JOIN branches b ON sa.branch_id = b.branch_id
+               JOIN products p ON p.sku = sa.sku
                WHERE sa.customer_name IS NOT NULL AND sa.customer_name <> ''
                GROUP BY sa.customer_name
            ) agg
@@ -3595,3 +4033,65 @@ def customers():
         "admin/customers.html", rows=rows, totals=totals,
         multi_branch_count=multi_branch_count,
     )
+
+
+# ---------------------------------------------------------------- sales history / void
+@bp.route("/sales-history")
+@admin_required
+def sales_history():
+    """Every location's sales (HQ and branches), newest first — the place
+    HQ voids a sale from. Recent voids are listed underneath as the
+    permanent record of what was removed and why (sale_voids)."""
+    branch_filter = request.args.get("branch_id", "all")
+    branches = query("SELECT branch_id, branch_name, is_hq FROM branches ORDER BY is_hq DESC, branch_name")
+    sql = """SELECT s.*, b.branch_name, b.is_hq, p.item_name, p.variant, p.unit,
+                    COALESCE(s.buyer_name, bu.username) AS buyer_username
+             FROM sales s
+             JOIN branches b ON b.branch_id = s.branch_id
+             JOIN products p ON p.sku = s.sku
+             LEFT JOIN users bu ON s.buyer_user_id = bu.user_id"""
+    params = ()
+    if branch_filter.isdigit():
+        sql += " WHERE s.branch_id = %s"
+        params = (int(branch_filter),)
+    sql += " ORDER BY s.sold_at DESC, s.sale_id DESC LIMIT 300"
+    sales = query(sql, params)
+    voids = query(
+        """SELECT v.*, b.branch_name FROM sale_voids v JOIN branches b ON b.branch_id = v.branch_id
+           ORDER BY v.voided_at DESC LIMIT 50"""
+    )
+    return render_template("admin/sales_history.html", sales=sales, voids=voids,
+                           branches=branches, branch_filter=branch_filter)
+
+
+@bp.route("/sales/<int:sale_id>/void", methods=["POST"])
+@admin_required
+def void_sale_route(sale_id):
+    """HQ can void any location's sale — see sale_stock.void_sale()."""
+    # Only ever back to an admin page (never an arbitrary URL from the form).
+    next_url = request.form.get("next") or ""
+    if not (next_url.startswith("/admin/") and not next_url.startswith("//")):
+        next_url = url_for("admin.sales_history")
+    back = redirect(next_url)
+    reason = (request.form.get("reason") or "").strip()[:255]
+    if not reason:
+        flash("Give a reason for voiding this sale.", "error")
+        return back
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            sale = void_sale(cur, sale_id=sale_id, reason=reason,
+                             user_id=session.get("user_id"), username=session.get("username"))
+            cur.close()
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return back
+    except Exception:
+        current_app.logger.exception("void sale %s failed", sale_id)
+        flash("Couldn't void that sale — please try again.", "error")
+        return back
+    notify_admin_and_branch(sale["branch_id"], ["inventory", "sales", "movement_logs"])
+    log_action("void_sale", target=f"sale #{sale_id} — {sale['item_name']}",
+               details=f"{sale['sale_type']} × {sale['qty_sold']} · {reason}"[:255])
+    flash(f"Voided the {sale['sale_type'].lower()} of {sale['item_name']} — its stock was returned.", "success")
+    return back

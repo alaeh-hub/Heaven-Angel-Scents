@@ -21,7 +21,10 @@ approach in ai.py). Each tool is:
 Schema notes (confirmed against schema.sql / routes/ai.py):
   - stock_requests(request_id, branch_id, delivery_number, status,
     requested_at) and stock_request_items(item_id, request_id, sku,
-    requested_qty, unit_price).
+    requested_qty, dispatched_qty, received_qty, damaged_qty, unit_price).
+  - Bulk/Refill products (products.unit = 'BULK') keep qty_sold,
+    stock_qty and qty_produced in mL, never bottles — every tool keeps
+    them apart (bulk_ml / stock_unit) instead of adding them to bottles.
   - products.sku is VARCHAR(50) (per utils.py's build_sku() comment).
   - branches(branch_id, branch_name, is_hq).
   - Draft approval (routes/ai.py's approve_draft) generates the real
@@ -34,7 +37,8 @@ import datetime
 from flask import current_app, url_for
 
 from db import query, transaction
-from utils import ValidationError
+from reports import DISCREPANCY_ITEM_JOIN, DISCREPANCY_UNITS_SQL, LOW_STOCK_WHERE
+from utils import BOTTLE_UNITS, ValidationError, bottle_size_ml
 
 try:
     import audit
@@ -54,7 +58,7 @@ MAX_ROWS = 30  # cap on any single tool's result rows, to keep responses cheap
 # Branch-name resolution helper (shared by every tool below)
 # ---------------------------------------------------------------------------
 
-def _resolve_branch_ids(ctx, branch_name):
+def _resolve_branch_ids(ctx, branch_name, include_hq=False):
     """Turn an (optional, model-supplied) branch_name into a list of
     branch_ids the caller is actually allowed to see.
 
@@ -62,6 +66,9 @@ def _resolve_branch_ids(ctx, branch_name):
     the model passed — this is the actual access boundary, not the
     model's argument. Admins may name a branch (fuzzy match) or leave it
     blank to mean "every branch".
+
+    include_hq lets the name match HQ's own warehouse too (e.g. "HQ"),
+    for tools where HQ is one of the locations being reported on.
     """
     if ctx["role"] != "Admin":
         return [ctx["branch_id"]], None
@@ -69,10 +76,10 @@ def _resolve_branch_ids(ctx, branch_name):
     if not branch_name:
         return None, None  # None = no filter = every branch, admin only
 
-    rows = query(
-        "SELECT branch_id, branch_name FROM branches WHERE branch_name LIKE %s AND is_hq = FALSE",
-        (f"%{branch_name}%",),
-    )
+    sql = "SELECT branch_id, branch_name FROM branches WHERE branch_name LIKE %s"
+    if not include_hq:
+        sql += " AND is_hq = FALSE"
+    rows = query(sql, (f"%{branch_name}%",))
     if not rows:
         return [], f"No branch matching '{branch_name}'."
     if len(rows) > 1:
@@ -93,7 +100,7 @@ def _check_stock(args, ctx):
     if not sku and not item_name:
         return {"error": "Provide either sku or item_name."}
 
-    branch_ids, err = _resolve_branch_ids(ctx, branch_name)
+    branch_ids, err = _resolve_branch_ids(ctx, branch_name, include_hq=True)
     if err:
         return {"error": err}
 
@@ -105,9 +112,13 @@ def _check_stock(args, ctx):
     elif item_name:
         conditions.append("p.item_name LIKE %s")
         params.append(f"%{item_name}%")
+    if ctx["role"] != "Admin":
+        # Same as the branch's My Inventory page: branches only stock
+        # bottled sizes, so their (always-0) bulk rows are never shown.
+        conditions.append("p.unit <> 'BULK'")
 
     sql = (
-        "SELECT b.branch_name, p.sku, p.item_name, p.unit, p.variant, "
+        "SELECT b.branch_name, b.is_hq, p.sku, p.item_name, p.unit, p.variant, p.category, p.price, "
         "bi.stock_qty, bi.reorder_level "
         "FROM branch_inventory bi "
         "JOIN products p ON bi.sku = p.sku "
@@ -130,11 +141,15 @@ def _check_stock(args, ctx):
         "results": [
             {
                 "branch": r["branch_name"],
+                "is_hq": bool(r["is_hq"]),
                 "sku": r["sku"],
                 "item_name": r["item_name"],
                 "unit": r["unit"],
                 "variant": r["variant"],
+                "category": r["category"],
+                "price": float(r["price"]),
                 "stock_qty": r["stock_qty"],
+                "stock_unit": "mL" if r["unit"] == "BULK" else "bottles",
                 "reorder_level": r["reorder_level"],
             }
             for r in rows
@@ -148,18 +163,18 @@ def _check_stock(args, ctx):
 
 def _get_low_stock(args, ctx):
     branch_name = (args.get("branch_name") or "").strip()
-    branch_ids, err = _resolve_branch_ids(ctx, branch_name)
+    branch_ids, err = _resolve_branch_ids(ctx, branch_name, include_hq=True)
     if err:
         return {"error": err}
 
     sql = (
-        "SELECT b.branch_name, p.sku, p.item_name, p.unit, bi.stock_qty, bi.reorder_level "
+        "SELECT b.branch_name, b.is_hq, p.sku, p.item_name, p.unit, bi.stock_qty, bi.reorder_level "
         "FROM branch_inventory bi "
         "JOIN branches b ON bi.branch_id = b.branch_id "
         "JOIN products p ON bi.sku = p.sku "
-        "WHERE b.is_hq = FALSE AND bi.stock_qty <= bi.reorder_level "
-        # Same rule as the Low Stock page: BULK isn't restocked by request.
-        "AND p.unit <> 'BULK'"
+        # Same rule as the Low Stock page (reports.LOW_STOCK_WHERE):
+        # HQ's warehouse and every branch; BULK has no reorder level.
+        "WHERE " + LOW_STOCK_WHERE
     )
     params = []
     if branch_ids is not None:
@@ -168,7 +183,7 @@ def _get_low_stock(args, ctx):
         placeholders = ",".join(["%s"] * len(branch_ids))
         sql += f" AND bi.branch_id IN ({placeholders})"
         params.extend(branch_ids)
-    sql += " ORDER BY bi.stock_qty ASC LIMIT %s"
+    sql += " ORDER BY (bi.stock_qty - bi.reorder_level) ASC, bi.stock_qty ASC LIMIT %s"
     params.append(MAX_ROWS)
 
     rows = query(sql, tuple(params))
@@ -176,6 +191,7 @@ def _get_low_stock(args, ctx):
         "results": [
             {
                 "branch": r["branch_name"],
+                "is_hq": bool(r["is_hq"]),
                 "sku": r["sku"],
                 "item_name": r["item_name"],
                 "unit": r["unit"],
@@ -289,6 +305,12 @@ def _period_sql(period, col):
 
 _PERIOD_SQL = {name: _period_sql(name, "s.sold_at") for name in _PERIOD_TMPL}
 
+# Bulk products' qty_sold is mL, not bottles, so every "units" figure below
+# counts bottles only and bulk volume comes back separately as bulk_ml.
+# Both need `products p` joined on s.sku.
+_UNITS_SQL = "COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END),0) AS units"
+_BULK_ML_SQL = "COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END),0) AS bulk_ml"
+
 
 def _get_sales_summary(args, ctx):
     period = (args.get("period") or "today").strip()
@@ -297,7 +319,9 @@ def _get_sales_summary(args, ctx):
 
     branch_name = (args.get("branch_name") or "").strip()
     by_branch = bool(args.get("by_branch"))
-    branch_ids, err = _resolve_branch_ids(ctx, branch_name)
+    # HQ records its own sales too (admin Record Sale), so "HQ" is a
+    # valid location here.
+    branch_ids, err = _resolve_branch_ids(ctx, branch_name, include_hq=True)
     if err:
         return {"error": err}
 
@@ -311,39 +335,55 @@ def _get_sales_summary(args, ctx):
         params.extend(branch_ids)
 
     totals = query(
-        "SELECT COALESCE(SUM(s.qty_sold),0) AS units, COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue "
-        "FROM sales s WHERE " + " AND ".join(conditions),
+        f"SELECT {_UNITS_SQL}, {_BULK_ML_SQL}, COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue "
+        "FROM sales s JOIN products p ON s.sku = p.sku WHERE " + " AND ".join(conditions),
         tuple(params), fetchone=True,
     )
     top_items = query(
-        "SELECT p.item_name, SUM(s.qty_sold) AS units, SUM(s.qty_sold*s.unit_price) AS revenue "
+        f"SELECT p.item_name, {_UNITS_SQL}, {_BULK_ML_SQL}, SUM(s.qty_sold*s.unit_price) AS revenue "
         "FROM sales s JOIN products p ON s.sku = p.sku WHERE " + " AND ".join(conditions) +
-        " GROUP BY p.item_name ORDER BY units DESC LIMIT 5",
+        " GROUP BY p.item_name ORDER BY units DESC, bulk_ml DESC LIMIT 5",
         tuple(params),
     )
     # Sale vs Refill vs Freebie, Cash vs Credit, so "how much went on
     # credit" or "how many refills" doesn't need a tool of its own.
     by_type = query(
         "SELECT s.sale_type, s.payment_method, COUNT(*) AS transactions, "
-        "COALESCE(SUM(s.qty_sold),0) AS units, COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue "
-        "FROM sales s WHERE " + " AND ".join(conditions) +
+        f"{_UNITS_SQL}, {_BULK_ML_SQL}, COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue "
+        "FROM sales s JOIN products p ON s.sku = p.sku WHERE " + " AND ".join(conditions) +
         " GROUP BY s.sale_type, s.payment_method ORDER BY revenue DESC",
         tuple(params),
     )
     result = {
         "period": period,
         "units": totals["units"],
+        "bulk_ml": totals["bulk_ml"],
         "revenue": float(totals["revenue"]),
         "top_items": [
-            {"item_name": r["item_name"], "units": r["units"], "revenue": float(r["revenue"])}
+            {"item_name": r["item_name"], "units": r["units"], "bulk_ml": r["bulk_ml"],
+             "revenue": float(r["revenue"])}
             for r in top_items
         ],
         "by_type": [
             {"sale_type": r["sale_type"], "payment_method": r["payment_method"],
-             "transactions": r["transactions"], "units": r["units"], "revenue": float(r["revenue"])}
+             "transactions": r["transactions"], "units": r["units"], "bulk_ml": r["bulk_ml"],
+             "revenue": float(r["revenue"])}
             for r in by_type
         ],
     }
+
+    # Dashboard / Reports "Total revenue" also counts Closed partner
+    # package orders (partner_inquiries.order_amount). Only fleet-wide —
+    # a package order isn't tied to any branch.
+    if ctx["role"] == "Admin" and branch_ids is None:
+        pkg = query(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(order_amount),0) AS revenue FROM partner_inquiries "
+            "WHERE status = 'Closed' AND " + _period_sql(period, "created_at"),
+            fetchone=True,
+        )
+        result["package_order_count"] = pkg["n"]
+        result["package_revenue"] = float(pkg["revenue"])
+        result["total_revenue"] = round(result["revenue"] + result["package_revenue"], 2)
 
     # by_branch: one GROUP BY query instead of the model having to loop
     # get_sales_summary once per branch_name (which is what used to blow
@@ -356,25 +396,27 @@ def _get_sales_summary(args, ctx):
     # silently missing from the split.
     if by_branch and branch_ids is None:
         by_branch_rows = query(
-            "SELECT b.branch_name, COALESCE(SUM(s.qty_sold),0) AS units, "
+            f"SELECT b.branch_name, b.is_hq, {_UNITS_SQL}, {_BULK_ML_SQL}, "
             "COALESCE(SUM(s.qty_sold*s.unit_price),0) AS revenue "
             "FROM branches b LEFT JOIN sales s ON s.branch_id = b.branch_id AND " +
-            _PERIOD_SQL[period] +
+            _PERIOD_SQL[period] + " LEFT JOIN products p ON p.sku = s.sku" +
             " GROUP BY b.branch_id, b.branch_name ORDER BY revenue DESC"
         )
         result["by_branch"] = [
-            {"branch_name": r["branch_name"], "units": r["units"], "revenue": float(r["revenue"])}
+            {"branch_name": r["branch_name"], "is_hq": bool(r["is_hq"]),
+             "units": r["units"], "bulk_ml": r["bulk_ml"], "revenue": float(r["revenue"])}
             for r in by_branch_rows
         ]
 
     return result
 
 
-def _branch_filter(ctx, branch_name, column):
+def _branch_filter(ctx, branch_name, column, include_hq=True):
     """(sql_fragment, params, error) restricting `column` to the branches
     the caller may see. An empty fragment means every branch (Admin with
-    no branch named)."""
-    branch_ids, err = _resolve_branch_ids(ctx, branch_name)
+    no branch named). HQ is nameable by default, since HQ records sales
+    of its own."""
+    branch_ids, err = _resolve_branch_ids(ctx, branch_name, include_hq=include_hq)
     if err:
         return None, None, err
     if branch_ids is None:
@@ -397,9 +439,10 @@ def _get_credit_purchases(args, ctx):
         return {"error": err}
     rows = query(
         "SELECT b.branch_name, COALESCE(s.buyer_name, bu.username) AS buyer_name, "
-        "COUNT(*) AS transactions, COALESCE(SUM(s.qty_sold),0) AS units, "
+        f"COUNT(*) AS transactions, {_UNITS_SQL}, {_BULK_ML_SQL}, "
         "COALESCE(SUM(s.qty_sold*s.unit_price),0) AS amount, MAX(s.sold_at) AS last_taken_at "
         "FROM sales s JOIN branches b ON s.branch_id = b.branch_id "
+        "JOIN products p ON s.sku = p.sku "
         "LEFT JOIN users bu ON s.buyer_user_id = bu.user_id "
         "WHERE s.payment_method = 'Credit'" + frag +
         " GROUP BY b.branch_name, COALESCE(s.buyer_name, bu.username) "
@@ -409,7 +452,7 @@ def _get_credit_purchases(args, ctx):
     return {
         "results": [
             {"branch": r["branch_name"], "buyer": r["buyer_name"] or "(unnamed)",
-             "transactions": r["transactions"], "units": r["units"],
+             "transactions": r["transactions"], "units": r["units"], "bulk_ml": r["bulk_ml"],
              "amount": float(r["amount"]), "last_taken_at": r["last_taken_at"].isoformat()}
             for r in rows
         ],
@@ -423,37 +466,56 @@ def _get_credit_purchases(args, ctx):
 
 def _get_customers(args, ctx):
     """Named walk-in customers, derived from sales.customer_name the same
-    way the Customers pages do (there's no separate customers table)."""
+    way the Customers pages do (there's no separate customers table):
+    address from the customer's first sale, plus where they last bought."""
     name = (args.get("name") or "").strip()
-    frag, params, err = _branch_filter(ctx, (args.get("branch_name") or "").strip(), "s.branch_id")
+    frag, branch_params, err = _branch_filter(ctx, (args.get("branch_name") or "").strip(), "s.branch_id")
     if err:
         return {"error": err}
-    sql = (
-        "SELECT s.customer_name, COUNT(*) AS transactions, COALESCE(SUM(s.qty_sold),0) AS units, "
-        "COALESCE(SUM(s.qty_sold*s.unit_price),0) AS spent, MAX(s.sold_at) AS last_visit, "
+    where = "s.customer_name IS NOT NULL AND s.customer_name <> ''" + frag
+    name_params = []
+    if name:
+        where += " AND s.customer_name LIKE %s"
+        name_params.append(f"%{name}%")
+    # Placeholder order: address subquery, last-branch subquery, inner
+    # aggregate (branch + name), LIMIT.
+    params = branch_params + branch_params + branch_params + name_params + [MAX_ROWS]
+    inner = (
+        f"SELECT s.customer_name, COUNT(*) AS transactions, {_UNITS_SQL}, {_BULK_ML_SQL}, "
+        "COALESCE(SUM(s.qty_sold*s.unit_price),0) AS spent, "
+        "MIN(s.sold_at) AS first_sold_at, MAX(s.sold_at) AS last_visit, "
         "GROUP_CONCAT(DISTINCT b.branch_name ORDER BY b.branch_name SEPARATOR ', ') AS branches "
         "FROM sales s JOIN branches b ON s.branch_id = b.branch_id "
-        "WHERE s.customer_name IS NOT NULL AND s.customer_name <> ''" + frag
+        "JOIN products p ON s.sku = p.sku "
+        "WHERE " + where + " GROUP BY s.customer_name"
     )
-    if name:
-        sql += " AND s.customer_name LIKE %s"
-        params.append(f"%{name}%")
-    sql += " GROUP BY s.customer_name ORDER BY spent DESC LIMIT %s"
-    params.append(MAX_ROWS)
-    rows = query(sql, tuple(params))
+    rows = query(
+        "SELECT agg.*, "
+        "(SELECT f.customer_address FROM sales f WHERE f.customer_name = agg.customer_name "
+        " AND f.sold_at = agg.first_sold_at" + frag.replace("s.branch_id", "f.branch_id") +
+        " ORDER BY f.sale_id LIMIT 1) AS address, "
+        "(SELECT lb.branch_name FROM sales l JOIN branches lb ON l.branch_id = lb.branch_id "
+        " WHERE l.customer_name = agg.customer_name AND l.sold_at = agg.last_visit" +
+        frag.replace("s.branch_id", "l.branch_id") +
+        " ORDER BY l.sale_id DESC LIMIT 1) AS last_branch "
+        "FROM (" + inner + ") agg ORDER BY agg.spent DESC LIMIT %s",
+        tuple(params),
+    )
     return {
         "results": [
-            {"customer": r["customer_name"], "transactions": r["transactions"], "units": r["units"],
+            {"customer": r["customer_name"], "address": r["address"] or None,
+             "transactions": r["transactions"], "units": r["units"], "bulk_ml": r["bulk_ml"],
              "spent": float(r["spent"]), "last_visit": r["last_visit"].isoformat(),
-             "branches": r["branches"]}
+             "last_branch": r["last_branch"], "branches": r["branches"]}
             for r in rows
         ]
     }
 
 
 # ---------------------------------------------------------------------------
-# Admin-only tools: raw materials, suppliers, formulas, bulk batches,
-# production cost (COGS), packages, partner inquiries. See _ADMIN_ONLY.
+# Admin-only tools: raw materials, suppliers, COGS settings (Formulas
+# page), bulk batches, production cost (COGS), packages, partner
+# inquiries, branch performance, financials. See _ADMIN_ONLY.
 # ---------------------------------------------------------------------------
 
 def _get_raw_materials(args, ctx):
@@ -506,28 +568,29 @@ def _get_suppliers(args, ctx):
 
 
 def _get_formulas(args, ctx):
-    """Per-bottle-size material recipe (the Formulas page): what one unit
-    of a size uses and what that costs in materials."""
+    """Cost-of-goods settings (the Formulas page): a flat base cost per
+    bottle size, charged per bottle produced, plus the Bulk/Refill rate
+    per mL. Same tables production() and the Formulas report read
+    (unit_cogs_settings / bulk_rate_settings); the old per-material
+    recipe table (unit_formula_items) is no longer used."""
     unit = (args.get("unit") or "").strip().upper()
-    sql = (
-        "SELECT ufi.unit, rm.material_name, rm.unit AS material_unit, ufi.qty_per_unit, ufi.line_cost "
-        "FROM unit_formula_items ufi JOIN raw_materials rm ON ufi.material_id = rm.material_id"
-    )
+    sql = "SELECT unit, base_cost_per_unit FROM unit_cogs_settings"
     params = []
     if unit:
-        sql += " WHERE ufi.unit = %s"
+        sql += " WHERE unit = %s"
         params.append(unit)
-    sql += " ORDER BY ufi.unit, rm.material_name LIMIT %s"
-    params.append(MAX_ROWS * 2)
     rows = query(sql, tuple(params))
-    by_unit = {}
-    for r in rows:
-        entry = by_unit.setdefault(r["unit"], {"unit": r["unit"], "materials": [], "material_cost_per_unit": 0.0})
-        line = float(r["line_cost"] or 0)
-        entry["materials"].append({"material": r["material_name"], "qty_per_unit": float(r["qty_per_unit"]),
-                                   "material_unit": r["material_unit"], "line_cost": line})
-        entry["material_cost_per_unit"] = round(entry["material_cost_per_unit"] + line, 2)
-    return {"results": list(by_unit.values())}
+    by_unit = {r["unit"]: float(r["base_cost_per_unit"] or 0) for r in rows}
+    rate = query("SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True)
+    result = {
+        "bottle_sizes": [
+            {"unit": u, "base_cost_per_unit": by_unit.get(u, 0.0)}
+            for u in BOTTLE_UNITS if not unit or u == unit
+        ],
+    }
+    if not unit or unit == "BULK":
+        result["bulk_rate_per_ml"] = float(rate["rate_per_ml"]) if rate else 0.0
+    return result
 
 
 def _get_bulk_batches(args, ctx):
@@ -540,41 +603,58 @@ def _get_bulk_batches(args, ctx):
         sql += " WHERE remaining_ml > 0"
     sql += " ORDER BY created_at DESC LIMIT %s"
     rows = query(sql, (MAX_ROWS,))
-    return {
-        "results": [
-            {"batch_code": r["batch_code"], "scent": r["scent_name"],
-             "total_volume_ml": float(r["total_volume_ml"] or 0), "remaining_ml": float(r["remaining_ml"] or 0),
-             "cost_per_ml": float(r["cost_per_ml"] or 0), "total_cost": float(r["total_cost"] or 0),
-             "created_at": r["created_at"].isoformat()}
-            for r in rows
-        ]
-    }
+    results = []
+    for r in rows:
+        remaining = float(r["remaining_ml"] or 0)
+        results.append({
+            "batch_code": r["batch_code"], "scent": r["scent_name"],
+            "total_volume_ml": float(r["total_volume_ml"] or 0), "remaining_ml": remaining,
+            "cost_per_ml": float(r["cost_per_ml"] or 0), "total_cost": float(r["total_cost"] or 0),
+            # Same yield figure the Bulk Batches page shows: how many full
+            # bottles of each size the remaining mL could still fill.
+            "bottles_possible": {u: int(remaining // float(bottle_size_ml(u))) for u in BOTTLE_UNITS},
+            "created_at": r["created_at"].isoformat(),
+        })
+    return {"results": results}
 
 
 def _get_production_costs(args, ctx):
+    """COGS logged by production runs. A bulk product's qty_produced is mL
+    and its cost is per mL (see admin.production()), so bottles and bulk
+    mL are totalled apart and each product reports the matching rate."""
     period = (args.get("period") or "this_month").strip()
     if period not in _PERIOD_TMPL:
         return {"error": f"period must be one of {PERIOD_NAMES}."}
     where = _period_sql(period, "c.created_at")
     totals = query(
-        "SELECT COALESCE(SUM(c.qty_produced),0) AS units, COALESCE(SUM(c.total_cogs),0) AS cogs "
-        "FROM cogs_logs c WHERE " + where, fetchone=True,
+        "SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN c.qty_produced ELSE 0 END),0) AS units, "
+        "COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN c.qty_produced ELSE 0 END),0) AS bulk_ml, "
+        "COALESCE(SUM(c.total_cogs),0) AS cogs "
+        "FROM cogs_logs c JOIN products p ON c.sku = p.sku WHERE " + where, fetchone=True,
     )
     rows = query(
-        "SELECT p.item_name, p.unit, SUM(c.qty_produced) AS units, SUM(c.total_cogs) AS cogs "
+        "SELECT p.item_name, p.unit, SUM(c.qty_produced) AS qty, SUM(c.total_cogs) AS cogs "
         "FROM cogs_logs c JOIN products p ON c.sku = p.sku WHERE " + where +
         " GROUP BY p.sku, p.item_name, p.unit ORDER BY cogs DESC LIMIT %s",
         (MAX_ROWS,),
     )
+    by_product = []
+    for r in rows:
+        qty = float(r["qty"] or 0)
+        cogs = float(r["cogs"] or 0)
+        rate = round(cogs / qty, 4 if r["unit"] == "BULK" else 2) if qty else None
+        entry = {"item_name": r["item_name"], "unit": r["unit"], "cogs": cogs}
+        if r["unit"] == "BULK":
+            entry.update({"bulk_ml": qty, "cogs_per_ml": rate})
+        else:
+            entry.update({"units": qty, "cogs_per_unit": rate})
+        by_product.append(entry)
     return {
         "period": period,
-        "units_produced": totals["units"],
+        "units_produced": float(totals["units"]),
+        "bulk_ml_produced": float(totals["bulk_ml"]),
         "total_cogs": float(totals["cogs"]),
-        "by_product": [
-            {"item_name": r["item_name"], "unit": r["unit"], "units": r["units"], "cogs": float(r["cogs"]),
-             "cogs_per_unit": round(float(r["cogs"]) / r["units"], 2) if r["units"] else None}
-            for r in rows
-        ],
+        "by_product": by_product,
     }
 
 
@@ -613,7 +693,7 @@ def _get_partner_inquiries(args, ctx):
     counts = query("SELECT status, COUNT(*) AS n FROM partner_inquiries GROUP BY status")
     sql = (
         "SELECT company_name, contact_person, partner_type, package_name_snapshot, order_amount, "
-        "status, created_at FROM partner_inquiries"
+        "status, fulfilled_at, created_at FROM partner_inquiries"
     )
     params = []
     if status:
@@ -628,9 +708,218 @@ def _get_partner_inquiries(args, ctx):
             {"company": r["company_name"], "contact_person": r["contact_person"],
              "partner_type": r["partner_type"], "package": r["package_name_snapshot"],
              "order_amount": float(r["order_amount"]) if r["order_amount"] is not None else None,
-             "status": r["status"], "received_at": r["created_at"].isoformat()}
+             "counts_as_sale": r["status"] == "Closed" and r["order_amount"] is not None,
+             "status": r["status"],
+             "fulfilled_at": r["fulfilled_at"].isoformat() if r["fulfilled_at"] else None, "received_at": r["created_at"].isoformat()}
             for r in rows
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_recent_sales  (both roles, branch-scoped)
+# ---------------------------------------------------------------------------
+
+_SALE_TYPES = {"Sale", "Refill", "Freebie"}
+
+
+def _get_recent_sales(args, ctx):
+    """Individual sale rows, newest first — the Sales History / Record
+    Sale "Recent sales" list."""
+    sale_type = (args.get("sale_type") or "").strip()
+    if sale_type and sale_type not in _SALE_TYPES:
+        return {"error": f"sale_type must be one of {sorted(_SALE_TYPES)}."}
+    try:
+        limit = max(1, min(int(args.get("limit") or 10), MAX_ROWS))
+    except (TypeError, ValueError):
+        limit = 10
+    frag, params, err = _branch_filter(ctx, (args.get("branch_name") or "").strip(), "s.branch_id")
+    if err:
+        return {"error": err}
+    sql = (
+        "SELECT s.sold_at, b.branch_name, p.item_name, p.sku, p.unit, s.sale_type, s.payment_method, "
+        "s.qty_sold, s.unit_price, COALESCE(s.buyer_name, bu.username) AS buyer, s.customer_name "
+        "FROM sales s JOIN branches b ON s.branch_id = b.branch_id "
+        "JOIN products p ON s.sku = p.sku "
+        "LEFT JOIN users bu ON s.buyer_user_id = bu.user_id "
+        "WHERE 1=1" + frag
+    )
+    if sale_type:
+        sql += " AND s.sale_type = %s"
+        params.append(sale_type)
+    sql += " ORDER BY s.sold_at DESC, s.sale_id DESC LIMIT %s"
+    params.append(limit)
+    rows = query(sql, tuple(params))
+    return {
+        "results": [
+            {"sold_at": r["sold_at"].isoformat(), "branch": r["branch_name"],
+             "item_name": r["item_name"], "sku": r["sku"], "sale_type": r["sale_type"],
+             "payment_method": r["payment_method"], "qty": r["qty_sold"],
+             "qty_unit": "mL" if r["unit"] == "BULK" else "bottles",
+             "unit_price": float(r["unit_price"]),
+             "total": float(r["qty_sold"] * r["unit_price"]),
+             "customer": r["customer_name"] or "Walk-in",
+             "credit_buyer": r["buyer"] if r["payment_method"] == "Credit" else None}
+            for r in rows
+        ]
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_discrepancies  (both roles, branch-scoped)
+# ---------------------------------------------------------------------------
+
+def _get_discrepancies(args, ctx):
+    """Delivery discrepancies — DAMAGE (damaged on arrival) and ADJUSTMENT
+    (dispatched but never received) — with units counted the same way as
+    the Discrepancies pages and report (reports.DISCREPANCY_UNITS_SQL;
+    these log rows' own change_qty is often 0)."""
+    period = (args.get("period") or "all_time").strip()
+    if period not in _PERIOD_TMPL:
+        return {"error": f"period must be one of {PERIOD_NAMES}."}
+    frag, params, err = _branch_filter(ctx, (args.get("branch_name") or "").strip(), "sml.branch_id")
+    if err:
+        return {"error": err}
+    base = (
+        "FROM stock_movement_logs sml "
+        "JOIN branches b ON sml.branch_id = b.branch_id "
+        "JOIN products p ON sml.sku = p.sku "
+        "LEFT JOIN stock_requests sr ON sml.reference_id = sr.request_id "
+        f"{DISCREPANCY_ITEM_JOIN} "
+        "WHERE sml.reference_type = 'STOCK_REQUEST' AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT') "
+        "AND " + _period_sql(period, "sml.created_at") + frag
+    )
+    totals = query(
+        f"SELECT sml.movement_type, COUNT(*) AS n, COALESCE(SUM({DISCREPANCY_UNITS_SQL}),0) AS units " + base +
+        " GROUP BY sml.movement_type",
+        tuple(params),
+    )
+    rows = query(
+        f"SELECT sml.created_at, b.branch_name, sr.delivery_number, p.item_name, p.sku, "
+        f"sml.movement_type, {DISCREPANCY_UNITS_SQL} AS units, sml.notes " + base +
+        " ORDER BY sml.created_at DESC LIMIT %s",
+        tuple(params + [MAX_ROWS]),
+    )
+    return {
+        "period": period,
+        "totals_by_type": {r["movement_type"]: {"entries": r["n"], "units": r["units"]} for r in totals},
+        "results": [
+            {"when": r["created_at"].isoformat(), "branch": r["branch_name"],
+             "delivery_number": r["delivery_number"], "item_name": r["item_name"], "sku": r["sku"],
+             "type": r["movement_type"], "units": r["units"], "notes": r["notes"]}
+            for r in rows
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_branch_performance  (admin only)
+# ---------------------------------------------------------------------------
+
+def _get_branch_performance(args, ctx):
+    """Per retail branch (HQ excluded), same figures as the Branch
+    Performance page: bottles and bulk mL sold, revenue, current stock,
+    discrepancy units and turnover (bottles sold / bottles on hand)."""
+    period = (args.get("period") or "all_time").strip()
+    if period not in _PERIOD_TMPL:
+        return {"error": f"period must be one of {PERIOD_NAMES}."}
+    rows = query(
+        f"""SELECT b.branch_name,
+                  COALESCE(sa.units_sold, 0) AS units_sold, COALESCE(sa.bulk_ml_sold, 0) AS bulk_ml_sold,
+                  COALESCE(sa.revenue, 0) AS revenue, COALESCE(sa.sales_count, 0) AS sales_count,
+                  COALESCE(st.total_stock, 0) AS total_stock, COALESCE(st.bulk_ml_stock, 0) AS bulk_ml_stock,
+                  COALESCE(d.discrepancy_units, 0) AS discrepancy_units
+           FROM branches b
+           LEFT JOIN (
+               SELECT s.branch_id,
+                      SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END) AS units_sold,
+                      SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END) AS bulk_ml_sold,
+                      SUM(s.qty_sold * s.unit_price) AS revenue, COUNT(*) AS sales_count
+               FROM sales s JOIN products p ON p.sku = s.sku
+               WHERE {_period_sql(period, "s.sold_at")} GROUP BY s.branch_id
+           ) sa ON sa.branch_id = b.branch_id
+           LEFT JOIN (
+               SELECT bi.branch_id,
+                      SUM(CASE WHEN p.unit <> 'BULK' THEN bi.stock_qty ELSE 0 END) AS total_stock,
+                      SUM(CASE WHEN p.unit = 'BULK' THEN bi.stock_qty ELSE 0 END) AS bulk_ml_stock
+               FROM branch_inventory bi JOIN products p ON p.sku = bi.sku GROUP BY bi.branch_id
+           ) st ON st.branch_id = b.branch_id
+           LEFT JOIN (
+               SELECT sml.branch_id, SUM({DISCREPANCY_UNITS_SQL}) AS discrepancy_units
+               FROM stock_movement_logs sml {DISCREPANCY_ITEM_JOIN}
+               WHERE sml.reference_type = 'STOCK_REQUEST' AND sml.movement_type IN ('DAMAGE', 'ADJUSTMENT')
+                 AND {_period_sql(period, "sml.created_at")}
+               GROUP BY sml.branch_id
+           ) d ON d.branch_id = b.branch_id
+           WHERE b.is_hq = FALSE
+           ORDER BY revenue DESC, b.branch_name"""
+    )
+    return {
+        "period": period,
+        "note": "Retail branches only (HQ excluded). Stock on hand is as of now. "
+                "Turnover = bottles sold / bottles on hand now.",
+        "results": [
+            {"branch": r["branch_name"], "sales_count": r["sales_count"],
+             "bottles_sold": r["units_sold"], "bulk_ml_sold": r["bulk_ml_sold"],
+             "revenue": float(r["revenue"]), "bottles_on_hand": r["total_stock"],
+             "bulk_ml_on_hand": r["bulk_ml_stock"], "discrepancy_units": r["discrepancy_units"],
+             "turnover": round(float(r["units_sold"]) / float(r["total_stock"]), 2) if r["total_stock"] else None}
+            for r in rows
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_financials  (admin only)
+# ---------------------------------------------------------------------------
+
+def _get_financials(args, ctx):
+    """Business-level figures, same rules as the Dashboard / Reports page:
+    revenue = register sales (HQ + branches) + Closed partner package
+    orders; cost of goods = SUM(cogs_logs.total_cogs); gross profit =
+    revenue - cost of goods. Rent, payroll etc. aren't tracked."""
+    period = (args.get("period") or "this_month").strip()
+    if period not in _PERIOD_TMPL:
+        return {"error": f"period must be one of {PERIOD_NAMES}."}
+    sales_rev = query(
+        "SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales WHERE " + _period_sql(period, "sold_at"),
+        fetchone=True,
+    )["v"]
+    pkg = query(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries "
+        "WHERE status = 'Closed' AND " + _period_sql(period, "created_at"),
+        fetchone=True,
+    )
+    cogs = query(
+        "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE " + _period_sql(period, "created_at"),
+        fetchone=True,
+    )["v"]
+    materials = query(
+        "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials WHERE " + _period_sql(period, "created_at"),
+        fetchone=True,
+    )["v"]
+    top_packages = query(
+        "SELECT package_name_snapshot AS package, COUNT(*) AS orders, SUM(order_amount) AS revenue "
+        "FROM partner_inquiries WHERE status = 'Closed' AND package_name_snapshot IS NOT NULL AND " +
+        _period_sql(period, "created_at") +
+        " GROUP BY package_name_snapshot ORDER BY revenue DESC LIMIT 5"
+    )
+    revenue = float(sales_rev) + float(pkg["v"])
+    return {
+        "period": period,
+        "sales_revenue": float(sales_rev),
+        "package_revenue": float(pkg["v"]),
+        "package_orders_closed": pkg["n"],
+        "total_revenue": round(revenue, 2),
+        "cost_of_goods": float(cogs),
+        "gross_profit": round(revenue - float(cogs), 2),
+        "raw_materials_purchased": float(materials),
+        "top_packages": [
+            {"package": r["package"], "orders": r["orders"], "revenue": float(r["revenue"] or 0)}
+            for r in top_packages
+        ],
+        "note": "Package orders count as revenue only once Closed, dated by when the inquiry came in. "
+                "Gross profit doesn't subtract rent, payroll or other costs the system doesn't track.",
     }
 
 
@@ -673,12 +962,17 @@ def _propose_stock_request(args, ctx):
     skus = [c[0] for c in cleaned]
     placeholders = ",".join(["%s"] * len(skus))
     found = query(
-        f"SELECT sku, item_name FROM products WHERE sku IN ({placeholders})", tuple(skus)
+        f"SELECT sku, item_name, unit FROM products WHERE sku IN ({placeholders})", tuple(skus)
     )
     found_skus = {r["sku"] for r in found}
     missing = [s for s in skus if s not in found_skus]
     if missing:
         return {"error": f"Unknown SKU(s): {', '.join(missing)}."}
+    # Same rule as branch.request_stock(): only bottled sizes are ever
+    # requested from HQ.
+    bulk = [r["sku"] for r in found if r["unit"] not in BOTTLE_UNITS]
+    if bulk:
+        return {"error": f"Bulk/Refill products can't be requested from HQ: {', '.join(bulk)}."}
 
     try:
         with transaction() as conn:
@@ -735,7 +1029,7 @@ def _propose_stock_request(args, ctx):
         "item_count": len(cleaned),
         "review_url": review_url,
         "note": "This is a DRAFT only — nothing has been sent to any branch. "
-                "A human must approve it on the Drafts page before it becomes a real delivery.",
+                "A human must approve it on the AI Drafts page before it becomes a real delivery.",
     }
 
 
@@ -750,6 +1044,10 @@ _TOOL_IMPL = {
     "get_sales_summary": _get_sales_summary,
     "get_credit_purchases": _get_credit_purchases,
     "get_customers": _get_customers,
+    "get_recent_sales": _get_recent_sales,
+    "get_discrepancies": _get_discrepancies,
+    "get_branch_performance": _get_branch_performance,
+    "get_financials": _get_financials,
     "get_raw_materials": _get_raw_materials,
     "get_suppliers": _get_suppliers,
     "get_formulas": _get_formulas,
@@ -765,28 +1063,31 @@ _TOOL_IMPL = {
 _ADMIN_ONLY = {
     "get_raw_materials", "get_suppliers", "get_formulas", "get_bulk_batches",
     "get_production_costs", "get_packages", "get_partner_inquiries",
+    "get_branch_performance", "get_financials",
 }
+
+BULK_NOTE_TEXT = "units = bottles only; bulk/refill volume comes back separately as bulk_ml (mL), never added to units."
 
 _READ_ONLY_DECLARATIONS = [
     {
         "name": "check_stock",
-        "description": "Look up current stock for a product by SKU or name. Admins may filter by branch_name; if omitted, returns every branch.",
+        "description": "Look up current stock and the selling price for a product by SKU or name. For a Bulk/Refill product (unit BULK) stock_qty is mL, not bottles (see stock_unit). Branch staff only see bottled sizes, same as My Inventory. Admins may filter by branch_name (\"HQ\" for HQ's warehouse); if omitted, returns HQ and every branch.",
         "parameters": {
             "type": "object",
             "properties": {
                 "sku": {"type": "string", "description": "Exact SKU, e.g. A1-85ML."},
                 "item_name": {"type": "string", "description": "Partial product/fragrance name to search for."},
-                "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok)."},
+                "branch_name": {"type": "string", "description": "Admin only — restrict to one location, HQ or a branch (partial match ok)."},
             },
         },
     },
     {
         "name": "get_low_stock",
-        "description": "List SKUs at or below their reorder level. Admins may filter by branch_name; if omitted, returns every branch.",
+        "description": "List SKUs at or below their reorder level, across HQ's own warehouse (is_hq: true) and every branch, most critical (furthest below reorder level) first — same as the Low Stock page. Bulk/refill stock has no reorder level and is never listed. Admins may filter by branch_name (use \"HQ\" for HQ's warehouse); if omitted, returns HQ and every branch.",
         "parameters": {
             "type": "object",
             "properties": {
-                "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok)."},
+                "branch_name": {"type": "string", "description": "Admin only — restrict to one location, HQ or a branch (partial match ok)."},
             },
         },
     },
@@ -804,18 +1105,20 @@ _READ_ONLY_DECLARATIONS = [
     {
         "name": "get_sales_summary",
         "description": (
-            "Totals and top-selling items for a time period. To compare branches or answer "
-            "how revenue/units split across branches, set by_branch=true and leave branch_name "
-            "blank — this returns every branch's totals in one call (branches with zero sales "
-            "in the period included as 0). Don't call this once per branch name. Also returns "
-            "by_type: the split by sale_type (Sale, Refill, Freebie) and payment_method (Cash, Credit)."
+            "Register-sales totals and top-selling items for a time period (HQ and branches). "
+            + BULK_NOTE_TEXT + " revenue = register sales only; for an Admin with no branch_name "
+            "it also returns package_revenue (Closed partner package orders) and total_revenue "
+            "(the Dashboard's Total revenue figure). To compare locations, set by_branch=true and "
+            "leave branch_name blank — every location's totals in one call (is_hq marks HQ; zero "
+            "sales included as 0). Don't call this once per branch name. Also returns by_type: "
+            "the split by sale_type (Sale, Refill, Freebie) and payment_method (Cash, Credit)."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to today."},
-                "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok). Leave blank when using by_branch."},
-                "by_branch": {"type": "boolean", "description": "Admin only. If true, also returns a per-branch breakdown of units/revenue for the period. Ignored if branch_name is set."},
+                "branch_name": {"type": "string", "description": "Admin only — restrict to one location, HQ or a branch (partial match ok). Leave blank when using by_branch."},
+                "by_branch": {"type": "boolean", "description": "Admin only. If true, also returns a per-location breakdown (HQ included) of units/bulk_ml/revenue for the period. Ignored if branch_name is set."},
             },
         },
     },
@@ -824,7 +1127,7 @@ _READ_ONLY_DECLARATIONS = [
 _READ_ONLY_DECLARATIONS += [
     {
         "name": "get_credit_purchases",
-        "description": "Store-credit (utang) sales grouped by buyer: transactions, units, amount, last date. All time.",
+        "description": "Store-credit (utang) sales grouped by buyer (per branch for Admins): transactions, bottle units, bulk_ml (mL), amount owed, last date. All time; repayments aren't recorded.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -834,11 +1137,37 @@ _READ_ONLY_DECLARATIONS += [
     },
     {
         "name": "get_customers",
-        "description": "Named walk-in customers ranked by total spent, with visit count, last visit and branches shopped. Optionally search by name.",
+        "description": "Named walk-in customers ranked by total spent, same as the Customers page: address (from their first sale), visit count, bottle units, bulk_ml (mL), last visit, last branch and branches shopped. Optionally search by name.",
         "parameters": {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Partial customer name to search for."},
+                "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok)."},
+            },
+        },
+    },
+]
+
+_READ_ONLY_DECLARATIONS += [
+    {
+        "name": "get_recent_sales",
+        "description": "Individual sales, newest first (the Sales History list): item, sale type, payment, qty (qty_unit is mL for bulk/refill, otherwise bottles), price, total, customer, credit buyer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "How many sales, 1-30. Defaults to 10."},
+                "sale_type": {"type": "string", "description": "Optional: Sale, Refill or Freebie."},
+                "branch_name": {"type": "string", "description": "Admin only — restrict to one location, HQ or a branch (partial match ok)."},
+            },
+        },
+    },
+    {
+        "name": "get_discrepancies",
+        "description": "Delivery discrepancies (the Discrepancies page): DAMAGE = arrived damaged, ADJUSTMENT = dispatched but never received. Units lost per entry and totals by type.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to all_time."},
                 "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok)."},
             },
         },
@@ -862,21 +1191,21 @@ _ADMIN_DECLARATIONS = [
     },
     {
         "name": "get_formulas",
-        "description": "Per-bottle-size material formula: the materials and quantities one unit of that size uses, and its material cost per unit.",
+        "description": "Cost-of-goods settings (the Formulas page): the flat base cost per bottle size (85ML/50ML/10ML/3ML) charged per bottle produced, and the Bulk/Refill rate per mL.",
         "parameters": {"type": "object", "properties": {
-            "unit": {"type": "string", "description": "Bottle size, e.g. 85ML. Omit for every size."},
+            "unit": {"type": "string", "description": "Bottle size, e.g. 85ML, or BULK for the per-mL rate. Omit for all."},
         }},
     },
     {
         "name": "get_bulk_batches",
-        "description": "Bulk scent batches (the stock refills are poured from): remaining mL, total volume, cost per mL.",
+        "description": "Bulk scent batches (the stock refills and bottles are filled from): remaining mL, total volume, cost per mL, and how many bottles of each size the remaining mL could still fill.",
         "parameters": {"type": "object", "properties": {
             "active_only": {"type": "boolean", "description": "Defaults to true: only batches with mL remaining."},
         }},
     },
     {
         "name": "get_production_costs",
-        "description": "Cost of goods produced (COGS) for a period: total units and cost, plus per product with cost per unit.",
+        "description": "Cost of goods produced (COGS) for a period: bottles produced, bulk mL produced (kept separate), total cost, and per product with cost per bottle (or cost per mL for bulk).",
         "parameters": {"type": "object", "properties": {
             "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to this_month."},
         }},
@@ -890,9 +1219,23 @@ _ADMIN_DECLARATIONS = [
     },
     {
         "name": "get_partner_inquiries",
-        "description": "Inquiries sent from the partner portal: counts by status and the most recent ones.",
+        "description": "Inquiries sent from the partner portal: counts by status and the most recent ones. order_amount only counts as a sale once status is Closed; General inquiries have no package and no amount. fulfilled_at is when a Closed order was shipped out of HQ stock (null = confirmed but not shipped yet).",
         "parameters": {"type": "object", "properties": {
             "status": {"type": "string", "description": "One of New, Contacted, Follow-up, On Hold, Closed, Declined."},
+        }},
+    },
+    {
+        "name": "get_branch_performance",
+        "description": "Per retail branch (HQ excluded), same as the Branch Performance page: sales count, bottles sold, bulk mL sold, revenue, bottles and bulk mL on hand now, discrepancy units and turnover (bottles sold / bottles on hand).",
+        "parameters": {"type": "object", "properties": {
+            "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to all_time. Stock on hand is always as of now."},
+        }},
+    },
+    {
+        "name": "get_financials",
+        "description": "Business financials for a period, same rules as the Dashboard/Reports: sales revenue (HQ + branches), Closed package-order revenue, total revenue, cost of goods produced, gross profit, raw materials purchased, top packages.",
+        "parameters": {"type": "object", "properties": {
+            "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to this_month."},
         }},
     },
 ]
@@ -902,7 +1245,8 @@ _PROPOSE_DECLARATION = {
     "description": (
         "Draft a stock request (delivery) for a branch. This does NOT create a real, "
         "actionable delivery — it saves a draft that a human must review and approve "
-        "on the Drafts page before HQ can dispatch it. Use this when the user asks you "
+        "on the AI Drafts page before HQ can dispatch it. Only bottled sizes (85ML/50ML/10ML/3ML) "
+        "can be requested — never Bulk/Refill. Use this when the user asks you "
         "to put together a reorder, or when you're recommending one based on low stock."
     ),
     "parameters": {

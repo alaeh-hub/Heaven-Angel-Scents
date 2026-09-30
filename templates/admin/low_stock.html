@@ -9,7 +9,7 @@
   <div class="card stat-tile">
     <div class="stat-label">Low stock SKUs</div>
     <div class="stat-value {{ 'danger' if totals.low_stock_count else '' }}">{{ totals.low_stock_count }}</div>
-    <div class="stat-foot">at or below reorder level, across every branch</div>
+    <div class="stat-foot">at or below reorder level, across HQ and every branch</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Completely out of stock</div>
@@ -17,7 +17,7 @@
     <div class="stat-foot">0 units on hand</div>
   </div>
   <div class="card stat-tile">
-    <div class="stat-label">Branches affected</div>
+    <div class="stat-label">Locations affected</div>
     <div class="stat-value">{{ totals.branches_affected }}</div>
     <div class="stat-foot">have at least one SKU to reorder</div>
   </div>
@@ -25,8 +25,8 @@
 
 <div class="card">
   <div class="card-header">
-    <h2>By branch</h2>
-    <span class="hint">sorted by most SKUs to reorder</span>
+    <h2>By location</h2>
+    <span class="hint">HQ first, then branches by most SKUs to reorder</span>
   </div>
   {% if summary %}
   <div class="table-wrap">
@@ -36,7 +36,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th>Branch</th>
+          <th>Location</th>
           <th class="num">Low stock SKUs</th>
           <th class="num">Out of stock</th>
         </tr>
@@ -44,7 +44,7 @@
       <tbody>
         {% for s in summary %}
         <tr>
-          <td class="item-name" data-label="Branch">{{ s.branch_name }}</td>
+          <td class="item-name" data-label="Location">{{ m.location_cell(s.branch_name, s.is_hq) }}</td>
           <td class="num mono" data-label="Low stock SKUs">{{ s.low_stock_count }}</td>
           <td class="num mono {{ 'qty-down' if s.out_of_stock_count }}" data-label="Out of stock">{{ s.out_of_stock_count }}</td>
         </tr>
@@ -53,12 +53,12 @@
     </table>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">✓</div><p>Every branch is above its reorder threshold.</p></div>
+  <div class="empty-state"><div class="glyph">✓</div><p>HQ and every branch are above their reorder thresholds.</p></div>
   {% endif %}
 </div>
 
 <div class="tabs">
-  <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.low_stock') }}">All branches</a>
+  <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.low_stock') }}">All locations</a>
   {% for b in branch_list %}
   <a class="tab {{ 'active' if branch_filter == b.branch_id|string }}"
     href="{{ url_for('admin.low_stock', branch_id=b.branch_id) }}">{{ b.branch_name }}</a>
@@ -75,18 +75,18 @@
     <div class="table-toolbar">
       <div class="table-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" class="smart-search-input" placeholder="Search by branch, name, or SKU…" autocomplete="off">
+        <input type="text" class="smart-search-input" placeholder="Search by location, name, or SKU…" autocomplete="off">
       </div>
     </div>
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:16%"><col style="width:22%"><col style="width:10%">
-          <col style="width:8%"><col style="width:34%">
+          <col style="width:20%"><col style="width:24%"><col style="width:12%">
+          <col style="width:9%"><col style="width:35%">
         </colgroup>
         <thead>
           <tr>
-            <th>Branch</th>
+            <th>Location</th>
             <th>Item</th>
             <th>Variant</th>
             <th>Unit</th>
@@ -96,7 +96,7 @@
         <tbody>
           {% for row in rows %}
           <tr data-search="{{ (row.branch_name ~ ' ' ~ row.item_name ~ ' ' ~ row.sku)|lower }}">
-            <td data-label="Branch">{{ row.branch_name }}</td>
+            <td data-label="Location">{{ m.location_cell(row.branch_name, row.is_hq) }}</td>
             <td data-label="Item">
               <div class="item-thumb-row">
                 {{ m.product_thumb(row.image_path, row.item_name) }}
@@ -111,7 +111,7 @@
             </td>
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
             <td class="mono text-soft mobile-fold" data-label="Unit">{{ row.unit }}</td>
-            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3, 'mL' if row.unit == 'BULK' else 'u') }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -128,12 +128,12 @@
     </div>
   </div>
   <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Sorted most-critical first — furthest below its own reorder level, regardless of branch. A branch can dispatch a request for these from its own Request Stock page; HQ dispatches once that request comes in on <a href="{{ url_for('admin.requests_list') }}">Stock Requests</a>.</p>
+    <p class="text-faint" style="font-size:12px;">Sorted most-critical first — furthest below its own reorder level, regardless of location. A branch can dispatch a request for these from its own Request Stock page; HQ dispatches once that request comes in on <a href="{{ url_for('admin.requests_list') }}">Stock Requests</a>. HQ's own low stock is restocked through <a href="{{ url_for('admin.production') }}">Production</a>.</p>
   </div>
   {% else %}
   <div class="empty-state">
     <div class="glyph">✓</div>
-    <p>{{ 'All branch inventory is above its reorder threshold.' if branch_filter == 'all' else 'This branch is above its reorder threshold for every SKU.' }}</p>
+    <p>{{ 'All HQ and branch inventory is above its reorder threshold.' if branch_filter == 'all' else 'This location is above its reorder threshold for every SKU.' }}</p>
   </div>
   {% endif %}
 </div>

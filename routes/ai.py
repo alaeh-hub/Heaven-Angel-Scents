@@ -10,7 +10,7 @@ from flask_limiter.util import get_remote_address
 from db import query, execute, transaction
 from decorators import login_required
 from extensions import limiter
-from utils import ValidationError
+from utils import BOTTLE_UNITS, ValidationError
 
 import routes.ai_tools as ai_tools
 
@@ -42,23 +42,40 @@ Today's date: {current_date} (Philippine time, UTC+8). "Today" means exactly thi
 
 You have tools to look up live data — use them instead of guessing or relying on anything from \
 earlier in the conversation, since stock levels and requests change constantly. Call a tool \
-whenever a question depends on current numbers (stock, pending deliveries, sales, refills and \
-freebies, credit purchases, customers). Don't call a tool for something you were just told in \
-this same conversation's tool results. Only use the tools you've actually been given: HQ admins \
-also get tools for raw materials, suppliers, formulas, bulk batches, production cost (COGS), \
-partner packages and partner inquiries; branch staff don't, so tell them to ask HQ for those.
+whenever a question depends on current numbers (stock, prices, pending deliveries, sales, \
+recent sales, refills and freebies, credit purchases, customers, delivery discrepancies). Don't \
+call a tool for something you were just told in this same conversation's tool results. Only use \
+the tools you've actually been given: HQ admins also get tools for raw materials, suppliers, \
+cost-of-goods settings (the Formulas page: base cost per bottle size and the bulk rate per mL), \
+bulk batches, production cost (COGS), partner packages, partner inquiries, branch performance and \
+financials (revenue, cost of goods, gross profit); branch staff don't, so tell them to ask HQ for those.
+
+How the numbers work (the same rules every page and report uses):
+- Bulk/Refill products are measured in mL, never bottles. Tools return bulk volume separately as \
+bulk_ml (or stock_unit/qty_unit "mL"); never add mL to bottle counts, and say "mL" when you give one.
+- A Refill sale is a customer bringing their own bottle; it's HQ-only and pours from the scent's bulk \
+stock (mL), not bottles. A Freebie is always free (P0) and paid as Cash.
+- A voided sale is removed entirely (stock returned, logged as SALE_VOID) — it no longer appears in any \
+sales figure. HQ voids from Sales History; branch staff can void their own sales on the day recorded.
+- Register sales revenue excludes partner package orders. The Dashboard's Total revenue adds Closed \
+package orders on top (package_revenue / total_revenue). A package inquiry only counts as a sale once Closed.
+- Low stock never includes Bulk/Refill, and branches can only request bottled sizes from HQ.
+- Package orders are made to order: Closed = confirmed, then HQ produces any shortfall, then Fulfill (Partner Inquiries page) takes the package's items out of HQ stock (PACKAGE_ORDER in the Inventory Log).
 
 Rules, always:
 1. Never invent SKUs, quantities, prices, branch names, or dates that a tool didn't return to you.
 2. If a tool returns an error or empty results, say so plainly — don't paper over it or guess.
 3. You can propose a stock request with the propose_stock_request tool, but that ONLY creates a \
 draft — it is never sent anywhere and never changes real inventory. A human still has to review \
-and approve it on the Drafts page before it becomes a real delivery. Always tell the user it's a \
-draft awaiting approval, and mention the Drafts page, when you use this tool.
+and approve it on the AI Drafts page before it becomes a real delivery. Always tell the user it's a \
+draft awaiting approval, and mention the AI Drafts page, when you use this tool.
 4. Other than proposing a draft, you cannot perform actions — you cannot record a sale, dispatch \
 stock, change a price, or create an account. If asked to do something else, name the sidebar page \
-that does it (e.g. Record Sale, Request Stock, Branch Stock, Production Log, Bulk Batches, Formulas, \
-Materials & Suppliers, Packages, Partner Inquiries, Reports).
+that does it. HQ admins: Products, Production Log, Bulk Batches, Formulas, Materials & Suppliers, \
+Low Stock, Stock Requests, Inventory Log, Discrepancies, Branch Performance, Record Sale, Customers, \
+Partners, Packages, Partner Inquiries, Reports, Accounts, Admin Log, Login Activity. Branch staff: \
+My Inventory, Request Stock, Stock Requests, Receive Shipment, Inventory Log, Discrepancies, \
+Record Sale, Sales History, Customers, Credit Purchases, Reports.
 5. Keep answers short, concrete, and specific to this business. No generic filler.
 6. Reply in plain text only — no markdown. No asterisks, underscores, backticks, hash headers, or \
 bullet/numbered list syntax. For a page name, just write it plainly, e.g. Record Sale. If you need \
@@ -327,10 +344,24 @@ def approve_draft(draft_id):
 
     skus = [i["sku"] for i in items]
     placeholders = ",".join(["%s"] * len(skus))
-    prices = {
-        r["sku"]: r["price"]
-        for r in query(f"SELECT sku, price FROM products WHERE sku IN ({placeholders})", tuple(skus))
+    products = {
+        r["sku"]: r
+        for r in query(f"SELECT sku, price, unit FROM products WHERE sku IN ({placeholders})", tuple(skus))
     }
+    # Re-checked at approval, not just when the draft was proposed: a
+    # product may have been deleted since, and only bottled sizes are ever
+    # requested from HQ (same rule as branch.request_stock()).
+    missing = [s for s in skus if s not in products]
+    bulk = [s for s in skus if s in products and products[s]["unit"] not in BOTTLE_UNITS]
+    if missing or bulk:
+        problems = []
+        if missing:
+            problems.append("no longer exists: " + ", ".join(missing))
+        if bulk:
+            problems.append("Bulk/Refill can't be requested: " + ", ".join(bulk))
+        flash("Can't approve this draft — " + "; ".join(problems) + ". Reject it and draft a new one.", "error")
+        return redirect(url_for("ai.list_drafts"))
+    prices = {sku: r["price"] for sku, r in products.items()}
 
     try:
         with transaction() as conn:

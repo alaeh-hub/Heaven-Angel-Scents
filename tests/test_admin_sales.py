@@ -7,7 +7,7 @@ HQ warehouse (branch_id=1) instead of a regular branch.
 """
 from factories import (count_sales, get_form_token, get_inventory_qty,
                         last_movement_log, login, make_inventory,
-                        make_product, make_user)
+                        make_product, make_user, unique_suffix)
 
 RECORD_SALE_URL = "/admin/record-sale"
 HQ_BRANCH_ID = 1  # schema.sql seeds this as the HQ warehouse
@@ -51,16 +51,49 @@ def test_sale_decrements_hq_stock_and_logs_a_matching_movement(client, sql):
     assert movement["change_qty"] == -3
 
 
-def test_refill_leaves_hq_stock_untouched(client, sql):
-    _signed_in_admin(client, sql)
-    sku = make_product(sql, price="50.00")
-    make_inventory(sql, HQ_BRANCH_ID, sku, stock_qty=10)
+def _make_scent_pair(sql, bulk_ml):
+    """A1-style pair: a 50ML bottle SKU and its scent's BULK SKU (same
+    base code), with bulk_ml of bulk at HQ and 10 bottles."""
+    base = f"RF{unique_suffix().upper()}"
+    cur = sql.cursor()
+    cur.execute(
+        """INSERT INTO products (sku, item_name, variant, category, unit, price) VALUES
+           (%s, %s, 'Unisex', 'Bottled', '50ML', 50.00),
+           (%s, %s, 'Unisex', 'Bulk/Refill', 'BULK', 5.00)""",
+        (f"{base}-50ML", f"Refill Scent {base}", f"{base}-BULK", f"Refill Scent {base}"),
+    )
+    sql.commit()
+    cur.close()
+    make_inventory(sql, HQ_BRANCH_ID, f"{base}-50ML", stock_qty=10)
+    make_inventory(sql, HQ_BRANCH_ID, f"{base}-BULK", stock_qty=bulk_ml)
+    return f"{base}-50ML", f"{base}-BULK"
 
-    resp = _sell(client, sku, qty=1, unit_price="20.00", sale_type="Refill")
+
+def test_refill_draws_the_scents_bulk_ml_not_bottles(client, sql):
+    _signed_in_admin(client, sql)
+    bottle, bulk = _make_scent_pair(sql, bulk_ml=500)
+
+    resp = _sell(client, bottle, qty=2, unit_price="20.00", sale_type="Refill")
 
     assert resp.status_code == 302
-    assert get_inventory_qty(sql, HQ_BRANCH_ID, sku) == 10
-    assert count_sales(sql, HQ_BRANCH_ID, sku) == 1
+    # Customer brought their own bottle: bottles untouched, 2 x 50 mL of bulk poured.
+    assert get_inventory_qty(sql, HQ_BRANCH_ID, bottle) == 10
+    assert get_inventory_qty(sql, HQ_BRANCH_ID, bulk) == 400
+    assert count_sales(sql, HQ_BRANCH_ID, bottle) == 1
+    movement = last_movement_log(sql, HQ_BRANCH_ID, bulk)
+    assert movement["movement_type"] == "REFILL"
+    assert movement["change_qty"] == -100
+
+
+def test_refill_is_blocked_without_enough_bulk(client, sql):
+    _signed_in_admin(client, sql)
+    bottle, bulk = _make_scent_pair(sql, bulk_ml=60)
+
+    resp = _sell(client, bottle, qty=2, unit_price="20.00", sale_type="Refill")
+
+    assert resp.status_code == 302
+    assert get_inventory_qty(sql, HQ_BRANCH_ID, bulk) == 60
+    assert count_sales(sql, HQ_BRANCH_ID, bottle) == 0
 
 
 def test_overselling_hq_stock_is_rejected(client, sql):

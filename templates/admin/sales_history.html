@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Sales History{% endblock %}
+{% block eyebrow %}HQ &amp; branches{% endblock %}
+{% block heading %}Sales History{% endblock %}
+
+{% block head %}
+<style>
+  .sh-actions {
+    display: flex;
+    gap: 0.375rem;
+    justify-content: flex-end;
+  }
+
+  .sh-void-reason {
+    font-size: 12.5px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tabs">
+  <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.sales_history') }}">All locations</a>
+  {% for b in branches %}
+  <a class="tab {{ 'active' if branch_filter == b.branch_id|string }}"
+    href="{{ url_for('admin.sales_history', branch_id=b.branch_id) }}">{{ b.branch_name }}{{ ' (HQ)' if b.is_hq }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Sales</h2>
+    <span class="hint">newest first &middot; last 300</span>
+  </div>
+  <div style="padding: 0 22px 10px;">
+    <p class="text-faint" style="font-size:12px;">
+      Void removes a sale recorded by mistake (or returned): its stock goes back and it drops out of every sales,
+      revenue, customer and credit total. The reason is kept below and in the Admin Log. Branch staff can void
+      their own sales on the day they were recorded; anything older is voided here.
+    </p>
+  </div>
+  {% if sales %}
+  <div data-smart-table data-page-size="15">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by item, SKU, location or customer…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed table-collapsible">
+        <colgroup>
+          <col style="width:11%"><col style="width:13%"><col style="width:20%"><col style="width:10%">
+          <col style="width:8%"><col style="width:11%"><col style="width:11%"><col style="width:16%">
+        </colgroup>
+        <thead>
+          <tr><th>Date</th><th>Location</th><th>Item</th><th>Type</th><th class="num">Qty</th>
+            <th class="num">Total</th><th>Payment</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for s in sales %}
+          <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku ~ ' ' ~ s.branch_name ~ ' ' ~ (s.customer_name or ''))|lower }}">
+            <td class="mono text-soft mobile-fold" data-label="Date">{{ s.sold_at.strftime('%b %d, %Y') }}</td>
+            <td class="mobile-detail" data-label="Location">{{ s.branch_name }}</td>
+            <td data-label="Item" class="mobile-inline-anchor">
+              <div class="item-name">{{ s.item_name }}</div>
+              <div class="item-sub mono">{{ s.sku }}{% if s.customer_name %} · {{ s.customer_name }}{% endif %}</div>
+              <div class="item-sub item-sub-badge">
+                {{ m.sale_type_badge(s.sale_type) }}
+                <span class="mono">{{ s.sold_at.strftime('%b %d') }} · {{ s.branch_name }}</span>
+              </div>
+            </td>
+            <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
+            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
+            <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
+            <td data-label="" class="mobile-detail">
+              <div class="sh-actions">
+                <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm"
+                  target="_blank" data-generate-file>Receipt</a>
+                <button type="button" class="btn btn-ghost btn-sm void-sale-btn"
+                  data-url="{{ url_for('admin.void_sale_route', sale_id=s.sale_id) }}"
+                  data-label="{{ s.sale_type }} of {{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }} × {{ s.item_name }} ({{ s.branch_name }}, {{ s.sold_at.strftime('%b %d') }})">Void</button>
+              </div>
+            </td>
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <div class="glyph">—</div>
+        <p>No sales match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No sales recorded here yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="card mt-24">
+  <div class="card-header">
+    <h2>Voided sales</h2>
+    <span class="hint">last 50</span>
+  </div>
+  {% if voids %}
+  <div class="table-wrap">
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:13%"><col style="width:13%"><col style="width:22%"><col style="width:10%">
+        <col style="width:10%"><col style="width:12%"><col style="width:20%">
+      </colgroup>
+      <thead>
+        <tr><th>Voided</th><th>Location</th><th>Item</th><th>Type</th><th class="num">Total</th><th>By</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        {% for v in voids %}
+        <tr>
+          <td class="mono text-soft" data-label="Voided">{{ v.voided_at.strftime('%b %d, %Y') }}</td>
+          <td data-label="Location">{{ v.branch_name }}</td>
+          <td data-label="Item">
+            <div class="item-name">{{ v.item_name }}</div>
+            <div class="item-sub mono">{{ v.qty_sold }}{{ ' mL' if v.unit == 'BULK' }} · sold {{ v.sold_at.strftime('%b %d') if v.sold_at else '—' }}</div>
+          </td>
+          <td data-label="Type">{{ m.sale_type_badge(v.sale_type) }}</td>
+          <td class="num mono" data-label="Total">{{ (v.qty_sold * v.unit_price)|peso }}</td>
+          <td data-label="By">{{ v.voided_by_username or '—' }}</td>
+          <td class="sh-void-reason" data-label="Reason">{{ v.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><div class="glyph">—</div><p>No sales have been voided.</p></div>
+  {% endif %}
+</div>
+
+{% include "_void_sale_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_void_sale_script.html" %}
+{% endblock %}

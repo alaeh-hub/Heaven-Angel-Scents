@@ -6,6 +6,12 @@
 
 {% block head %}
 <style>
+  /* Recent sales: never scroll sideways. Long names already truncate with
+     a hover title; badges and the Receipt button get sized columns. */
+  .table-wrap.rs-recent-wrap { overflow-x: hidden; }
+  @media (min-width: 681px) {
+    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: 0.5rem; padding-right: 0.75rem; text-align: right; }
+  }
   .rb-mode {
     display: inline-flex;
     gap: 2px;
@@ -262,7 +268,7 @@
         </button>
         <button type="button" class="choice-card" data-value="Refill">
           <span class="choice-card-title">Refill</span>
-          <span class="choice-card-desc">Customer's own bottle — doesn't deduct stock.</span>
+          <span class="choice-card-desc">Customer's own bottle — pours from the scent's bulk stock.</span>
         </button>
       </div>
     </div>
@@ -463,17 +469,17 @@
         <input type="text" class="smart-search-input" placeholder="Search by item or SKU…" autocomplete="off">
       </div>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap rs-recent-wrap">
       <table class="smart-table table-fixed table-collapsible">
         <colgroup>
-          <col style="width:12%">
+          <col style="width:11%">
           <col style="width:20%">
-          <col style="width:10%">
+          <col style="width:12%">
           <col style="width:8%">
+          <col style="width:11%">
+          <col style="width:11%">
+          <col style="width:15%">
           <col style="width:12%">
-          <col style="width:12%">
-          <col style="width:16%">
-          <col style="width:10%">
         </colgroup>
         <thead>
           <tr>
@@ -500,7 +506,7 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
-            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
             <td class="num mono mobile-detail" data-label="Price">{{ s.unit_price|peso }}</td>
             <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
@@ -648,6 +654,7 @@
       if (!btn || btn.classList.contains('active')) return;
       this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
       topType = btn.dataset.value;
+      buildProducts();
       updateFreebieVisibility();
       recomputeSaleType();
     });
@@ -721,22 +728,43 @@
     // cashier picks a product first, then only sees the units that
     // product actually has — the price fills in from whichever unit
     // (SKU) ends up selected.
+    //
+    // Which rows are offered depends on Sale vs Refill: a Sale needs the
+    // bottle itself in stock; a Refill pours the scent's bulk into the
+    // customer's own bottle, so it needs bulk_ml instead (and doesn't
+    // care whether any bottles are left). Rebuilt when that switch flips.
     var byProduct = {};
-    var productNames = [];
-    catalog.forEach(function (row) {
-      if (!byProduct[row.item_name]) {
-        byProduct[row.item_name] = [];
-        productNames.push(row.item_name);
-      }
-      byProduct[row.item_name].push(row);
-    });
 
-    productNames.forEach(function (name) {
-      var opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      productSelect.appendChild(opt);
-    });
+    function rowAvailable(row) {
+      if (row.category === 'Bulk/Refill') return false;
+      return topType === 'Refill' ? Number(row.bulk_ml) > 0 : Number(row.stock_qty) > 0;
+    }
+
+    function buildProducts() {
+      var previous = productSelect.value;
+      byProduct = {};
+      var productNames = [];
+      catalog.forEach(function (row) {
+        if (!rowAvailable(row)) return;
+        if (!byProduct[row.item_name]) {
+          byProduct[row.item_name] = [];
+          productNames.push(row.item_name);
+        }
+        byProduct[row.item_name].push(row);
+      });
+      productSelect.replaceChildren(productSelect.options[0]);
+      productSelect.options[0].textContent = productNames.length ? 'Select…'
+        : (topType === 'Refill' ? 'No scent has bulk stock to refill from' : 'Nothing in stock');
+      productNames.forEach(function (name) {
+        var opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        productSelect.appendChild(opt);
+      });
+      productSelect.value = byProduct[previous] ? previous : '';
+      if (typeof populateUnits === 'function') populateUnits(productSelect.value);
+    }
+    buildProducts();
 
     function formatPeso(n) {
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -794,7 +822,9 @@
         var opt = document.createElement('option');
         opt.value = row.sku;
         opt.dataset.price = row.price;
-        opt.textContent = row.unit + ' — ' + row.stock_qty + ' in stock';
+        opt.textContent = topType === 'Refill'
+          ? row.unit + ' — ' + Number(row.bulk_ml).toLocaleString() + ' mL bulk left'
+          : row.unit + ' — ' + row.stock_qty + ' in stock';
         skuSelect.appendChild(opt);
       });
       applySuggestedPrice();

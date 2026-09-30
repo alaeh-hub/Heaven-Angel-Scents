@@ -29,9 +29,9 @@
     .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
     .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 12%; }
     .dc-table th:nth-child(4), .dc-table td:nth-child(4) { width: 16%; }
-    .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 10%; }
+    .dc-table th:nth-child(5), .dc-table td:nth-child(5) { width: 14%; }
     .dc-table th:nth-child(6), .dc-table td:nth-child(6) { width: 8%; }
-    .dc-table th:nth-child(7), .dc-table td:nth-child(7) { width: 24%; }
+    .dc-table th:nth-child(7), .dc-table td:nth-child(7) { width: 20%; }
   }
 
   @media (max-width: 680px) {
@@ -53,8 +53,8 @@
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
     <div class="stat-label">Total discrepancies</div>
-    <div class="stat-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
-    <div class="stat-foot">across every branch, all-time</div>
+    <div class="stat-value {{ 'danger' if totals.total_units else '' }}">{{ totals.total_units }}</div>
+    <div class="stat-foot">units damaged + short, every branch, all-time</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Damaged units</div>
@@ -71,7 +71,7 @@
 <div class="card">
   <div class="card-header">
     <h2>By branch</h2>
-    <span class="hint">sorted by most discrepancies</span>
+    <span class="hint">sorted by most units lost</span>
   </div>
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
@@ -102,7 +102,7 @@
           <td class="num mono" data-label="Deliveries affected">{{ s.deliveries_affected }}</td>
           <td class="num mono {{ 'qty-down' if s.damaged_units }}" data-label="Damaged units">{{ s.damaged_units }}</td>
           <td class="num mono {{ 'qty-down' if s.shortfall_units }}" data-label="Shortfall units">{{ s.shortfall_units }}</td>
-          <td class="num mono" data-label="Total discrepancies">{{ s.discrepancy_count }}</td>
+          <td class="num mono {{ 'qty-down' if s.total_units }}" data-label="Total discrepancies">{{ s.total_units }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -145,7 +145,7 @@
       <table class="smart-table table-fixed dc-table">
         <colgroup>
           <col style="width:16%"><col style="width:14%"><col style="width:12%">
-          <col style="width:16%"><col style="width:10%"><col style="width:8%"><col style="width:24%">
+          <col style="width:16%"><col style="width:14%"><col style="width:8%"><col style="width:20%">
         </colgroup>
         <thead>
           <tr>
@@ -154,7 +154,7 @@
             <th>Delivery #</th>
             <th>Item</th>
             <th>Type</th>
-            <th class="num">Change</th>
+            <th class="num">Units</th>
             <th class="dc-col-notes">Notes</th>
           </tr>
         </thead>
@@ -176,7 +176,7 @@
             </td>
             <td data-label="Item">{{ l.item_name }}</td>
             <td class="mobile-fold" data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
-            <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
+            <td class="num mono {{ 'qty-down' if l.units_lost else 'qty-flat' }}" data-label="Units">{{ l.units_lost|int }}</td>
             <td class="text-soft dc-col-notes" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
           </tr>
           {% endfor %}

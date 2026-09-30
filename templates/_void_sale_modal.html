@@ -1,0 +1,42 @@
+{# Void-a-sale dialog, shared by the admin and branch Sales History pages.
+   Any `.void-sale-btn` (data-url = the void POST route, data-label = what
+   the sale was) opens it; a reason is required and ends up in the Admin
+   Log, the Inventory Log's SALE VOID rows and the voided-sales record.
+   Voiding returns the sale's stock and removes it from every total. #}
+<div class="void-overlay" id="voidSaleOverlay" style="display:none;">
+  <div class="card card-pad void-modal">
+    <h2 style="font-size:16px; margin-bottom:4px;">Void this sale?</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;">
+      <strong id="voidSaleLabel"></strong> will be removed from sales and revenue, and its stock returned.
+      This can't be undone — record it again if it was voided by mistake.
+    </p>
+    <form method="POST" id="voidSaleForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="voidSaleReason">Reason</label>
+        <textarea id="voidSaleReason" name="reason" rows="3" maxlength="255" required
+          placeholder="e.g. Wrong item scanned, customer returned it, entered twice"></textarea>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" id="voidSaleCancel">Cancel</button>
+        <button type="submit" class="btn btn-danger" style="flex:1;">Void sale</button>
+      </div>
+    </form>
+  </div>
+</div>
+<style>
+  .void-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(12, 10, 6, 0.55);
+  }
+
+  .void-modal {
+    max-width: 440px;
+    width: 100%;
+  }
+</style>

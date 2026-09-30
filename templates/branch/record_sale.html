@@ -6,6 +6,12 @@
 
 {% block head %}
 <style>
+  /* Recent sales: never scroll sideways. Long names already truncate with
+     a hover title; badges and the Receipt button get sized columns. */
+  .table-wrap.rs-recent-wrap { overflow-x: hidden; }
+  @media (min-width: 681px) {
+    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: 0.5rem; padding-right: 0.75rem; text-align: right; }
+  }
   .rb-mode {
     display: inline-flex;
     gap: 2px;
@@ -252,21 +258,20 @@
 
     <div class="dialog-cols">
     <div>
-    <div class="field">
+    <!-- Refills and Bulk/Refill sales pour from bulk, which only HQ holds
+         (branches can't stock it), so a branch only ever sells bottles.
+         Both switches stay in the DOM (hidden) for the page script. -->
+    <div class="field" style="display:none;">
       <label>Transaction</label>
       <div class="choice-grid" id="topTypeSwitch">
         <button type="button" class="choice-card active" data-value="Sale">
           <span class="choice-card-title">Sale</span>
           <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
         </button>
-        <button type="button" class="choice-card" data-value="Refill">
-          <span class="choice-card-title">Refill</span>
-          <span class="choice-card-desc">Customer's own bottle — doesn't deduct stock.</span>
-        </button>
       </div>
     </div>
 
-    <div class="field">
+    <div class="field" style="display:none;">
       <label>Sale kind</label>
       <div class="choice-grid" id="kindSwitch">
         <button type="button" class="choice-card active" data-value="bottle">
@@ -462,17 +467,17 @@
         <input type="text" class="smart-search-input" placeholder="Search by item or SKU…" autocomplete="off">
       </div>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap rs-recent-wrap">
       <table class="smart-table table-fixed table-collapsible">
         <colgroup>
+          <col style="width:11%">
+          <col style="width:20%">
           <col style="width:12%">
-          <col style="width:22%">
-          <col style="width:10%">
           <col style="width:8%">
+          <col style="width:11%">
+          <col style="width:11%">
+          <col style="width:15%">
           <col style="width:12%">
-          <col style="width:12%">
-          <col style="width:16%">
-          <col style="width:8%">
         </colgroup>
         <thead>
           <tr>
@@ -499,7 +504,7 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
-            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}</td>
+            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
             <td class="num mono mobile-detail" data-label="Price">{{ s.unit_price|peso }}</td>
             <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>

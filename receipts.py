@@ -656,7 +656,8 @@ def _render_sale_receipt(c, sale, receipt_code, top_y, dry=False):
         c.setFont(FONT_REGULAR, 7)
         c.setFillColor(INK_FAINT)
         c.drawString(x_left, state["y"], f"{sale['variant']} · {sale['unit']} · {sale['sku']}")
-        c.drawRightString(x_right, state["y"], f"{sale['qty_sold']} × ₱{sale['unit_price']:,.2f}")
+        qty_label = f"{sale['qty_sold']} mL" if sale["unit"] == "BULK" else f"{sale['qty_sold']}"
+        c.drawRightString(x_right, state["y"], f"{qty_label} × ₱{sale['unit_price']:,.2f}")
     advance(13)
     rule(color=INK, width=0.8, gap=15)
 

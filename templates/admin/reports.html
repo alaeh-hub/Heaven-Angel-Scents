@@ -112,6 +112,9 @@
           <option value="FREEBIE">Freebie</option>
           <option value="ADJUSTMENT">Adjustment</option>
           <option value="DAMAGE">Damage</option>
+          <option value="PACKAGE_ORDER">Package order</option>
+          <option value="PACKAGE_RETURN">Package return</option>
+          <option value="SALE_VOID">Sale void</option>
         </select>
       </div>
       <div class="field" data-filter="sale_type" style="display:none;">
@@ -266,9 +269,9 @@
 
 <div class="grid grid-3 stack">
   <div class="card stat-tile">
-    <div class="stat-label">Total units sold</div>
+    <div class="stat-label">Total bottles sold</div>
     <div class="stat-value" id="totalUnits">—</div>
-    <div class="stat-foot">across all branches</div>
+    <div class="stat-foot" id="totalUnitsFoot">across all branches</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Total revenue</div>
@@ -364,6 +367,7 @@
       </div>
     </div>
     <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="chart-legend" id="trendLegend"></div>
   </div>
 </div>
 {% endblock %}
@@ -394,6 +398,11 @@
   const PALETTE = (isDark
     ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9']
     : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']);
+  // One color per movement type, in MOVEMENT_TYPE_ORDER (main.js) slot
+  // order: the palette above plus more, so every movement type stays distinct.
+  const MOVEMENT_PALETTE = (isDark
+    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#3d9fd6', '#b07cc6', '#9aa33a', '#c0392b']
+    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#1f78b4', '#8e44ad', '#6f7d0e', '#a93226']);
   const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink'), Unisex: themeColor('--ink-soft') };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
@@ -490,7 +499,12 @@
         clearChartError();
         destroyCharts();
 
-        document.getElementById('totalUnits').textContent = data.totals.units;
+        document.getElementById('totalUnits').textContent = Number(data.totals.units).toLocaleString();
+        // Bulk is sold by the mL, so it's shown beside the bottle count, never added to it.
+        const bulkMl = Number(data.totals.bulk_ml) || 0;
+        document.getElementById('totalUnitsFoot').textContent = bulkMl
+          ? 'across all branches · + ' + bulkMl.toLocaleString() + ' mL bulk'
+          : 'across all branches';
         document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
         document.getElementById('totalCapital').textContent = formatPeso(data.financials.capital);
         document.getElementById('totalRawMaterials').textContent = formatPeso(data.financials.raw_materials_purchased);
@@ -585,25 +599,33 @@
         if (profitLabelEl) profitLabelEl.textContent = windowLabel;
 
         const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
-        const types = [...new Set(data.movement_trend.map(d => d.movement_type))];
-        const datasets = types.map((t, i) => ({
-          label: t,
-          data: days.map(day => {
-            const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
-            return row ? row.total : 0;
-          }),
-          borderColor: PALETTE[i % PALETTE.length],
-          backgroundColor: PALETTE[i % PALETTE.length],
-          pointBackgroundColor: PALETTE[i % PALETTE.length],
-          pointRadius: 3,
-          tension: 0.35,
-          fill: false,
-        }));
+        // Fixed order (MOVEMENT_TYPE_ORDER in main.js), and each type's
+        // color keyed to its slot in that order, so a type keeps the same
+        // color whichever other types happen to appear in the window.
+        const types = sortMovementTypes([...new Set(data.movement_trend.map(d => d.movement_type))]);
+        const datasets = types.map((t, i) => {
+          const slot = MOVEMENT_TYPE_ORDER.indexOf(t);
+          const color = MOVEMENT_PALETTE[(slot === -1 ? i : slot) % MOVEMENT_PALETTE.length];
+          return {
+            label: titleCaseLabel(t),
+            data: days.map(day => {
+              const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
+              return row ? row.total : 0;
+            }),
+            borderColor: color,
+            backgroundColor: color,
+            pointBackgroundColor: color,
+            pointRadius: 3,
+            tension: 0.35,
+            fill: false,
+          };
+        });
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'line',
           data: { labels: days, datasets },
-          options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
         });
+        renderChartLegend(charts.trend, document.getElementById('trendLegend'));
       })
       .catch(err => {
         console.error('Reports data failed to load:', err);
@@ -689,9 +711,9 @@
   // ---- Report builder: shows only the filters that apply to the
   // selected report type, and only the time-window sub-fields that
   // apply to the selected mode. Every field always exists in the DOM
-  // (with data-filter="..."); this only toggles display, so the
-  // browser's own GET form submission just skips hidden fields —
-  // nothing extra needed server-side to "ignore" them.
+  // (with data-filter="..."); fields that don't apply are hidden AND
+  // disabled, since a disabled field is what the browser's GET
+  // submission actually skips.
   (function () {
     const REPORT_FIELDS = {
       products: ['variant', 'unit', 'search'],
@@ -706,9 +728,14 @@
       inventory_log: ['branch_id', 'movement_type', 'search', 'window'],
       sales_history: ['branch_id', 'variant', 'unit', 'sale_type', 'payment_method', 'search', 'window'],
       credit_purchases: ['branch_id', 'sale_type', 'search', 'window'],
+      voided_sales: ['branch_id', 'search', 'window'],
       customers: ['branch_id', 'search'],
-      discrepancies: ['branch_id', 'search', 'window'],
+      discrepancies: ['branch_id', 'movement_type', 'search', 'window'],
       branch_performance: ['window'],
+      low_stock: ['branch_id', 'search'],
+      financial_summary: ['window'],
+      admin_log: ['search', 'window'],
+      login_activity: ['search', 'window'],
       accounts: ['role', 'account_status', 'search'],
       partners: ['partner_type', 'search'],
       packages: ['package_scope', 'package_status', 'search'],
@@ -732,7 +759,37 @@
       partners: { label: 'Search partner / contact', placeholder: 'e.g. Golden Scent Trading' },
       packages: { label: 'Search package', placeholder: 'e.g. Starter Bundle' },
       partner_inquiries: { label: 'Search company / contact', placeholder: 'e.g. Golden Scent Trading' },
+      stock_requests: { label: 'Search item / SKU / delivery', placeholder: 'e.g. Golden Hour or DR-000123' },
+      voided_sales: { label: 'Search item / SKU / reason', placeholder: 'e.g. Golden Hour or wrong item' },
+      production_log: { label: 'Search item / SKU / batch', placeholder: 'e.g. Golden Hour or a batch code' },
+      admin_log: { label: 'Search admin / action / target', placeholder: 'e.g. manila or a product name' },
+      login_activity: { label: 'Search username / IP / reason', placeholder: 'e.g. manila or 192.168.1.10' },
     };
+    // Per report type, only the option values that report can actually
+    // match — a Credit purchase is never a Freebie (Freebies are always
+    // Cash), Discrepancies are only Damage or Adjustment.
+    // Options are removed rather than hidden so the custom select
+    // (main.js) re-renders without them; the full list is cached once.
+    const OPTION_LIMITS = {
+      credit_purchases: { rb_sale_type: (v) => v !== 'Freebie' },
+      discrepancies: { rb_movement_type: (v) => ['all', 'DAMAGE', 'ADJUSTMENT'].includes(v) },
+    };
+    // Summary reports have no "latest N rows" — Recent reads as all time
+    // server-side, so the option isn't offered for them.
+    const NO_RECENT_MODE = ['branch_performance', 'financial_summary'];
+    const optionCache = new Map();
+
+    function limitOptions(select, allow) {
+      if (!select) return;
+      if (!optionCache.has(select)) {
+        optionCache.set(select, Array.from(select.options).map((o) => o.cloneNode(true)));
+      }
+      const all = optionCache.get(select);
+      const keep = allow ? all.filter((o) => allow(o.value)) : all;
+      const current = select.value;
+      select.replaceChildren(...keep.map((o) => o.cloneNode(true)));
+      select.value = keep.some((o) => o.value === current) ? current : keep[0].value;
+    }
     const DEFAULT_SEARCH_LABEL = { label: 'Search item / SKU', placeholder: 'e.g. Golden Hour or HAS-001' };
 
     const searchLabelEl = document.getElementById('rb_search_label');
@@ -743,11 +800,28 @@
     const modeInput = document.getElementById('rb_mode');
 
     function applyReportType() {
-      const fields = REPORT_FIELDS[typeSelect.value] || [];
+      const type = typeSelect.value;
+      const fields = REPORT_FIELDS[type] || [];
       document.querySelectorAll('#reportForm [data-filter]').forEach((el) => {
-        el.style.display = fields.includes(el.dataset.filter) ? '' : 'none';
+        const on = fields.includes(el.dataset.filter);
+        el.style.display = on ? '' : 'none';
+        // display:none alone still submits the field — disabling it is
+        // what keeps a stale value (e.g. a Branch picked for another
+        // report type) out of this report's filters and subtitle.
+        el.querySelectorAll('input, select, textarea').forEach((c) => { c.disabled = !on; });
       });
-      const searchCopy = SEARCH_LABELS[typeSelect.value] || DEFAULT_SEARCH_LABEL;
+      const limits = OPTION_LIMITS[type] || {};
+      ['rb_sale_type', 'rb_movement_type', 'rb_unit'].forEach((id) => {
+        limitOptions(document.getElementById(id), limits[id]);
+      });
+      const noRecent = NO_RECENT_MODE.includes(type);
+      const recentBtn = modeSwitch.querySelector('[data-mode="recent"]');
+      if (recentBtn) recentBtn.style.display = noRecent ? 'none' : '';
+      if (noRecent && modeInput.value === 'recent') {
+        modeInput.value = 'all';
+        applyMode();
+      }
+      const searchCopy = SEARCH_LABELS[type] || DEFAULT_SEARCH_LABEL;
       searchLabelEl.textContent = searchCopy.label;
       searchInputEl.placeholder = searchCopy.placeholder;
     }

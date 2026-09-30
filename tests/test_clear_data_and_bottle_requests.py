@@ -132,6 +132,19 @@ def test_branch_inventory_unit_filter_has_no_bulk_option(client, sql):
     assert '<option value="BULK"' not in html
 
 
+def test_branch_inventory_lists_bottles_only(client, sql):
+    branch_id = _signed_in_branch(client, sql)
+    bulk = make_product(sql, unit="BULK")
+    bottle = make_product(sql, unit="50ML")
+    make_inventory(sql, branch_id, bulk, stock_qty=0, reorder_level=5)
+    make_inventory(sql, branch_id, bottle, stock_qty=0, reorder_level=5)
+
+    html = client.get("/branch/inventory").get_data(as_text=True)
+
+    assert bottle in html
+    assert bulk not in html
+
+
 def test_branch_low_stock_ignores_bulk(client, sql):
     branch_id = _signed_in_branch(client, sql)
     bulk = make_product(sql, unit="BULK")
@@ -154,6 +167,41 @@ def test_admin_low_stock_page_and_dashboard_ignore_bulk(client, sql):
 
     assert bottle in page
     assert bulk not in page
+
+
+def test_admin_low_stock_includes_hq_warehouse(client, sql):
+    # HQ's warehouse is branch_id 1 (schema.sql). BULK has no reorder
+    # level at HQ either, so only the bottle shows up.
+    bottle = make_product(sql, unit="50ML")
+    bulk = make_product(sql, unit="BULK")
+    make_inventory(sql, 1, bottle, stock_qty=0, reorder_level=5)
+    make_inventory(sql, 1, bulk, stock_qty=0, reorder_level=5)
+    _signed_in_admin(client, sql)
+
+    page = client.get("/admin/low-stock?branch_id=1").get_data(as_text=True)
+    dashboard = client.get("/admin/").get_data(as_text=True)
+
+    assert bottle in page
+    assert bulk not in page
+    assert bottle in dashboard
+
+
+def test_ai_low_stock_tool_includes_hq_warehouse(app, sql):
+    from routes.ai_tools import _get_low_stock
+
+    bottle = make_product(sql, unit="50ML")
+    bulk = make_product(sql, unit="BULK")
+    make_inventory(sql, 1, bottle, stock_qty=0, reorder_level=5)
+    make_inventory(sql, 1, bulk, stock_qty=0, reorder_level=5)
+    ctx = {"role": "Admin", "branch_id": None}
+
+    with app.app_context():
+        everywhere = _get_low_stock({}, ctx)["results"]
+        hq_only = _get_low_stock({"branch_name": "HQ"}, ctx)["results"]
+
+    skus = {r["sku"] for r in everywhere}
+    assert bottle in skus and bulk not in skus
+    assert any(r["sku"] == bottle and r["is_hq"] for r in hq_only)
 
 
 def test_branch_skus_carried_counts_base_codes(client, sql):

@@ -793,6 +793,13 @@
                     </svg>
                     Record Sale
                 </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.sales_history' }}"
+                    href="{{ url_for('admin.sales_history') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M4 19V9M11 19V4M18 19v-7" />
+                    </svg>
+                    Sales History
+                </a>
             </nav>
             <nav class="nav-group">
                 <div class="nav-label">Organization</div>

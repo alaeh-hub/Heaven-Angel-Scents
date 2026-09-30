@@ -94,6 +94,42 @@
     font-size: 11.5px;
   }
 
+  /* Phones: the stacked action pair beside the name made the card's first
+     row two buttons tall, leaving a big gap between the name and the next
+     field. Here the name gets the full width and the actions move to
+     their own row at the bottom of the card, side by side. Selectors
+     mirror style.css's .table-wrap tr:has(> td.mobile-inline-action)
+     grid rules, with the table class added so these win. */
+  @media (max-width: 680px) {
+    .table-wrap :is(.mat-table, .sup-table) tr:has(> td.mobile-inline-action)>td.mobile-inline-anchor {
+      grid-column: 1 / -1;
+    }
+
+    .table-wrap :is(.mat-table, .sup-table) tr:has(> td.mobile-inline-action)>td.mobile-inline-action {
+      grid-row: auto;
+      grid-column: 1 / -1;
+      width: 100%;
+      padding-top: 0.625rem;
+      padding-bottom: 0.75rem;
+    }
+
+    .table-wrap .sup-table td.sup-col-actions .inline-form,
+    .table-wrap .mat-table td.mat-col-actions .inline-form {
+      display: flex;
+      flex-direction: row;
+      gap: 0.5rem;
+      width: 100%;
+    }
+
+    .table-wrap .sup-table td.sup-col-actions .btn,
+    .table-wrap .mat-table td.mat-col-actions .btn {
+      flex: 1 1 0;
+      justify-content: center;
+      padding: 8px 12px;
+      font-size: 12.5px;
+    }
+  }
+
   .sup-history-table {
     width: 100%;
     border-collapse: collapse;
@@ -623,7 +659,10 @@
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
       Every material this supplier has provided, rolled up across every purchase logged for it.
     </p>
-    <table class="sup-history-table">
+    <table class="sup-history-table table-fixed">
+      <colgroup>
+        <col style="width:40%"><col style="width:18%"><col style="width:21%"><col style="width:21%">
+      </colgroup>
       <thead>
         <tr>
           <th>Material</th>

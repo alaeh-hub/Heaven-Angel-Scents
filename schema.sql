@@ -192,8 +192,9 @@ CREATE TABLE IF NOT EXISTS production_logs (
 );
 
 -- ----------------------------------------------------------------------------
--- 5a. Unit Formulas (Cost of Goods) — the recipe of raw materials that go
---     into producing ONE unit of a given PACKAGING SIZE (see
+-- 5a. Unit Formulas (Packaging Cost Reference) — the recipe of packaging
+--     materials (bottle, cap, sprayer, label, box, ...) that go into
+--     producing ONE unit of a given PACKAGING SIZE (see
 --     utils.PRODUCT_UNITS — the same fixed list as products.unit).
 --
 --     Deliberately keyed by `unit`, not by sku: every product of the same
@@ -206,24 +207,25 @@ CREATE TABLE IF NOT EXISTS production_logs (
 --
 --     qty_per_unit is how much of `material_id` (in raw_materials.unit)
 --     goes into producing exactly ONE bottle/piece of this packaging
---     size — e.g. 2.5 grams of Fixative per 85ML bottle. It's a plain
---     logged quantity now (used only for material_usage_logs' own
---     qty_used audit trail when a batch is logged — see cogs_logs
---     below) — it plays no part in cost anymore.
+--     size — e.g. 2.5 grams of Fixative per 85ML bottle — hand-entered on
+--     the Formulas page (see add_formula_item() in routes/admin.py).
 --
---     line_cost is simply typed in by hand on the Formulas page when the
---     line is added (or edited) — NOT computed from qty_per_unit × any
---     price, and NOT read from raw_materials.cost_per_unit. A formula is
---     a fully custom recipe: material_id only identifies which material
---     this line is (for its name/unit on the Formulas page); qty_per_unit
---     and line_cost are two independently hand-entered values with no
---     arithmetic relationship between them. The packaging size's total
---     cost per unit is just the SUM of every line's line_cost (see
---     routes/admin.py's formulas()/materials()) — editing a raw
---     material's own cost_per_unit has no effect on any formula that
---     references it. Cost is only ever frozen into a batch total at the
---     moment usage is actually logged against a production run — see
---     cogs_logs below.
+--     line_cost IS computed — qty_per_unit × raw_materials.cost_per_unit
+--     at the moment the line is saved — but is also re-derived LIVE from
+--     the material's current cost_per_unit every time it's displayed
+--     (formulas()/bulk_batches() in routes/admin.py), rather than trusted
+--     from this column, so editing a material's cost is reflected
+--     immediately instead of only on the next save. This whole table is
+--     deliberately a REFERENCE figure only, not a source of truth for
+--     cost of goods: production() still charges whatever flat number is
+--     hand-typed on unit_cogs_settings for a Bottled run's actual
+--     cogs_per_unit, completely unaffected by this table. What this table
+--     answers is "what would one 85ML bottle's packaging cost right now,
+--     materials-wise" — the admin decides separately whether/when to
+--     update unit_cogs_settings to match. Added to a bulk batch's own
+--     cost_per_ml × that size's mL (the liquid share), it also gives a
+--     reference "all-in cost per bottle" on the Bulk Batches page, where
+--     a specific batch's real cost_per_ml is known (see bulk_batches()).
 --
 --     qty_per_unit carries no upper bound tied to raw_materials — that
 --     table is just a purchase log now (see its own comment above), with
@@ -238,7 +240,7 @@ CREATE TABLE IF NOT EXISTS unit_formula_items (
     unit            ENUM('85ML', '50ML', '10ML', '3ML') NOT NULL,
     material_id     INT NOT NULL,
     qty_per_unit    DECIMAL(10, 4) NOT NULL,
-    line_cost       DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,   -- hand-entered total cost for this line; independent of qty_per_unit and raw_materials.cost_per_unit
+    line_cost       DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,   -- qty_per_unit x raw_materials.cost_per_unit at save time; re-derived live on display, never trusted stale from here
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
@@ -471,6 +473,9 @@ CREATE TABLE IF NOT EXISTS sales (
     customer_name    VARCHAR(120) NULL,
     customer_address VARCHAR(255) NULL,
     sold_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- When the row was entered (sold_at can be back-dated). Branch staff
+    -- may void only sales recorded today — see migration 42.
+    recorded_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
     FOREIGN KEY (sku) REFERENCES products(sku) ON DELETE CASCADE,
     FOREIGN KEY (buyer_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
@@ -495,7 +500,8 @@ CREATE TABLE IF NOT EXISTS stock_movement_logs (
     branch_id          INT NOT NULL,
     sku                VARCHAR(50) NOT NULL,
     change_qty         INT NOT NULL,               -- positive for additions, negative for deductions
-    movement_type      ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE') NOT NULL,
+    movement_type      ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE',
+                            'PACKAGE_ORDER', 'PACKAGE_RETURN', 'SALE_VOID') NOT NULL,
     notes              VARCHAR(255),
     -- Who/what caused this entry, and the stock level immediately
     -- before/after it, so disputes ("where did these units go?") can
@@ -717,9 +723,14 @@ CREATE TABLE IF NOT EXISTS partner_inquiries (
     status                    ENUM('New', 'Contacted', 'Follow-up', 'On Hold', 'Closed', 'Declined')
                                   NOT NULL DEFAULT 'New',
     email_sent                BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Set by Fulfill (see migration 41): when the package's items left
+    -- HQ stock. NULL = not shipped yet. Closed is still "deal confirmed".
+    fulfilled_at              DATETIME NULL,
+    fulfilled_by_user_id      INT NULL,
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (package_id) REFERENCES packages(package_id) ON DELETE SET NULL,
     FOREIGN KEY (partner_id) REFERENCES partners(partner_id) ON DELETE SET NULL,
+    FOREIGN KEY (fulfilled_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_partner_inquiries_created (created_at),
     INDEX idx_partner_inquiries_partner (partner_id),
     INDEX idx_partner_inquiries_status (status)
@@ -1965,20 +1976,20 @@ DROP PROCEDURE _migrate_cogs_logs_bulk_batch_id;
 
 -- ----------------------------------------------------------------------------
 -- 38. Unit Cost-of-Goods Settings — the flat base cost per Bottled
---     packaging size, replacing unit_formula_items as what production()
---     logs as cogs_per_unit for a Bottled run.
+--     packaging size that production() actually logs as cogs_per_unit
+--     for a Bottled run.
 --
---     unit_formula_items (see its own comment above) is superseded and no
---     longer read by production() — left in the schema as an unused,
---     harmless leftover rather than dropped, so no historical formula
---     data is lost. It was a materials-cart recipe per packaging size,
---     but that's now redundant: a bulk batch already records exactly
---     which materials and quantities went into it (see bulk_batches/
---     bulk_batch_materials above), so re-deriving a per-bottle recipe on
---     top of that was double bookkeeping. This table replaces it with
---     one hand-typed number per size instead — e.g. "85ML costs ₱95" —
---     same shape as bulk_rate_settings' single rate, just one row per
---     BOTTLE_UNITS size instead of one shared row.
+--     unit_formula_items (see its own comment above) is NOT read by
+--     production() — a bulk batch already records exactly which raw
+--     materials and quantities went into the liquid (see bulk_batches/
+--     bulk_batch_materials above), so re-deriving a per-bottle liquid
+--     cost from a formula on top of that would be double bookkeeping.
+--     This table is instead one hand-typed number per size — e.g. "85ML
+--     costs ₱95" — same shape as bulk_rate_settings' single rate, just
+--     one row per BOTTLE_UNITS size instead of one shared row. The admin
+--     sets this figure using unit_formula_items' own computed packaging
+--     total (plus a batch's liquid cost/mL) as a reference, but nothing
+--     ties the two together automatically.
 --
 --     A Bottled production run still requires picking a bulk batch (see
 --     production() in routes/admin.py) — that's what deducts the batch's
@@ -2090,3 +2101,205 @@ DELIMITER ;
 
 CALL _migrate_partner_inquiries_preferred_contact();
 DROP PROCEDURE _migrate_partner_inquiries_preferred_contact;
+
+-- ----------------------------------------------------------------------------
+-- 41. Migration: package orders fulfill from HQ stock
+--
+--     Order -> produce -> fulfill. A package inquiry marked Closed is a
+--     confirmed deal (and still counts as revenue then), but nothing has
+--     left the warehouse yet — often the goods haven't been produced.
+--     Fulfill (admin Partner Inquiries page) then takes the package's
+--     items out of HQ's branch_inventory, logged as PACKAGE_ORDER; moving
+--     a fulfilled inquiry off Closed puts them back, logged as
+--     PACKAGE_RETURN. Both use reference_type 'PARTNER_INQUIRY'.
+--
+--     partner_inquiry_items snapshots the package's contents when the
+--     inquiry is submitted, so what gets fulfilled is exactly what was
+--     quoted even if the package is edited later. sku has no FK on
+--     purpose: deleting a product must not silently erase what an old
+--     order contained. Inquiries from before this migration are
+--     backfilled from their package's current contents (the best record
+--     there is).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS partner_inquiry_items (
+    inquiry_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    inquiry_id      INT NOT NULL,
+    sku             VARCHAR(50) NOT NULL,
+    item_name       VARCHAR(150) NOT NULL,
+    unit            VARCHAR(10) NOT NULL,
+    qty             INT NOT NULL,
+    unit_price      DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    FOREIGN KEY (inquiry_id) REFERENCES partner_inquiries(inquiry_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_inquiry_sku (inquiry_id, sku),
+    CHECK (qty > 0)
+);
+
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_package_order_fulfillment()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'stock_movement_logs'
+              AND column_name = 'movement_type' AND column_type LIKE '%PACKAGE_ORDER%'
+    ) THEN
+        ALTER TABLE stock_movement_logs
+            MODIFY COLUMN movement_type
+            ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE',
+                 'PACKAGE_ORDER', 'PACKAGE_RETURN') NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries'
+              AND column_name = 'fulfilled_at'
+    ) THEN
+        ALTER TABLE partner_inquiries
+            ADD COLUMN fulfilled_at DATETIME NULL AFTER email_sent,
+            ADD COLUMN fulfilled_by_user_id INT NULL AFTER fulfilled_at,
+            ADD CONSTRAINT fk_partner_inquiries_fulfilled_by
+                FOREIGN KEY (fulfilled_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_package_order_fulfillment();
+DROP PROCEDURE _migrate_package_order_fulfillment;
+
+INSERT IGNORE INTO partner_inquiry_items (inquiry_id, sku, item_name, unit, qty, unit_price)
+SELECT pinq.inquiry_id, pk.sku, p.item_name, p.unit, pk.qty, p.price
+FROM partner_inquiries pinq
+JOIN package_items pk ON pk.package_id = pinq.package_id
+JOIN products p ON p.sku = pk.sku
+WHERE pinq.package_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM partner_inquiry_items x WHERE x.inquiry_id = pinq.inquiry_id);
+
+-- ----------------------------------------------------------------------------
+-- 42. Migration: refills draw HQ bulk, and sales can be voided
+--
+--     Refills are HQ-only: a Refill takes the scent's bulk (the product
+--     with the same base code and unit BULK, e.g. A1-50ML -> A1-BULK) out
+--     of HQ's bulk stock — bottles x bottle size in mL, or the typed mL
+--     for a bulk product itself. See sale_stock.py.
+--
+--     Void removes a mistaken sale entirely: its stock goes back (logged
+--     as SALE_VOID) and the sales row is deleted so every revenue/units
+--     total corrects itself. sale_voids keeps a permanent snapshot of the
+--     voided sale with who voided it and why. Sale movement logs now
+--     carry reference_id = sale_id so a void reverses exactly what the
+--     sale deducted.
+--
+--     sales.recorded_at is when the row was entered (sold_at can be
+--     back-dated); existing rows take their sold_at.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sale_voids (
+    void_id            INT AUTO_INCREMENT PRIMARY KEY,
+    sale_id            INT NOT NULL,
+    branch_id          INT NOT NULL,
+    sku                VARCHAR(50) NOT NULL,
+    item_name          VARCHAR(150) NOT NULL,
+    unit               VARCHAR(10) NOT NULL,
+    qty_sold           INT NOT NULL,
+    unit_price         DECIMAL(10, 2) NOT NULL,
+    sale_type          VARCHAR(20) NOT NULL,
+    payment_method     VARCHAR(20) NOT NULL,
+    buyer_name         VARCHAR(120) NULL,
+    customer_name      VARCHAR(120) NULL,
+    sold_at            TIMESTAMP NULL,
+    reason             VARCHAR(255) NOT NULL,
+    voided_by_user_id  INT NULL,
+    voided_by_username VARCHAR(80) NULL,
+    voided_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE CASCADE,
+    FOREIGN KEY (voided_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_sale_voids_voided_at (voided_at)
+);
+
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_refill_bulk_and_sale_void()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'stock_movement_logs'
+              AND column_name = 'movement_type' AND column_type LIKE '%SALE_VOID%'
+    ) THEN
+        ALTER TABLE stock_movement_logs
+            MODIFY COLUMN movement_type
+            ENUM('PRODUCTION', 'DISPATCH', 'RECEIPT', 'SALE', 'REFILL', 'FREEBIE', 'ADJUSTMENT', 'DAMAGE',
+                 'PACKAGE_ORDER', 'PACKAGE_RETURN', 'SALE_VOID') NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'recorded_at'
+    ) THEN
+        ALTER TABLE sales ADD COLUMN recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER sold_at;
+        UPDATE sales SET recorded_at = sold_at;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_refill_bulk_and_sale_void();
+DROP PROCEDURE _migrate_refill_bulk_and_sale_void;
+
+-- ----------------------------------------------------------------------------
+-- 43. Migration — bulk_batches.target_unit/target_bottle_qty,
+--     bulk_batch_materials.is_packaging
+--
+--     Matches the real "Timpla Costing" worksheet the business already
+--     uses: a batch's packaging materials (bottle, sticker, plastic
+--     seal, ...) are bought and costed for the batch's WHOLE planned
+--     bottle yield up front — not per production run — and folded into
+--     the same batch total as the liquid ingredients. Picking a target
+--     bottle size when logging a batch (see create_bulk_batch() in
+--     routes/admin.py) is what makes this possible: target_bottle_qty is
+--     computed the same way the existing "how many bottles can this
+--     batch still make" yield math always has (total_volume_ml div
+--     bottle_size_ml — see utils.bottle_size_ml()), just frozen once at
+--     creation instead of recomputed live, since packaging is bought
+--     for that number specifically. Both columns are NULL for a batch
+--     with no target size (or any batch created before this migration)
+--     — packaging then stays exactly as before: a separate, generic
+--     per-size reference on the Formulas page (see unit_formula_items),
+--     not folded into this batch's own total_cost.
+--
+--     is_packaging marks which bulk_batch_materials rows came from the
+--     target unit's formula (unit_formula_items) at qty_per_unit x
+--     target_bottle_qty, rather than being hand-added liquid ingredients
+--     — this is what lets a batch's total_cost split back into a liquid
+--     subtotal and a packaging subtotal (bulk_batches() in
+--     routes/admin.py), the same SUMIF(Category=...) split the
+--     spreadsheet does by its own Category column. cost_per_ml keeps its
+--     existing meaning either way — cost per mL of LIQUID only, never
+--     including packaging, since mL doesn't apply to a piece-counted
+--     bottle/sticker/seal.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_bulk_batches_target_unit()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'bulk_batches' AND column_name = 'target_unit'
+    ) THEN
+        ALTER TABLE bulk_batches
+            ADD COLUMN target_unit ENUM('85ML', '50ML', '10ML', '3ML') NULL AFTER notes,
+            ADD COLUMN target_bottle_qty INT NULL AFTER target_unit;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'bulk_batch_materials' AND column_name = 'is_packaging'
+    ) THEN
+        ALTER TABLE bulk_batch_materials
+            ADD COLUMN is_packaging BOOLEAN NOT NULL DEFAULT FALSE AFTER line_cost;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_bulk_batches_target_unit();
+DROP PROCEDURE _migrate_bulk_batches_target_unit;

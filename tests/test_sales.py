@@ -52,7 +52,8 @@ def test_sale_decrements_stock_and_logs_a_matching_movement(client, sql):
     assert movement["after_qty"] == 7
 
 
-def test_refill_leaves_stock_untouched(client, sql):
+def test_branch_refill_is_refused(client, sql):
+    """Refills pour from bulk, which only HQ holds — a branch can't record one."""
     branch_id = _signed_in_branch(client, sql)
     sku = make_product(sql, price="50.00")
     make_inventory(sql, branch_id, sku, stock_qty=10)
@@ -60,15 +61,8 @@ def test_refill_leaves_stock_untouched(client, sql):
     resp = _sell(client, sku, qty=1, unit_price="20.00", sale_type="Refill")
 
     assert resp.status_code == 302
-    # Still a real, ledgered transaction (it counts toward sales/revenue
-    # reporting) — just with zero stock impact.
     assert get_inventory_qty(sql, branch_id, sku) == 10
-    assert count_sales(sql, branch_id, sku) == 1
-    movement = last_movement_log(sql, branch_id, sku)
-    assert movement["movement_type"] == "REFILL"
-    assert movement["change_qty"] == 0
-    assert movement["before_qty"] == 10
-    assert movement["after_qty"] == 10
+    assert count_sales(sql, branch_id, sku) == 0
 
 
 def test_overselling_is_rejected_and_leaves_stock_unchanged(client, sql):

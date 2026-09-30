@@ -21,9 +21,9 @@
      Same pattern/fix as Admin Log's .al-table. */
   @media (min-width: 681px) {
     .cust-table th:nth-child(1), .cust-table td:nth-child(1) { width: 20%; }
-    .cust-table th:nth-child(2), .cust-table td:nth-child(2) { width: 22%; }
-    .cust-table th:nth-child(3), .cust-table td:nth-child(3) { width: 12%; }
-    .cust-table th:nth-child(4), .cust-table td:nth-child(4) { width: 10%; }
+    .cust-table th:nth-child(2), .cust-table td:nth-child(2) { width: 20%; }
+    .cust-table th:nth-child(3), .cust-table td:nth-child(3) { width: 10%; }
+    .cust-table th:nth-child(4), .cust-table td:nth-child(4) { width: 14%; }
     .cust-table th:nth-child(5), .cust-table td:nth-child(5) { width: 12%; }
     .cust-table th:nth-child(6), .cust-table td:nth-child(6) { width: 12%; }
     .cust-table th:nth-child(7), .cust-table td:nth-child(7) { width: 12%; }
@@ -74,15 +74,15 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed cust-table table-collapsible">
         <colgroup>
-          <col style="width:20%"><col style="width:22%"><col style="width:12%">
-          <col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:12%">
+          <col style="width:20%"><col style="width:20%"><col style="width:10%">
+          <col style="width:14%"><col style="width:12%"><col style="width:12%"><col style="width:12%">
         </colgroup>
         <thead>
           <tr>
             <th>Customer</th>
             <th>Branches shopped</th>
             <th class="num">Purchases</th>
-            <th class="num">Units</th>
+            <th class="num">Qty bought</th>
             <th class="num">Total spent</th>
             <th>Last purchase</th>
             <th>Last at</th>
@@ -100,7 +100,7 @@
               {% if r.branch_count > 1 %}<div class="item-sub" style="margin-top:2px;"><span class="badge badge-pending">{{ r.branch_count }} branches</span></div>{% endif %}
             </td>
             <td class="num mono mobile-detail" data-label="Purchases">{{ r.purchase_count }}</td>
-            <td class="num mono mobile-detail" data-label="Units">{{ r.total_units }}</td>
+            <td class="num mono mobile-detail" data-label="Qty bought">{{ m.qty_stack(r.total_units, r.total_bulk_ml) }}</td>
             <td class="num mono mobile-detail" data-label="Total spent">{{ r.total_spent|peso }}</td>
             <td class="mono text-soft mobile-detail" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
             <td class="text-soft mobile-detail" data-label="Last at">{{ r.last_branch_name }}</td>

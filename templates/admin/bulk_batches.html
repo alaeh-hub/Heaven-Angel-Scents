@@ -104,6 +104,7 @@
   }
   .bb-yield-card .bb-yield-unit { font-size: 12px; color: var(--ink-faint); letter-spacing: 0; }
   .bb-yield-card .bb-yield-count { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .bb-yield-card .bb-yield-cost { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; }
 </style>
 {% endblock %}
 
@@ -172,6 +173,21 @@
       </div>
     </div>
     <div class="field">
+      <label for="target_unit">Target bottle size <span class="text-faint">(optional)</span></label>
+      <select id="target_unit" name="target_unit">
+        <option value="">None — liquid only, no packaging folded in</option>
+        {% for u in bottle_ml_map %}
+        <option value="{{ u }}">{{ u }}</option>
+        {% endfor %}
+      </select>
+      <div class="help">
+        Picking a size also folds that size's packaging formula (bottle, sticker, seal — see the
+        <a href="{{ url_for('admin.formulas') }}">Formulas page</a>) into THIS batch: qty = however many bottles of
+        that size this batch's whole volume can fill, deducted from stock and added to the batch's total cost right
+        away — same as how the liquid materials below work.
+      </div>
+    </div>
+    <div class="field">
       <label for="notes">Notes <span class="text-faint">(optional)</span></label>
       <input type="text" id="notes" name="notes" maxlength="255">
     </div>
@@ -206,7 +222,7 @@
     </p>
 
     <div class="bb-table-wrap">
-      <table class="bb-table">
+      <table class="bb-table table-fixed">
         <colgroup>
           <col style="width:30%"><col style="width:18%"><col style="width:14%"><col style="width:20%"><col style="width:18%"><col style="width:40px">
         </colgroup>
@@ -239,6 +255,7 @@
       <div><strong id="bbPreviewVolume"></strong></div>
       <div id="bbPreviewCostPerMl"></div>
       <div class="bb-preview-yields" id="bbPreviewYields"></div>
+      <div id="bbTargetPreview" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);"></div>
     </div>
 
     <div id="bbInputs"></div>
@@ -285,6 +302,7 @@
               <div class="item-sub item-sub-badge">
                 {% if b.batch_code %}<span class="badge badge-pending">{{ b.batch_code }}</span>{% endif %}
                 <span class="{{ 'badge badge-rejected' if b.depleted else 'badge badge-fulfilled' }}">{{ 'Depleted' if b.depleted else 'Active' }}</span>
+                {% if b.target_unit %}<span class="badge badge-pending">→ {{ b.target_bottle_qty }}&times; {{ b.target_unit }}</span>{% endif %}
               </div>
             </td>
             <td class="mono text-soft" data-label="Size">{{ b.input_qty|round(3)|string|replace('.000','') }} {{ b.input_unit.lower() }}
@@ -297,6 +315,11 @@
                 data-scent-name="{{ b.scent_name }}" data-batch-code="{{ b.batch_code or '' }}"
                 data-total-cost="{{ b.total_cost }}" data-cost-per-ml="{{ b.cost_per_ml }}"
                 data-remaining-ml="{{ b.remaining_ml }}" data-notes="{{ b.notes or '' }}"
+                data-target-unit="{{ b.target_unit or '' }}" data-target-bottle-qty="{{ b.target_bottle_qty or '' }}"
+                data-liquid-subtotal="{{ b.liquid_subtotal if b.target_unit else '' }}"
+                data-packaging-subtotal="{{ b.packaging_subtotal if b.target_unit else '' }}"
+                data-cost-per-new-bottle="{{ b.cost_per_new_bottle if b.target_unit else '' }}"
+                data-cost-per-refill-bottle="{{ b.cost_per_refill_bottle if b.target_unit else '' }}"
                 data-ingredients='{{ b.ingredients | tojson }}' data-yields='{{ b.yields | tojson }}'>Details</button>
             </td>
           </tr>
@@ -335,14 +358,29 @@
     <h2 style="font-size:16px; margin-bottom:4px;">Batch details — <span id="bdScentName"></span></h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;" id="bdSummary"></p>
 
+    <div class="bb-preview" id="bdPlan" style="display:none; margin-bottom:14px;">
+      <div><strong id="bdPlanHeading"></strong></div>
+      <div id="bdPlanBreakdown" style="margin-top:6px;"></div>
+      <div id="bdPlanResults" style="margin-top:8px;"></div>
+    </div>
+    <p class="text-faint" id="bdNoPlan" style="font-size:12.5px; margin:0 0 14px; display:none;">
+      No target bottle size was picked for this batch — its total cost is liquid ingredients only, and packaging
+      isn't folded in (see the <a href="{{ url_for('admin.bulk_batches') }}">Log a new batch</a> form's own
+      "Target bottle size" field).
+    </p>
+
     <h3 style="font-size:13px; margin: 14px 0 6px;">Materials used</h3>
-    <table class="bb-table">
+    <table class="bb-table table-fixed">
+      <colgroup>
+        <col style="width:36%"><col style="width:16%"><col style="width:18%"><col style="width:18%"><col style="width:12%">
+      </colgroup>
       <thead>
         <tr>
           <th>Material</th>
           <th class="num">Qty used</th>
           <th class="num">Cost / unit</th>
           <th class="num">Line cost</th>
+          <th>Category</th>
         </tr>
       </thead>
       <tbody id="bdIngredients"></tbody>
@@ -363,6 +401,12 @@
   (function () {
     var mlPerBatchUnit = {{ ml_per_batch_unit | tojson }};
     var bottleMlMap = {{ bottle_ml_map | tojson }};
+    // Packaging formula per size (see _formula_items_by_unit() in
+    // routes/admin.py) — drives the "this will also add ..." preview
+    // below when a target bottle size is picked, same live-computed
+    // source the Formulas page itself reads.
+    var formulaItemsByUnit = {{ formula_items_by_unit | tojson }};
+    var FORMULAS_URL = {{ url_for('admin.formulas') | tojson }};
     // Which units a material's usage can be logged in, keyed by the
     // material's own raw_materials.unit (see utils.compatible_material_units)
     // — e.g. a Gallon-stocked material offers Milliliter/Liter/Gallon.
@@ -387,6 +431,8 @@
     var previewVolume = document.getElementById('bbPreviewVolume');
     var previewCostPerMl = document.getElementById('bbPreviewCostPerMl');
     var previewYields = document.getElementById('bbPreviewYields');
+    var targetUnitSelect = document.getElementById('target_unit');
+    var targetPreview = document.getElementById('bbTargetPreview');
     if (!materialSelect || !addBtn || !body) return;
 
     var materialsById = {};
@@ -457,16 +503,56 @@
         return;
       }
       var totalMl = qty * perUnitMl;
-      var cost = totalCost();
-      var costPerMl = totalMl > 0 ? cost / totalMl : 0;
-      previewVolume.textContent = totalMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL total, ' + formatPeso(cost) + ' cost';
-      previewCostPerMl.textContent = '≈ ₱' + costPerMl.toFixed(6) + ' per mL (reference only — bottling charges the flat base price set on the Formulas page, not this)';
+      var liquidCost = totalCost();
+      var costPerMl = totalMl > 0 ? liquidCost / totalMl : 0;
+      previewVolume.textContent = totalMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL total, ' + formatPeso(liquidCost) + ' liquid cost';
+      previewCostPerMl.textContent = '≈ ₱' + costPerMl.toFixed(6) + ' per mL (liquid only)';
       previewYields.innerHTML = Object.keys(bottleMlMap).map(function (unit) {
         var sizeMl = bottleMlMap[unit];
         var count = Math.floor(totalMl / sizeMl);
         return '<div class="bb-preview-yield">' + count + '&times; ' + unit + '</div>';
       }).join('');
+
+      // If a target bottle size is picked, preview exactly what
+      // create_bulk_batch() will fold into this batch: that size's
+      // packaging formula, qty = this batch's own yield for that size.
+      var targetUnit = targetUnitSelect ? targetUnitSelect.value : '';
+      if (targetUnit && bottleMlMap[targetUnit]) {
+        var targetQty = Math.floor(totalMl / bottleMlMap[targetUnit]);
+        var items = formulaItemsByUnit[targetUnit] || [];
+        var packagingCost = 0;
+        var linesHtml = items.map(function (it) {
+          var qtyNeeded = it.qty_per_unit * targetQty;
+          var lineCost = qtyNeeded * it.cost_per_unit;
+          packagingCost += lineCost;
+          return '<div class="bb-preview-yield">' + esc(it.material_name) + ': ' +
+            qtyNeeded.toLocaleString('en-PH', { maximumFractionDigits: 3 }) + ' ' +
+            it.material_unit.toLowerCase() + ' (' + formatPeso(lineCost) + ')</div>';
+        }).join('');
+        var grandTotal = liquidCost + packagingCost;
+        var costPerNew = targetQty > 0 ? grandTotal / targetQty : 0;
+        var costPerRefill = targetQty > 0 ? liquidCost / targetQty : 0;
+        targetPreview.innerHTML =
+          '<div><strong>' + targetQty + '&times; ' + targetUnit + ' planned</strong> — packaging adds ' + formatPeso(packagingCost) + '</div>' +
+          (items.length
+            ? '<div class="bb-preview-yields">' + linesHtml + '</div>'
+            : '<div class="text-faint" style="margin-top:6px;">No packaging formula on file for ' + targetUnit +
+              ' yet — add one on the <a href="' + FORMULAS_URL + '">Formulas page</a> first, or this batch will fold in ₱0 packaging.</div>') +
+          '<div style="margin-top:8px;">Grand total: ' + formatPeso(grandTotal) +
+          ' · ~' + formatPeso(costPerNew) + '/new bottle · ~' + formatPeso(costPerRefill) + '/refill</div>';
+        targetPreview.style.display = 'block';
+      } else {
+        targetPreview.style.display = 'none';
+        targetPreview.innerHTML = '';
+      }
+
       preview.style.display = 'block';
+    }
+
+    function esc(value) {
+      var div = document.createElement('div');
+      div.textContent = String(value);
+      return div.innerHTML;
     }
 
     function render() {
@@ -580,11 +666,17 @@
       if (!qty || qty <= 0) qty = 1;
       lines[id] = { qty: qty, unit: qtyUnitSelect.value };
       qtyInput.value = 1;
+      // Back to "Select…" so the next material is a fresh pick; the change
+      // event keeps the custom-select trigger label in sync.
+      materialSelect.value = '';
+      qtyUnitSelect.innerHTML = '';
+      materialSelect.dispatchEvent(new Event('change', { bubbles: true }));
       render();
     });
 
     inputQty.addEventListener('input', updatePreview);
     inputUnit.addEventListener('change', updatePreview);
+    if (targetUnitSelect) targetUnitSelect.addEventListener('change', updatePreview);
 
     // Seed the unit dropdown for whichever material is selected first
     // (the browser may already have one picked on page reload).
@@ -604,6 +696,11 @@
     var ingredientsEl = document.getElementById('bdIngredients');
     var yieldsEl = document.getElementById('bdYields');
     var closeBtn = document.getElementById('bdCloseBtn');
+    var planEl = document.getElementById('bdPlan');
+    var planHeadingEl = document.getElementById('bdPlanHeading');
+    var planBreakdownEl = document.getElementById('bdPlanBreakdown');
+    var planResultsEl = document.getElementById('bdPlanResults');
+    var noPlanEl = document.getElementById('bdNoPlan');
 
     function formatPeso(n) {
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -631,15 +728,44 @@
           '<td class="num mono">' + esc(row.qty_used) + ' ' + esc(unit) + '</td>' +
           '<td class="num mono">' + formatPeso(row.cost_per_unit_snapshot) + ' / ' + esc(unit) + '</td>' +
           '<td class="num mono">' + formatPeso(row.line_cost) + '</td>' +
+          '<td>' + (row.is_packaging ? 'Packaging' : 'Liquid') + '</td>' +
           '</tr>';
-      }).join('') || '<tr><td colspan="4" class="bb-empty-row">No materials on file for this batch.</td></tr>';
+      }).join('') || '<tr><td colspan="5" class="bb-empty-row">No materials on file for this batch.</td></tr>';
+
+      // Batch plan — only when a target bottle size was picked at
+      // creation (see create_bulk_batch()'s own docstring): the batch's
+      // OWN liquid/packaging split, not the generic per-size reference
+      // the yield cards below use.
+      var targetUnit = btn.dataset.targetUnit;
+      var targetQty = btn.dataset.targetBottleQty;
+      if (targetUnit && targetQty) {
+        planEl.style.display = 'block';
+        noPlanEl.style.display = 'none';
+        planHeadingEl.textContent = targetQty + '× ' + targetUnit + ' planned for this batch';
+        planBreakdownEl.textContent = 'Liquid ' + formatPeso(btn.dataset.liquidSubtotal) +
+          ' + Packaging ' + formatPeso(btn.dataset.packagingSubtotal) +
+          ' = ' + formatPeso(btn.dataset.totalCost) + ' total';
+        planResultsEl.innerHTML =
+          '<div class="bb-preview-yields">' +
+          '<div class="bb-preview-yield">Cost / NEW bottle: ' + formatPeso(btn.dataset.costPerNewBottle) + '</div>' +
+          '<div class="bb-preview-yield">Cost / REFILL: ' + formatPeso(btn.dataset.costPerRefillBottle) + '</div>' +
+          '</div>';
+      } else {
+        planEl.style.display = 'none';
+        noPlanEl.style.display = 'block';
+      }
 
       var yields = [];
       try { yields = JSON.parse(btn.dataset.yields || '[]'); } catch (e) { yields = []; }
       yieldsEl.innerHTML = yields.map(function (y) {
+        // total_cost_per_bottle (liquid share + packaging formula total —
+        // see bulk_batches()/_formula_items_by_unit() in routes/admin.py)
+        // is a reference only, never what a production run is actually
+        // charged (that's the flat base cost on the Formulas page).
         return '<div class="bb-yield-card">' +
           '<div class="bb-yield-unit">' + esc(y.unit) + '</div>' +
           '<div class="bb-yield-count">' + esc(y.bottle_count) + '</div>' +
+          '<div class="bb-yield-cost">~' + formatPeso(y.total_cost_per_bottle) + '/bottle (ref)</div>' +
           '</div>';
       }).join('');
 

@@ -13,7 +13,7 @@
      of empty rectangles. Long values (emails, long company names)
      still wrap via overflow-wrap rather than stretching the column. */
   .pi-table {
-    table-layout: auto;
+    table-layout: fixed;
     width: 100%;
     font-size: 13px;
   }
@@ -442,6 +442,48 @@
       border-bottom: none !important;
     }
   }
+  .pi-fulfill-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.5rem;
+    margin-top: 6px;
+  }
+
+  .pi-short-note {
+    font-size: 11.5px;
+    color: var(--warning);
+    font-weight: 600;
+  }
+
+  .pi-fulfill-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .pi-fulfill-table th,
+  .pi-fulfill-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .pi-fulfill-table th.num,
+  .pi-fulfill-table td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .pi-fulfill-blocked {
+    display: none;
+    margin: 12px 0 0;
+    padding: 9px 11px;
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    color: var(--ink-soft);
+    font-size: 12.5px;
+  }
 </style>
 {% endblock %}
 
@@ -465,7 +507,7 @@
   <div class="card stat-tile">
     <div class="stat-label">Closed</div>
     <div class="stat-value">{{ counts.closed_count }}</div>
-    <div class="stat-foot">{{ counts.total_count }} total &middot; {{ counts.declined_count }} declined</div>
+    <div class="stat-foot">{{ counts.to_fulfill_count }} awaiting fulfillment &middot; {{ counts.declined_count }} declined</div>
   </div>
 </div>
 
@@ -488,6 +530,10 @@
         partner portal</a> lands here and is automatically added to <a href="{{ url_for('admin.partners') }}">Partners</a>
       — an admin can only change its Status (New &rarr; Contacted &rarr; Follow-up/On Hold &rarr; Closed/Declined)
       and internal Remarks; everything else stays a permanent record of what the partner actually submitted.
+      Closed means the order is confirmed (it counts as a sale); <strong>Fulfill</strong> then ships it, taking the
+      package's items out of HQ stock — produce any shortfall on
+      <a href="{{ url_for('admin.production') }}">Production Log</a> first. Moving a fulfilled order off Closed
+      returns its items to HQ stock.
     </p>
   </div>
   {% if inquiries %}
@@ -503,7 +549,11 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="smart-table pi-table table-collapsible">
+      <table class="smart-table table-fixed pi-table table-collapsible">
+        <colgroup>
+          <col style="width:11%"><col style="width:21%"><col style="width:9%"><col style="width:18%">
+          <col style="width:11%"><col style="width:14%"><col style="width:16%">
+        </colgroup>
         <thead>
           <tr>
             <th class="pi-col-when">When</th>
@@ -567,6 +617,38 @@
               {% if inq.preferred_contact %}<div class="item-sub">Prefers {{ inq.preferred_contact }}</div>{% endif %}
             </td>
             <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
+              {% if inq.fulfilled_at %}
+              <div class="item-sub pi-fulfill-row">
+                <span class="badge badge-fulfilled">Fulfilled</span>
+                <span class="mono">{{ inq.fulfilled_at.strftime('%b %d') }}</span>
+              </div>
+              {% elif inq.status == 'Closed' and inq['items'] %}
+              <div class="item-sub pi-fulfill-row">
+                <button type="button" class="btn btn-accent btn-sm pi-fulfill-btn"
+                  data-template="fulfill-{{ inq.inquiry_id }}" data-company="{{ inq.company_name }}">Fulfill</button>
+                {% if inq.short_count %}<span class="pi-short-note">{{ inq.short_count }} item{{ 's' if inq.short_count != 1 }} to produce</span>{% endif %}
+              </div>
+              <template id="fulfill-{{ inq.inquiry_id }}">
+                <table class="pi-fulfill-table">
+                  <thead><tr><th>Item</th><th class="num">Needed</th><th class="num">HQ has</th><th class="num">To produce</th></tr></thead>
+                  <tbody>
+                    {% for it in inq['items'] %}
+                    <tr>
+                      <td>{{ it.item_name }} <span class="text-faint">· {{ it.unit }}</span></td>
+                      <td class="num mono">{{ it.qty }}{{ ' mL' if it.unit == 'BULK' }}</td>
+                      <td class="num mono">{{ it.hq_stock }}{{ ' mL' if it.unit == 'BULK' }}</td>
+                      <td class="num mono {{ 'qty-down' if it.short }}">{{ it.short if it.short else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+                <form method="POST" action="{{ url_for('admin.fulfill_inquiry', inquiry_id=inq.inquiry_id) }}"
+                  data-short="{{ inq.short_count }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="return_status" value="{{ status_filter }}">
+                </form>
+              </template>
+              {% endif %}
             </td>
             <td data-label="Status" class="mobile-detail">
               <div class="pi-status-cell">
@@ -654,6 +736,25 @@
   {% endif %}
 </div>
 
+<div class="pi-modal-overlay" id="fulfillOverlay">
+  <div class="card card-pad pi-modal" style="max-width:560px; width:100%;">
+    <h2 style="font-size:16px; margin-bottom:4px;">Fulfill order</h2>
+    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;">
+      Ships <strong id="fulfillCompanyLabel"></strong>'s package: these items come out of HQ stock and are logged in
+      the Inventory Log.
+    </p>
+    <div id="fulfillBody"></div>
+    <p class="pi-fulfill-blocked" id="fulfillBlocked">
+      HQ doesn't have enough of everything yet — produce the shortfall on
+      <a href="{{ url_for('admin.production') }}">Production Log</a>, then fulfill.
+    </p>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button type="button" class="btn btn-ghost" style="flex:1;" id="fulfillCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-accent" style="flex:1;" id="fulfillSubmitBtn">Fulfill &amp; deduct stock</button>
+    </div>
+  </div>
+</div>
+
 <div class="pi-modal-overlay" id="remarksOverlay">
   <div class="card card-pad pi-modal" style="max-width:460px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Remarks</h2>
@@ -680,6 +781,50 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  // Fulfill dialog: each Closed inquiry carries its own <template> (items
+  // needed vs HQ stock, plus the POST form); it's cloned in here, and the
+  // submit is disabled while anything is short — the server re-checks
+  // under lock regardless.
+  (function () {
+    var overlay = document.getElementById('fulfillOverlay');
+    var body = document.getElementById('fulfillBody');
+    var companyLabel = document.getElementById('fulfillCompanyLabel');
+    var blocked = document.getElementById('fulfillBlocked');
+    var submitBtn = document.getElementById('fulfillSubmitBtn');
+    var cancelBtn = document.getElementById('fulfillCancelBtn');
+    if (!overlay || !body) return;
+
+    function close() { closeOverlay(overlay); }
+
+    document.querySelectorAll('.pi-fulfill-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var tpl = document.getElementById(btn.dataset.template);
+        if (!tpl) return;
+        body.innerHTML = '';
+        body.appendChild(tpl.content.cloneNode(true));
+        companyLabel.textContent = btn.dataset.company || 'this partner';
+        var form = body.querySelector('form');
+        var isShort = form && Number(form.dataset.short) > 0;
+        blocked.style.display = isShort ? 'block' : 'none';
+        submitBtn.disabled = isShort;
+        openOverlay(overlay);
+      });
+    });
+
+    submitBtn.addEventListener('click', function () {
+      var form = body.querySelector('form');
+      if (!form || submitBtn.disabled) return;
+      submitBtn.disabled = true;
+      form.submit();
+    });
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') close();
+    });
+  })();
+</script>
 <script>
   (function () {
     var overlay = document.getElementById('remarksOverlay');
