@@ -3,7 +3,8 @@ import { Link, useLocation, useParams } from 'react-router';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import {
   EnvelopeSimpleIcon, FacebookLogoIcon, InstagramLogoIcon, MapPinIcon,
-  MessengerLogoIcon, PhoneIcon, TiktokLogoIcon, XLogoIcon, YoutubeLogoIcon,
+  MessengerLogoIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
+  StorefrontIcon, TiktokLogoIcon, XLogoIcon, YoutubeLogoIcon,
 } from '@phosphor-icons/react';
 import { FOOTER } from '../content/footer.js';
 import { packagesPath, productsPath, scrollToSection } from '../utils.js';
@@ -16,6 +17,21 @@ const SOCIAL_ICONS = {
   youtube: YoutubeLogoIcon,
   messenger: MessengerLogoIcon,
   x: XLogoIcon,
+};
+
+// Phosphor has no official Shopee/Lazada/TikTok Shop marks, so each
+// marketplace gets a generic storefront-style icon instead of a logo,
+// tinted with that marketplace's own brand color on hover.
+const MARKETPLACE_ICONS = {
+  shopee: ShoppingBagIcon,
+  lazada: ShoppingCartIcon,
+  tiktokshop: StorefrontIcon,
+};
+
+const MARKETPLACE_COLORS = {
+  shopee: '#EE4D2D',
+  lazada: '#0F146D',
+  tiktokshop: '#FE2C55',
 };
 
 const EXPLORE = [
@@ -160,6 +176,41 @@ export default function Footer({ children }) {
                   <li><Link to={productsPath(slug)}>All products</Link></li>
                 </ul>
               </nav>
+
+              {FOOTER.marketplaces?.length > 0 && (
+                <nav className="footer-col" aria-label="Shop online">
+                  <h2>Shop online</h2>
+                  <ul className="footer-marketplaces">
+                    {FOOTER.marketplaces.map(({ network, label, href }) => {
+                      const Icon = MARKETPLACE_ICONS[network];
+                      return (
+                        <li key={network} style={{ '--brand': MARKETPLACE_COLORS[network] }}>
+                          <motion.a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="marketplace-pill"
+                            variants={{ hover: { y: -3 } }}
+                            whileHover="hover"
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            {Icon && (
+                              <motion.span
+                                className="marketplace-icon"
+                                variants={{ hover: { rotate: -8, scale: 1.12 } }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 12 }}
+                              >
+                                <Icon size={18} weight="fill" />
+                              </motion.span>
+                            )}
+                            {label}
+                          </motion.a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </nav>
+              )}
 
               <div className="footer-col">
                 <h2>Contact</h2>

@@ -935,6 +935,113 @@
   }
 }
 
+/* ========================================================= shop online */
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.shop-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--r-surface);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* A faint wash of the store's own brand color, only on hover. */
+.shop-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 18%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.shop-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--hairline));
+  box-shadow: 0 16px 40px -20px color-mix(in srgb, var(--brand) 60%, transparent);
+}
+
+.shop-card:hover::before {
+  opacity: 1;
+}
+
+.shop-card-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand) 16%, var(--surface-sunk));
+  color: var(--brand);
+  transition: background-color 0.3s ease, color 0.3s ease, transform 0.3s ease;
+}
+
+.shop-card:hover .shop-card-icon {
+  background: var(--brand);
+  color: #fff;
+  transform: scale(1.08) rotate(-6deg);
+}
+
+.shop-card-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.shop-card-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.shop-card-blurb {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.shop-card-arrow {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--ink-2);
+  transition: background-color 0.3s ease, color 0.3s ease, transform 0.3s ease;
+}
+
+.shop-card:hover .shop-card-arrow {
+  background: var(--brand);
+  color: #fff;
+  transform: translate(2px, -2px);
+}
+
+@media (max-width: 640px) {
+  .shop-card {
+    padding: 20px;
+  }
+}
+
 /* ============================================================== steps */
 
 /* Desktop: a horizontal timeline, the rail running through the markers
@@ -1145,7 +1252,7 @@
 
 .footer-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1fr);
   gap: 40px clamp(32px, 5vw, 72px);
 }
 
@@ -1216,6 +1323,40 @@
 
 .footer-col a:hover {
   color: var(--gold-ink);
+}
+
+.footer-marketplaces {
+  gap: 14px;
+}
+
+.marketplace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: color 0.25s ease;
+}
+
+.marketplace-pill:hover {
+  color: var(--brand);
+}
+
+.marketplace-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--brand);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 55%, transparent);
+  transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.marketplace-pill:hover .marketplace-icon {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--brand) 65%, transparent);
 }
 
 .footer-contact li {

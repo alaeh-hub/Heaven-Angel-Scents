@@ -500,22 +500,49 @@
         // color keyed to its slot in that order, so a type keeps the same
         // color whichever other types happen to appear in the window.
         const types = sortMovementTypes([...new Set(data.movement_trend.map(d => d.movement_type))]);
-        const datasets = types.map((t, i) => {
+        // Bottles and bulk mL are different units, so a type that moved
+        // both becomes two lines, not one blended number — same split
+        // the backend query returns them in. The bulk mL line reuses the
+        // type's color but dashes it, so related bottle/mL lines read as
+        // a pair without needing extra palette slots.
+        const datasets = [];
+        types.forEach((t, i) => {
           const slot = MOVEMENT_TYPE_ORDER.indexOf(t);
           const color = MOVEMENT_PALETTE[(slot === -1 ? i : slot) % MOVEMENT_PALETTE.length];
-          return {
-            label: titleCaseLabel(t),
-            data: days.map(day => {
-              const row = data.movement_trend.find(d => d.day === day && d.movement_type === t);
-              return row ? row.total : 0;
-            }),
-            borderColor: color,
-            backgroundColor: color,
-            pointBackgroundColor: color,
-            pointRadius: 3,
-            tension: 0.35,
-            fill: false,
-          };
+          const rowsForType = data.movement_trend.filter(d => d.movement_type === t);
+          const hasUnits = rowsForType.some(d => d.units > 0);
+          const hasBulk = rowsForType.some(d => d.bulk_ml > 0);
+          if (hasUnits || !hasBulk) {
+            datasets.push({
+              label: titleCaseLabel(t) + (hasBulk ? ' (bottles)' : ''),
+              data: days.map(day => {
+                const row = rowsForType.find(d => d.day === day);
+                return row ? row.units : 0;
+              }),
+              borderColor: color,
+              backgroundColor: color,
+              pointBackgroundColor: color,
+              pointRadius: 3,
+              tension: 0.35,
+              fill: false,
+            });
+          }
+          if (hasBulk) {
+            datasets.push({
+              label: titleCaseLabel(t) + ' (bulk mL)',
+              data: days.map(day => {
+                const row = rowsForType.find(d => d.day === day);
+                return row ? row.bulk_ml : 0;
+              }),
+              borderColor: color,
+              backgroundColor: color,
+              pointBackgroundColor: color,
+              pointRadius: 3,
+              borderDash: [6, 4],
+              tension: 0.35,
+              fill: false,
+            });
+          }
         });
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'line',

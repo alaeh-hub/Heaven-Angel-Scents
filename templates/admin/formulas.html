@@ -147,7 +147,20 @@
         {% for u in units %}
         <tr>
           <td class="item-name mobile-inline-anchor" data-label="Packaging size">{{ u.unit }}</td>
-          <td class="num mono" data-label="Base cost of goods">₱{{ '%.4f'|format(u.base_cost_per_unit) }} / unit</td>
+          <td class="num mono" data-label="Base cost of goods">₱{{ '%.4f'|format(u.base_cost_per_unit) }} / unit
+            {% if u.reference_cost_per_new is not none %}
+            <div class="item-sub" style="white-space:normal;">
+              Reference: ~₱{{ '%.2f'|format(u.reference_cost_per_new) }}/new bottle,
+              ~₱{{ '%.2f'|format(u.reference_cost_per_refill) }}/refill
+              (avg across {{ u.reference_batch_count }} active batch{{ 'es' if u.reference_batch_count != 1 }}
+              targeting {{ u.unit }})
+            </div>
+            {% else %}
+            <div class="item-sub" style="white-space:normal;">
+              Reference unavailable — no active bulk batch has targeted {{ u.unit }} yet.
+            </div>
+            {% endif %}
+          </td>
           <td data-label="">
             <form method="POST" action="{{ url_for('admin.save_unit_cogs') }}" class="cogs-inline-form">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

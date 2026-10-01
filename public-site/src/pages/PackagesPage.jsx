@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router';
 import { fetchPackages } from '../api.js';
+import { FOOTER } from '../content/footer.js';
 import Footer from '../components/Footer.jsx';
 import About from '../components/landing/About.jsx';
 import BackdropVideo from '../components/landing/BackdropVideo.jsx';
@@ -11,6 +12,7 @@ import Earnings, { earningOptions } from '../components/landing/Earnings.jsx';
 import Faq from '../components/landing/Faq.jsx';
 import Hero from '../components/landing/Hero.jsx';
 import Nav from '../components/landing/Nav.jsx';
+import OnlineShops from '../components/landing/OnlineShops.jsx';
 import PackagesSection from '../components/landing/PackagesSection.jsx';
 import ScentJourney from '../components/landing/ScentJourney.jsx';
 import Steps from '../components/landing/Steps.jsx';
@@ -72,15 +74,21 @@ export default function PackagesPage() {
   return (
     <div className="page">
       <BackdropVideo src="/static/video/black_background_web.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
-      <Nav hiddenIds={earningOptions(data?.packages || []).length ? [] : ['earnings']} />
+      <Nav
+        hiddenIds={[
+          ...(earningOptions(data?.packages || []).length ? [] : ['earnings']),
+          ...(FOOTER.marketplaces?.length ? [] : ['shop-online']),
+        ]}
+      />
       <main>
         <Hero />
         {/* What a partner comes for leads: the packages, what they'd
-            earn on them, and what happens after "Inquire". The brand
-            story comes after, and the page closes on one clear next
-            step. */}
+            earn on them, and what happens after "Inquire". Visitors who
+            already know what they want get a direct marketplace exit
+            right after, before the brand story and closing step. */}
         <PackagesSection slug={slug} data={data} loading={loading} scope={scope} onScopeChange={changeScope} />
         <Earnings packages={data?.packages || []} />
+        <OnlineShops />
         <Steps />
         <About />
         <CraftFilm />

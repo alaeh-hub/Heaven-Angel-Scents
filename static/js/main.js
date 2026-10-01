@@ -387,26 +387,48 @@ function initLoginSplash() {
     }
 }
 
+// Runs `fn`, logging and swallowing any exception instead of letting it
+// propagate. Every init below is called from one synchronous
+// DOMContentLoaded listener (and, via refreshDynamicContent(), from
+// every soft-nav content swap) — without this, a single page-specific
+// widget throwing (a report page's own table markup tripping up
+// initSmartTables(), say) would abort every init call still queued
+// after it, including initSoftNav() itself. That doesn't just break
+// the widget that threw — it silently leaves click/submit interception
+// never registered for the rest of that page load, so every link and
+// form on it (tabs very much included) falls back to the browser's
+// own real, full-reload navigation instead of a soft one. Isolating
+// each init this way means one broken widget stays broken on its own,
+// instead of quietly taking soft nav down with it.
+function safeInit(fn, label) {
+    try {
+        return fn();
+    } catch (err) {
+        console.error('[init:' + label + ']', err);
+        return undefined;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    initLoginSplash();
-    initMobileSidebar();
-    initSidebarNavTooltips();
-    initSidebarPinToggle();
-    initThemeToggle();
-    initPhClock();
-    revealContent();
-    initStatCountUp();
-    initFillBars();
+    safeInit(initLoginSplash, 'loginSplash');
+    safeInit(initMobileSidebar, 'mobileSidebar');
+    safeInit(initSidebarNavTooltips, 'sidebarNavTooltips');
+    safeInit(initSidebarPinToggle, 'sidebarPinToggle');
+    safeInit(initThemeToggle, 'themeToggle');
+    safeInit(initPhClock, 'phClock');
+    safeInit(revealContent, 'revealContent');
+    safeInit(initStatCountUp, 'statCountUp');
+    safeInit(initFillBars, 'fillBars');
 
-    document.querySelectorAll('.flash').forEach(attachFlashDismiss);
+    safeInit(() => document.querySelectorAll('.flash').forEach(attachFlashDismiss), 'flashDismiss');
 
-    initConfirmDialogs();
+    safeInit(initConfirmDialogs, 'confirmDialogs');
 
-    initSmartTables();
-    initSmartLists();
-    initDispatchQtyWarnings();
-    initCustomSelects();
-    initDatePickers();
+    safeInit(initSmartTables, 'smartTables');
+    safeInit(initSmartLists, 'smartLists');
+    safeInit(initDispatchQtyWarnings, 'dispatchQtyWarnings');
+    safeInit(initCustomSelects, 'customSelects');
+    safeInit(initDatePickers, 'datePickers');
     // Registered BEFORE initSoftNav() — both are delegated on
     // `document` in the bubble phase, and listeners on the same node
     // fire in registration order, so this must run first. initSoftNav()'s
@@ -419,12 +441,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // capture-phase confirm() dialog, a form's own validation
     // listener) by the time it checks, never from initSoftNav()'s own
     // preventDefault() a moment later.
-    initSubmitLoadingState();
-    initGenerateFileFeedback();
-    initSoftNav();
-    const notifBell = initNotificationBell();
-    initRealtime(notifBell);
-    initHaloWidget();
+    safeInit(initSubmitLoadingState, 'submitLoadingState');
+    safeInit(initGenerateFileFeedback, 'generateFileFeedback');
+    safeInit(initSoftNav, 'softNav');
+    const notifBell = safeInit(initNotificationBell, 'notificationBell');
+    safeInit(() => initRealtime(notifBell), 'realtime');
+    safeInit(initHaloWidget, 'haloWidget');
 });
 
 // Fades a flash/toast out and removes it from the DOM 5s after it
@@ -565,19 +587,32 @@ function patchPageHead(freshDoc) {
 // (realtime pushes) and initSoftNav() (link/form navigation) both
 // need after replacing .content wholesale with a server-rendered
 // fragment that hasn't been through any of this yet.
-function refreshDynamicContent() {
-    initFillBars();
-    initSmartTables();
-    initSmartLists();
-    initDispatchQtyWarnings();
-    initCustomSelects();
-    initDatePickers();
+function refreshDynamicContent(skipReveal) {
+    safeInit(initFillBars, 'fillBars');
+    safeInit(initSmartTables, 'smartTables');
+    safeInit(initSmartLists, 'smartLists');
+    safeInit(initDispatchQtyWarnings, 'dispatchQtyWarnings');
+    safeInit(initCustomSelects, 'customSelects');
+    safeInit(initDatePickers, 'datePickers');
     // initConfirmDialogs() is intentionally NOT re-called here: it's
     // delegated on `document` once at page load (see its own comment),
     // so it already covers any form[data-confirm] that just got
     // swapped in — re-attaching per element isn't necessary.
-    revealContent();
-    initStatCountUp();
+    // revealContent()'s whole-content fade-in (every .content child
+    // popping to opacity:0 then staggering back in) and
+    // initStatCountUp()'s "animate every stat tile up from 0" are both
+    // right for an actual page load/navigation, but skipReveal (passed
+    // for a same-path tab/filter soft nav — see go()'s preserveScroll)
+    // turns them off: fading the whole page out and back in, and every
+    // number on it visibly re-counting from zero, just because one
+    // location tab was clicked, is indistinguishable from a real
+    // reload — exactly the feeling tabs shouldn't give. The swapped-in
+    // server-rendered numbers/markup are already correct as-is without
+    // either animation.
+    if (!skipReveal) {
+        safeInit(revealContent, 'revealContent');
+        safeInit(initStatCountUp, 'statCountUp');
+    }
 }
 
 // Replaces the live .content with freshDoc's .content, if it has one.
@@ -588,7 +623,7 @@ function refreshDynamicContent() {
 // a request that actually landed somewhere else still succeeded.
 // Callers fall back to a real navigation (window.location) when this
 // returns false.
-function swapContent(freshDoc) {
+function swapContent(freshDoc, skipReveal) {
     const freshContent = freshDoc.querySelector('.content');
     const liveContent = document.querySelector('.content');
     if (!freshContent || !liveContent) return false;
@@ -597,7 +632,7 @@ function swapContent(freshDoc) {
     patchSidebarNav(freshDoc);
     patchTopbar(freshDoc);
     patchPageHead(freshDoc);
-    refreshDynamicContent();
+    refreshDynamicContent(skipReveal);
     // Deferred two animation frames rather than run inline here: a page
     // script that measures its own layout at creation time (every
     // Chart.js instance — new Chart(canvas, ...) reads the canvas's
@@ -822,7 +857,7 @@ function initSoftNav() {
     // Promise<Response> — a GET for a link, a POST with the form's
     // data for a form — so the two call sites below only differ in
     // how they build that one request.
-    function go(request, url, historyMode) {
+    function go(request, url, historyMode, preserveScroll) {
         const myToken = ++navToken;
         const scrollY = window.scrollY;
 
@@ -845,7 +880,7 @@ function initSoftNav() {
                 hideLoadingOverlay();
 
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
-                if (!swapContent(fresh)) {
+                if (!swapContent(fresh, preserveScroll)) {
                     // finalUrl reflects wherever the request actually
                     // ended up (e.g. redirected to /login by an expired
                     // session) — landing there directly instead of
@@ -861,10 +896,19 @@ function initSoftNav() {
                 } else if (historyMode === 'replace') {
                     history.replaceState({ softNav: true }, '', finalUrl);
                 }
-                if (historyMode !== 'pop') {
-                    window.scrollTo({ top: 0, behavior: 'auto' });
-                } else {
+                if (historyMode === 'pop' || preserveScroll) {
+                    // 'pop' (back/forward) always restores where the user
+                    // was. preserveScroll is for a same-path soft nav
+                    // (e.g. a tab/filter link that only changes the query
+                    // string, like Low Stock's location tabs) — that's
+                    // updating the view the user is already looking at,
+                    // not going somewhere else, so snapping to the top
+                    // the way a real page load would is exactly what
+                    // reads as "the page just reloaded" even though
+                    // nothing actually did.
                     window.scrollTo({ top: scrollY, behavior: 'auto' });
+                } else {
+                    window.scrollTo({ top: 0, behavior: 'auto' });
                 }
             })
             .catch(() => {
@@ -906,7 +950,12 @@ function initSoftNav() {
         }
 
         e.preventDefault();
-        go(() => fetch(link.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }), link.href, 'push');
+        // Same path, different query string — a tab/filter link (Low
+        // Stock's location tabs, Requests' status tabs, ...) rather than
+        // a real navigation to a different page. Keep the scroll
+        // position for those; see go()'s preserveScroll param.
+        const preserveScroll = url.pathname === window.location.pathname;
+        go(() => fetch(link.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }), link.href, 'push', preserveScroll);
     });
 
     document.addEventListener('submit', (e) => {

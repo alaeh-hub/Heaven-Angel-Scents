@@ -28,19 +28,19 @@ bp = Blueprint("branch", __name__, url_prefix="/branch")
 # otherwise share code.
 _TREND_GRANULARITIES = {
     "daily": {
-        "trunc": "DATE(created_at)",
+        "trunc": "DATE(sml.created_at)",
         "window": "INTERVAL 14 DAY",
     },
     "weekly": {
-        "trunc": "DATE(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY))",
+        "trunc": "DATE(DATE_SUB(sml.created_at, INTERVAL WEEKDAY(sml.created_at) DAY))",
         "window": "INTERVAL 12 WEEK",
     },
     "monthly": {
-        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-%m-01'))",
+        "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-%m-01'))",
         "window": "INTERVAL 12 MONTH",
     },
     "yearly": {
-        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-01-01'))",
+        "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-01-01'))",
         "window": "INTERVAL 5 YEAR",
     },
 }
@@ -1057,11 +1057,17 @@ def reports_data():
     granularity = request.args.get("granularity", "daily")
     trend_bucket = _TREND_GRANULARITIES.get(
         granularity, _TREND_GRANULARITIES["daily"])
+    # Bottles and bulk mL are different units — kept apart the same way
+    # sales/stock totals are split elsewhere, rather than summed into
+    # one meaningless number (see admin.reports_data()'s movement_trend).
     movement_trend = query(
-        f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
-            FROM stock_movement_logs
-            WHERE branch_id = %s AND created_at >= NOW() - {trend_bucket['window']}
-            GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day""",
+        f"""SELECT {trend_bucket['trunc']} AS day, sml.movement_type,
+                   COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN ABS(sml.change_qty) ELSE 0 END), 0) AS units,
+                   COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN ABS(sml.change_qty) ELSE 0 END), 0) AS bulk_ml
+            FROM stock_movement_logs sml
+            JOIN products p ON p.sku = sml.sku
+            WHERE sml.branch_id = %s AND sml.created_at >= NOW() - {trend_bucket['window']}
+            GROUP BY {trend_bucket['trunc']}, sml.movement_type ORDER BY day""",
         (bid,),
     )
 

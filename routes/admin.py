@@ -46,21 +46,21 @@ HQ_BRANCH_ID = 1
 # regardless of which option was picked, with no extra branching.
 _TREND_GRANULARITIES = {
     "daily": {
-        "trunc": "DATE(created_at)",
+        "trunc": "DATE(sml.created_at)",
         "window": "INTERVAL 14 DAY",
     },
     "weekly": {
         # WEEKDAY() is 0 for Monday, so this rounds each timestamp back
         # to the Monday that starts its week.
-        "trunc": "DATE(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY))",
+        "trunc": "DATE(DATE_SUB(sml.created_at, INTERVAL WEEKDAY(sml.created_at) DAY))",
         "window": "INTERVAL 12 WEEK",
     },
     "monthly": {
-        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-%m-01'))",
+        "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-%m-01'))",
         "window": "INTERVAL 12 MONTH",
     },
     "yearly": {
-        "trunc": "DATE(DATE_FORMAT(created_at, '%Y-01-01'))",
+        "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-01-01'))",
         "window": "INTERVAL 5 YEAR",
     },
 }
@@ -2227,11 +2227,20 @@ def reports_data():
         granularity, _TREND_GRANULARITIES["daily"])
     window_sql = trend_bucket["window"]
 
+    # Bottles and bulk mL are different units — one PRODUCTION batch of
+    # 10 bottles and another of 2000mL bulk aren't "2010" of anything.
+    # Kept apart here the same way sales/stock totals are split
+    # elsewhere (see units_sold/bulk_ml_sold above): each movement_type
+    # becomes up to two chart series, "<type> (bottles)" and
+    # "<type> (bulk mL)", built client-side from these two columns.
     movement_trend = query(
-        f"""SELECT {trend_bucket['trunc']} AS day, movement_type, SUM(ABS(change_qty)) AS total
-            FROM stock_movement_logs
-            WHERE created_at >= NOW() - {window_sql}
-            GROUP BY {trend_bucket['trunc']}, movement_type ORDER BY day"""
+        f"""SELECT {trend_bucket['trunc']} AS day, sml.movement_type,
+                   COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN ABS(sml.change_qty) ELSE 0 END), 0) AS units,
+                   COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN ABS(sml.change_qty) ELSE 0 END), 0) AS bulk_ml
+            FROM stock_movement_logs sml
+            JOIN products p ON p.sku = sml.sku
+            WHERE sml.created_at >= NOW() - {window_sql}
+            GROUP BY {trend_bucket['trunc']}, sml.movement_type ORDER BY day"""
     )
 
     stock_by_branch = query(
@@ -2663,24 +2672,60 @@ def bulk_batches():
 
     batches = []
     for b in batch_rows:
-        yields = []
-        for unit in BOTTLE_UNITS:
+        # A batch with a target bottle size already had THAT size's
+        # packaging bought and deducted at creation (target_bottle_qty
+        # worth — see create_bulk_batch()). Any mL still left over is only
+        # ever going to refill that same size, never a different one, and
+        # a refill needs no new bottle/sticker/seal — so the yield grid
+        # here shows just that one size, liquid-only (matches
+        # cost_per_refill_bottle below), instead of every fixed size with
+        # packaging folded in as if it were a fresh bottle.
+        if b["target_unit"]:
+            unit = b["target_unit"]
             size_ml = bottle_size_ml(unit)
             liquid_cost = (b["cost_per_ml"] * size_ml).quantize(
                 decimal.Decimal("0.0001"))
-            packaging_cost = formula_totals.get(unit, decimal.Decimal("0"))
-            yields.append({
+            yields = [{
                 "unit": unit,
                 "bottle_count": int(b["remaining_ml"] // size_ml),
                 "liquid_cost": liquid_cost,
-                "packaging_cost": packaging_cost,
-                "total_cost_per_bottle": (liquid_cost + packaging_cost).quantize(
-                    decimal.Decimal("0.01")),
-            })
+                "packaging_cost": decimal.Decimal("0"),
+                "total_cost_per_bottle": liquid_cost.quantize(decimal.Decimal("0.01")),
+                "refill_only": True,
+            }]
+        else:
+            yields = []
+            for unit in BOTTLE_UNITS:
+                size_ml = bottle_size_ml(unit)
+                liquid_cost = (b["cost_per_ml"] * size_ml).quantize(
+                    decimal.Decimal("0.0001"))
+                packaging_cost = formula_totals.get(unit, decimal.Decimal("0"))
+                yields.append({
+                    "unit": unit,
+                    "bottle_count": int(b["remaining_ml"] // size_ml),
+                    "liquid_cost": liquid_cost,
+                    "packaging_cost": packaging_cost,
+                    "total_cost_per_bottle": (liquid_cost + packaging_cost).quantize(
+                        decimal.Decimal("0.01")),
+                    "refill_only": False,
+                })
         b["yields"] = yields
         b["depleted"] = b["remaining_ml"] <= 0
         ingredients = ingredients_by_batch.get(b["batch_id"], [])
         b["ingredients"] = ingredients
+
+        # All-in price per mL — total_cost (liquid + whatever packaging
+        # was folded in for a target size) ÷ total_volume_ml. Shown to
+        # the user as "the" cost per mL (see bulk_batches.html's table
+        # and details overlay). Deliberately a SEPARATE figure from the
+        # stored cost_per_ml column, which stays liquid-only on purpose
+        # — yields/refill math above and formulas()'s cross-batch
+        # average both depend on cost_per_ml meaning liquid-only, so
+        # packaging is folded in here at read time instead of changing
+        # what's stored.
+        b["all_in_cost_per_ml"] = (
+            b["total_cost"] / b["total_volume_ml"]).quantize(decimal.Decimal("0.000001")) \
+            if b["total_volume_ml"] else decimal.Decimal("0")
 
         # This batch's own real plan, when a target bottle size was
         # picked at creation (see create_bulk_batch()) — liquid/packaging
@@ -2755,15 +2800,15 @@ def create_bulk_batch():
 
     Picking a target bottle size (optional) also folds that size's
     packaging formula (see unit_formula_items/_formula_items_by_unit())
-    into this SAME batch — qty = target_bottle_qty (the batch's whole
-    planned yield for that size, frozen at creation, same math as the
-    existing "how many bottles can this batch still make" calc) x each
-    packaging material's qty_per_unit. Those packaging lines deduct stock
-    and add to total_cost exactly like the liquid ones, just tagged
-    is_packaging — matching how the business's own "Timpla Costing"
-    spreadsheet bundles a batch's bottles/stickers/seals into the same
-    total as its liquid ingredients, bought for the whole batch up front.
-    Leave target size blank to keep the old liquid-only behavior.
+    into this SAME batch — qty = target_bottle_qty (auto-computed from
+    this batch's own volume — total_volume_ml // bottle_size_ml, frozen
+    at creation) x each packaging material's qty_per_unit. Those
+    packaging lines deduct stock and add to total_cost exactly like the
+    liquid ones, just tagged is_packaging — matching how the business's
+    own "Timpla Costing" spreadsheet bundles a batch's bottles/stickers/
+    seals into the same total as its liquid ingredients, bought for the
+    whole batch up front. Leave target size blank to keep the old
+    liquid-only behavior.
     """
     if not consume_form_token("create_bulk_batch"):
         flash("This batch was already logged, or the form expired — check the list below before resending.", "error")
@@ -2815,6 +2860,11 @@ def create_bulk_batch():
     total_volume_ml = (input_qty * ML_PER_BATCH_UNIT[input_unit]).quantize(
         decimal.Decimal("0.001"))
 
+    # Bottle count for a target size is auto-computed from this batch's
+    # own volume — however many whole bottles of that size the batch can
+    # physically fill (total_volume_ml // bottle_size_ml). The grand
+    # total/cost-per-new-bottle/cost-per-refill math further down is
+    # unchanged — it just divides by whatever this comes out to.
     target_bottle_qty = None
     if target_unit:
         target_bottle_qty = int(total_volume_ml // bottle_size_ml(target_unit))
@@ -2875,8 +2925,8 @@ def create_bulk_batch():
             # Fold the target size's packaging formula into this SAME
             # batch — see this route's own docstring and migration 43 in
             # schema.sql. Locked (FOR UPDATE) and stock-checked exactly
-            # like the liquid materials above, just driven by
-            # target_bottle_qty instead of a hand-typed amount.
+            # like the liquid materials above, driven by the
+            # volume-derived target_bottle_qty above.
             packaging_subtotal = decimal.Decimal("0")
             if target_unit and target_bottle_qty:
                 cur.execute(
@@ -2996,9 +3046,11 @@ def formulas():
     add_formula_item()/delete_formula_item() below). The formula's
     computed total is only ever a reference for setting the base cost
     above by hand; nothing here feeds production()'s cogs_per_unit
-    automatically. A batch's own liquid cost/mL for these same sizes is
-    shown alongside this reference on the Bulk Batches page instead,
-    since only there is a specific batch's cost_per_ml known.
+    automatically. Each size's own cost-per-new-bottle/cost-per-refill
+    reference is pulled straight from whichever active bulk batch(es)
+    actually targeted that size at creation (see create_bulk_batch()'s
+    target_unit/target_bottle_qty) — a size nobody has targeted yet
+    shows no reference, rather than a generic cross-batch guess.
     """
     bulk_rate = query(
         "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
@@ -3007,21 +3059,73 @@ def formulas():
         "SELECT unit, base_cost_per_unit FROM unit_cogs_settings")
     cogs_by_unit = {r["unit"]: r["base_cost_per_unit"] for r in cogs_rows}
     formula_items_by_unit = _formula_items_by_unit()
+    # Reference numbers now come from actual batches that picked THIS
+    # size as their target (see create_bulk_batch()'s target_unit/
+    # target_bottle_qty) — same real cost_per_new_bottle/
+    # cost_per_refill_bottle split the Bulk Batches page computes for
+    # that batch, averaged if more than one active batch targets the
+    # same size. A size nobody has ever targeted yet (or whose only
+    # batches are already depleted) gets no reference at all, instead of
+    # a generic cross-batch/formula estimate that isn't really about
+    # that size.
+    target_batches = query(
+        """SELECT batch_id, target_unit, target_bottle_qty, total_cost
+           FROM bulk_batches
+           WHERE remaining_ml > 0 AND target_unit IS NOT NULL AND target_bottle_qty > 0"""
+    )
+    liquid_subtotal_by_batch = {}
+    if target_batches:
+        placeholders = ",".join(["%s"] * len(target_batches))
+        liquid_rows = query(
+            f"""SELECT batch_id, SUM(line_cost) AS liquid_subtotal
+                FROM bulk_batch_materials
+                WHERE is_packaging = FALSE AND batch_id IN ({placeholders})
+                GROUP BY batch_id""",
+            tuple(b["batch_id"] for b in target_batches),
+        )
+        liquid_subtotal_by_batch = {
+            r["batch_id"]: r["liquid_subtotal"] for r in liquid_rows}
+
+    refs_by_unit = {}
+    for b in target_batches:
+        liquid_subtotal = liquid_subtotal_by_batch.get(
+            b["batch_id"], decimal.Decimal("0"))
+        cost_per_new = (b["total_cost"] / b["target_bottle_qty"]).quantize(
+            decimal.Decimal("0.01"))
+        cost_per_refill = (liquid_subtotal / b["target_bottle_qty"]).quantize(
+            decimal.Decimal("0.01"))
+        refs_by_unit.setdefault(b["target_unit"], []).append(
+            (cost_per_new, cost_per_refill))
+
     # FORMULA_UNITS is PRODUCT_UNITS minus BULK — every bottle size gets a
     # row here (defaulting to 0 if somehow missing) so admins always see
     # the full picture.
-    units = [
-        {
+    units = []
+    for u in FORMULA_UNITS:
+        formula_total = sum(
+            (i["line_cost"] for i in formula_items_by_unit.get(u, [])),
+            decimal.Decimal("0"),
+        )
+        refs = refs_by_unit.get(u)
+        reference_cost_per_new = None
+        reference_cost_per_refill = None
+        reference_batch_count = len(refs) if refs else 0
+        if refs:
+            reference_cost_per_new = (
+                sum((r[0] for r in refs), decimal.Decimal("0")) / len(refs)
+            ).quantize(decimal.Decimal("0.01"))
+            reference_cost_per_refill = (
+                sum((r[1] for r in refs), decimal.Decimal("0")) / len(refs)
+            ).quantize(decimal.Decimal("0.01"))
+        units.append({
             "unit": u,
             "base_cost_per_unit": cogs_by_unit.get(u, decimal.Decimal("0")),
             "formula_items": formula_items_by_unit.get(u, []),
-            "formula_total": sum(
-                (i["line_cost"] for i in formula_items_by_unit.get(u, [])),
-                decimal.Decimal("0"),
-            ),
-        }
-        for u in FORMULA_UNITS
-    ]
+            "formula_total": formula_total,
+            "reference_cost_per_new": reference_cost_per_new,
+            "reference_cost_per_refill": reference_cost_per_refill,
+            "reference_batch_count": reference_batch_count,
+        })
     materials_list = query(
         """SELECT material_id, material_name, unit, cost_per_unit
            FROM raw_materials ORDER BY material_name"""

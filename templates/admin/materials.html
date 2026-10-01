@@ -414,6 +414,7 @@
             <option value="{{ u }}">{{ u }}</option>
             {% endfor %}
           </select>
+          <div class="help" id="volumeEquivPreview" style="display:none;"></div>
         </div>
         <div class="field">
           <label for="package_cost" id="packageCostLabel">Cost for that package (₱)</label>
@@ -490,6 +491,7 @@
             <option value="{{ u }}">{{ u }}</option>
             {% endfor %}
           </select>
+          <div class="help" id="editVolumeEquivPreview" style="display:none;"></div>
         </div>
         <div class="field">
           <label for="editPackageCost" id="editPackageCostLabel">Cost for that package (₱)</label>
@@ -689,9 +691,27 @@
     var packageQtyLabel = document.getElementById('packageQtyLabel');
     var unitSelect = document.getElementById('unit');
     var costPreview = document.getElementById('costPreview');
+    var volumeEquivPreview = document.getElementById('volumeEquivPreview');
     var modeSwitch = document.getElementById('matModeSwitch');
     var modeHelp = document.getElementById('matModeHelp');
     var purchaseModeInput = document.getElementById('purchase_mode');
+
+    // Same mL conversion factors as ML_PER_BATCH_UNIT in utils.py — purely
+    // a live sanity-check note here, nothing is actually converted/stored;
+    // Liter/Gallon purchases still get stocked in their own unit as-is.
+    var ML_PER_UNIT = { Milliliter: 1, Liter: 1000, Gallon: 3785.411784 };
+
+    function updateVolumeEquivPreview() {
+      var qty = parseFloat(packageQty.value);
+      var unit = unitSelect.value;
+      if (qty > 0 && unit && unit !== 'Milliliter' && ML_PER_UNIT[unit]) {
+        var ml = qty * ML_PER_UNIT[unit];
+        volumeEquivPreview.textContent = '= ' + ml.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' mL';
+        volumeEquivPreview.style.display = 'block';
+      } else {
+        volumeEquivPreview.style.display = 'none';
+      }
+    }
 
     function updateCostPreview() {
       var qty = parseFloat(packageQty.value);
@@ -704,6 +724,7 @@
       } else {
         costPreview.style.display = 'none';
       }
+      updateVolumeEquivPreview();
     }
     [packageQty, packageCost, unitSelect].forEach(function (el) {
       el.addEventListener('input', updateCostPreview);
@@ -758,12 +779,29 @@
     var costInput = document.getElementById('editPackageCost');
     var costLabel = document.getElementById('editPackageCostLabel');
     var costPreview = document.getElementById('editCostPreview');
+    var volumeEquivPreview = document.getElementById('editVolumeEquivPreview');
     var receiptInput = document.getElementById('editReceiptNumber');
     var supplierSelect = document.getElementById('editMaterialSupplierId');
     var cancelBtn = document.getElementById('editMaterialCancelBtn');
     var modeSwitch = document.getElementById('editMatModeSwitch');
     var modeHelp = document.getElementById('editMatModeHelp');
     var purchaseModeInput = document.getElementById('editPurchaseMode');
+
+    // Same mL conversion factors as ML_PER_BATCH_UNIT in utils.py — purely
+    // a live sanity-check note here, nothing is actually converted/stored.
+    var ML_PER_UNIT = { Milliliter: 1, Liter: 1000, Gallon: 3785.411784 };
+
+    function updateEditVolumeEquivPreview() {
+      var qty = parseFloat(qtyInput.value);
+      var unit = unitSelect.value;
+      if (qty > 0 && unit && unit !== 'Milliliter' && ML_PER_UNIT[unit]) {
+        var ml = qty * ML_PER_UNIT[unit];
+        volumeEquivPreview.textContent = '= ' + ml.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' mL';
+        volumeEquivPreview.style.display = 'block';
+      } else {
+        volumeEquivPreview.style.display = 'none';
+      }
+    }
 
     function updateEditCostPreview() {
       var qty = parseFloat(qtyInput.value);
@@ -775,6 +813,7 @@
       } else {
         costPreview.style.display = 'none';
       }
+      updateEditVolumeEquivPreview();
     }
     [qtyInput, costInput, unitSelect].forEach(function (el) {
       el.addEventListener('input', updateEditCostPreview);

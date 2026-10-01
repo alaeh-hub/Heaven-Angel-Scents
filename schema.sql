@@ -2303,3 +2303,23 @@ DELIMITER ;
 
 CALL _migrate_bulk_batches_target_unit();
 DROP PROCEDURE _migrate_bulk_batches_target_unit;
+
+-- ----------------------------------------------------------------------------
+-- 44. Migration — backfill products.unit = 'BULK' for Bulk/Refill rows
+--
+--     Migration 34 above widened products.unit's ENUM to add 'BULK', but
+--     any Bulk/Refill row created before that ALTER ran had tried to
+--     store 'BULK' into a column whose ENUM didn't yet have that label —
+--     under non-strict SQL mode MySQL silently stores an unrecognized
+--     ENUM value as '' rather than erroring, so those rows have been
+--     sitting with unit = '' ever since, not 'BULK'. Every bottles-vs-
+--     bulk-mL split in the app (reports.py, admin.py's reports_data()/
+--     dashboard(), branch.py) keys off `p.unit = 'BULK'` / `<> 'BULK'`,
+--     so a blank unit on a Bulk/Refill row made it read as a bottle
+--     product instead — e.g. a 2000mL batch counted as 2000 "bottles"
+--     and got summed in with real bottle counts on the Ledger movement
+--     chart and sales/stock totals. This is a one-time data correction,
+--     not a schema change — plain UPDATE, safe to re-run (a no-op once
+--     every row matches).
+-- ----------------------------------------------------------------------------
+UPDATE products SET unit = 'BULK' WHERE category = 'Bulk/Refill' AND unit <> 'BULK';

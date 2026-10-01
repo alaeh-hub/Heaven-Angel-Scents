@@ -8,6 +8,7 @@ import { useSite } from '../InquiryProvider.jsx';
 export const NAV_LINKS = [
   { id: 'packages', label: 'Packages' },
   { id: 'earnings', label: 'Earnings' },
+  { id: 'shop-online', label: 'Shop now' },
   { id: 'how-it-works', label: 'How it works' },
   { id: 'about', label: 'About' },
   { id: 'faq', label: 'FAQ' },

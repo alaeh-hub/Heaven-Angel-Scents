@@ -82,6 +82,44 @@
     font-size: 12px;
   }
 
+  /* Highlighted calculation box — grand total / per-bottle / per-refill
+     / cost-per-mL, the actual numbers this form exists to produce, so
+     it should read as a result, not just more form text. */
+  .bb-calc-box {
+    margin-top: 12px;
+    padding: 14px;
+    background: var(--accent-soft);
+    border: var(--border-width-strong) solid var(--accent);
+    border-radius: var(--radius-sm);
+  }
+  .bb-calc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+  }
+  .bb-calc-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .bb-calc-label {
+    font-size: 11px;
+    letter-spacing: 0;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .bb-calc-value {
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .bb-calc-sub {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
   @media (min-width: 681px) {
     .bat-table th:nth-child(1), .bat-table td:nth-child(1) { width: 22%; }
     .bat-table th:nth-child(2), .bat-table td:nth-child(2) { width: 20%; }
@@ -254,8 +292,7 @@
     <div class="bb-preview" id="bbPreview" style="display:none;">
       <div><strong id="bbPreviewVolume"></strong></div>
       <div id="bbPreviewCostPerMl"></div>
-      <div class="bb-preview-yields" id="bbPreviewYields"></div>
-      <div id="bbTargetPreview" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);"></div>
+      <div class="bb-calc-box" id="bbTargetPreview" style="display:none;"></div>
     </div>
 
     <div id="bbInputs"></div>
@@ -309,11 +346,11 @@
               <div class="item-sub">{{ b.total_volume_ml|round(1)|string|replace('.0','') }} mL total</div>
             </td>
             <td data-label="Remaining">{{ m.fill_bar(b.remaining_ml, b.total_volume_ml, 'mL') }}</td>
-            <td class="num mono" data-label="Cost / mL">₱{{ '%.6f'|format(b.cost_per_ml) }}</td>
+            <td class="num mono" data-label="Cost / mL">₱{{ '%.6f'|format(b.all_in_cost_per_ml) }}</td>
             <td data-label="" class="mobile-inline-action">
               <button type="button" class="btn btn-ghost btn-sm" onclick="openBatchDetails(this)"
                 data-scent-name="{{ b.scent_name }}" data-batch-code="{{ b.batch_code or '' }}"
-                data-total-cost="{{ b.total_cost }}" data-cost-per-ml="{{ b.cost_per_ml }}"
+                data-total-cost="{{ b.total_cost }}" data-cost-per-ml="{{ b.all_in_cost_per_ml }}"
                 data-remaining-ml="{{ b.remaining_ml }}" data-notes="{{ b.notes or '' }}"
                 data-target-unit="{{ b.target_unit or '' }}" data-target-bottle-qty="{{ b.target_bottle_qty or '' }}"
                 data-liquid-subtotal="{{ b.liquid_subtotal if b.target_unit else '' }}"
@@ -430,7 +467,6 @@
     var preview = document.getElementById('bbPreview');
     var previewVolume = document.getElementById('bbPreviewVolume');
     var previewCostPerMl = document.getElementById('bbPreviewCostPerMl');
-    var previewYields = document.getElementById('bbPreviewYields');
     var targetUnitSelect = document.getElementById('target_unit');
     var targetPreview = document.getElementById('bbTargetPreview');
     if (!materialSelect || !addBtn || !body) return;
@@ -455,6 +491,16 @@
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // Rounds like Python's Decimal.quantize() at each step
+    // create_bulk_batch() rounds at — matching those same steps here is
+    // what keeps this preview equal to what the Batches page shows once
+    // the batch is actually logged (see that route's own line_cost/
+    // liquid_subtotal/packaging_subtotal quantize() calls).
+    function round(n, dp) {
+      var factor = Math.pow(10, dp);
+      return Math.round((n + Number.EPSILON) * factor) / factor;
+    }
+
     // Cost per whatever unit a line's qty is expressed in, converted from
     // the material's own cost_per_unit — matches
     // create_bulk_batch()'s server-side math exactly.
@@ -462,10 +508,14 @@
       return mat.costPerUnit * convertQty(1, unit, mat.unit);
     }
 
+    // Rounded to 4dp per line, same as create_bulk_batch()'s own
+    // line_cost quantize(0.0001).
     function lineCost(mat, line) {
-      return line.qty * costPerLineUnit(mat, line.unit);
+      return round(line.qty * costPerLineUnit(mat, line.unit), 4);
     }
 
+    // Liquid subtotal — sum of 4dp line costs, then rounded to 2dp,
+    // same as create_bulk_batch()'s own liquid_subtotal quantize(0.01).
     function totalCost() {
       var total = 0;
       Object.keys(lines).forEach(function (id) {
@@ -473,7 +523,7 @@
         if (!mat) return;
         total += lineCost(mat, lines[id]);
       });
-      return total;
+      return round(total, 2);
     }
 
     function populateUnitSelect(select, materialUnit, selected) {
@@ -507,39 +557,52 @@
       var costPerMl = totalMl > 0 ? liquidCost / totalMl : 0;
       previewVolume.textContent = totalMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL total, ' + formatPeso(liquidCost) + ' liquid cost';
       previewCostPerMl.textContent = '≈ ₱' + costPerMl.toFixed(6) + ' per mL (liquid only)';
-      previewYields.innerHTML = Object.keys(bottleMlMap).map(function (unit) {
-        var sizeMl = bottleMlMap[unit];
-        var count = Math.floor(totalMl / sizeMl);
-        return '<div class="bb-preview-yield">' + count + '&times; ' + unit + '</div>';
-      }).join('');
+
+      var targetUnit = targetUnitSelect ? targetUnitSelect.value : '';
 
       // If a target bottle size is picked, preview exactly what
       // create_bulk_batch() will fold into this batch: that size's
-      // packaging formula, qty = this batch's own yield for that size.
-      var targetUnit = targetUnitSelect ? targetUnitSelect.value : '';
+      // packaging formula, qty = this batch's own yield for that size
+      // (total mL // bottle size) — highlighted since this is the
+      // actual answer the form produces.
       if (targetUnit && bottleMlMap[targetUnit]) {
         var targetQty = Math.floor(totalMl / bottleMlMap[targetUnit]);
         var items = formulaItemsByUnit[targetUnit] || [];
-        var packagingCost = 0;
+        var packagingCostRaw = 0;
         var linesHtml = items.map(function (it) {
-          var qtyNeeded = it.qty_per_unit * targetQty;
-          var lineCost = qtyNeeded * it.cost_per_unit;
-          packagingCost += lineCost;
+          // qty rounded to 3dp, line cost to 4dp — same two steps
+          // create_bulk_batch() quantizes a packaging line at.
+          var qtyNeeded = round(it.qty_per_unit * targetQty, 3);
+          var lineCost = round(qtyNeeded * it.cost_per_unit, 4);
+          packagingCostRaw += lineCost;
           return '<div class="bb-preview-yield">' + esc(it.material_name) + ': ' +
             qtyNeeded.toLocaleString('en-PH', { maximumFractionDigits: 3 }) + ' ' +
             it.material_unit.toLowerCase() + ' (' + formatPeso(lineCost) + ')</div>';
         }).join('');
+        // Rounded to 2dp, same as create_bulk_batch()'s own
+        // packaging_subtotal quantize(0.01).
+        var packagingCost = round(packagingCostRaw, 2);
         var grandTotal = liquidCost + packagingCost;
-        var costPerNew = targetQty > 0 ? grandTotal / targetQty : 0;
-        var costPerRefill = targetQty > 0 ? liquidCost / targetQty : 0;
+        var costPerNew = targetQty > 0 ? round(grandTotal / targetQty, 2) : 0;
+        var costPerRefill = targetQty > 0 ? round(liquidCost / targetQty, 2) : 0;
+        // All-in price per mL — grand total (liquid + packaging) ÷ this
+        // batch's own volume, not liquid cost alone (see
+        // all_in_cost_per_ml in bulk_batches() for the stored-batch
+        // equivalent shown once this batch is logged).
+        var allInCostPerMl = totalMl > 0 ? round(grandTotal / totalMl, 6) : 0;
         targetPreview.innerHTML =
-          '<div><strong>' + targetQty + '&times; ' + targetUnit + ' planned</strong> — packaging adds ' + formatPeso(packagingCost) + '</div>' +
+          '<div class="bb-calc-grid">' +
+            '<div class="bb-calc-item"><div class="bb-calc-label">Grand total</div><div class="bb-calc-value">' + formatPeso(grandTotal) + '</div></div>' +
+            '<div class="bb-calc-item"><div class="bb-calc-label">Cost / new bottle</div><div class="bb-calc-value">' + formatPeso(costPerNew) + '</div></div>' +
+            '<div class="bb-calc-item"><div class="bb-calc-label">Cost / refill</div><div class="bb-calc-value">' + formatPeso(costPerRefill) + '</div></div>' +
+            '<div class="bb-calc-item"><div class="bb-calc-label">Cost / mL (all-in)</div><div class="bb-calc-value">₱' + allInCostPerMl.toFixed(6) + '</div></div>' +
+          '</div>' +
+          '<div class="bb-calc-sub">' + targetQty + '&times; ' + esc(targetUnit) + ' planned — liquid ' + formatPeso(liquidCost) +
+          ' + packaging ' + formatPeso(packagingCost) + ' = ' + formatPeso(grandTotal) + '</div>' +
           (items.length
             ? '<div class="bb-preview-yields">' + linesHtml + '</div>'
             : '<div class="text-faint" style="margin-top:6px;">No packaging formula on file for ' + targetUnit +
-              ' yet — add one on the <a href="' + FORMULAS_URL + '">Formulas page</a> first, or this batch will fold in ₱0 packaging.</div>') +
-          '<div style="margin-top:8px;">Grand total: ' + formatPeso(grandTotal) +
-          ' · ~' + formatPeso(costPerNew) + '/new bottle · ~' + formatPeso(costPerRefill) + '/refill</div>';
+              ' yet — add one on the <a href="' + FORMULAS_URL + '">Formulas page</a> first, or this batch will fold in ₱0 packaging.</div>');
         targetPreview.style.display = 'block';
       } else {
         targetPreview.style.display = 'none';
@@ -765,7 +828,8 @@
         return '<div class="bb-yield-card">' +
           '<div class="bb-yield-unit">' + esc(y.unit) + '</div>' +
           '<div class="bb-yield-count">' + esc(y.bottle_count) + '</div>' +
-          '<div class="bb-yield-cost">~' + formatPeso(y.total_cost_per_bottle) + '/bottle (ref)</div>' +
+          '<div class="bb-yield-cost">~' + formatPeso(y.total_cost_per_bottle) +
+          (y.refill_only ? '/refill (liquid only)' : '/bottle (ref)') + '</div>' +
           '</div>';
       }).join('');
 

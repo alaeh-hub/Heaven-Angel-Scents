@@ -11,6 +11,10 @@
 // Socials: remove any network you don't use; the footer only renders
 // what's listed. `network` picks the logo (facebook, instagram, tiktok,
 // youtube, messenger, x).
+//
+// Marketplaces: official storefronts resellers/affiliates can order from
+// or link to directly. Remove any you don't run; the footer only renders
+// what's listed. `network` picks the logo (shopee, lazada, tiktokshop).
 
 export const FOOTER = {
   blurb: 'Curated fragrance bundles for distributors and resellers, priced below our regular list.',
@@ -24,5 +28,10 @@ export const FOOTER = {
     { network: 'tiktok', label: 'TikTok', href: 'https://www.tiktok.com/@heavenandangel.example' },
     { network: 'youtube', label: 'YouTube', href: 'https://www.youtube.com/@heavenandangel.example' },
     { network: 'messenger', label: 'Messenger', href: 'https://m.me/heavenandangel.example' },
+  ],
+  marketplaces: [
+    { network: 'shopee', label: 'Shopee', href: 'https://shopee.ph/heavenandangel.example' },
+    { network: 'lazada', label: 'Lazada', href: 'https://www.lazada.com.ph/shop/heavenandangel.example' },
+    { network: 'tiktokshop', label: 'TikTok Shop', href: 'https://shop.tiktok.com/@heavenandangel.example' },
   ],
 };
