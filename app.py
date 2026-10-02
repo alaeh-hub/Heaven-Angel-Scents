@@ -3,12 +3,10 @@ import decimal
 import logging
 import os
 import secrets
-import sys
 
 from flask import Flask, render_template, session
 from flask_talisman import Talisman
 from flask_wtf import CSRFProtect
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import utils
@@ -87,30 +85,6 @@ def create_app():
             "if this really is local development."
         )
 
-    if app.config["NUM_PROXIES"] > 0:
-        # Trust exactly this many reverse-proxy hops' X-Forwarded-For /
-        # X-Forwarded-Proto / X-Forwarded-Host headers — see config.py's
-        # NUM_PROXIES comment for why this is opt-in rather than always
-        # applied. Without this, Flask-Limiter's IP-based rate limits
-        # (auth.login, the partner-portal inquiry form) key on whatever
-        # request.remote_addr resolves to, which behind a proxy is the
-        # proxy's own address for every visitor.
-        app.wsgi_app = ProxyFix(
-            app.wsgi_app,
-            x_for=app.config["NUM_PROXIES"],
-            x_proto=app.config["NUM_PROXIES"],
-            x_host=app.config["NUM_PROXIES"],
-        )
-    elif not app.config["DEBUG"]:
-        app.logger.warning(
-            "NUM_PROXIES is 0, so this app trusts request.remote_addr as-is. If a reverse proxy "
-            "or load balancer sits in front of it (common in production, especially since Talisman "
-            "is forcing HTTPS/HSTS here), every IP-based rate limit — login attempts, the partner "
-            "portal's inquiry form — will bucket by the proxy's address for ALL visitors combined "
-            "instead of per-visitor. Set NUM_PROXIES to the number of proxy hops in front of this "
-            "app (usually 1) if that's your setup."
-        )
-
     if not app.config.get("PARTNER_PORTAL_SLUG"):
         # See config.py's PARTNER_PORTAL_SLUG comment: this keeps local
         # dev usable out of the box, but a real deployment should set
@@ -165,7 +139,14 @@ def create_app():
     app.register_blueprint(ai_bp)
     app.register_blueprint(portal_bp)
 
-    import sockets
+    @app.route("/robots.txt")
+    def robots_txt():
+        # Every page here is either login-gated (admin/branch/ai) or
+        # slug-gated (the partner portal — see routes/portal.py) and never
+        # meant to be publicly discoverable, so block crawling site-wide
+        # rather than maintaining a per-path allow/deny list.
+        return "User-agent: *\nDisallow: /\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
 
     import audit
     with app.app_context():
@@ -182,6 +163,10 @@ def create_app():
         except Exception:
             app.logger.exception(
                 "Failed to ensure login_activity table exists")
+
+    @app.errorhandler(400)
+    def bad_request(e):
+        return render_template("errors/error.html", code=400, message="That request couldn't be understood."), 400
 
     @app.errorhandler(403)
     def forbidden(e):

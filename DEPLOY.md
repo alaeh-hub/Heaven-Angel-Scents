@@ -92,7 +92,6 @@ this is otherwise written down in one place:
 | `FLASK_DEBUG` | Set to `0` (or leave unset) | `1` enables Flask's debugger — never expose that publicly, it allows arbitrary code execution from a browser. Also gates the `SECRET_KEY` startup check below. |
 | `SECRET_KEY` | **Yes** | App refuses to boot (`RuntimeError` in `app.py`) with the placeholder default unless `FLASK_DEBUG=1`. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` and never reuse it across environments. |
 | `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_DB` | **Yes** | Point these at the dedicated app user from step 3, not `root`. |
-| `NUM_PROXIES` | Set to `1` if nginx (or any reverse proxy) sits in front | Left at `0` behind a proxy: every IP-based rate limit (login, the partner-portal inquiry form) buckets by nginx's own address for *all* visitors combined, not per-visitor — logged as a startup warning if you forget. |
 | `SOCKETIO_CORS_ALLOWED_ORIGINS` | Set to your real domain(s) | Left unset, Socket.IO accepts connections from any origin — signed-in data is still session-gated (see `sockets.py`), but this is real defense-in-depth you're skipping. |
 | `PARTNER_PORTAL_SLUG` | **Yes**, if you use the partner portal | Unset: a random slug is generated per process and changes on every restart — the link you hand a distributor breaks the moment the app restarts. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(16))"`. |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | No | Blank key just disables the AI assistant (it tells users it isn't configured) — not a boot failure. |
@@ -100,12 +99,13 @@ this is otherwise written down in one place:
 | `MAIL_*` / `PARTNER_INQUIRY_NOTIFY_EMAIL` | No | Blank disables email entirely — partner inquiries are still saved and visible in-app either way, nothing is lost, you just won't get notified by email. |
 | `RATELIMIT_ENABLED` | No — leave unset (defaults on) | Only ever set to `0` by the test suite. Setting this in a real deployment's `.env` would disable rate limiting app-wide. |
 
-**One thing this table can't cover from `.env` alone:** `NUM_PROXIES` unset is
-easy to leave wrong on a first deploy because the app still runs fine either
-way — it just silently misbehaves under the specific condition (a reverse
-proxy in front) that a first deploy often doesn't have yet. Read the startup
-warning in your logs the first time you boot with `APP_ENV=production` if
-you forget it.
+**This app always trusts `request.remote_addr` as-is — it does not read
+`X-Forwarded-For` from a reverse proxy.** If you do put nginx (or any proxy)
+in front of it, every IP-based rate limit (login attempts, the partner-portal
+inquiry form) will bucket by the proxy's own address for *all* visitors
+combined, not per-visitor, since the app has no way to tell visitors apart
+behind it. Acceptable at this app's scale/threat model; revisit (Werkzeug's
+`ProxyFix`) if that ever matters for your deployment.
 
 This app is deployed **single-worker only** (`gunicorn -w 1`, see below) —
 rate limiting and realtime Socket.IO pushes both rely on in-process state
@@ -198,8 +198,10 @@ uses works fine here too — no reformatting needed.
 
 ## 7. Reverse proxy (nginx)
 
-Terminates TLS, sets `NUM_PROXIES=1`'s counterpart headers, and proxies
-Socket.IO's WebSocket upgrade:
+Terminates TLS and proxies Socket.IO's WebSocket upgrade. The
+`X-Forwarded-*` headers below are harmless to send but the app doesn't
+currently read them (see the note in step 4) — they're kept here only
+because most WSGI deployments expect them regardless:
 
 ```nginx
 server {
@@ -233,10 +235,6 @@ server {
     return 301 https://$host$request_uri;
 }
 ```
-
-This is exactly one hop between the client and the app, matching
-`NUM_PROXIES=1`. If you put this behind a CDN or load balancer too, count
-every hop and set `NUM_PROXIES` accordingly.
 
 ## 8. Persistent files outside the database
 
@@ -278,6 +276,30 @@ mysql -u root -p heaven_and_angel_scents < schema.sql   # back up first — see 
 sudo systemctl restart heaven-and-angel
 ```
 
+### Automating this (GitHub Actions)
+
+`.github/workflows/deploy.yml` runs the same steps over SSH, manually
+triggered from the Actions tab ("Run workflow") rather than on every push
+— there's no migration tool or automated rollback behind `schema.sql`, so
+a human still decides when it's safe to redeploy. It needs:
+
+- A dedicated SSH keypair whose public half is in the deploy user's
+  `~/.ssh/authorized_keys` on the server.
+- These repository secrets (Settings → Secrets and variables → Actions),
+  ideally scoped to a `production` environment with required reviewers:
+  - `DEPLOY_HOST` — the server's hostname/IP
+  - `DEPLOY_USER` — the SSH user (not `root`; needs write access to
+    `/opt/heaven-and-angel` and passwordless `sudo systemctl restart
+    heaven-and-angel`, e.g. via a `/etc/sudoers.d/` entry scoped to that
+    one command)
+  - `DEPLOY_SSH_KEY` — the private half of the keypair above
+  - `DEPLOY_PORT` — optional, only if SSH isn't on port 22
+- The deploy user's own checkout at `/opt/heaven-and-angel` must already
+  have `origin` set to a URL it can `git pull --ff-only` from
+  non-interactively (a deploy key or an HTTPS URL with a credential
+  helper), and `.env` present with working `MYSQL_*` credentials — the
+  workflow sources that file rather than assuming `root`.
+
 ## 12. Post-deploy smoke test
 
 - Load the site over HTTPS — confirm no mixed-content warnings and that
@@ -288,5 +310,3 @@ sudo systemctl restart heaven-and-angel
 - Submit a test partner inquiry through
   `/partner-portal/<slug>/packages` and confirm it appears on **Partner
   Inquiries**.
-- Check the `NUM_PROXIES` startup warning mentioned in step 4 is actually
-  gone from the logs if your deployment has a reverse proxy in front.

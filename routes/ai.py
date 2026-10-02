@@ -10,7 +10,7 @@ from flask_limiter.util import get_remote_address
 from db import query, execute, transaction
 from decorators import login_required
 from extensions import limiter
-from utils import BOTTLE_UNITS, ValidationError
+from utils import BOTTLE_UNITS
 
 import routes.ai_tools as ai_tools
 

@@ -8,6 +8,48 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip && pip install ruff
+
+      - name: Run ruff check
+        run: ruff check .
+
+  public-site:
+    name: Build public-site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: public-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: public-site
+        run: npm ci
+
+      - name: Build
+        working-directory: public-site
+        run: npm run build
+
   test:
     name: Python checks
     runs-on: ubuntu-latest

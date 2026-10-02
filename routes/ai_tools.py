@@ -32,7 +32,6 @@ Schema notes (confirmed against schema.sql / routes/ai.py):
     same convention branch.request_stock() uses — so AI-originated
     deliveries look identical to normal ones in the Stock Requests list.
 """
-import datetime
 
 from flask import current_app, url_for
 

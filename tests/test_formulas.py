@@ -18,7 +18,7 @@ actual cost automatically.
 """
 from decimal import Decimal
 
-from factories import (get_form_token, login, make_product,
+from factories import (login, make_product,
                         make_raw_material, make_user)
 
 SAVE_UNIT_COGS_URL = "/admin/formulas/save-unit-cogs"

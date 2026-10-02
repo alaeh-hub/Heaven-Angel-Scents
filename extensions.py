@@ -11,6 +11,12 @@ from flask_socketio import SocketIO
 # since this app is deployed single-worker.
 limiter = Limiter(
     key_func=get_remote_address,
+    # Explicit, not just relying on Flask-Limiter's own default: passing
+    # this silences its "no storage was explicitly specified" warning,
+    # which otherwise prints unconditionally even though in-memory
+    # storage is the deliberate, correct choice for this single-worker
+    # deployment (see the comment above).
+    storage_uri="memory://",
     default_limits=[],
 )
 

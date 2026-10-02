@@ -1,0 +1,48 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      # Mirrors DEPLOY.md's "Redeploying / updating" section (step 11):
+      # pull, reinstall deps, rebuild the portal front end, back up the
+      # database, re-apply schema.sql (idempotent — see DEPLOY.md step 3),
+      # then restart the service.
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -s <<'REMOTE'
+            set -euo pipefail
+            cd /opt/heaven-and-angel
+
+            git pull --ff-only
+
+            .venv/bin/pip install -r requirements.txt
+
+            (cd public-site && npm ci && npm run build)
+
+            ./scripts/backup_db.sh
+            set -a; source .env; set +a
+            mysql -h "${MYSQL_HOST:-localhost}" -P "${MYSQL_PORT:-3306}" -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DB}" < schema.sql
+
+            sudo systemctl restart heaven-and-angel
+            sleep 2
+            systemctl is-active --quiet heaven-and-angel
+          REMOTE
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

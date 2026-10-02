@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
-from db import TransactionAborted, execute, query, transaction
+from db import TransactionAborted, query, transaction
 from decorators import branch_required
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
@@ -1030,7 +1030,7 @@ def reports_data():
     # for the admin page's "units sold by branch" chart, which doesn't
     # make sense when there's only one branch to look at.
     sales_trend = query(
-        f"""SELECT DATE(s.sold_at) AS day, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold
+        """SELECT DATE(s.sold_at) AS day, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold
            FROM sales s JOIN products p ON p.sku = s.sku
            WHERE s.branch_id = %s AND s.sold_at >= NOW() - INTERVAL 14 DAY
            GROUP BY DATE(s.sold_at) ORDER BY day""",
@@ -1074,14 +1074,14 @@ def reports_data():
     # Cash sales vs. employee purchases deducted from salary, and plain
     # sales vs. refills — both scoped to this branch only.
     payment_breakdown = query(
-        f"""SELECT s.payment_method, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+        """SELECT s.payment_method, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM sales s JOIN products p ON p.sku = s.sku
            WHERE s.branch_id = %s GROUP BY s.payment_method""",
         (bid,),
     )
     sale_type_breakdown = query(
-        f"""SELECT s.sale_type, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+        """SELECT s.sale_type, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM sales s JOIN products p ON p.sku = s.sku
            WHERE s.branch_id = %s GROUP BY s.sale_type""",
@@ -1089,7 +1089,7 @@ def reports_data():
     )
 
     totals = query(
-        f"""SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
+        """SELECT COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units, COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS bulk_ml,
                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM sales s JOIN products p ON p.sku = s.sku WHERE s.branch_id = %s""",
         (bid,), fetchone=True,
