@@ -41,7 +41,6 @@ os.environ.setdefault("FLASK_DEBUG", "1")
 os.environ.setdefault("SECRET_KEY", "pytest-secret-key-not-for-real-use")
 os.environ.setdefault("PARTNER_PORTAL_SLUG", "pytest-portal-slug")
 os.environ.setdefault("GEMINI_API_KEY", "")
-os.environ.setdefault("RATELIMIT_STORAGE_URI", "memory://")
 # See config.py's RATELIMIT_ENABLED comment: without this, the fixed
 # number of requests flask-limiter allows per window (e.g. login's
 # "10 per minute") can get exhausted by the test suite itself well

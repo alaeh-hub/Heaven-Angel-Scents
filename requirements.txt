@@ -22,8 +22,3 @@ gevent==26.8.0
 gevent-websocket==0.10.1
 
 simple-websocket==1.0.0
-
-# Only needed if RATELIMIT_STORAGE_URI or SOCKETIO_MESSAGE_QUEUE is set to
-# a redis:// URL (see extensions.py) — required for any multi-worker
-# production deployment, not needed for single-worker/local dev.
-# redis==5.0.8

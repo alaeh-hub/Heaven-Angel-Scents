@@ -54,7 +54,7 @@
   <div class="card stat-tile">
     <div class="stat-label">Total attempts logged</div>
     <div class="stat-value">{{ totals.total_attempts }}</div>
-    <div class="stat-foot">most recent 300 shown below</div>
+    <div class="stat-foot">300 per page below, newest first</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Failed attempts</div>
@@ -106,7 +106,7 @@
 <div class="card">
   <div class="card-header">
     <h2>Sign-in attempts</h2>
-    <span class="hint">last 300</span>
+    <span class="hint">300 per page{{ " (page %d)" % page if page > 1 else "" }}</span>
   </div>
   <div style="padding: 4px 22px 14px;">
     <p class="text-faint" style="font-size:12px;">
@@ -185,6 +185,16 @@
       <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
     </div>
   </div>
+  {% if page > 1 or has_next %}
+  <div style="display:flex; justify-content:space-between; padding:14px 22px 4px;">
+    {% if page > 1 %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page - 1) }}">← Newer</a>
+    {% else %}<span></span>{% endif %}
+    {% if has_next %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page + 1) }}">Older →</a>
+    {% endif %}
+  </div>
+  {% endif %}
   {% else %}
   <div class="empty-state"><div class="glyph">—</div><p>No login attempts in this view.</p></div>
   {% endif %}

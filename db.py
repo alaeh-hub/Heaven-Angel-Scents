@@ -1,13 +1,26 @@
 import contextlib
 
 import mysql.connector
+import mysql.connector.pooling
 from flask import current_app, g
 
+# One pool per (host, port, user, db) config, built lazily on first use and
+# reused for the lifetime of the process — opening a brand-new TCP+auth
+# connection on every single request doesn't scale past a handful of
+# concurrent users. mysql.connector's pool hands out an existing idle
+# connection when one's available and only opens a new one (up to
+# pool_size) when the pool is empty, and a pooled connection's own
+# .close() returns it to the pool instead of actually closing the socket.
+_pool = None
 
-def get_db():
-    """Return a request-scoped MySQL connection, opening one if needed."""
-    if "db" not in g:
-        g.db = mysql.connector.connect(
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        _pool = mysql.connector.pooling.MySQLConnectionPool(
+            pool_name="heaven_and_angel",
+            pool_size=current_app.config.get("MYSQL_POOL_SIZE", 10),
+            pool_reset_session=True,
             host=current_app.config["MYSQL_HOST"],
             port=current_app.config["MYSQL_PORT"],
             user=current_app.config["MYSQL_USER"],
@@ -15,8 +28,18 @@ def get_db():
             database=current_app.config["MYSQL_DB"],
             autocommit=False,
         )
+    return _pool
+
+
+def get_db():
+    """Return a request-scoped MySQL connection, opening one if needed."""
+    if "db" not in g:
+        g.db = _get_pool().get_connection()
         cur = g.db.cursor()
-        cur.execute("SET time_zone = '+08:00'")
+        cur.execute(
+            "SET time_zone = %s",
+            (current_app.config.get("BUSINESS_TIMEZONE_OFFSET", "+08:00"),),
+        )
         cur.close()
     return g.db
 

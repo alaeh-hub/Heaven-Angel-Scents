@@ -29,6 +29,21 @@ class Config:
     MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "")
     MYSQL_DB = os.environ.get("MYSQL_DB", "heaven_and_angel_scents")
 
+    # "Business day" boundary used throughout the app (CURDATE()-based
+    # reporting, _current_business_date() in routes/ai.py, etc.) — set as
+    # a MySQL UTC-offset string on every pooled connection (see db.py),
+    # independent of the MySQL server's own configured timezone. Default
+    # is the Philippines (UTC+8), where this business operates; override
+    # if ever deployed for a different region.
+    BUSINESS_TIMEZONE_OFFSET = os.environ.get("BUSINESS_TIMEZONE_OFFSET", "+08:00")
+
+    # Size of the shared connection pool each worker process keeps open
+    # (see db.py) instead of opening a brand-new MySQL connection per
+    # request. Must comfortably cover this worker's peak concurrent
+    # request count — raise it if requests start blocking waiting for a
+    # free pooled connection under real traffic.
+    MYSQL_POOL_SIZE = int(os.environ.get("MYSQL_POOL_SIZE", 10))
+
     WTF_CSRF_TIME_LIMIT = None
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

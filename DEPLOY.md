@@ -93,22 +93,25 @@ this is otherwise written down in one place:
 | `SECRET_KEY` | **Yes** | App refuses to boot (`RuntimeError` in `app.py`) with the placeholder default unless `FLASK_DEBUG=1`. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` and never reuse it across environments. |
 | `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_DB` | **Yes** | Point these at the dedicated app user from step 3, not `root`. |
 | `NUM_PROXIES` | Set to `1` if nginx (or any reverse proxy) sits in front | Left at `0` behind a proxy: every IP-based rate limit (login, the partner-portal inquiry form) buckets by nginx's own address for *all* visitors combined, not per-visitor — logged as a startup warning if you forget. |
-| `RATELIMIT_STORAGE_URI` | Set to a shared store if running >1 worker | Default `memory://` only works correctly with exactly one worker process (`gunicorn -w 1`, see below) — each additional worker gets its own separate counters, silently multiplying every rate limit. |
-| `SOCKETIO_MESSAGE_QUEUE` | Set to the same store if running >1 worker | Same single-worker constraint as above, for realtime pushes (`notify_admin`/`notify_branch`/etc.) instead of rate limits — a tab connected to a different worker than the one that made a change misses that update until it manually refreshes. |
 | `SOCKETIO_CORS_ALLOWED_ORIGINS` | Set to your real domain(s) | Left unset, Socket.IO accepts connections from any origin — signed-in data is still session-gated (see `sockets.py`), but this is real defense-in-depth you're skipping. |
-| `PARTNER_PORTAL_SLUG` | **Yes**, if you use the partner portal | Unset: a random slug is generated per process, changes on every restart, and differs across workers — the link you hand a distributor breaks the moment the app restarts. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(16))"`. |
+| `PARTNER_PORTAL_SLUG` | **Yes**, if you use the partner portal | Unset: a random slug is generated per process and changes on every restart — the link you hand a distributor breaks the moment the app restarts. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(16))"`. |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | No | Blank key just disables the AI assistant (it tells users it isn't configured) — not a boot failure. |
 | `AI_CHAT_RATE_LIMIT` | No | Defaults are sane; only matters if you want to change Gemini cost exposure per user. |
 | `MAIL_*` / `PARTNER_INQUIRY_NOTIFY_EMAIL` | No | Blank disables email entirely — partner inquiries are still saved and visible in-app either way, nothing is lost, you just won't get notified by email. |
 | `RATELIMIT_ENABLED` | No — leave unset (defaults on) | Only ever set to `0` by the test suite. Setting this in a real deployment's `.env` would disable rate limiting app-wide. |
 
-**One thing this table can't cover from `.env` alone:** `RATELIMIT_STORAGE_URI`
-unset + `NUM_PROXIES` unset are each individually easy to leave wrong on a
-first deploy because the app still runs fine either way — it just silently
-misbehaves under the specific conditions (a proxy, or >1 worker) that a
-first deploy often doesn't have yet. Read the two startup warnings in your
-logs the first time you boot with `APP_ENV=production` — they name exactly
-this.
+**One thing this table can't cover from `.env` alone:** `NUM_PROXIES` unset is
+easy to leave wrong on a first deploy because the app still runs fine either
+way — it just silently misbehaves under the specific condition (a reverse
+proxy in front) that a first deploy often doesn't have yet. Read the startup
+warning in your logs the first time you boot with `APP_ENV=production` if
+you forget it.
+
+This app is deployed **single-worker only** (`gunicorn -w 1`, see below) —
+rate limiting and realtime Socket.IO pushes both rely on in-process state
+that only stays correct with exactly one worker. Don't raise `-w` without
+first adding a shared store (e.g. Redis) for both; that isn't wired up here
+since it isn't needed at this app's scale.
 
 ## 5. Bootstrapping the first admin account
 
@@ -154,12 +157,12 @@ long-lived connections:
 .venv/bin/gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app --bind 127.0.0.1:8000
 ```
 
-**`-w 1` is not a placeholder — it's a real, current constraint.** Both
-`RATELIMIT_STORAGE_URI` and `SOCKETIO_MESSAGE_QUEUE` default to per-process
-state; running more than one worker without pointing both at a shared Redis
-instance silently multiplies rate limits and breaks realtime sync across
-tabs on different workers (see the table above). Scale up by pointing both
-at Redis first, not by adding `-w` before that.
+**`-w 1` is not a placeholder — it's a real, current constraint.** Rate
+limiting and Socket.IO both rely on per-process state; running more than one
+worker as-is silently multiplies rate limits and breaks realtime sync across
+tabs on different workers. Adding a shared store (e.g. Redis) for both is a
+prerequisite for raising `-w` — not implemented here, since a single worker
+comfortably covers this app's scale.
 
 ### systemd unit (`/etc/systemd/system/heaven-and-angel.service`)
 
@@ -285,6 +288,5 @@ sudo systemctl restart heaven-and-angel
 - Submit a test partner inquiry through
   `/partner-portal/<slug>/packages` and confirm it appears on **Partner
   Inquiries**.
-- Check the two startup warnings mentioned in step 4 are actually gone from
-  the logs (`NUM_PROXIES`, `RATELIMIT_STORAGE_URI`) if your deployment has a
-  reverse proxy or more than one worker.
+- Check the `NUM_PROXIES` startup warning mentioned in step 4 is actually
+  gone from the logs if your deployment has a reverse proxy in front.

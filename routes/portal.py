@@ -117,35 +117,53 @@ def _find_or_create_partner(partner_type, company_name, contact_person, phone, e
     that same history (see schema.sql's partners table comment).
 
     Returns the partner_id either way.
-    """
-    partner = None
-    if email:
-        partner = query("SELECT partner_id FROM partners WHERE email = %s",
-                        (email,), fetchone=True)
-    if not partner and phone:
-        partner = query("SELECT partner_id FROM partners WHERE phone = %s",
-                        (phone,), fetchone=True)
 
-    if partner:
-        execute(
-            """UPDATE partners
-                   SET last_inquiry_at = CURRENT_TIMESTAMP, inquiry_count = inquiry_count + 1
-               WHERE partner_id = %s""",
-            (partner["partner_id"],),
+    Two inquiries from the same brand-new email/phone submitted at
+    nearly the same instant (e.g. a double-tap, or two browser tabs)
+    would otherwise both miss the SELECT below and each create their own
+    partner row — a classic check-then-act race. A MySQL named lock
+    (GET_LOCK/RELEASE_LOCK), keyed on the identity being matched,
+    serializes that window across connections/processes without needing
+    a schema change: the second caller simply waits for the first to
+    finish its find-or-create before running its own SELECT.
+    """
+    lock_key = f"partner_dedup:{email or phone or ''}"
+    got_lock = bool(email or phone)
+    if got_lock:
+        row = query("SELECT GET_LOCK(%s, 5) AS ok", (lock_key,), fetchone=True)
+        got_lock = bool(row and row["ok"])
+    try:
+        partner = None
+        if email:
+            partner = query("SELECT partner_id FROM partners WHERE email = %s",
+                            (email,), fetchone=True)
+        if not partner and phone:
+            partner = query("SELECT partner_id FROM partners WHERE phone = %s",
+                            (phone,), fetchone=True)
+
+        if partner:
+            execute(
+                """UPDATE partners
+                       SET last_inquiry_at = CURRENT_TIMESTAMP, inquiry_count = inquiry_count + 1
+                   WHERE partner_id = %s""",
+                (partner["partner_id"],),
+            )
+            notify_admin(["partners"])
+            return partner["partner_id"]
+
+        partner_id, _ = execute(
+            """INSERT INTO partners
+                   (partner_type, partner_name, contact_person, phone, email, address, notes,
+                    last_inquiry_at, inquiry_count)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
+            (partner_type, company_name, contact_person, phone, email, address,
+             f"Added automatically from a partner portal {source}."),
         )
         notify_admin(["partners"])
-        return partner["partner_id"]
-
-    partner_id, _ = execute(
-        """INSERT INTO partners
-               (partner_type, partner_name, contact_person, phone, email, address, notes,
-                last_inquiry_at, inquiry_count)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
-        (partner_type, company_name, contact_person, phone, email, address,
-         f"Added automatically from a partner portal {source}."),
-    )
-    notify_admin(["partners"])
-    return partner_id
+        return partner_id
+    finally:
+        if got_lock:
+            query("SELECT RELEASE_LOCK(%s)", (lock_key,), fetchone=True)
 
 
 def _active_package_or_none(package_id):

@@ -17,10 +17,21 @@ but the record is safe."
 """
 import html as html_lib
 import smtplib
+import time
 from email.message import EmailMessage
 from urllib.parse import quote
 
 from flask import current_app
+
+# Transient failures (the SMTP server hiccuping, a dropped connection) are
+# worth a couple of quick retries before giving up — a permanent failure
+# (bad credentials, rejected recipient) will just fail the same way again,
+# so this isn't trying to paper over those, only the kind of blip that a
+# second attempt a moment later typically clears. Already called from a
+# background thread (see routes/portal.py), so the extra second or two
+# here never holds up the inquirer's own response.
+_SEND_ATTEMPTS = 3
+_RETRY_DELAY_SECONDS = 2
 
 
 def _smtp_configured(cfg):
@@ -377,13 +388,23 @@ def send_partner_inquiry_email(
             subtype="html",
         )
 
-        with smtplib.SMTP(cfg["MAIL_SERVER"], cfg.get("MAIL_PORT", 587), timeout=10) as smtp:
-            if cfg.get("MAIL_USE_TLS", True):
-                smtp.starttls()
-            if cfg.get("MAIL_USERNAME") and cfg.get("MAIL_PASSWORD"):
-                smtp.login(cfg["MAIL_USERNAME"], cfg["MAIL_PASSWORD"])
-            smtp.send_message(msg)
-        return True
+        for attempt in range(1, _SEND_ATTEMPTS + 1):
+            try:
+                with smtplib.SMTP(cfg["MAIL_SERVER"], cfg.get("MAIL_PORT", 587), timeout=10) as smtp:
+                    if cfg.get("MAIL_USE_TLS", True):
+                        smtp.starttls()
+                    if cfg.get("MAIL_USERNAME") and cfg.get("MAIL_PASSWORD"):
+                        smtp.login(cfg["MAIL_USERNAME"], cfg["MAIL_PASSWORD"])
+                    smtp.send_message(msg)
+                return True
+            except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
+                    smtplib.SMTPHeloError, ConnectionError, TimeoutError, OSError):
+                if attempt == _SEND_ATTEMPTS:
+                    raise
+                current_app.logger.warning(
+                    "Partner inquiry email attempt %d/%d failed for %s, retrying...",
+                    attempt, _SEND_ATTEMPTS, company_name)
+                time.sleep(_RETRY_DELAY_SECONDS)
     except Exception:
         current_app.logger.exception(
             "Failed to send partner inquiry email for %s", company_name)

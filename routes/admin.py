@@ -1477,13 +1477,15 @@ def toggle_user(user_id):
     else:
         target = query(
             "SELECT username, is_active FROM users WHERE user_id = %s", (user_id,), fetchone=True)
+        if not target:
+            flash("Account not found.", "error")
+            return redirect(url_for("admin.users"))
         execute(
             "UPDATE users SET is_active = NOT is_active WHERE user_id = %s", (user_id,))
         notify_admin("users")
-        if target:
-            new_status = "Deactivated" if target["is_active"] else "Reactivated"
-            log_action("toggle_user",
-                       target=target["username"], details=new_status)
+        new_status = "Deactivated" if target["is_active"] else "Reactivated"
+        log_action("toggle_user",
+                   target=target["username"], details=new_status)
         flash("Account status updated.", "success")
     return redirect(url_for("admin.users"))
 
@@ -2070,12 +2072,22 @@ def audit_log():
     damage), while this covers everything else an admin can do that
     isn't a stock movement. See audit.py for how entries get written.
     """
-    logs = query(
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    page_size = 300
+    offset = (page - 1) * page_size
+    # Fetch one extra row to know whether another page exists, without a
+    # separate COUNT(*) query — see login_activity_log() below for the
+    # same pattern.
+    rows = query(
         """SELECT action_id, actor_username, action, target, details, created_at
            FROM admin_actions
-           ORDER BY created_at DESC LIMIT 300"""
+           ORDER BY created_at DESC LIMIT %s OFFSET %s""",
+        (page_size + 1, offset),
     )
-    return render_template("admin/audit_log.html", logs=logs)
+    has_next = len(rows) > page_size
+    logs = rows[:page_size]
+    return render_template(
+        "admin/audit_log.html", logs=logs, page=page, has_next=has_next)
 
 
 # ---------------------------------------------------------------- login activity
@@ -2095,6 +2107,9 @@ def login_activity_log():
     differ.
     """
     outcome_filter = request.args.get("outcome", "all")
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    page_size = 300
+    offset = (page - 1) * page_size
     sql = """SELECT la.*, u.username AS current_username
              FROM login_activity la
              LEFT JOIN users u ON la.user_id = u.user_id"""
@@ -2102,8 +2117,12 @@ def login_activity_log():
         sql += " WHERE la.success = TRUE"
     elif outcome_filter == "failed":
         sql += " WHERE la.success = FALSE"
-    sql += " ORDER BY la.created_at DESC LIMIT 300"
-    logs = query(sql)
+    # Fetch one extra row to know whether another page exists, without a
+    # separate COUNT(*) query.
+    sql += " ORDER BY la.created_at DESC LIMIT %s OFFSET %s"
+    rows = query(sql, (page_size + 1, offset))
+    has_next = len(rows) > page_size
+    logs = rows[:page_size]
 
     totals = query(
         """SELECT COUNT(*) AS total_attempts,
@@ -2129,6 +2148,7 @@ def login_activity_log():
         "admin/login_activity.html", logs=logs, totals=totals,
         outcome_filter=outcome_filter, recent_failures=recent_failures,
         failure_reasons=login_activity.LOGIN_FAILURE_REASONS,
+        page=page, has_next=has_next,
     )
 
 

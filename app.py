@@ -13,8 +13,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import db
 import utils
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
-from extensions import (limiter, ratelimit_storage_is_memory, socketio,
-                        socketio_cors_is_wildcard, socketio_message_queue_is_unset)
+from extensions import limiter, socketio, socketio_cors_is_wildcard
 
 
 # Content-Security-Policy for Talisman below. 'unsafe-inline' is kept for
@@ -145,31 +144,11 @@ def create_app():
     )
 
     if not app.config["DEBUG"]:
-        if ratelimit_storage_is_memory:
-            app.logger.warning(
-                "RATELIMIT_STORAGE_URI is unset, so rate limiting is using in-memory storage. "
-                "This only works correctly with a single worker process — if you run more than "
-                "one gunicorn/uwsgi worker, each gets its own separate counters and the configured "
-                "limits (login attempts, AI chat calls, etc.) are effectively multiplied by the "
-                "worker count. Set RATELIMIT_STORAGE_URI to a shared store (e.g. a redis:// URL) "
-                "for any multi-worker deployment."
-            )
         if socketio_cors_is_wildcard:
             app.logger.warning(
                 "SOCKETIO_CORS_ALLOWED_ORIGINS is unset, so Socket.IO accepts connections from any "
                 "origin. Signed-in-only data is still protected (see sockets.py's connect handler), "
                 "but set this to your real domain(s) for defense in depth in production."
-            )
-        if socketio_message_queue_is_unset:
-            app.logger.warning(
-                "SOCKETIO_MESSAGE_QUEUE is unset, so realtime pushes (sockets.py's notify_admin / "
-                "notify_branch / notify_bell, etc.) only reach connections held by the same worker "
-                "process that triggered them. This only works correctly with a single worker "
-                "process — if you run more than one gunicorn/uwsgi worker (see wsgi.py), a tab "
-                "connected to a different worker than the one that handled a given write will miss "
-                "that realtime update until it manually refreshes. Set SOCKETIO_MESSAGE_QUEUE to a "
-                "shared redis:// URL for any multi-worker deployment — the same Redis instance used "
-                "for RATELIMIT_STORAGE_URI works fine for this too."
             )
 
     from routes.auth import bp as auth_bp
