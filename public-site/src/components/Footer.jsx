@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import {
-  EnvelopeSimpleIcon, FacebookLogoIcon, InstagramLogoIcon, MapPinIcon,
+  EnvelopeSimpleIcon, FacebookLogoIcon, InstagramLogoIcon, LockKeyIcon, MapPinIcon,
   MessengerLogoIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
   StorefrontIcon, TiktokLogoIcon, XLogoIcon, YoutubeLogoIcon,
 } from '@phosphor-icons/react';
@@ -142,7 +142,7 @@ export default function Footer({ children }) {
           <div className="container">
             <div className="footer-grid">
               <div className="footer-brand">
-                <img src="/static/img/logo-wordmark.png" alt="Heaven & Angel Scents" />
+                <img src="/static/img/logo-wordmark-sm.webp" alt="Heaven & Angel Scents" />
                 <p>{FOOTER.blurb}</p>
                 {FOOTER.socials.length > 0 && (
                   <ul className="footer-socials" aria-label="Follow us">
@@ -212,7 +212,7 @@ export default function Footer({ children }) {
                 </nav>
               )}
 
-              <div className="footer-col">
+              <div className="footer-col footer-col-contact">
                 <h2>Contact</h2>
                 <ul className="footer-contact">
                   <li>
@@ -236,7 +236,10 @@ export default function Footer({ children }) {
 
             <div className="footer-legal">
               <span>© {new Date().getFullYear()} Heaven &amp; Angel Scents</span>
-              <span>This link is shared privately with our partners. Please don&apos;t forward it publicly.</span>
+              <span className="footer-notice">
+                <LockKeyIcon size={14} weight="duotone" />
+                Shared privately with our partners. Please don&apos;t forward it publicly.
+              </span>
             </div>
           </div>
         </motion.div>

@@ -73,7 +73,7 @@ export default function PackagesPage() {
 
   return (
     <div className="page">
-      <BackdropVideo src="/static/video/black_background_web.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
+      <BackdropVideo src="/static/video/backdrop-lite.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
       <Nav
         hiddenIds={[
           ...(earningOptions(data?.packages || []).length ? [] : ['earnings']),

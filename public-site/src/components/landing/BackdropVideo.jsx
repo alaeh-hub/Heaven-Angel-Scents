@@ -29,6 +29,7 @@ export default function BackdropVideo({ src, sectionIds, invert = true, speed = 
   const reduce = useReducedMotion();
   const wrapRef = useRef(null);
   const [visible, setVisible] = useState(false);
+  const [armed, setArmed] = useState(false);
   const idsKey = sectionIds.join(' ');
 
   useEffect(() => {
@@ -47,7 +48,15 @@ export default function BackdropVideo({ src, sectionIds, invert = true, speed = 
       rootMargin: '-12% 0px -12% 0px',
     });
     sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    // Start fetching one screen before the first section arrives.
+    const near = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setArmed(true);
+        near.disconnect();
+      }
+    }, { rootMargin: '100% 0px 100% 0px' });
+    sections.forEach((section) => near.observe(section));
+    return () => { observer.disconnect(); near.disconnect(); };
   }, [idsKey, reduce]);
 
   useEffect(() => {
@@ -104,8 +113,10 @@ export default function BackdropVideo({ src, sectionIds, invert = true, speed = 
       animate={{ opacity: visible ? 1 : 0 }}
       transition={{ duration: 0.6, ease: 'easeOut' }}
     >
-      <video className="is-active" muted playsInline preload="auto" src={src} />
-      <video muted playsInline preload="auto" src={src} />
+      {/* Neither copy downloads until the section first scrolls near
+          (`armed`); the second only starts fetching when playback does. */}
+      <video className="is-active" muted playsInline preload={armed ? 'auto' : 'none'} src={src} />
+      <video muted playsInline preload={armed ? 'metadata' : 'none'} src={src} />
       <div className="backdrop-video-veil" />
     </motion.div>
   );

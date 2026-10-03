@@ -22,6 +22,9 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     port: 5173,
+    host: true,
+    // VS Code / dev-tunnel forwarded hostnames.
+    allowedHosts: true,
     proxy: {
       '^/partner-portal/[^/]+/api/.*': FLASK,
       '/static': FLASK,

@@ -809,7 +809,8 @@
   animation: marquee 48s linear infinite;
 }
 
-.marquee:hover .marquee-track {
+.marquee:hover .marquee-track,
+.marquee[data-paused="true"] .marquee-track {
   animation-play-state: paused;
 }
 
@@ -1383,12 +1384,28 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 24px;
+  justify-content: space-between;
+  gap: 10px 24px;
   margin-top: clamp(48px, 7vw, 80px);
   padding-top: 22px;
   border-top: 1px solid var(--hairline);
   font-size: 13px;
   color: var(--ink-3);
+}
+
+/* The confidentiality reminder is secondary to the copyright line, so it
+   reads as a quiet badge rather than a second, equally-weighted notice. */
+.footer-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  opacity: 0.85;
+}
+
+.footer-notice svg {
+  flex-shrink: 0;
+  color: var(--gold-ink);
 }
 
 /* Floating back-to-top pill, centered at the bottom of the screen.
@@ -1438,7 +1455,8 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .footer-brand {
+  .footer-brand,
+  .footer-col-contact {
     grid-column: 1 / -1;
   }
 }
@@ -1446,6 +1464,11 @@
 @media (max-width: 520px) {
   .footer-grid {
     grid-template-columns: 1fr;
+  }
+
+  .footer-legal {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

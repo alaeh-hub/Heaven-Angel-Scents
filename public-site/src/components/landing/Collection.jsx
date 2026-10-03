@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowRightIcon } from '@phosphor-icons/react';
@@ -56,8 +56,24 @@ function useShelf(slug) {
 export default function Collection() {
   const { slug } = useParams();
   const { tiles, unique } = useShelf(slug);
+  const sectionRef = useRef(null);
+
+  // The track's own animation is compositor-only (transform) and cheap,
+  // but left running it's a layer the compositor keeps ticking forever;
+  // paused the moment the shelf scrolls off screen, like the canvas and
+  // WebGL loops elsewhere on the page.
+  useEffect(() => {
+    const marquee = sectionRef.current?.querySelector('.marquee');
+    if (!marquee) return undefined;
+    const io = new IntersectionObserver(([entry]) => {
+      marquee.dataset.paused = entry.isIntersecting ? 'false' : 'true';
+    });
+    io.observe(marquee);
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <section className="section collection" id="collection">
+    <section className="section collection" id="collection" ref={sectionRef}>
       <DotField className="collection-dots" />
       <div className="container">
         <Reveal className="section-head">

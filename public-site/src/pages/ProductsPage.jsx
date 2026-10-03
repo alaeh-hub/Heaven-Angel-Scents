@@ -90,7 +90,7 @@ export default function ProductsPage() {
       <header className="detail-topbar">
         <div className="container">
           <Link to={packagesPath(slug)} aria-label="Heaven & Angel Scents, back to the partner portal">
-            <img src="/static/img/logo-wordmark.png" alt="" />
+            <img src="/static/img/logo-wordmark-sm.webp" alt="" />
           </Link>
           <Link to={packagesPath(slug)} className="detail-back" style={{ margin: 0 }}>
             <ArrowLeftIcon size={16} weight="bold" /> Back to portal

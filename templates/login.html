@@ -19,260 +19,28 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
     /* ---------------------------------------------------------------
-       Login — professional split-screen layout.
-       .auth-shell / .auth-visual / .auth-form-col / .auth-card are
-       already defined in style.css (grid: dark brand panel on the
-       left, form on the right, collapsing to a single column under
-       860px) — this just fills that skeleton in and adds the
-       page-specific bits style.css doesn't already cover: the role
-       switch, input icons/reveal button, and validation states.
+       Login: "the arch". Layout, the arched brand window and its
+       motion live in style.css (.auth-shell / .auth-stage /
+       .auth-arch / .auth-form-col / .auth-card). This block holds the
+       page-specific form pieces: heading, role switch, inputs with
+       icons and the reveal button, validation states.
        All IDs/classes main.js and the inline scripts below hook into
        are preserved (.auth-card, .role-switch, .field, the
        field-error / has-error contract, #themeToggle).
+       The form sits directly on the page background, so every colour
+       here is a theme token that already passes contrast in both
+       light and dark.
        ------------------------------------------------------------- */
 
     body {
-      min-height: 100vh;
+      min-height: 100dvh;
     }
 
-    .auth-visual-points svg {
-      color: #fff;
-    }
-
-    .auth-form-col {
-      position: relative;
-    }
-
-    .auth-card {
-      max-width: 380px;
-      /* Plain CSS instead of the Motion-driven version this used to
-         be — submitting the form navigates the page away almost
-         immediately, which could cancel a JS-driven animation
-         mid-flight and reject its promise with an AbortError
-         ("Transition was skipped"); despite always attaching a
-         rejection handler, that intermittently still surfaced as an
-         unhandled rejection in the console (Motion's controls object
-         doesn't reliably settle it when cut short like that). A CSS
-         animation has no promise to reject in the first place — the
-         browser just silently stops it when the document unloads.
-         prefers-reduced-motion is already handled globally (see the
-         animation-duration override in style.css). */
-      animation: auth-card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    @keyframes auth-card-in {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-    }
-
-    /* style.css styles .flashes as a fixed top-right (or, on narrow
-       viewports, fixed full-width top) toast stack, meant for the
-       dashboard topbar. Rendered inline in the card flow here instead
-       so it can't overlap anything on a short viewport — it just
-       pushes the rest of the form down a bit. Animations are left
-       alone: main.js waits for the flash-exit animation's
-       `animationend` event to actually remove the element after 5s. */
-    .auth-card .flashes {
-      position: static;
-      width: auto;
-      z-index: auto;
-      margin: 0 0 18px;
-    }
-
-    .auth-card .flash {
-      box-shadow: none;
-    }
-
-    .auth-card-head {
-      margin-bottom: 22px;
-    }
-
-    .auth-card-head h1 {
-      font-size: 20px;
-      margin-bottom: 4px;
-    }
-
-    .auth-card-head p {
-      font-size: 12.5px;
-      color: var(--ink-faint);
-      margin: 0;
-    }
-
-    /* ---- role switch (Branch / HQ Admin pill toggle) ---- */
-    .role-switch {
-      position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 2px;
-      background: var(--field);
-      border: var(--border-width-strong) solid var(--border-strong);
-      border-radius: 99px;
-      padding: 3px;
-      margin: 0 0 22px;
-    }
-
-    .role-option {
-      position: relative;
-      z-index: 1;
-      flex: 1;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border: none;
-      background: transparent;
-      border-radius: 99px;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--ink-faint);
-      cursor: pointer;
-      transition: color 0.18s ease;
-    }
-
-    .role-option svg {
-      width: 14px;
-      height: 14px;
-      opacity: 0.75;
-      flex-shrink: 0;
-    }
-
-    .role-option.active {
-      color: var(--accent-ink);
-    }
-
-    .role-option.active svg {
-      opacity: 1;
-    }
-
-    .role-switch-thumb {
-      position: absolute;
-      top: 3px;
-      bottom: 3px;
-      left: 3px;
-      width: calc(50% - 3px);
-      background: var(--surface);
-      border: var(--border-width-strong) solid var(--border-strong);
-      border-radius: 99px;
-      box-shadow: 0 1px 3px rgba(28, 27, 25, 0.08);
-      transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .role-switch-thumb.admin {
-      transform: translateX(100%);
-    }
-
-    /* ---- inputs with a leading icon + (for password) a reveal toggle ---- */
-    .field {
-      margin-bottom: 16px;
-    }
-
-    .field label {
-      display: block;
-      font-size: 12.5px;
-      font-weight: 700;
-      letter-spacing: 0;
-      color: var(--ink-faint);
-      margin-bottom: 7px;
-    }
-
-    .input-shell {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-
-    .input-shell svg.field-icon {
-      position: absolute;
-      left: 13px;
-      width: 16px;
-      height: 16px;
-      color: var(--ink-faint);
-      pointer-events: none;
-    }
-
-    .input-shell input {
-      width: 100%;
-      padding-left: 38px;
-    }
-
-    .input-shell input[type="password"],
-    .input-shell input.has-reveal {
-      padding-right: 40px;
-    }
-
-    /* Several browsers now inject their own built-in "reveal password"
-       eye icon inside type="password" fields. Left alone, it sits
-       right next to our own reveal-btn and looks like a doubled icon.
-       These vendor-specific pseudo-elements suppress it so ours is
-       the only one shown; a selector a given engine doesn't recognize
-       is simply ignored, so this is safe across browsers. */
-    .input-shell input[type="password"]::-ms-reveal,
-    .input-shell input[type="password"]::-ms-clear,
-    .input-shell input[type="password"]::-webkit-reveal,
-    .input-shell input[type="password"]::-webkit-textfield-decoration-container,
-    .input-shell input[type="password"]::-webkit-credentials-auto-fill-button,
-    .input-shell input[type="password"]::-webkit-strong-password-auto-fill-button {
-      display: none !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-    }
-
-    .reveal-btn {
-      position: absolute;
-      right: 6px;
-      width: 30px;
-      height: 30px;
-      border: none;
-      background: transparent;
-      border-radius: 8px;
-      color: var(--ink-faint);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .reveal-btn:hover {
-      color: var(--accent-ink);
-      background: var(--accent-soft);
-    }
-
-    .reveal-btn svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    .field.has-error input {
-      border-color: var(--danger);
-    }
-
-    .field.has-error input:focus {
-      box-shadow: 0 0 0 3px var(--danger-soft);
-    }
-
-    .field-error {
-      display: none;
-      align-items: center;
-      gap: 5px;
-      font-size: 11.5px;
-      color: var(--danger);
-      margin-top: 6px;
-      font-weight: 500;
-    }
-
-    .field.has-error .field-error {
-      display: flex;
-    }
-
-    .field-error svg {
-      width: 12px;
-      height: 12px;
-      flex-shrink: 0;
+    /* Shake on a failed submit is the only animation on the card
+       itself (the card's children carry the entrance). Plain CSS so
+       there is no promise to reject when submit navigates away. */
+    .auth-card.shake {
+      animation: auth-shake 0.4s;
     }
 
     @keyframes auth-shake {
@@ -299,31 +67,322 @@
       }
     }
 
-    .auth-card.shake {
-      animation: auth-shake 0.4s;
+    /* style.css styles .flashes as a fixed toast stack for the
+       dashboard; inline here so it can't overlap anything. main.js
+       removes the element on the flash-exit `animationend`, so the
+       flash animations are left alone. */
+    .auth-card .flashes {
+      position: static;
+      width: auto;
+      z-index: auto;
+      margin: 0 0 18px;
     }
 
-    /* Loading feedback while the sign-in request is submitting is the
-       same app-wide centered dialog every other form uses (see
-       .loading-overlay in style.css and initSubmitLoadingState() /
-       showLoadingOverlay() in main.js, both loaded on this page) —
-       just a plain disabled look here, not a spinner of its own. */
+    .auth-card .flash {
+      box-shadow: none;
+    }
+
+    .auth-card-head {
+      margin-bottom: 1.75rem;
+    }
+
+    .auth-greeting {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent-ink);
+      margin: 0 0 0.5rem;
+    }
+
+    .auth-card-head h1 {
+      font-size: clamp(2.5rem, 4.4vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin: 0 0 0.75rem;
+    }
+
+    .auth-card-head p {
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    .auth-card-head p.auth-greeting {
+      color: var(--accent-ink);
+      margin: 0 0 0.5rem;
+    }
+
+    /* ---- role switch (Branch / HQ Admin pill toggle) ---- */
+    .role-switch {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+      background: var(--field);
+      border: 1px solid var(--border-strong);
+      border-radius: 99px;
+      padding: 4px;
+      margin: 0 0 1.5rem;
+    }
+
+    .role-option {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border: none;
+      background: transparent;
+      border-radius: 99px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: color 0.18s ease;
+    }
+
+    .role-option svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .role-option:hover {
+      color: var(--ink);
+    }
+
+    .role-option.active {
+      color: var(--ink);
+    }
+
+    .role-option.active svg {
+      color: var(--accent-ink);
+    }
+
+    .role-switch-thumb {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 4px;
+      width: calc(50% - 4px);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 99px;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.64, 1);
+    }
+
+    .role-switch-thumb.admin {
+      transform: translateX(100%);
+    }
+
+    /* ---- inputs with a leading icon + (for password) a reveal toggle ---- */
+    .field {
+      margin-bottom: 1.125rem;
+    }
+
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .input-shell {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-shell svg.field-icon {
+      position: absolute;
+      left: 16px;
+      width: 18px;
+      height: 18px;
+      color: var(--ink-soft);
+      pointer-events: none;
+    }
+
+    .input-shell input {
+      width: 100%;
+      height: 3.25rem;
+      padding: 0 16px 0 46px;
+      font-size: 16px;
+      border-radius: 14px;
+      /* A real 3:1 edge: the filled field alone is too faint on light. */
+      border: 1px solid color-mix(in srgb, var(--ink) 38%, transparent);
+    }
+
+    .input-shell input[type="password"],
+    .input-shell input.has-reveal {
+      padding-right: 48px;
+    }
+
+    /* Browsers inject their own reveal-password eye inside
+       type="password"; hide it so ours is the only one. */
+    .input-shell input[type="password"]::-ms-reveal,
+    .input-shell input[type="password"]::-ms-clear,
+    .input-shell input[type="password"]::-webkit-reveal,
+    .input-shell input[type="password"]::-webkit-textfield-decoration-container,
+    .input-shell input[type="password"]::-webkit-credentials-auto-fill-button,
+    .input-shell input[type="password"]::-webkit-strong-password-auto-fill-button {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    .reveal-btn {
+      position: absolute;
+      right: 8px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      border-radius: 10px;
+      color: var(--ink-soft);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .reveal-btn:hover {
+      color: var(--ink);
+      background: var(--accent-soft);
+    }
+
+    .reveal-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .field.has-error input {
+      border-color: var(--danger);
+    }
+
+    .field.has-error input:focus {
+      box-shadow: 0 0 0 4px var(--danger-soft);
+    }
+
+    .field-error,
+    .field-note {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+
+    .field-error {
+      color: var(--danger);
+    }
+
+    .field-note {
+      color: var(--warning);
+    }
+
+    .field.has-error .field-error {
+      display: flex;
+    }
+
+    .field-note.show {
+      display: flex;
+    }
+
+    .field-error svg,
+    .field-note svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    /* Loading feedback is the app-wide centered dialog (see
+       initSubmitLoadingState() in main.js); here the button only
+       looks disabled. */
+    .auth-card .btn-accent {
+      width: 100%;
+      height: 3.25rem;
+      margin-top: 0.5rem;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .auth-card .btn-accent:active {
+      transform: scale(0.98);
+    }
+
     .btn-accent[disabled] {
       opacity: 0.85;
       cursor: not-allowed;
     }
 
     .auth-hint {
-      text-align: center;
-      font-size: 12px;
-      color: var(--ink-faint);
-      margin-top: 20px;
+      text-align: left;
+      font-size: 14px;
+      color: var(--ink-soft);
+      margin-top: 1.25rem;
       line-height: 1.6;
     }
 
-    @media (max-width: 460px) {
+    @media (max-width: 960px) {
       .auth-card {
-        padding: 30px 22px 26px;
+        max-width: none;
+      }
+
+      .auth-card-head {
+        margin-bottom: 1.25rem;
+      }
+
+      .auth-card-head h1 {
+        font-size: 2.25rem;
+      }
+
+      .auth-card-head p {
+        font-size: 14px;
+      }
+
+      /* Comfortable thumb targets. */
+      .role-option {
+        min-height: 44px;
+      }
+
+      .reveal-btn {
+        width: 44px;
+        height: 44px;
+        right: 4px;
+      }
+
+      .auth-hint {
+        font-size: 13px;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .auth-card-head h1 {
+        font-size: 2rem;
+      }
+
+      .role-option {
+        gap: 6px;
+        padding: 10px 8px;
+        font-size: 13.5px;
+      }
+
+      .input-shell input {
+        padding-left: 42px;
+      }
+
+      .input-shell svg.field-icon {
+        left: 14px;
       }
     }
   </style>
@@ -335,40 +394,54 @@
     <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
   </button>
 
-  <div class="auth-shell">
-    <div class="auth-visual">
-      <video class="auth-visual-video" autoplay muted loop playsinline>
-        <source src="{{ url_for('static', filename='video/login_background.mp4') }}" type="video/mp4">
-      </video>
-      <div class="auth-blob auth-blob-gold"></div>
-      <div class="auth-blob auth-blob-amber"></div>
-      <div class="auth-visual-inner">
-        <div class="brand-top" style="margin-bottom: 12px;">
-          <img class="brand-wordmark brand-wordmark-lg" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
-            alt="Heaven &amp; Angel Scents">
+  {% set login_type = login_type|default('Branch') %}
+  <div class="auth-shell" id="authShell" data-role="{{ login_type }}">
+    <div class="auth-stage">
+      <div class="auth-arch-wrap">
+        <div class="auth-arch">
+          <video class="auth-visual-video" autoplay muted loop playsinline aria-hidden="true">
+            <source src="{{ url_for('static', filename='video/login_background.mp4') }}" type="video/mp4">
+          </video>
+          <div class="auth-blob auth-blob-gold" aria-hidden="true"></div>
+          <div class="auth-blob auth-blob-amber" aria-hidden="true"></div>
+          <div class="auth-arch-light" aria-hidden="true"></div>
+
+          <div class="auth-visual-inner">
+            <div class="brand-top">
+              <img class="brand-wordmark brand-wordmark-lg" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
+                alt="Heaven &amp; Angel Scents">
+            </div>
+            <div>
+              <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
+              <div class="auth-visual-tagline">One system for HQ and every branch. Stock, requests, and sales, all in sync.</div>
+              <p class="auth-role-line">
+                <span class="role-copy-branch">Check stock, request refills and record sales for your branch.</span>
+                <span class="role-copy-admin">Review requests, dispatch stock and audit every action across HQ.</span>
+              </p>
+              <ul class="auth-visual-points">
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span>Live stock levels across HQ and every branch</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span>Review and dispatch stock requests with full traceability</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span>Every sale, delivery, and admin action logged for audit</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
-        <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
-        <div class="auth-visual-tagline">One system for HQ and every branch — stock, requests, and sales, all in sync.</div>
-        <ul class="auth-visual-points">
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-            <span>Live stock levels across HQ and every branch</span>
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-            <span>Review and dispatch stock requests with full traceability</span>
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-            <span>Every sale, delivery, and admin action logged for audit</span>
-          </li>
-        </ul>
       </div>
     </div>
 
     <div class="auth-form-col">
       <div class="auth-card" id="authCard">
         <div class="auth-card-head">
+          <p class="auth-greeting" id="auth-greeting">Welcome back</p>
           <h1>Sign in</h1>
           <p>Use your HQ Admin or branch account to continue.</p>
         </div>
@@ -383,7 +456,6 @@
         {% endif %}
         {% endwith %}
 
-        {% set login_type = login_type|default('Branch') %}
         <div class="role-switch" role="tablist" aria-label="Sign in as">
           <button type="button" class="role-option {{ 'active' if login_type != 'Admin' }}" data-role="Branch" role="tab"
             aria-selected="{{ 'true' if login_type != 'Admin' else 'false' }}">
@@ -412,7 +484,7 @@
               <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="8" r="3.4"/><path d="M5 20.5c0-3.6 3.1-6 7-6s7 2.4 7 6"/>
               </svg>
-              <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+              <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" required>
             </div>
             <div class="field-error" id="username-error">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -428,7 +500,7 @@
               <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
               </svg>
-              <input type="password" id="password" name="password" autocomplete="current-password" minlength="8" required class="has-reveal">
+              <input type="password" id="password" name="password" autocomplete="current-password" minlength="8" enterkeyhint="go" required class="has-reveal">
               <button type="button" class="reveal-btn" id="passwordReveal" aria-label="Show password" tabindex="-1">
                 <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
                 <svg id="eyeOffIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a15.6 15.6 0 0 1-3.1 4.1M6.5 6.6C4 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.2-.9"/><path d="M9.9 10a3 3 0 0 0 4.2 4.2"/></svg>
@@ -441,14 +513,21 @@
               </svg>
               <span>Enter your password.</span>
             </div>
+            <div class="field-note" id="caps-note" role="status">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v5M12 16h.01" />
+              </svg>
+              <span>Caps Lock is on.</span>
+            </div>
           </div>
           <button type="submit" class="btn btn-accent" id="submit-btn">
-            <span id="submit-btn-label">Sign in as <span id="submit-role-label">Branch</span></span>
+            <span id="submit-btn-label">Sign in as <span id="submit-role-label">{{ 'HQ Admin' if login_type == 'Admin' else 'Branch' }}</span></span>
           </button>
         </form>
 
         <div class="auth-hint" id="auth-hint">
-          Branch staff use the account created for their branch.
+          {{ 'HQ staff sign in with their Admin account.' if login_type == 'Admin' else 'Branch staff use the account created for their branch.' }}
         </div>
       </div>
     </div>
@@ -458,6 +537,7 @@
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   <script>
     (function () {
+      var shell = document.getElementById('authShell');
       var hint = document.getElementById('auth-hint');
       var roleInput = document.getElementById('login_type');
       var roleLabel = document.getElementById('submit-role-label');
@@ -466,6 +546,11 @@
         Branch: 'Branch staff use the account created for their branch.',
         Admin: 'HQ staff sign in with their Admin account.'
       };
+
+      // ---- Time-of-day greeting ----
+      var greeting = document.getElementById('auth-greeting');
+      var hour = new Date().getHours();
+      greeting.textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
       document.querySelectorAll('.role-option').forEach(function (opt) {
         opt.addEventListener('click', function () {
@@ -481,6 +566,7 @@
           roleInput.value = role;
           roleLabel.textContent = role === 'Admin' ? 'HQ Admin' : 'Branch';
           hint.textContent = hints[role];
+          shell.dataset.role = role;
         });
       });
 
@@ -499,11 +585,53 @@
         });
       }
 
+      // ---- Caps Lock warning ----
+      var capsNote = document.getElementById('caps-note');
+      function checkCaps(e) {
+        if (e.getModifierState) capsNote.classList.toggle('show', e.getModifierState('CapsLock'));
+      }
+      passwordInput.addEventListener('keydown', checkCaps);
+      passwordInput.addEventListener('keyup', checkCaps);
+      passwordInput.addEventListener('blur', function () { capsNote.classList.remove('show'); });
+
       // ---- Validation ----
       var form = document.getElementById('login-form');
       var card = document.getElementById('authCard');
       var submitBtn = document.getElementById('submit-btn');
       var usernameInput = document.getElementById('username');
+
+      // ---- The arch fills with light as the form is completed ----
+      function updateFill() {
+        var fill = 0;
+        if (usernameInput.value.trim()) fill += 0.35;
+        if (passwordInput.value) fill += 0.35;
+        if (passwordInput.value.length >= 8) fill += 0.3;
+        shell.style.setProperty('--fill', fill.toFixed(2));
+      }
+      usernameInput.addEventListener('input', updateFill);
+      passwordInput.addEventListener('input', updateFill);
+      updateFill();
+
+      // ---- The arch leans toward the pointer (fine pointers only) ----
+      var canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      // Autofocus only where there is no on-screen keyboard to cover the page.
+      if (canHover) usernameInput.focus();
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (canHover && !reduceMotion) {
+        var ticking = false;
+        var nx = 0, ny = 0;
+        shell.addEventListener('pointermove', function (e) {
+          nx = (e.clientX / window.innerWidth - 0.5) * 2;
+          ny = (e.clientY / window.innerHeight - 0.5) * 2;
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(function () {
+            shell.style.setProperty('--px', nx.toFixed(3));
+            shell.style.setProperty('--py', ny.toFixed(3));
+            ticking = false;
+          });
+        });
+      }
 
       var fields = [
         {
@@ -569,19 +697,18 @@
         }
 
         if (submitBtn.disabled) {
-          // Already submitting — a stray second submit event (e.g. a
+          // Already submitting: a stray second submit event (e.g. a
           // very fast double Enter) shouldn't send the form twice.
           e.preventDefault();
           return;
         }
 
-        // Don't preventDefault here — let this real submission proceed
-        // natively. main.js's global submit listener (see
-        // initSubmitLoadingState()) picks it up the same way it does
-        // for every other form in the app and shows the shared
-        // centered "Loading…" dialog; disabling the button is just a
-        // belt-and-suspenders guard against a second click/Enter
-        // while that request is in flight.
+        // Don't preventDefault: let this real submission proceed
+        // natively. main.js's global submit listener
+        // (initSubmitLoadingState()) shows the shared centered
+        // "Loading" dialog; disabling the button is just a guard
+        // against a second click/Enter while the request is in flight.
+        shell.style.setProperty('--fill', '1');
         submitBtn.disabled = true;
       });
     })();

@@ -15,7 +15,7 @@ export default function PackageDetailPage() {
       <header className="detail-topbar">
         <div className="container">
           <Link to={listUrl} aria-label="Heaven & Angel Scents, all packages">
-            <img src="/static/img/logo-wordmark.png" alt="" />
+            <img src="/static/img/logo-wordmark-sm.webp" alt="" />
           </Link>
           <Link to={listUrl} className="detail-back" style={{ margin: 0 }}>
             <ArrowLeftIcon size={16} weight="bold" /> All packages

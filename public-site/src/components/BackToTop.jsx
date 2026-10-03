@@ -16,10 +16,23 @@ export default function BackToTop() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const check = () => setShow(window.scrollY > SHOW_AFTER);
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      setShow(window.scrollY > SHOW_AFTER);
+    };
+    // Scroll fires far more often than once per frame during momentum
+    // scrolling; batch to one read per rAF, like the page's other
+    // scroll-driven motion (Motion's useScroll does this internally).
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(check);
+    };
     check();
-    window.addEventListener('scroll', check, { passive: true });
-    return () => window.removeEventListener('scroll', check);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   const toTop = () => window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });

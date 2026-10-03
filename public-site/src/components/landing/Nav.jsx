@@ -162,7 +162,7 @@ export default function Nav({ hiddenIds = [] }) {
       >
         <div className="container nav-inner">
           <a className="nav-brand" href="#top" aria-label="Heaven & Angel Scents, back to top">
-            <img src="/static/img/logo-wordmark.png" alt="" />
+            <img src="/static/img/logo-wordmark-sm.webp" alt="" />
           </a>
 
           <nav className="nav-links" aria-label="Sections" onMouseLeave={() => setHovered(null)}>

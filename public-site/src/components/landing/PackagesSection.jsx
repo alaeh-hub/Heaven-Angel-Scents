@@ -34,7 +34,11 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
 
         {data && packages.length > 0 && (
           <LayoutGroup>
-            <motion.div className="pkg-grid" layout transition={SPRING} aria-busy={loading}>
+            {/* No `layout` here: each PackageCard already carries its own
+                `layout` for popLayout's FLIP reposition. Animating the
+                wrapper too would force a second, redundant measurement
+                pass (grid + every card) on each filter change. */}
+            <motion.div className="pkg-grid" aria-busy={loading}>
               {/* No initial={false}: the first set of cards has to run its
                   own scroll-in reveal (see PackageCard) when data lands. */}
               <AnimatePresence mode="popLayout">
