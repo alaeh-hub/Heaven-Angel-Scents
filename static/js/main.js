@@ -968,6 +968,14 @@ function initSoftNav() {
 
         e.preventDefault();
         const formData = new FormData(form, submitter);
+        // Opt-in for a form that only adds/removes one line of an
+        // in-page list (formulas.html's packaging-materials cart, a
+        // status-update dropdown, ...) rather than navigating anywhere —
+        // snapping to the top and repainting the whole page after every
+        // such action is what reads as "the page just reloaded" even
+        // though nothing actually did, same reasoning as the tab/filter
+        // links above.
+        const preserveScroll = form.hasAttribute('data-preserve-scroll');
         go(
             () => fetch(form.action, {
                 method: 'POST',
@@ -976,6 +984,7 @@ function initSoftNav() {
             }),
             form.action,
             'push',
+            preserveScroll,
         );
     });
 

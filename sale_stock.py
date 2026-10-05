@@ -18,9 +18,15 @@ permanent snapshot in sale_voids with who voided it and why, then deletes
 the sales row so every revenue / units / customer / credit total
 corrects itself without each query having to filter voids out.
 
-Both run inside the caller's transaction() on its dictionary cursor and
-raise TransactionAborted (rolled back, nothing written) with a message
-fit to flash.
+Settling (settle_credit): a Credit sale was never "wrong" the way a voided
+one is — the product really did leave on credit — so this doesn't touch
+stock or delete anything. It just stamps credit_settled_at/_by once the
+buyer pays it off, so routes' credit_purchases() (branch and admin) can
+exclude it from what's still outstanding.
+
+All three run inside the caller's transaction() on its dictionary cursor
+and raise TransactionAborted (rolled back, nothing written) with a
+message fit to flash.
 """
 from db import TransactionAborted
 from utils import bottle_size_ml
@@ -144,4 +150,28 @@ def void_sale(cur, *, sale_id, reason, user_id, username, branch_id=None, today_
          sale.get("customer_name"), sale["sold_at"], reason, user_id, username),
     )
     cur.execute("DELETE FROM sales WHERE sale_id = %s", (sale_id,))
+    return sale
+
+
+def settle_credit(cur, *, sale_id, username, branch_id=None):
+    """Mark one Credit sale as paid back. branch_id restricts a branch
+    user to their own branch's sales, same convention as void_sale.
+    Returns the settled sale's row.
+    """
+    cur.execute(
+        """SELECT s.*, p.item_name FROM sales s JOIN products p ON p.sku = s.sku
+           WHERE s.sale_id = %s FOR UPDATE""",
+        (sale_id,),
+    )
+    sale = cur.fetchone()
+    if not sale or (branch_id is not None and sale["branch_id"] != branch_id):
+        raise TransactionAborted("That sale no longer exists.")
+    if sale["payment_method"] != "Credit":
+        raise TransactionAborted("That sale isn't a Credit sale.")
+    if sale["credit_settled_at"] is not None:
+        raise TransactionAborted("That credit was already marked as paid.")
+    cur.execute(
+        "UPDATE sales SET credit_settled_at = NOW(), credit_settled_by = %s WHERE sale_id = %s",
+        (username, sale_id),
+    )
     return sale

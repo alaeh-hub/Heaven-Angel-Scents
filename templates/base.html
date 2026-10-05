@@ -819,6 +819,14 @@
                     </svg>
                     Customers
                 </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin.credit_purchases' }}"
+                    href="{{ url_for('admin.credit_purchases') }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="2" y="6" width="20" height="13" rx="2" />
+                        <path d="M2 10h20M6 15h4" />
+                    </svg>
+                    Credit Purchases
+                </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.announcements' }}"
                     href="{{ url_for('admin.announcements') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">

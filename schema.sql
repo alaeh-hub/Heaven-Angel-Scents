@@ -2323,3 +2323,34 @@ DROP PROCEDURE _migrate_bulk_batches_target_unit;
 --     every row matches).
 -- ----------------------------------------------------------------------------
 UPDATE products SET unit = 'BULK' WHERE category = 'Bulk/Refill' AND unit <> 'BULK';
+
+-- ----------------------------------------------------------------------------
+-- 45. Migration — sales: credit settlement (credit_settled_at/by)
+--
+--     Until now a Credit sale had no way to be cleared once collected —
+--     payment_method just stayed 'Credit' forever, so the Credit
+--     Purchases leaderboard (routes/branch.py's credit_purchases()) summed
+--     every Credit sale ever made, with no way to tell a still-owed
+--     balance from one already paid back. These two columns back a
+--     "Mark as paid" action (sale_stock.settle_credit(), wired up from
+--     the Scan Receipt page) that records who cleared it and when;
+--     credit_purchases() queries now exclude settled rows so the
+--     leaderboard reflects what's still outstanding.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE _migrate_sales_credit_settled()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND column_name = 'credit_settled_at'
+    ) THEN
+        ALTER TABLE sales ADD COLUMN credit_settled_at TIMESTAMP NULL AFTER buyer_name;
+        ALTER TABLE sales ADD COLUMN credit_settled_by VARCHAR(80) NULL AFTER credit_settled_at;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_sales_credit_settled();
+DROP PROCEDURE _migrate_sales_credit_settled;

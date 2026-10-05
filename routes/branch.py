@@ -923,7 +923,9 @@ def credit_purchases():
     NOT "who rang up the sale": there's no such column on `sales` (see
     record_sale()'s comment on buyer_name/buyer_user_id above), only who
     the product was taken *for* on a Credit sale. Ordinary Cash sales
-    aren't attributable to any one person and are excluded.
+    aren't attributable to any one person and are excluded. Settled
+    credit (see sale_stock.settle_credit(), used from the Scan Receipt
+    page's "Mark as paid") drops off here once cleared.
     """
     bid = _branch_id()
     rows = query(
@@ -936,7 +938,7 @@ def credit_purchases():
            FROM sales s
            JOIN products p ON p.sku = s.sku
            LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
-           WHERE s.branch_id = %s AND s.payment_method = 'Credit'
+           WHERE s.branch_id = %s AND s.payment_method = 'Credit' AND s.credit_settled_at IS NULL
            GROUP BY COALESCE(s.buyer_name, bu.username)
            ORDER BY total_amount DESC""",
         (bid,),
@@ -944,7 +946,7 @@ def credit_purchases():
     totals = query(
         """SELECT COUNT(*) AS transaction_count,
                   COALESCE(SUM(qty_sold * unit_price), 0) AS total_amount
-           FROM sales WHERE branch_id = %s AND payment_method = 'Credit'""",
+           FROM sales WHERE branch_id = %s AND payment_method = 'Credit' AND credit_settled_at IS NULL""",
         (bid,), fetchone=True,
     )
     return render_template("branch/credit_purchases.html", rows=rows, totals=totals)

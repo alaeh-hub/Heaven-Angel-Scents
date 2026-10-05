@@ -3075,6 +3075,28 @@ def formulas():
     bulk_rate = query(
         "SELECT rate_per_ml FROM bulk_rate_settings WHERE id = 1", fetchone=True,
     )["rate_per_ml"]
+    # Same idea as the per-size reference below, but for the one shared
+    # Bulk/Refill rate: averaged all-in cost per mL (total_cost ÷
+    # total_volume_ml — same figure the Bulk Batches page itself shows
+    # as each batch's "Cost / mL", see all_in_cost_per_ml there) across
+    # every active batch (remaining_ml > 0), so the two pages always
+    # agree on what a batch "costs per mL" rather than this one quietly
+    # using the liquid-only cost_per_ml column instead. Purely
+    # informational, same as the Bottled reference above — Save rate
+    # still has to be clicked by hand.
+    active_batches_for_rate = query(
+        "SELECT total_cost, total_volume_ml FROM bulk_batches WHERE remaining_ml > 0")
+    reference_rate_per_ml = None
+    reference_rate_batch_count = len(active_batches_for_rate)
+    if active_batches_for_rate:
+        all_in_rates = [
+            b["total_cost"] / b["total_volume_ml"]
+            for b in active_batches_for_rate if b["total_volume_ml"]
+        ]
+        if all_in_rates:
+            reference_rate_per_ml = (
+                sum(all_in_rates, decimal.Decimal("0")) / len(all_in_rates)
+            ).quantize(decimal.Decimal("0.0001"))
     cogs_rows = query(
         "SELECT unit, base_cost_per_unit FROM unit_cogs_settings")
     cogs_by_unit = {r["unit"]: r["base_cost_per_unit"] for r in cogs_rows}
@@ -3155,6 +3177,8 @@ def formulas():
         "admin/formulas.html",
         units=units,
         bulk_rate=bulk_rate,
+        reference_rate_per_ml=reference_rate_per_ml,
+        reference_rate_batch_count=reference_rate_batch_count,
         materials=materials_list,
     )
 
@@ -4156,6 +4180,54 @@ def customers():
     return render_template(
         "admin/customers.html", rows=rows, totals=totals,
         multi_branch_count=multi_branch_count,
+    )
+
+
+# ---------------------------------------------------------------- credit purchases
+@bp.route("/credit-purchases")
+@admin_required
+def credit_purchases():
+    """Outstanding Credit across every branch — who still owes what,
+    HQ-wide. Mirrors branch.credit_purchases() but grouped by branch +
+    buyer (so the same name at two branches stays two rows) and filterable
+    by branch. Settled credit (see sale_stock.settle_credit(), used from
+    the Scan Receipt page's "Mark as paid") drops off once cleared.
+    """
+    branch_filter = request.args.get("branch_id", "all")
+    branches = query("SELECT branch_id, branch_name, is_hq FROM branches ORDER BY is_hq DESC, branch_name")
+
+    sql = """SELECT s.branch_id, b.branch_name,
+                    COALESCE(s.buyer_name, bu.username) AS buyer_name,
+                    COUNT(*) AS transaction_count,
+                    COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS total_units,
+                    COALESCE(SUM(CASE WHEN p.unit = 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS total_bulk_ml,
+                    COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS total_amount,
+                    MAX(s.sold_at) AS last_taken_at
+             FROM sales s
+             JOIN products p ON p.sku = s.sku
+             JOIN branches b ON b.branch_id = s.branch_id
+             LEFT JOIN users bu ON s.buyer_user_id = bu.user_id
+             WHERE s.payment_method = 'Credit' AND s.credit_settled_at IS NULL"""
+    params = []
+    if branch_filter.isdigit():
+        sql += " AND s.branch_id = %s"
+        params.append(int(branch_filter))
+    sql += """ GROUP BY s.branch_id, b.branch_name, COALESCE(s.buyer_name, bu.username)
+               ORDER BY total_amount DESC"""
+    rows = query(sql, tuple(params))
+
+    totals_sql = """SELECT COUNT(*) AS transaction_count,
+                            COALESCE(SUM(qty_sold * unit_price), 0) AS total_amount
+                     FROM sales WHERE payment_method = 'Credit' AND credit_settled_at IS NULL"""
+    totals_params = ()
+    if branch_filter.isdigit():
+        totals_sql += " AND branch_id = %s"
+        totals_params = (int(branch_filter),)
+    totals = query(totals_sql, totals_params, fetchone=True)
+
+    return render_template(
+        "admin/credit_purchases.html", rows=rows, totals=totals,
+        branches=branches, branch_filter=branch_filter,
     )
 
 

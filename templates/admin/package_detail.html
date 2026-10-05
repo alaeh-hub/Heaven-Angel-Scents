@@ -18,7 +18,7 @@
 <div class="card card-pad">
   <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
   {% if available_products %}
-  <form method="POST" action="{{ url_for('admin.add_package_item', package_id=pkg.package_id) }}">
+  <form method="POST" action="{{ url_for('admin.add_package_item', package_id=pkg.package_id) }}" data-preserve-scroll>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <div class="field">
@@ -96,6 +96,7 @@
                  plain (auto-escaped) HTML attribute now instead of a
                  |tojson'd JS string inside an onsubmit handler. -->
             <form method="POST" action="{{ url_for('admin.remove_package_item', package_id=pkg.package_id) }}"
+              data-preserve-scroll
               data-confirm="{{ ('This is the last product in \"' ~ pkg.package_name ~ '\" — removing it will delete the whole package. Are you sure?') if items|length == 1 else ('Remove ' ~ item.item_name ~ ' from this package?') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="package_item_id" value="{{ item.package_item_id }}">

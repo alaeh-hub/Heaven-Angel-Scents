@@ -14,6 +14,7 @@
     var resultHead = document.getElementById("scanResultHead");
     var resultBody = document.getElementById("scanResultBody");
     var resultEmpty = document.getElementById("scanResultEmpty");
+    var actionsEl = document.getElementById("scanActions");
 
     if (!video || !canvas) return;
 
@@ -265,6 +266,7 @@
             rows.push(field("Address", esc(sale.customer_address), true));
         }
         resultBody.innerHTML = rows.join("");
+        renderActions(sale);
     }
 
     function showNotFound(message) {
@@ -273,6 +275,129 @@
         popResult(false);
         resultHead.innerHTML = '<span class="scan-badge-bad">&#10007; Not verified</span>';
         resultBody.innerHTML = '<div class="scan-field-full">' + esc(message) + "</div>";
+        actionsEl.style.display = "none";
+        actionsEl.innerHTML = "";
+    }
+
+    // ---- Void / mark-credit-paid actions on a verified sale ----
+    function renderActions(sale) {
+        actionsEl.innerHTML = "";
+        actionsEl.style.display = "";
+
+        var feedback = document.createElement("div");
+        feedback.className = "scan-action-feedback";
+        feedback.id = "scanActionFeedback";
+        actionsEl.appendChild(feedback);
+
+        var row = document.createElement("div");
+        row.className = "scan-actions-row";
+
+        if (sale.is_credit && !sale.credit_settled) {
+            var settleBtn = document.createElement("button");
+            settleBtn.type = "button";
+            settleBtn.className = "btn btn-accent btn-sm";
+            settleBtn.textContent = "Mark credit paid";
+            settleBtn.addEventListener("click", function () { settleCredit(sale, settleBtn); });
+            row.appendChild(settleBtn);
+        }
+
+        var voidBtn = document.createElement("button");
+        voidBtn.type = "button";
+        voidBtn.className = "btn btn-ghost btn-sm";
+        voidBtn.textContent = "Void sale";
+        if (!sale.voidable) {
+            voidBtn.disabled = true;
+            voidBtn.title = "Branch staff can only void sales recorded today — ask HQ to void older ones.";
+        } else {
+            voidBtn.addEventListener("click", function () { showVoidPrompt(sale); });
+        }
+        row.appendChild(voidBtn);
+
+        actionsEl.appendChild(row);
+    }
+
+    function setActionFeedback(ok, message) {
+        var fb = document.getElementById("scanActionFeedback");
+        if (!fb) return;
+        fb.textContent = message;
+        fb.className = "scan-action-feedback " + (ok ? "ok" : "bad");
+    }
+
+    function disableActionButtons() {
+        actionsEl.querySelectorAll(".scan-actions-row button").forEach(function (b) { b.disabled = true; });
+    }
+
+    function showVoidPrompt(sale) {
+        var existing = document.getElementById("scanVoidPrompt");
+        if (existing) existing.remove();
+
+        var wrap = document.createElement("div");
+        wrap.className = "scan-void-prompt";
+        wrap.id = "scanVoidPrompt";
+        wrap.innerHTML =
+            '<label for="scanVoidReasonInput" style="font-size:12px;font-weight:700;">Reason for voiding</label>' +
+            '<textarea id="scanVoidReasonInput" rows="2" maxlength="255" ' +
+            'placeholder="e.g. Wrong item scanned, customer returned it, entered twice"></textarea>' +
+            '<div style="display:flex;gap:8px;">' +
+            '<button type="button" class="btn btn-ghost btn-sm" id="scanVoidCancelBtn">Cancel</button>' +
+            '<button type="button" class="btn btn-danger btn-sm" id="scanVoidConfirmBtn">Confirm void</button>' +
+            "</div>";
+        actionsEl.appendChild(wrap);
+        document.getElementById("scanVoidReasonInput").focus();
+        document.getElementById("scanVoidCancelBtn").addEventListener("click", function () { wrap.remove(); });
+        document.getElementById("scanVoidConfirmBtn").addEventListener("click", function () {
+            var reason = document.getElementById("scanVoidReasonInput").value.trim();
+            if (!reason) {
+                setActionFeedback(false, "Give a reason for voiding this sale.");
+                return;
+            }
+            voidSale(sale.sale_id, reason, wrap);
+        });
+    }
+
+    function voidSale(saleId, reason, promptEl) {
+        fetch("/scan/sales/" + saleId + "/void", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+            body: JSON.stringify({ reason: reason }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    promptEl.remove();
+                    setActionFeedback(true, data.message);
+                    disableActionButtons();
+                } else {
+                    setActionFeedback(false, data.message || "Couldn’t void that sale.");
+                }
+            })
+            .catch(function () {
+                setActionFeedback(false, "Couldn’t reach the server to void that sale.");
+            });
+    }
+
+    function settleCredit(sale, btn) {
+        btn.disabled = true;
+        fetch("/scan/sales/" + sale.sale_id + "/settle-credit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+            body: JSON.stringify({}),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    sale.credit_settled = true;
+                    setActionFeedback(true, data.message);
+                    btn.remove();
+                } else {
+                    btn.disabled = false;
+                    setActionFeedback(false, data.message || "Couldn’t mark that credit as paid.");
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                setActionFeedback(false, "Couldn’t reach the server to mark that credit as paid.");
+            });
     }
 
     // ---- Lifecycle ----

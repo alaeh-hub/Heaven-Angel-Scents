@@ -109,14 +109,23 @@
   <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" style="padding: 0 22px 22px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row" style="align-items:flex-end;">
-      <div class="field" style="flex:0 0 180px;">
+      <div class="field" style="flex:1 1 220px; margin-bottom: 0;">
         <label for="rate_per_ml">Rate per mL (₱)</label>
         <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0" value="{{ bulk_rate }}" required>
       </div>
-      <div class="field" style="flex:0 0 auto;">
+      <div class="field" style="flex:0 0 auto; margin-bottom: 0;">
         <button type="submit" class="btn btn-accent">Save rate</button>
       </div>
     </div>
+    {% if reference_rate_per_ml is not none %}
+    <div class="help" style="margin-top:0.625rem;">
+      Reference: ~₱{{ '%.4f'|format(reference_rate_per_ml) }}/mL avg cost across
+      {{ reference_rate_batch_count }} active batch{{ 'es' if reference_rate_batch_count != 1 }} on
+      <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a>.
+    </div>
+    {% else %}
+    <div class="help" style="margin-top:0.625rem;">Reference unavailable — no active bulk batch yet.</div>
+    {% endif %}
   </form>
 </div>
 
@@ -190,7 +199,7 @@
     a batch's own cost per mL on the <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a> page.
   </p>
 
-  <form method="POST" action="{{ url_for('admin.add_formula_item') }}" class="fm-add-row">
+  <form method="POST" action="{{ url_for('admin.add_formula_item') }}" class="fm-add-row" data-preserve-scroll>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field field-unit">
       <label for="fmUnit">Size</label>
@@ -243,7 +252,7 @@
               <td class="num mono" data-label="Cost / unit">₱{{ '%.4f'|format(item.cost_per_unit) }}</td>
               <td class="num mono" data-label="Line cost">₱{{ '%.4f'|format(item.line_cost) }}</td>
               <td>
-                <form method="POST" action="{{ url_for('admin.delete_formula_item') }}"
+                <form method="POST" action="{{ url_for('admin.delete_formula_item') }}" data-preserve-scroll
                   onsubmit="return confirm('Remove this material from the {{ u.unit }} formula?');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="formula_item_id" value="{{ item.formula_item_id }}">
