@@ -458,8 +458,8 @@
   <div class="card card-pad" style="max-width:640px; width:100%;">
     <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
     <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Changing this updates the reference cost per unit shown on this page only — it has no effect on any formula,
-      which sets its own line costs by hand on the Formulas page.
+      The unit is fixed after creation because formulas and inventory history use it. To track this material in a
+      different unit, add it as a separate material.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_material') }}" id="editMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -486,11 +486,13 @@
         </div>
         <div class="field">
           <label for="editUnit">Unit</label>
-          <select id="editUnit" name="unit" required>
+          <select id="editUnit" disabled aria-describedby="editUnitHelp">
             {% for u in unit_choices %}
             <option value="{{ u }}">{{ u }}</option>
             {% endfor %}
           </select>
+          <input type="hidden" id="editUnitValue" name="unit">
+          <div class="help" id="editUnitHelp">Unit cannot be changed after creation.</div>
           <div class="help" id="editVolumeEquivPreview" style="display:none;"></div>
         </div>
         <div class="field">
@@ -540,6 +542,10 @@
         <label for="restockCost">Cost for that purchase (₱)</label>
         <input type="number" id="restockCost" name="cost" step="0.01" min="0" required>
         <div class="help" id="restockCostPreview" style="display:none;"></div>
+      </div>
+      <div class="field">
+        <label for="restockPurchasedAt">Purchase date</label>
+        <input type="date" id="restockPurchasedAt" name="purchased_at" value="{{ today }}" max="{{ today }}" data-today="{{ today }}" required>
       </div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button type="button" class="btn btn-ghost" style="flex:1;" id="restockMaterialCancelBtn">Cancel</button>
@@ -776,6 +782,7 @@
     var qtyInput = document.getElementById('editPackageQty');
     var qtyLabel = document.getElementById('editPackageQtyLabel');
     var unitSelect = document.getElementById('editUnit');
+    var unitValue = document.getElementById('editUnitValue');
     var costInput = document.getElementById('editPackageCost');
     var costLabel = document.getElementById('editPackageCostLabel');
     var costPreview = document.getElementById('editCostPreview');
@@ -850,6 +857,7 @@
       nameInput.value = btn.dataset.materialName;
       qtyInput.value = btn.dataset.packageQty;
       unitSelect.value = btn.dataset.unit;
+      unitValue.value = btn.dataset.unit;
       costInput.value = btn.dataset.packageCost;
       receiptInput.value = btn.dataset.receiptNumber || '';
       supplierSelect.value = btn.dataset.supplierId || '';
@@ -878,6 +886,7 @@
     var qtyInput = document.getElementById('restockQty');
     var costInput = document.getElementById('restockCost');
     var costPreview = document.getElementById('restockCostPreview');
+    var purchasedAtInput = document.getElementById('restockPurchasedAt');
     var cancelBtn = document.getElementById('restockMaterialCancelBtn');
     var unit = '';
 
@@ -903,6 +912,7 @@
       stockEl.textContent = 'Currently ' + btn.dataset.stockQty + ' ' + unit.toLowerCase() + ' in stock.';
       qtyInput.value = '';
       costInput.value = '';
+      purchasedAtInput.value = purchasedAtInput.dataset.today;
       costPreview.style.display = 'none';
       openOverlay(overlay);
     };

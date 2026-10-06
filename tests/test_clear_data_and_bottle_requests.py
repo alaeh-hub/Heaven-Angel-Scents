@@ -213,7 +213,7 @@ def test_branch_skus_carried_counts_base_codes(client, sql):
     for unit, category in (("85ML", "Bottled"), ("50ML", "Bottled"), ("BULK", "Bulk/Refill")):
         cur.execute(
             "INSERT INTO products (sku, item_name, variant, category, unit, price) "
-            "VALUES (%s, 'Seraph', 'Unisex', %s, %s, 1)", (f"{code}-{unit}", category, unit))
+            "VALUES (%s, 'Seraph', 'Male', %s, %s, 1)", (f"{code}-{unit}", category, unit))
         cur.execute("INSERT INTO branch_inventory (branch_id, sku, stock_qty) VALUES (%s, %s, 5)",
                     (branch_id, f"{code}-{unit}"))
     sql.commit()

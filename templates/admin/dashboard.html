@@ -262,7 +262,7 @@
             <td data-label="Partner"><a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}"
                 class="item-name">{{ p.partner_name }}</a></td>
             <td data-label="Type"><span
-                class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type
+                class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type
                 }}</span></td>
             <td class="num mono" data-label="Orders">{{ p.order_count }}</td>
             <td class="num mono" data-label="Total sales">{{ p.total_spent|peso }}</td>

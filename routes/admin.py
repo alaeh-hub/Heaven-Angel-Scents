@@ -1,5 +1,4 @@
 import csv
-import datetime
 import decimal
 import io
 import os
@@ -27,7 +26,7 @@ from utils import (
     BATCH_VOLUME_UNITS, BOTTLE_UNITS, FORMULA_UNITS, ML_PER_BATCH_UNIT, MATERIAL_UNITS, PARTNER_TYPES,
     PAYMENT_METHODS, PRODUCT_CATEGORIES, PRODUCT_UNITS, SALE_TYPES, ValidationError,
     base_code_from_sku, bottle_size_ml, build_sku, compatible_material_units, consume_form_token, convert_material_qty,
-    generate_temp_password, issue_form_token,
+    business_now, business_today, generate_temp_password, issue_form_token,
     parse_base_code, parse_non_negative_decimal, parse_non_negative_int, parse_optional_id,
     parse_optional_text, parse_past_date, parse_positive_decimal, parse_positive_int,
     parse_required_text, percent_change,
@@ -81,7 +80,7 @@ def dashboard():
         "sku_count": query("SELECT COUNT(*) c FROM products", fetchone=True)["c"],
         "branch_count": query("SELECT COUNT(*) c FROM branches WHERE is_hq = FALSE", fetchone=True)["c"],
         "pending_requests": query(
-            "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
+            "SELECT COUNT(*) c FROM stock_requests WHERE status IN ('Pending', 'Partially Fulfilled')", fetchone=True
         )["c"],
         # HQ's warehouse plus every branch — see LOW_STOCK_WHERE.
         "low_stock_count": query(
@@ -389,7 +388,7 @@ def products():
             if category not in PRODUCT_CATEGORIES:
                 raise ValidationError("Select a valid category.")
             valid_units = PRODUCT_UNITS if category == "Bulk/Refill" else BOTTLE_UNITS
-            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in valid_units:
+            if not item_name or variant not in ("Male", "Female") or unit not in valid_units:
                 raise ValidationError(
                     "Please fill in every field with a valid value.")
             # The base code is reusable across sizes (e.g. base 'A1' + unit
@@ -476,7 +475,7 @@ def edit_product():
 
     try:
         price = parse_non_negative_decimal(request.form.get("price"), "Price")
-        if not item_name or variant not in ("Male", "Female", "Unisex"):
+        if not item_name or variant not in ("Male", "Female"):
             raise ValidationError(
                 "Please fill in every field with a valid value.")
         # Optional — a new file replaces the existing image. Validated
@@ -557,7 +556,7 @@ def export_products():
     # of guessing cp1252 on a plain utf-8 file, same reasoning as any
     # other CSV this app hands to a non-technical admin.
     payload = buffer.getvalue().encode("utf-8-sig")
-    filename = f"products_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"products_{business_now().strftime('%Y%m%d_%H%M%S')}.csv"
     return send_file(
         io.BytesIO(payload), mimetype="text/csv",
         as_attachment=True, download_name=filename,
@@ -626,7 +625,7 @@ def import_products():
             # including BULK. Category isn't a CSV column: it follows from
             # the unit, same pairing the manual Add form enforces (BULK is
             # always Bulk/Refill, a bottle size is always Bottled).
-            if not item_name or variant not in ("Male", "Female", "Unisex") or unit not in PRODUCT_UNITS:
+            if not item_name or variant not in ("Male", "Female") or unit not in PRODUCT_UNITS:
                 raise ValidationError(
                     f"item_name, variant, and unit must all be valid (unit is one of "
                     f"{', '.join(PRODUCT_UNITS)}).")
@@ -1549,7 +1548,7 @@ def requests_list():
     if status_filter != "all":
         sql += " WHERE sr.status = %s"
         params = (status_filter,)
-    sql += " GROUP BY sr.request_id ORDER BY FIELD(sr.status,'Pending','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"
+    sql += " GROUP BY sr.request_id ORDER BY FIELD(sr.status,'Pending','Partially Fulfilled','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"
     stock_requests = query(sql, params)
     return render_template("admin/requests.html", stock_requests=stock_requests, status_filter=status_filter)
 
@@ -1571,31 +1570,40 @@ def review_request(request_id):
     if not req:
         abort(404)
     items = query(
-        """SELECT sri.*, p.item_name, p.variant, p.unit
+        """SELECT sri.*, p.item_name, p.variant, p.unit,
+                  GREATEST(sri.requested_qty - COALESCE(sri.received_qty, 0), 0) AS remaining_qty
            FROM stock_request_items sri JOIN products p ON sri.sku = p.sku
            WHERE sri.request_id = %s ORDER BY p.item_name""",
         (request_id,),
     )
     total_value = sum(
         (item["requested_qty"] * item["unit_price"]) for item in items)
-    return render_template("admin/request_detail.html", req=req, items=items, total_value=total_value)
+    shipments = query(
+        """SELECT ss.shipment_id, ss.status, ss.dispatched_at, ss.received_at,
+                  COALESCE(SUM(ssi.dispatched_qty), 0) AS total_dispatched
+           FROM stock_request_shipments ss
+           LEFT JOIN stock_request_shipment_items ssi ON ssi.shipment_id = ss.shipment_id
+           WHERE ss.request_id = %s
+           GROUP BY ss.shipment_id ORDER BY ss.shipment_id DESC""",
+        (request_id,),
+    )
+    return render_template("admin/request_detail.html", req=req, items=items, total_value=total_value, shipments=shipments)
 
 
 @bp.route("/requests/<int:request_id>/dispatch", methods=["POST"])
 @admin_required
 def dispatch_request(request_id):
-    """Dispatch some or all items on a Pending delivery in one shot.
+    """Create a shipment for some or all of the request's outstanding items.
 
     Comes from the per-item quantity inputs on request_detail.html —
-    item_id[] / dispatched_qty[] pairs, one per line on the delivery.
-    Defaults to the full requested_qty per item if the admin didn't touch
-    a field, same as the old single-item flow defaulted to requested_qty
-    when dispatched_qty was left blank.
+    item_id[] / dispatched_qty[] pairs, one per request line. The page
+    defaults each line to its outstanding quantity; zero leaves that line
+    out of this shipment.
     """
     item_ids = request.form.getlist("item_id[]")
     raw_qtys = request.form.getlist("dispatched_qty[]")
 
-    if not item_ids:
+    if not item_ids or len(item_ids) != len(raw_qtys) or len(set(item_ids)) != len(item_ids):
         flash("Nothing to dispatch.", "error")
         return redirect(url_for("admin.review_request", request_id=request_id))
 
@@ -1625,7 +1633,7 @@ def dispatch_request(request_id):
             cur.execute(
                 "SELECT * FROM stock_requests WHERE request_id = %s FOR UPDATE", (request_id,))
             req = cur.fetchone()
-            if not req or req["status"] != "Pending":
+            if not req or req["status"] not in ("Pending", "Partially Fulfilled"):
                 # Safe as a plain return — this is the very first check
                 # after locking the header row, before any writes have
                 # happened in this transaction, so there's nothing partial
@@ -1652,10 +1660,17 @@ def dispatch_request(request_id):
                     cur.close()
                     raise TransactionAborted(
                         "Invalid item in dispatch request.")
-                if qty > item["requested_qty"]:
+                remaining = item["requested_qty"] - (item["received_qty"] or 0)
+                if qty > remaining:
                     cur.close()
                     raise TransactionAborted(
-                        "Dispatched quantity can't exceed what was requested.")
+                        "Dispatched quantity can't exceed the remaining quantity.")
+
+            cur.execute(
+                "INSERT INTO stock_request_shipments (request_id, dispatched_by_user_id) VALUES (%s, %s)",
+                (request_id, session.get("user_id")),
+            )
+            shipment_id = cur.lastrowid
 
             dispatched_any = False
             # Unlike the validation loop above, THIS loop writes as it
@@ -1669,10 +1684,6 @@ def dispatch_request(request_id):
             for item_id, qty in requested_dispatch.items():
                 item = items_by_id[item_id]
                 if qty == 0:
-                    cur.execute(
-                        "UPDATE stock_request_items SET dispatched_qty = 0 WHERE item_id = %s",
-                        (item_id,),
-                    )
                     continue
 
                 cur.execute(
@@ -1692,15 +1703,19 @@ def dispatch_request(request_id):
                     (after_qty, HQ_BRANCH_ID, item["sku"]),
                 )
                 cur.execute(
-                    "UPDATE stock_request_items SET dispatched_qty = %s WHERE item_id = %s",
+                    "UPDATE stock_request_items SET dispatched_qty = COALESCE(dispatched_qty, 0) + %s WHERE item_id = %s",
                     (qty, item_id),
+                )
+                cur.execute(
+                    "INSERT INTO stock_request_shipment_items (shipment_id, request_item_id, dispatched_qty) VALUES (%s, %s, %s)",
+                    (shipment_id, item_id, qty),
                 )
                 cur.execute(
                     """INSERT INTO stock_movement_logs
                        (branch_id, sku, change_qty, movement_type, notes,
                         created_by_user_id, reference_type, reference_id, before_qty, after_qty)
                        VALUES (%s, %s, %s, 'DISPATCH', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
-                    (HQ_BRANCH_ID, item["sku"], -qty, f"Dispatched on {req['delivery_number']}",
+                     (HQ_BRANCH_ID, item["sku"], -qty, f"Dispatched on {req['delivery_number']} shipment #{shipment_id}",
                      session.get("user_id"), request_id, before_qty, after_qty),
                 )
                 dispatched_any = True
@@ -1716,10 +1731,10 @@ def dispatch_request(request_id):
             cur.close()
         notify_admin_and_branch(
             req["branch_id"], ["requests", "inventory", "movement_logs"])
-        notify_bell(f"Delivery {req['delivery_number']} is on its way from HQ.",
+        notify_bell(f"Shipment #{shipment_id} for {req['delivery_number']} is on its way from HQ.",
                     room=f"branch:{req['branch_id']}", level="success")
         flash(
-            f"{req['delivery_number']} dispatched — now in transit to the branch.", "success")
+            f"{req['delivery_number']} shipment #{shipment_id} dispatched and is now in transit.", "success")
     except TransactionAborted as err:
         flash(str(err), "error")
         return redirect(url_for("admin.review_request", request_id=request_id))
@@ -2164,7 +2179,7 @@ def reports():
     ]
     return render_template(
         "admin/reports.html", branch_list=branch_list, report_types=report_types, unit_choices=PRODUCT_UNITS,
-        current_month=datetime.date.today().strftime("%Y-%m"),
+        current_month=business_today().strftime("%Y-%m"),
     )
 
 
@@ -2191,7 +2206,7 @@ def generate_report():
             f"No data matches the selected filters for {report['title']}.", "warning")
         return redirect(url_for("admin.reports"))
 
-    stamp = datetime.date.today().isoformat()
+    stamp = business_today().isoformat()
     if fmt == "xlsx":
         buf = render_report_excel(report)
         mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -2458,27 +2473,33 @@ def materials():
     suppliers_list = query(
         """SELECT s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
                   s.address, s.notes, s.created_at,
-                  COUNT(rm.material_id) AS material_count,
+                  COUNT(DISTINCT rm.material_id) AS material_count,
                   COALESCE(SUM(rm.package_cost), 0) AS total_spent,
-                  MAX(rm.created_at) AS last_purchase_at
+                  MAX(CASE WHEN COALESCE(re.last_restock_at, rm.created_at) > rm.created_at
+                           THEN re.last_restock_at ELSE rm.created_at END) AS last_purchase_at
            FROM suppliers s
            LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+           LEFT JOIN (
+               SELECT material_id, MAX(purchased_at) AS last_restock_at
+               FROM material_restock_events GROUP BY material_id
+           ) re ON re.material_id = rm.material_id
            GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email,
                     s.address, s.notes, s.created_at
            ORDER BY total_spent DESC, s.supplier_name"""
     )
-    # What each supplier has actually supplied, and at what volume — one
-    # row per (supplier, material), rolled up across every purchase
-    # logged for that pair. Grouped in Python onto each supplier row
-    # below rather than queried once per supplier.
+    # One row per supplier/material. Lifetime quantity and cost remain on
+    # raw_materials; dated restock events add accurate purchase counts.
     material_rows = query(
         """SELECT rm.supplier_id, rm.material_name, rm.unit,
-                  COUNT(*) AS purchase_count,
-                  COALESCE(SUM(rm.package_qty), 0) AS total_qty,
-                  COALESCE(SUM(rm.package_cost), 0) AS total_cost
+                  1 + COALESCE(re.restock_count, 0) AS purchase_count,
+                  rm.package_qty AS total_qty,
+                  rm.package_cost AS total_cost
            FROM raw_materials rm
+           LEFT JOIN (
+               SELECT material_id, COUNT(*) AS restock_count
+               FROM material_restock_events GROUP BY material_id
+           ) re ON re.material_id = rm.material_id
            WHERE rm.supplier_id IS NOT NULL
-           GROUP BY rm.supplier_id, rm.material_name, rm.unit
            ORDER BY rm.material_name"""
     )
     materials_by_supplier = {}
@@ -2521,7 +2542,7 @@ def edit_material():
     # match zero rows while this route still flashes a success message,
     # as if the edit had actually landed somewhere.
     existing = query(
-        "SELECT 1 FROM raw_materials WHERE material_id = %s", (material_id,), fetchone=True
+        "SELECT unit FROM raw_materials WHERE material_id = %s", (material_id,), fetchone=True
     )
     if not existing:
         flash("That material no longer exists.", "error")
@@ -2541,6 +2562,9 @@ def edit_material():
         if not material_name or unit not in MATERIAL_UNITS:
             raise ValidationError(
                 "Please fill in every field with a valid value.")
+        if unit != existing["unit"]:
+            raise ValidationError(
+                "A material's unit cannot be changed after creation. Add a separate material with the correct unit.")
         package_qty = parse_positive_decimal(
             request.form.get("package_qty"), "Quantity")
         package_cost = parse_non_negative_decimal(
@@ -2568,10 +2592,10 @@ def edit_material():
     try:
         execute(
             """UPDATE raw_materials
-               SET material_name = %s, unit = %s, purchase_mode = %s, package_qty = %s,
+               SET material_name = %s, purchase_mode = %s, package_qty = %s,
                    package_cost = %s, receipt_number = %s, cost_per_unit = %s, supplier_id = %s
                WHERE material_id = %s""",
-            (material_name, unit, purchase_mode, package_qty, package_cost,
+            (material_name, purchase_mode, package_qty, package_cost,
              receipt_number, cost_per_unit, supplier_id, material_id),
         )
         notify_all(["materials"])
@@ -2592,8 +2616,9 @@ def edit_material():
 def restock_material():
     """Record buying more of an existing material — adds to stock_qty and
     rolls the new purchase into the running package_qty/package_cost
-    totals, so cost_per_unit becomes a weighted average across every
-    purchase logged this way (see raw_materials in schema.sql). Kept
+    totals, so cost_per_unit becomes a weighted average. A separate dated
+    event preserves each restock for supplier and date-range history.
+    Kept
     separate from edit_material(), which stays a plain correction tool
     for the record's own fields and never touches stock_qty — Add
     Material can't be resubmitted for the same name (material_name is
@@ -2601,32 +2626,58 @@ def restock_material():
     means now.
     """
     material_id = request.form.get("material_id")
-    existing = query(
-        "SELECT material_name, package_qty, package_cost FROM raw_materials WHERE material_id = %s",
-        (material_id,), fetchone=True,
-    )
-    if not existing:
-        flash("That material no longer exists.", "error")
-        return redirect(url_for("admin.materials"))
 
     try:
         qty = parse_positive_decimal(request.form.get("qty"), "Quantity")
         cost = parse_non_negative_decimal(request.form.get("cost"), "Cost")
+        purchased_at = parse_past_date(request.form.get("purchased_at"), "Purchase date")
     except ValidationError as err:
         flash(str(err), "error")
         return redirect(url_for("admin.materials"))
 
-    new_package_qty = existing["package_qty"] + qty
-    new_package_cost = existing["package_cost"] + cost
-    new_cost_per_unit = new_package_cost / new_package_qty
-
-    execute(
-        """UPDATE raw_materials
-           SET package_qty = %s, package_cost = %s, cost_per_unit = %s,
-               stock_qty = stock_qty + %s
-           WHERE material_id = %s""",
-        (new_package_qty, new_package_cost, new_cost_per_unit, qty, material_id),
-    )
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                """SELECT material_id, material_name, unit, package_qty, package_cost, supplier_id
+                   FROM raw_materials WHERE material_id = %s FOR UPDATE""",
+                (material_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                raise TransactionAborted("That material no longer exists.")
+            new_package_qty = existing["package_qty"] + qty
+            new_package_cost = existing["package_cost"] + cost
+            new_cost_per_unit = new_package_cost / new_package_qty
+            cur.execute(
+                """UPDATE raw_materials
+                   SET package_qty = %s, package_cost = %s, cost_per_unit = %s,
+                       stock_qty = stock_qty + %s
+                   WHERE material_id = %s""",
+                (new_package_qty, new_package_cost, new_cost_per_unit, qty, material_id),
+            )
+            supplier_name = None
+            if existing["supplier_id"] is not None:
+                cur.execute("SELECT supplier_name FROM suppliers WHERE supplier_id = %s",
+                            (existing["supplier_id"],))
+                supplier_row = cur.fetchone()
+                supplier_name = supplier_row["supplier_name"] if supplier_row else None
+            cur.execute(
+                """INSERT INTO material_restock_events
+                       (material_id, material_name_snapshot, unit_snapshot, qty, cost,
+                        supplier_id, supplier_name_snapshot, purchased_at, created_by_user_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (material_id, existing["material_name"], existing["unit"], qty, cost,
+                 existing["supplier_id"], supplier_name, purchased_at, session.get("user_id")),
+            )
+            cur.close()
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.materials"))
+    except Exception:
+        current_app.logger.exception("restock failed for material_id=%s", material_id)
+        flash("Couldn't record this restock — please try again.", "error")
+        return redirect(url_for("admin.materials"))
     notify_all(["materials"])
     log_action("restock_material", target=existing["material_name"],
                details=f"+{qty:g} for ₱{cost:,.2f} — now ₱{new_cost_per_unit:,.4f}/unit avg")
@@ -2789,6 +2840,7 @@ def bulk_batches():
         formula_items_by_unit={
             unit: [
                 {
+                    "material_id": i["material_id"],
                     "material_name": i["material_name"],
                     "qty_per_unit": float(i["qty_per_unit"]),
                     "material_unit": i["material_unit"],
@@ -2957,7 +3009,22 @@ def create_bulk_batch():
                        WHERE ufi.unit = %s FOR UPDATE""",
                     (target_unit,),
                 )
-                for material in cur.fetchall():
+                packaging_materials = cur.fetchall()
+                overlap_ids = {
+                    material["material_id"] for material in packaging_materials
+                    if material["material_id"] in materials_by_id
+                }
+                if overlap_ids:
+                    names = ", ".join(sorted(
+                        materials_by_id[material_id]["material_name"]
+                        for material_id in overlap_ids
+                    ))
+                    raise TransactionAborted(
+                        f"{names} can't be both a batch ingredient and packaging for "
+                        f"{target_unit}. Remove it from one of the two."
+                    )
+
+                for material in packaging_materials:
                     qty_used = (material["qty_per_unit"] * target_bottle_qty).quantize(
                         decimal.Decimal("0.001"))
                     if material["stock_qty"] < qty_used:
@@ -3887,52 +3954,59 @@ def update_inquiry_status(inquiry_id):
         flash("Select a valid status.", "error")
         return redirect(url_for("admin.partner_inquiries", status=return_status))
 
-    inquiry = query(
-        "SELECT company_name, status, fulfilled_at FROM partner_inquiries WHERE inquiry_id = %s",
-        (inquiry_id,), fetchone=True,
-    )
-    if not inquiry:
-        flash("That inquiry no longer exists.", "error")
-        return redirect(url_for("admin.partner_inquiries", status=return_status))
-
-    if inquiry["fulfilled_at"] and new_status != "Closed":
-        # Already shipped: the deal falling through puts the package's
-        # items back into HQ stock (logged as PACKAGE_RETURN), in the
-        # same transaction as the status change.
-        try:
-            with transaction() as conn:
-                cur = conn.cursor(dictionary=True)
-                _return_inquiry_stock(cur, inquiry_id, inquiry["company_name"])
+    company_name = None
+    stock_returned = False
+    try:
+        with transaction() as conn:
+            cur = conn.cursor(dictionary=True)
+            try:
+                # Serialize status changes with fulfillment and other
+                # status changes. The fulfilled check must use this locked
+                # row, or two requests can both return the same stock.
                 cur.execute(
-                    """UPDATE partner_inquiries
-                       SET status = %s, fulfilled_at = NULL, fulfilled_by_user_id = NULL
-                       WHERE inquiry_id = %s""",
-                    (new_status, inquiry_id),
+                    """SELECT company_name, fulfilled_at FROM partner_inquiries
+                       WHERE inquiry_id = %s FOR UPDATE""",
+                    (inquiry_id,),
                 )
+                inquiry = cur.fetchone()
+                if not inquiry:
+                    raise TransactionAborted("That inquiry no longer exists.")
+
+                company_name = inquiry["company_name"]
+                if inquiry["fulfilled_at"] and new_status != "Closed":
+                    _return_inquiry_stock(cur, inquiry_id, company_name)
+                    cur.execute(
+                        """UPDATE partner_inquiries
+                           SET status = %s, fulfilled_at = NULL, fulfilled_by_user_id = NULL
+                           WHERE inquiry_id = %s""",
+                        (new_status, inquiry_id),
+                    )
+                    stock_returned = True
+                else:
+                    cur.execute(
+                        "UPDATE partner_inquiries SET status = %s WHERE inquiry_id = %s",
+                        (new_status, inquiry_id),
+                    )
+            finally:
                 cur.close()
-        except TransactionAborted as err:
-            flash(str(err), "error")
-            return redirect(url_for("admin.partner_inquiries", status=return_status))
-        except Exception:
-            current_app.logger.exception("Failed to reopen inquiry %s", inquiry_id)
-            flash("Couldn't update that inquiry — please try again.", "error")
-            return redirect(url_for("admin.partner_inquiries", status=return_status))
-        notify_admin(["partner_inquiries", "inventory", "movement_logs"])
-        log_action("update_inquiry_status", target=inquiry["company_name"],
-                   details=f"{new_status} — fulfilled stock returned to HQ")
-        flash(f"Marked {inquiry['company_name']}'s inquiry as {new_status} and returned "
-              f"its items to HQ stock.", "success")
+    except TransactionAborted as err:
+        flash(str(err), "error")
+        return redirect(url_for("admin.partner_inquiries", status=return_status))
+    except Exception:
+        current_app.logger.exception("Failed to update inquiry %s", inquiry_id)
+        flash("Couldn't update that inquiry — please try again.", "error")
         return redirect(url_for("admin.partner_inquiries", status=return_status))
 
-    execute(
-        "UPDATE partner_inquiries SET status = %s WHERE inquiry_id = %s",
-        (new_status, inquiry_id),
-    )
-    notify_admin(["partner_inquiries"])
-    log_action("update_inquiry_status",
-               target=inquiry["company_name"], details=new_status)
-    flash(
-        f"Marked {inquiry['company_name']}'s inquiry as {new_status}.", "success")
+    if stock_returned:
+        notify_admin(["partner_inquiries", "inventory", "movement_logs"])
+        details = f"{new_status} — fulfilled stock returned to HQ"
+        flash(f"Marked {company_name}'s inquiry as {new_status} and returned "
+              "its items to HQ stock.", "success")
+    else:
+        notify_admin(["partner_inquiries"])
+        details = new_status
+        flash(f"Marked {company_name}'s inquiry as {new_status}.", "success")
+    log_action("update_inquiry_status", target=company_name, details=details)
     return redirect(url_for("admin.partner_inquiries", status=return_status))
 
 

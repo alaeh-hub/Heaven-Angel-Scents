@@ -54,7 +54,7 @@
   {% endmacro %}
 
   {% macro status_badge(status) %}
-  {% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
+  {% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Partially Fulfilled': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
   <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>
   {% endmacro %}
 
@@ -78,7 +78,7 @@
   {% endmacro %}
 
   {% macro movement_badge(mtype) %}
-  {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'unisex', 'REFILL':
+  {% set map = {'PRODUCTION': 'fulfilled', 'DISPATCH': 'transit', 'RECEIPT': 'fulfilled', 'SALE': 'neutral', 'REFILL':
   'female', 'FREEBIE': 'pending', 'ADJUSTMENT': 'pending', 'DAMAGE': 'rejected',
   'PACKAGE_ORDER': 'transit', 'PACKAGE_RETURN': 'inactive', 'SALE_VOID': 'rejected'} %}
   <span class="badge badge-{{ map.get(mtype, 'pending') }}">{{ mtype|replace('_', ' ') }}</span>
@@ -111,12 +111,12 @@
 
   {# Pipeline: New -> Contacted -> Follow-up / On Hold -> Closed / Declined.
   Colors are reused from the existing badge palette rather than adding new
-  CSS: Follow-up borrows the "unisex" ink-outline (needs a nudge, distinct
+  CSS: Follow-up borrows the neutral ink-outline (needs a nudge, distinct
   from New's amber), On Hold borrows "inactive" gray (paused, not urgent),
   Declined borrows "rejected" red (didn't convert, distinct from New). #}
   {% macro inquiry_status_badge(status) %}
   {% set map = {
-  'New': 'pending', 'Contacted': 'transit', 'Follow-up': 'unisex',
+  'New': 'pending', 'Contacted': 'transit', 'Follow-up': 'neutral',
   'On Hold': 'inactive', 'Closed': 'fulfilled', 'Declined': 'rejected'
   } %}
   <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>

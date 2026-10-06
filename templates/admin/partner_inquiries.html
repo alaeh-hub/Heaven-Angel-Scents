@@ -582,7 +582,7 @@
                       </svg></span>{% endif %}</div>
                   {% if inq.contact_person %}<div class="item-sub">{{ inq.contact_person }}</div>{% endif %}
                   <div class="item-sub item-sub-badge">
-                    <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
+                    <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{
                       inq.partner_type }}</span>
                     <span class="mono">{{ inq.created_at.strftime('%b %d') }}</span>
                   </div>
@@ -590,7 +590,7 @@
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">
-              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{
+              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{
                 inq.partner_type }}</span>
             </td>
             <td data-label="Contact" class="pi-col-contact mobile-detail">

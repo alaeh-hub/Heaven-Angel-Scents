@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="tabs">
-  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Fulfilled','Fulfilled'),
+  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Partially Fulfilled','Partially Fulfilled'), ('Fulfilled','Fulfilled'),
   ('Rejected','Rejected')] %}
   <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('admin.requests_list', status=key) }}">{{ label
     }}</a>
@@ -64,10 +64,10 @@
             <td class="num mono" data-label="Total value">{{ r.total_value|peso }}</td>
             <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="" class="mobile-inline-action">
-              {% if r.status == 'Pending' %}
+              {% if r.status in ('Pending', 'Partially Fulfilled') %}
               <div class="inline-form">
                 <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}"
-                  class="btn btn-accent btn-sm">Review</a>
+                  class="btn btn-accent btn-sm">{{ 'Dispatch remaining' if r.status == 'Partially Fulfilled' else 'Review' }}</a>
                 <!-- Deliberately just "Review", not "Review & dispatch":
                      this button doesn't dispatch anything itself — it
                      opens the delivery's own page where dispatch
@@ -79,11 +79,11 @@
                      form[data-confirm] on submit and shows this text —
                      no per-page onsubmit/JS needed. See also
                      request_detail.html, users.html, package_detail.html. -->
-                <form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}"
+                {% if r.status == 'Pending' %}<form method="POST" action="{{ url_for('admin.reject_request', request_id=r.request_id) }}"
                   data-confirm="Reject {{ r.delivery_number }}? This can't be undone.">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger btn-sm">Reject</button>
-                </form>
+                </form>{% endif %}
               </div>
               {% elif r.status == 'In Transit' %}
               <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>

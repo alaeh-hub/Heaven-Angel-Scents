@@ -18,7 +18,7 @@ def _make_bulk_product(sql):
     cur = sql.cursor()
     cur.execute(
         """INSERT INTO products (sku, item_name, variant, unit, price, category)
-           VALUES (%s, %s, 'Unisex', 'BULK', '900.00', 'Bulk/Refill')""",
+           VALUES (%s, %s, 'Male', 'BULK', '900.00', 'Bulk/Refill')""",
         (sku, f"Bulk Product {sku}"),
     )
     sql.commit()

@@ -294,9 +294,11 @@
       <div id="bbPreviewCostPerMl"></div>
       <div class="bb-calc-box" id="bbTargetPreview" style="display:none;"></div>
     </div>
+    <p id="bbMaterialConflict" role="alert"
+      style="display:none; margin:10px 0 0; color:#b42318; font-weight:600;"></p>
 
     <div id="bbInputs"></div>
-    <button type="submit" class="btn btn-accent" style="width:100%; margin-top:14px;">Log batch</button>
+    <button id="bbSubmitBtn" type="submit" class="btn btn-accent" style="width:100%; margin-top:14px;">Log batch</button>
   </form>
 </div>
 
@@ -469,11 +471,14 @@
     var previewCostPerMl = document.getElementById('bbPreviewCostPerMl');
     var targetUnitSelect = document.getElementById('target_unit');
     var targetPreview = document.getElementById('bbTargetPreview');
+    var conflictEl = document.getElementById('bbMaterialConflict');
+    var submitBtn = document.getElementById('bbSubmitBtn');
     if (!materialSelect || !addBtn || !body) return;
 
     var materialsById = {};
     Array.prototype.forEach.call(materialSelect.options, function (opt) {
       if (!opt.value) return;
+      opt.dataset.baseLabel = opt.textContent.trim();
       materialsById[opt.value] = {
         name: opt.dataset.name,
         unit: opt.dataset.unit,
@@ -486,6 +491,47 @@
     // actually typed in (see compatible_material_units), not necessarily
     // the material's own purchase unit.
     var lines = {};
+
+    function syncPackagingChoices() {
+      var packagingIds = {};
+      var formulaItems = targetUnitSelect
+        ? (formulaItemsByUnit[targetUnitSelect.value] || [])
+        : [];
+      formulaItems.forEach(function (item) {
+        packagingIds[String(item.material_id)] = true;
+      });
+
+      Array.prototype.forEach.call(materialSelect.options, function (opt) {
+        if (!opt.value) return;
+        var isPackaging = !!packagingIds[opt.value];
+        opt.disabled = isPackaging;
+        opt.textContent = opt.dataset.baseLabel + (isPackaging
+          ? ' — included in selected packaging formula'
+          : '');
+      });
+      if (materialSelect.value && packagingIds[materialSelect.value]) {
+        materialSelect.value = '';
+        qtyUnitSelect.innerHTML = '';
+        materialSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      var conflicts = Object.keys(lines).filter(function (id) {
+        return !!packagingIds[id];
+      });
+      if (conflicts.length) {
+        var names = conflicts.map(function (id) {
+          return materialsById[id] ? materialsById[id].name : id;
+        });
+        conflictEl.textContent = names.join(', ') +
+          ' is already in this size\'s packaging formula. Remove it from the ingredient list or choose another bottle size.';
+        conflictEl.style.display = 'block';
+      } else {
+        conflictEl.textContent = '';
+        conflictEl.style.display = 'none';
+      }
+      if (submitBtn) submitBtn.disabled = conflicts.length > 0;
+      return conflicts;
+    }
 
     function formatPeso(n) {
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -545,6 +591,7 @@
     });
 
     function updatePreview() {
+      syncPackagingChoices();
       var qty = parseFloat(inputQty.value);
       var unit = inputUnit.value;
       var perUnitMl = mlPerBatchUnit[unit];
@@ -725,6 +772,7 @@
     addBtn.addEventListener('click', function () {
       var id = materialSelect.value;
       if (!id) return;
+      if (materialSelect.options[materialSelect.selectedIndex].disabled) return;
       var qty = parseFloat(qtyInput.value);
       if (!qty || qty <= 0) qty = 1;
       lines[id] = { qty: qty, unit: qtyUnitSelect.value };

@@ -146,12 +146,12 @@
               <div class="item-name">{{ pkg.package_name }}</div>
               {% if pkg.description %}<div class="item-sub">{{ pkg.description }}</div>{% endif %}
               <div class="item-sub item-sub-badge">
-                <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+                <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'neutral') }}">{{ pkg.partner_scope }}</span>
                 <span class="badge badge-{{ 'active' if pkg.is_active else 'inactive' }}">{{ 'Active' if pkg.is_active else 'Retired' }}</span>
               </div>
             </td>
             <td class="mobile-fold" data-label="For">
-              <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'unisex') }}">{{ pkg.partner_scope }}</span>
+              <span class="badge badge-{{ 'pending' if pkg.partner_scope == 'Both' else ('transit' if pkg.partner_scope == 'Distributor' else 'neutral') }}">{{ pkg.partner_scope }}</span>
             </td>
             <td class="num mono mobile-detail" data-label="Items">{{ pkg.item_count }}</td>
             <td class="num mono mobile-detail" data-label="Reference value">{{ pkg.reference_total|peso }}</td>

@@ -29,7 +29,7 @@
 <div class="card">
   <div class="ph-meta">
     <div class="ph-meta-item">
-      <div><div class="label">Type</div><div class="value"><span class="badge badge-{{ 'transit' if partner.partner_type == 'Distributor' else 'unisex' }}">{{ partner.partner_type }}</span></div></div>
+      <div><div class="label">Type</div><div class="value"><span class="badge badge-{{ 'transit' if partner.partner_type == 'Distributor' else 'neutral' }}">{{ partner.partner_type }}</span></div></div>
     </div>
     <div class="ph-meta-item">
       <div><div class="label">On file since</div><div class="value">{{ partner.created_at.strftime('%b %d, %Y') }}</div></div>
@@ -63,7 +63,7 @@
         <div class="ph-entry-head">
           <span class="mono text-soft" style="font-size:12px;">{{ inq.created_at.strftime('%b %d, %Y %I:%M %p') }}</span>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'unisex' }}">{{ inq.partner_type }}</span>
+            <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{ inq.partner_type }}</span>
             {{ m.inquiry_status_badge(inq.status) }}
           </div>
         </div>

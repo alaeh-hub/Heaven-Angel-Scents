@@ -126,8 +126,8 @@ def test_voiding_a_refill_returns_its_bulk_ml(client, sql):
     cur = sql.cursor()
     cur.execute(
         """INSERT INTO products (sku, item_name, variant, category, unit, price) VALUES
-           (%s, 'Void Scent', 'Unisex', 'Bottled', '10ML', 20.00),
-           (%s, 'Void Scent', 'Unisex', 'Bulk/Refill', 'BULK', 2.00)""",
+           (%s, 'Void Scent', 'Male', 'Bottled', '10ML', 20.00),
+           (%s, 'Void Scent', 'Male', 'Bulk/Refill', 'BULK', 2.00)""",
         (f"{base}-10ML", f"{base}-BULK"),
     )
     sql.commit()

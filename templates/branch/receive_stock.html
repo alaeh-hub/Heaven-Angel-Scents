@@ -97,7 +97,7 @@
 {% block content %}
 <div class="card" id="receiveTable">
   <div class="card-header">
-    <h2>Shipments in transit</h2><span class="hint">confirm what actually arrived, per delivery</span>
+    <h2>Shipments in transit</h2><span class="hint">confirm what actually arrived, per shipment</span>
   </div>
   {% if in_transit %}
   <div data-smart-list data-list-item-selector=".delivery-block" data-page-size="3">
@@ -107,13 +107,13 @@
         <div class="delivery-block-header">
           <div>
             <span class="mono delivery-number">{{ d.delivery_number }}</span>
-            <span class="text-faint" style="font-size:12px;">· {{ d.line_items|length }} item{{ 's' if d.line_items|length != 1 }}</span>
+            <span class="text-faint" style="font-size:12px;">· Shipment #{{ d.shipment_id }} · {{ d.line_items|length }} item{{ 's' if d.line_items|length != 1 }}</span>
           </div>
-          <span class="text-faint" style="font-size:12px;">requested {{ d.requested_at.strftime('%b %d, %Y') }}</span>
+          <span class="text-faint" style="font-size:12px;">dispatched {{ d.dispatched_at.strftime('%b %d, %Y') }}</span>
         </div>
-        <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ d.request_id }}">
+        <form method="POST" action="{{ url_for('branch.receive_stock') }}" id="receive-{{ d.shipment_id }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="request_id" value="{{ d.request_id }}">
+          <input type="hidden" name="shipment_id" value="{{ d.shipment_id }}">
           <table class="delivery-items-table table-fixed">
             <colgroup>
               <col style="width:40%"><col style="width:20%"><col style="width:20%"><col style="width:20%">
@@ -134,7 +134,7 @@
                 </td>
                 <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty }}</td>
                 <td class="num" data-label="Received">
-                  <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
+                  <input type="hidden" name="shipment_item_id[]" value="{{ item.shipment_item_id }}">
                   <input type="number" name="received_qty[]" value="{{ item.dispatched_qty }}" min="0"
                     max="{{ item.dispatched_qty }}" class="mono">
                 </td>
@@ -147,7 +147,7 @@
             </tbody>
           </table>
           <div class="delivery-footer">
-            <button type="submit" class="btn btn-accent btn-sm">Confirm receipt for {{ d.delivery_number }}</button>
+            <button type="submit" class="btn btn-accent btn-sm">Confirm shipment #{{ d.shipment_id }}</button>
           </div>
         </form>
       </div>

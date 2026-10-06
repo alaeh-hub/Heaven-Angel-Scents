@@ -140,7 +140,6 @@
           <option value="all">All variants</option>
           <option value="Male">Male</option>
           <option value="Female">Female</option>
-          <option value="Unisex">Unisex</option>
         </select>
       </div>
       <div class="field" data-filter="unit" style="display:none;">
@@ -403,7 +402,7 @@
   const MOVEMENT_PALETTE = (isDark
     ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#3d9fd6', '#b07cc6', '#9aa33a', '#c0392b']
     : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#1f78b4', '#8e44ad', '#6f7d0e', '#a93226']);
-  const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink'), Unisex: themeColor('--ink-soft') };
+  const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink') };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
   // for the "last N ___" label under the chart title, the actual

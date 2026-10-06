@@ -6,13 +6,25 @@ submission naming the same SKU twice is merged into one line rather than
 silently creating two.
 """
 from factories import (get_form_token, get_inventory_qty, get_request_item,
-                        get_request_status, last_movement_log, login,
+                        get_in_transit_shipment_items, get_request_status,
+                        last_movement_log, login,
                         make_branch, make_inventory, make_product,
                         make_stock_request, make_user)
 
 HQ_BRANCH_ID = 1  # schema.sql seeds this as the HQ warehouse — see admin.py's own HQ_BRANCH_ID
 REQUEST_STOCK_URL = "/branch/request-stock"
 RECEIVE_STOCK_URL = "/branch/receive-stock"
+
+
+def _receipt_data(sql, request_id, received, damaged):
+    shipment_items = get_in_transit_shipment_items(sql, request_id)
+    assert shipment_items
+    return {
+        "shipment_id": str(shipment_items[0]["shipment_id"]),
+        "shipment_item_id[]": [str(item["shipment_item_id"]) for item in shipment_items],
+        "received_qty[]": [str(received) for _ in shipment_items],
+        "damaged_qty[]": [str(damaged) for _ in shipment_items],
+    }
 
 
 def _signed_in_branch(client, sql):
@@ -200,16 +212,9 @@ def test_receive_stock_adds_to_branch_inventory_and_marks_fulfilled(client, sql)
         sql, branch_id, [{"sku": sku, "requested_qty": 10, "dispatched_qty": 10}],
         status="In Transit",
     )
-    item = get_request_item(sql, request_id, sku)
-
     resp = client.post(
         RECEIVE_STOCK_URL,
-        data={
-            "request_id": str(request_id),
-            "item_id[]": [str(item["item_id"])],
-            "received_qty[]": ["10"],
-            "damaged_qty[]": ["0"],
-        },
+        data=_receipt_data(sql, request_id, 10, 0),
     )
 
     assert resp.status_code == 302
@@ -232,16 +237,9 @@ def test_receive_stock_shortfall_is_logged_as_an_adjustment(client, sql):
         sql, branch_id, [{"sku": sku, "requested_qty": 10, "dispatched_qty": 10}],
         status="In Transit",
     )
-    item = get_request_item(sql, request_id, sku)
-
     resp = client.post(
         RECEIVE_STOCK_URL,
-        data={
-            "request_id": str(request_id),
-            "item_id[]": [str(item["item_id"])],
-            "received_qty[]": ["6"],
-            "damaged_qty[]": ["0"],
-        },
+        data=_receipt_data(sql, request_id, 6, 0),
     )
 
     assert resp.status_code == 302
@@ -267,16 +265,10 @@ def test_receiving_more_than_dispatched_is_rejected(client, sql):
         sql, branch_id, [{"sku": sku, "requested_qty": 10, "dispatched_qty": 10}],
         status="In Transit",
     )
-    item = get_request_item(sql, request_id, sku)
-
     resp = client.post(
         RECEIVE_STOCK_URL,
-        data={
-            "request_id": str(request_id),
-            "item_id[]": [str(item["item_id"])],
-            "received_qty[]": ["8"],
-            "damaged_qty[]": ["5"],  # 8 + 5 > 10 dispatched
-        },
+        # 8 + 5 > 10 dispatched
+        data=_receipt_data(sql, request_id, 8, 5),
     )
 
     assert resp.status_code == 302
@@ -285,9 +277,8 @@ def test_receiving_more_than_dispatched_is_rejected(client, sql):
 
 
 def test_confirming_the_same_delivery_twice_only_receives_it_once(client, sql):
-    """No form_token needed here — receive_stock()'s own FOR UPDATE +
-    status='In Transit' guard already makes a second confirmation a
-    no-op, since the first one already flips status to Fulfilled."""
+    """The shipment row lock and its In Transit status guard make a
+    second confirmation a no-op after the first receipt closes the shipment."""
     branch_id = _signed_in_branch(client, sql)
     sku = make_product(sql, price="10.00")
     make_inventory(sql, branch_id, sku, stock_qty=0)
@@ -295,12 +286,8 @@ def test_confirming_the_same_delivery_twice_only_receives_it_once(client, sql):
         sql, branch_id, [{"sku": sku, "requested_qty": 10, "dispatched_qty": 10}],
         status="In Transit",
     )
-    item = get_request_item(sql, request_id, sku)
     data = {
-        "request_id": str(request_id),
-        "item_id[]": [str(item["item_id"])],
-        "received_qty[]": ["10"],
-        "damaged_qty[]": ["0"],
+        **_receipt_data(sql, request_id, 10, 0),
     }
 
     first = client.post(RECEIVE_STOCK_URL, data=data)
@@ -347,9 +334,8 @@ def test_rejecting_an_already_dispatched_request_is_a_no_op(client, sql):
 
 def test_discrepancies_page_counts_units_from_the_delivery(app, client, sql):
     """dispatched=4, received 2, 1 damaged -> 1 unaccounted. Damage and
-    shortfall rows are logged with change_qty = 0 (the units never hit
-    branch stock), so the Discrepancies page has to take the units from
-    the delivery line: 1 damaged + 1 short = 2, on 1 delivery."""
+    shortfall rows carry negative change_qty (the units never hit branch
+    stock), so the discrepancy page counts their magnitude."""
     import re
 
     branch_id = _signed_in_branch(client, sql)
@@ -359,13 +345,7 @@ def test_discrepancies_page_counts_units_from_the_delivery(app, client, sql):
         sql, branch_id, [{"sku": sku, "requested_qty": 4, "dispatched_qty": 4}],
         status="In Transit",
     )
-    item = get_request_item(sql, request_id, sku)
-    client.post(RECEIVE_STOCK_URL, data={
-        "request_id": str(request_id),
-        "item_id[]": [str(item["item_id"])],
-        "received_qty[]": ["2"],
-        "damaged_qty[]": ["1"],
-    })
+    client.post(RECEIVE_STOCK_URL, data=_receipt_data(sql, request_id, 2, 1))
 
     admin_client = app.test_client()
     _signed_in_admin(admin_client, sql)

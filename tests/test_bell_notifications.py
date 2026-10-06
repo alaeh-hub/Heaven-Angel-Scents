@@ -9,9 +9,9 @@ import pytest
 
 import routes.admin
 import routes.branch
-from factories import (get_form_token, get_request_item, login, make_branch,
-                       make_inventory, make_product, make_stock_request,
-                       make_user)
+from factories import (get_form_token, get_in_transit_shipment_items,
+                       get_request_item, login, make_branch, make_inventory,
+                       make_product, make_stock_request, make_user)
 
 HQ_BRANCH_ID = 1
 
@@ -114,10 +114,13 @@ def test_receipt_notifies_admins(client, sql, bells, received, level, text):
     request_id = make_stock_request(
         sql, branch_id, [{"sku": sku, "requested_qty": 10, "dispatched_qty": 10}],
         status="In Transit")
-    item = get_request_item(sql, request_id, sku)
+    shipment_items = get_in_transit_shipment_items(sql, request_id)
+    assert len(shipment_items) == 1
+    shipment_item = shipment_items[0]
 
     client.post("/branch/receive-stock", data={
-        "request_id": str(request_id), "item_id[]": [str(item["item_id"])],
+        "shipment_id": str(shipment_item["shipment_id"]),
+        "shipment_item_id[]": [str(shipment_item["shipment_item_id"])],
         "received_qty[]": [received], "damaged_qty[]": ["0"],
     })
 

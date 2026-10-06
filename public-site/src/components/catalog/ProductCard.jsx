@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { SPRING, SPRING_SOFT } from '../../motion.js';
 import ProductVisual from '../ProductVisual.jsx';
 
-export const GENDER_LABEL = { Male: 'For men', Female: 'For women', Unisex: 'Unisex' };
+export const GENDER_LABEL = { Male: 'For men', Female: 'For women' };
 
 // Hover choreography, driven from the card so every layer moves together:
 // the card lifts, the bottle rises and tilts toward the viewer, a soft

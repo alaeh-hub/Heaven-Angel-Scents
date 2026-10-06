@@ -2406,10 +2406,7 @@ th.num {
   max-width: 8.125rem;
 }
 
-/* Male/Female/Unisex is a 3-way identity category, not a status — kept
-   distinct without reaching for blue/red/plum: filled gold, a solid
-   ink chip, and a gold-outlined ghost chip (echoing "gold is the
-   outlines") so the three read apart by weight and shape, not just hue. */
+/* Product variants use distinct gold and ink chips rather than status colors. */
 .badge-male {
   background: var(--accent-soft);
   color: var(--accent-ink);
@@ -2421,7 +2418,7 @@ th.num {
   border: var(--border-width-strong) solid var(--border-strong);
 }
 
-.badge-unisex {
+.badge-neutral {
   background: transparent;
   color: var(--ink-soft);
   border: var(--border-width-strong) solid var(--border-strong);
@@ -2453,7 +2450,7 @@ th.num {
   color: var(--ink);
 }
 
-.tag-unisex {
+.tag-neutral {
   color: var(--ink-soft);
 }
 

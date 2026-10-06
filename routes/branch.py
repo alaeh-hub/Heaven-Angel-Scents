@@ -1,4 +1,3 @@
-import datetime
 import decimal
 import uuid
 from urllib.parse import urlencode
@@ -14,7 +13,7 @@ from sale_stock import apply_sale_stock, void_sale
 from audit import log_action
 from sockets import notify_admin_and_branch, notify_bell
 from utils import (
-    BOTTLE_UNITS, PAYMENT_METHODS, base_code_from_sku, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
+    BOTTLE_UNITS, PAYMENT_METHODS, base_code_from_sku, business_today, PRODUCT_UNITS, SALE_TYPES, ValidationError, consume_form_token,
     issue_form_token, parse_non_negative_int, parse_optional_text, parse_past_date,
     parse_positive_decimal, parse_positive_int, percent_change,
 )
@@ -100,10 +99,11 @@ def dashboard():
     pending_requests = query(
         """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at,
                   COUNT(sri.item_id) AS item_count,
-                  COALESCE(SUM(sri.requested_qty), 0) AS total_qty
+                  COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                  COALESCE(SUM(GREATEST(sri.requested_qty - COALESCE(sri.received_qty, 0), 0)), 0) AS total_remaining
            FROM stock_requests sr
            LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
-           WHERE sr.branch_id = %s AND sr.status IN ('Pending', 'In Transit')
+            WHERE sr.branch_id = %s AND sr.status IN ('Pending', 'Partially Fulfilled', 'In Transit')
            GROUP BY sr.request_id, sr.delivery_number, sr.status, sr.requested_at
            ORDER BY sr.requested_at DESC""",
         (bid,),
@@ -227,7 +227,8 @@ def requests_list():
                     COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
                     COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value,
                     COALESCE(SUM(sri.received_qty), 0) AS total_received,
-                    COALESCE(SUM(sri.damaged_qty), 0) AS total_damaged
+                    COALESCE(SUM(sri.damaged_qty), 0) AS total_damaged,
+                    COALESCE(SUM(GREATEST(sri.requested_qty - COALESCE(sri.received_qty, 0), 0)), 0) AS total_remaining
              FROM stock_requests sr
              LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
              WHERE sr.branch_id = %s"""
@@ -236,7 +237,7 @@ def requests_list():
         sql += " AND sr.status = %s"
         params.append(status_filter)
     sql += """ GROUP BY sr.request_id
-               ORDER BY FIELD(sr.status,'Pending','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"""
+               ORDER BY FIELD(sr.status,'Pending','Partially Fulfilled','In Transit','Fulfilled','Rejected'), sr.requested_at DESC"""
     stock_requests = query(sql, tuple(params))
     return render_template("branch/requests.html", stock_requests=stock_requests, status_filter=status_filter)
 
@@ -361,6 +362,7 @@ def request_stock():
         """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at,
                   COUNT(sri.item_id) AS item_count,
                   COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
+                  COALESCE(SUM(GREATEST(sri.requested_qty - COALESCE(sri.received_qty, 0), 0)), 0) AS total_remaining,
                   COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value
            FROM stock_requests sr
            LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
@@ -379,21 +381,16 @@ def request_stock():
 @bp.route("/receive-stock", methods=["GET", "POST"])
 @branch_required
 def receive_stock():
-    """Confirm what actually arrived for a whole delivery in one go.
-
-    The form submits one request_id plus parallel arrays — item_id[],
-    received_qty[], damaged_qty[] — covering every line item on that
-    delivery, so a multi-product shipment is confirmed as a single
-    transaction instead of one form per product.
-    """
+    """Confirm one dispatch shipment; a request can have later shipments."""
     bid = _branch_id()
     if request.method == "POST":
-        request_id = request.form.get("request_id")
-        item_ids = request.form.getlist("item_id[]")
+        shipment_id = request.form.get("shipment_id")
+        item_ids = request.form.getlist("shipment_item_id[]")
         raw_received = request.form.getlist("received_qty[]")
         raw_damaged = request.form.getlist("damaged_qty[]")
 
-        if not request_id or not item_ids or len(item_ids) != len(raw_received) or len(item_ids) != len(raw_damaged):
+        if (not shipment_id or not item_ids or len(set(item_ids)) != len(item_ids)
+                or len(item_ids) != len(raw_received) or len(item_ids) != len(raw_damaged)):
             flash(
                 "Couldn't read that shipment's items — please refresh and try again.", "error")
             return redirect(url_for("branch.receive_stock"))
@@ -412,29 +409,34 @@ def receive_stock():
 
         total_shortfall = 0
         delivery_number = None
+        request_id = None
         try:
             with transaction() as conn:
                 cur = conn.cursor(dictionary=True)
-                # Lock the delivery header for the duration of the
-                # transaction so it can't be confirmed twice in parallel.
                 cur.execute(
-                    """SELECT * FROM stock_requests
-                       WHERE request_id = %s AND branch_id = %s AND status = 'In Transit'
+                    """SELECT ss.*, sr.request_id, sr.branch_id, sr.delivery_number
+                       FROM stock_request_shipments ss
+                       JOIN stock_requests sr ON sr.request_id = ss.request_id
+                       WHERE ss.shipment_id = %s AND sr.branch_id = %s AND ss.status = 'In Transit'
                        FOR UPDATE""",
-                    (request_id, bid),
+                    (shipment_id, bid),
                 )
-                req = cur.fetchone()
-                if not req:
+                shipment = cur.fetchone()
+                if not shipment:
                     cur.close()
                     raise TransactionAborted(
                         "That shipment isn't awaiting receipt.")
-                delivery_number = req["delivery_number"]
+                request_id = shipment["request_id"]
+                delivery_number = shipment["delivery_number"]
 
                 cur.execute(
-                    "SELECT * FROM stock_request_items WHERE request_id = %s FOR UPDATE",
-                    (request_id,),
+                    """SELECT ssi.*, sri.item_id, sri.sku
+                       FROM stock_request_shipment_items ssi
+                       JOIN stock_request_items sri ON sri.item_id = ssi.request_item_id
+                       WHERE ssi.shipment_id = %s FOR UPDATE""",
+                    (shipment_id,),
                 )
-                item_rows = {str(r["item_id"]): r for r in cur.fetchall()}
+                item_rows = {str(r["shipment_item_id"]): r for r in cur.fetchall()}
 
                 if set(item_ids) != set(item_rows.keys()):
                     cur.close()
@@ -451,14 +453,23 @@ def receive_stock():
                 for item_id, item in item_rows.items():
                     received_qty = received_by_item[item_id]
                     damaged_qty = damaged_by_item[item_id]
-                    dispatched = item["dispatched_qty"] or 0
+                    dispatched = item["dispatched_qty"]
                     if received_qty + damaged_qty > dispatched:
                         cur.close()
                         raise TransactionAborted(
                             "Received + damaged can't exceed dispatched for one of the items.")
 
                     cur.execute(
-                        "UPDATE stock_request_items SET received_qty = %s, damaged_qty = %s WHERE item_id = %s",
+                        """UPDATE stock_request_shipment_items
+                           SET received_qty = %s, damaged_qty = %s WHERE shipment_item_id = %s""",
+                        (received_qty, damaged_qty, item["shipment_item_id"]),
+                    )
+                    cur.execute(
+                        """UPDATE stock_request_items
+                           SET received_qty = COALESCE(received_qty, 0) + %s,
+                               damaged_qty = COALESCE(damaged_qty, 0) + %s,
+                               dispatched_qty = COALESCE(dispatched_qty, 0)
+                           WHERE item_id = %s""",
                         (received_qty, damaged_qty, item["item_id"]),
                     )
 
@@ -480,7 +491,7 @@ def receive_stock():
                                (branch_id, sku, change_qty, movement_type, notes,
                                 created_by_user_id, reference_type, reference_id, before_qty, after_qty)
                                VALUES (%s, %s, %s, 'RECEIPT', %s, %s, 'STOCK_REQUEST', %s, %s, %s)""",
-                            (bid, item["sku"], received_qty, f"Receipt for delivery {delivery_number}",
+                             (bid, item["sku"], received_qty, f"Receipt for delivery {delivery_number}, shipment #{shipment_id}",
                              session.get("user_id"), request_id, before_qty, after_qty),
                         )
                     if damaged_qty > 0:
@@ -488,9 +499,9 @@ def receive_stock():
                             """INSERT INTO stock_movement_logs
                                (branch_id, sku, change_qty, movement_type, notes,
                                 created_by_user_id, reference_type, reference_id)
-                               VALUES (%s, %s, 0, 'DAMAGE', %s, %s, 'STOCK_REQUEST', %s)""",
-                            (bid, item["sku"],
-                             f"{damaged_qty} unit(s) damaged in transit, delivery {delivery_number}",
+                                VALUES (%s, %s, %s, 'DAMAGE', %s, %s, 'STOCK_REQUEST', %s)""",
+                            (bid, item["sku"], -damaged_qty,
+                              f"{damaged_qty} unit(s) damaged in transit, delivery {delivery_number}, shipment #{shipment_id}",
                              session.get("user_id"), request_id),
                         )
 
@@ -506,16 +517,28 @@ def receive_stock():
                             """INSERT INTO stock_movement_logs
                                (branch_id, sku, change_qty, movement_type, notes,
                                 created_by_user_id, reference_type, reference_id)
-                               VALUES (%s, %s, 0, 'ADJUSTMENT', %s, %s, 'STOCK_REQUEST', %s)""",
-                            (bid, item["sku"],
+                                VALUES (%s, %s, %s, 'ADJUSTMENT', %s, %s, 'STOCK_REQUEST', %s)""",
+                            (bid, item["sku"], -shortfall,
                              f"{shortfall} unit(s) dispatched but not received or reported damaged "
-                             f"— delivery {delivery_number}, flagged for HQ follow-up",
+                              f"— delivery {delivery_number}, shipment #{shipment_id}, flagged for HQ follow-up",
                              session.get("user_id"), request_id),
                         )
 
                 cur.execute(
-                    "UPDATE stock_requests SET status = 'Fulfilled' WHERE request_id = %s",
+                    "UPDATE stock_request_shipments SET status = 'Received', received_at = CURRENT_TIMESTAMP WHERE shipment_id = %s",
+                    (shipment_id,),
+                )
+                cur.execute(
+                    """SELECT COUNT(*) AS remaining_lines
+                       FROM stock_request_items
+                       WHERE request_id = %s AND COALESCE(received_qty, 0) < requested_qty""",
                     (request_id,),
+                )
+                remaining_lines = cur.fetchone()["remaining_lines"]
+                request_status = "Partially Fulfilled" if remaining_lines else "Fulfilled"
+                cur.execute(
+                    "UPDATE stock_requests SET status = %s WHERE request_id = %s",
+                    (request_status, request_id),
                 )
                 cur.close()
         except TransactionAborted as err:
@@ -523,7 +546,7 @@ def receive_stock():
             return redirect(url_for("branch.receive_stock"))
         except Exception:
             current_app.logger.exception(
-                "receive_stock failed for request_id=%s", request_id)
+                "receive_stock failed for shipment_id=%s", shipment_id)
             flash("Couldn't confirm this receipt — please try again.", "error")
             return redirect(url_for("branch.receive_stock"))
 
@@ -540,45 +563,40 @@ def receive_stock():
                         room="admin", level="success")
         if total_shortfall > 0:
             flash(
-                f"Delivery {delivery_number} received. Note: {total_shortfall} unit(s) unaccounted for "
-                "— flagged in the ledger.", "warning")
+                f"Shipment #{shipment_id} for {delivery_number} confirmed. {total_shortfall} unit(s) were short and flagged; "
+                "the remaining request quantity stays open for another dispatch.", "warning")
         else:
-            flash(
-                f"Delivery {delivery_number} receipt confirmed and inventory updated.", "success")
+            flash(f"Shipment #{shipment_id} for {delivery_number} confirmed and inventory updated.", "success")
         return redirect(url_for("branch.receive_stock"))
 
     item_rows = query(
-        """SELECT sr.request_id, sr.delivery_number, sr.requested_at,
-                  sri.item_id, sri.sku, sri.requested_qty, sri.dispatched_qty,
-                  p.item_name, p.unit
-           FROM stock_requests sr
-           JOIN stock_request_items sri ON sri.request_id = sr.request_id
+        """SELECT ss.shipment_id, ss.request_id, ss.dispatched_at, sr.delivery_number, sr.requested_at,
+                  ssi.shipment_item_id, ssi.dispatched_qty,
+                  sri.item_id, sri.sku, p.item_name, p.unit
+           FROM stock_request_shipments ss
+           JOIN stock_requests sr ON sr.request_id = ss.request_id
+           JOIN stock_request_shipment_items ssi ON ssi.shipment_id = ss.shipment_id
+           JOIN stock_request_items sri ON sri.item_id = ssi.request_item_id
            JOIN products p ON sri.sku = p.sku
-           WHERE sr.branch_id = %s AND sr.status = 'In Transit'
-           ORDER BY sr.requested_at, p.item_name""",
+           WHERE sr.branch_id = %s AND ss.status = 'In Transit'
+           ORDER BY ss.dispatched_at, p.item_name""",
         (bid,),
     )
-    # Group the flat item rows into one entry per delivery for the
-    # template. NOTE: this key is deliberately called "line_items", not
-    # "items" — a plain dict already has a built-in .items() method, and
-    # Jinja's dotted access (d.items) resolves to that bound method
-    # before it ever tries d["items"], which breaks any |length/loop use
-    # on it. Naming it "line_items" (or "keys"/"values"/"update", etc.)
-    # sidesteps that collision instead of relying on everyone remembering
-    # to use bracket access in the template.
     in_transit = []
-    by_request = {}
+    by_shipment = {}
     for row in item_rows:
-        rid = row["request_id"]
-        entry = by_request.get(rid)
+        sid = row["shipment_id"]
+        entry = by_shipment.get(sid)
         if entry is None:
             entry = {
-                "request_id": rid,
+                "shipment_id": sid,
+                "request_id": row["request_id"],
                 "delivery_number": row["delivery_number"],
                 "requested_at": row["requested_at"],
+                "dispatched_at": row["dispatched_at"],
                 "line_items": [],
             }
-            by_request[rid] = entry
+            by_shipment[sid] = entry
             in_transit.append(entry)
         entry["line_items"].append(row)
 
@@ -963,7 +981,7 @@ def reports():
     ]
     return render_template(
         "branch/reports.html", report_types=report_types, unit_choices=PRODUCT_UNITS,
-        current_month=datetime.date.today().strftime("%Y-%m"),
+        current_month=business_today().strftime("%Y-%m"),
     )
 
 
@@ -994,7 +1012,7 @@ def generate_report():
             f"No data matches the selected filters for {report['title']}.", "warning")
         return redirect(url_for("branch.reports"))
 
-    stamp = datetime.date.today().isoformat()
+    stamp = business_today().isoformat()
     if fmt == "xlsx":
         buf = render_report_excel(report)
         mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

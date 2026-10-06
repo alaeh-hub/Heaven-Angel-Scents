@@ -26,7 +26,7 @@ from db import TransactionAborted, transaction
 from reports import XL_BORDER, XL_HEADER_FILL, XL_MONEY_FMT
 from sale_stock import apply_sale_stock
 from utils import (
-    PAYMENT_METHODS, SALE_TYPES, ValidationError, parse_optional_text,
+    PAYMENT_METHODS, SALE_TYPES, ValidationError, business_now, parse_optional_text,
     parse_positive_decimal, parse_positive_int,
 )
 
@@ -181,6 +181,8 @@ def _parse_import_date(raw):
     """Excel gives back a real datetime for a date-formatted cell, or a
     plain string/None for a text cell — accept either.
     """
+    now = business_now()
+    today = now.date()
     if isinstance(raw, datetime.datetime):
         picked = raw.date()
     elif isinstance(raw, datetime.date):
@@ -188,16 +190,16 @@ def _parse_import_date(raw):
     else:
         raw = str(raw or "").strip()
         if not raw:
-            picked = datetime.date.today()
+            picked = today
         else:
             try:
                 picked = datetime.datetime.strptime(raw, "%Y-%m-%d").date()
             except ValueError:
                 raise ValidationError(
                     "Sale Date must be YYYY-MM-DD, or blank for today.")
-    if picked > datetime.date.today():
+    if picked > today:
         raise ValidationError("Sale Date can't be in the future.")
-    return datetime.datetime.combine(picked, datetime.datetime.now().time())
+    return datetime.datetime.combine(picked, now.time())
 
 
 def _parse_row(excel_row_num, row):

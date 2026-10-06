@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS products (
     sku         VARCHAR(50) PRIMARY KEY,
     item_name   VARCHAR(100) NOT NULL,
-    variant     ENUM('Male', 'Female', 'Unisex') NOT NULL,
+    variant     ENUM('Male', 'Female') NOT NULL,
     category    ENUM('Bottled', 'Bulk/Refill') NOT NULL DEFAULT 'Bottled',
     unit        ENUM('85ML', '50ML', '10ML', '3ML', 'BULK') NOT NULL DEFAULT '50ML',
     price       DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
@@ -2354,3 +2354,142 @@ DELIMITER ;
 
 CALL _migrate_sales_credit_settled();
 DROP PROCEDURE _migrate_sales_credit_settled;
+
+-- ----------------------------------------------------------------------------
+-- 46. Migration — dated raw-material restock events
+--
+--     raw_materials.package_qty/package_cost remain lifetime aggregates so
+--     existing all-time purchase totals stay correct. Each restock now also
+--     gets its own dated event row for supplier history and date-filtered
+--     purchase reports. Existing rows predate event tracking and remain a
+--     single aggregate baseline; their individual older restocks cannot be
+--     reconstructed from the cumulative columns.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS material_restock_events (
+    restock_id             INT AUTO_INCREMENT PRIMARY KEY,
+    material_id            INT NOT NULL,
+    material_name_snapshot VARCHAR(100) NOT NULL,
+    unit_snapshot          ENUM('Gram', 'Milliliter', 'Liter', 'Gallon', 'Piece') NOT NULL,
+    qty                    DECIMAL(10, 3) NOT NULL,
+    cost                   DECIMAL(10, 2) NOT NULL,
+    supplier_id            INT NULL,
+    supplier_name_snapshot VARCHAR(100) NULL,
+    purchased_at           DATETIME NOT NULL,
+    created_by_user_id     INT NULL,
+    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id) ON DELETE CASCADE,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_material_restock_material_date (material_id, purchased_at),
+    INDEX idx_material_restock_supplier_date (supplier_id, purchased_at),
+    CHECK (qty > 0),
+    CHECK (cost >= 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- 47. Migration — repeatable partial stock-request shipments
+--
+--     Each dispatch is a separate shipment with its own quantities and
+--     receipt confirmation. Request-item quantities remain cumulative for
+--     reports and the final goods-received receipt. Outstanding quantity
+--     is requested minus good quantity received; damaged/short units remain
+--     open for a later dispatch. Existing in-transit/fulfilled requests are
+--     copied into one legacy shipment so current deliveries remain receivable.
+-- ----------------------------------------------------------------------------
+ALTER TABLE stock_requests
+    MODIFY COLUMN status ENUM('Pending','Partially Fulfilled','In Transit','Fulfilled','Rejected')
+    NOT NULL DEFAULT 'Pending';
+
+CREATE TABLE IF NOT EXISTS stock_request_shipments (
+    shipment_id          INT AUTO_INCREMENT PRIMARY KEY,
+    request_id           INT NOT NULL,
+    status               ENUM('In Transit','Received') NOT NULL DEFAULT 'In Transit',
+    dispatched_by_user_id INT NULL,
+    dispatched_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    received_at          TIMESTAMP NULL,
+    FOREIGN KEY (request_id) REFERENCES stock_requests(request_id) ON DELETE CASCADE,
+    FOREIGN KEY (dispatched_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_stock_request_shipments_request (request_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS stock_request_shipment_items (
+    shipment_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    shipment_id      INT NOT NULL,
+    request_item_id  INT NOT NULL,
+    dispatched_qty   INT NOT NULL,
+    received_qty     INT NULL,
+    damaged_qty      INT NOT NULL DEFAULT 0,
+    FOREIGN KEY (shipment_id) REFERENCES stock_request_shipments(shipment_id) ON DELETE CASCADE,
+    FOREIGN KEY (request_item_id) REFERENCES stock_request_items(item_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_stock_request_shipment_item (shipment_id, request_item_id),
+    CHECK (dispatched_qty > 0),
+    CHECK (received_qty IS NULL OR received_qty >= 0),
+    CHECK (damaged_qty >= 0)
+);
+
+INSERT INTO stock_request_shipments (request_id, status, dispatched_at, received_at)
+SELECT sr.request_id,
+       IF(sr.status = 'In Transit', 'In Transit', 'Received'),
+       sr.updated_at,
+       IF(sr.status = 'In Transit', NULL, sr.updated_at)
+FROM stock_requests sr
+WHERE sr.status IN ('In Transit', 'Fulfilled')
+  AND EXISTS (SELECT 1 FROM stock_request_items sri
+              WHERE sri.request_id = sr.request_id AND COALESCE(sri.dispatched_qty, 0) > 0)
+  AND NOT EXISTS (SELECT 1 FROM stock_request_shipments ss WHERE ss.request_id = sr.request_id);
+
+INSERT INTO stock_request_shipment_items
+    (shipment_id, request_item_id, dispatched_qty, received_qty, damaged_qty)
+SELECT ss.shipment_id, sri.item_id, sri.dispatched_qty,
+       IF(ss.status = 'Received', COALESCE(sri.received_qty, 0), NULL),
+       IF(ss.status = 'Received', COALESCE(sri.damaged_qty, 0), 0)
+FROM stock_request_shipments ss
+JOIN stock_request_items sri ON sri.request_id = ss.request_id
+WHERE COALESCE(sri.dispatched_qty, 0) > 0
+  AND NOT EXISTS (SELECT 1 FROM stock_request_shipment_items ssi
+                  WHERE ssi.shipment_id = ss.shipment_id AND ssi.request_item_id = sri.item_id);
+
+-- The old branch flow marked every submitted receipt Fulfilled even when
+-- less than the requested amount arrived. Reopen those balances so HQ can
+-- dispatch the outstanding good quantity under the new lifecycle.
+UPDATE stock_requests sr
+SET sr.status = 'Partially Fulfilled'
+WHERE sr.status = 'Fulfilled'
+  AND EXISTS (
+      SELECT 1 FROM stock_request_items sri
+      WHERE sri.request_id = sr.request_id
+         AND COALESCE(sri.received_qty, 0) < sri.requested_qty
+  );
+
+-- ----------------------------------------------------------------------------
+-- 48. Migration — product variants are Male or Female
+--
+--     The catalog no longer supports a Unisex product variant. Refuse to
+--     narrow the enum while any such rows remain so existing inventory and
+--     sales history are never silently reclassified or discarded.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_products_remove_unisex_variant$$
+
+CREATE PROCEDURE _migrate_products_remove_unisex_variant()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'products'
+          AND column_name = 'variant'
+          AND column_type LIKE '%Unisex%'
+    ) THEN
+        IF EXISTS (SELECT 1 FROM products WHERE variant = 'Unisex') THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Products still use the Unisex variant; reclassify those products before applying this migration.';
+        END IF;
+        ALTER TABLE products MODIFY COLUMN variant ENUM('Male', 'Female') NOT NULL;
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_products_remove_unisex_variant();
+DROP PROCEDURE _migrate_products_remove_unisex_variant;

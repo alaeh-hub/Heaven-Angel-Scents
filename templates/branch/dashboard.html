@@ -104,7 +104,7 @@
           <tr>
             <td class="mono item-name" data-label="Delivery #">{{ r.delivery_number }}</td>
             <td class="num mono" data-label="Items">{{ r.item_count }}</td>
-            <td class="num mono" data-label="Qty">{{ r.total_qty }}</td>
+            <td class="num mono" data-label="Qty">{{ r.total_qty }}{% if r.status == 'Partially Fulfilled' %}<div class="item-sub">{{ r.total_remaining }} still open</div>{% endif %}</td>
             <td data-label="Status">{{ m.status_badge(r.status) }}</td>
           </tr>
           {% endfor %}

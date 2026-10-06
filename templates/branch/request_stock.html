@@ -427,6 +427,7 @@
                 <div class="item-sub item-sub-badge">
                   {{ m.status_badge(r.status) }}
                   <span class="mono">{{ r.requested_at.strftime('%b %d, %Y') }}</span>
+                  {% if r.status == 'Partially Fulfilled' %}<span class="mono">{{ r.total_remaining }} still open</span>{% endif %}
                 </div>
               </td>
               <td class="num mono" data-label="Items">{{ r.item_count }}</td>

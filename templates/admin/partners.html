@@ -159,12 +159,12 @@
               <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a>
               {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
               <div class="item-sub item-sub-badge">
-                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
+                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
                 <span class="mono">{{ p.created_at.strftime('%b %d, %Y') }}</span>
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">
-              <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'unisex' }}">{{ p.partner_type }}</span>
+              <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
             </td>
             <td class="text-soft mobile-detail" style="font-size:12.5px;" data-label="Contact">
               {% if p.contact_person %}{{ p.contact_person }}<br>{% endif %}

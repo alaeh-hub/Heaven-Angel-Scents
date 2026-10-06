@@ -150,7 +150,7 @@
               <div class="item-sub">now: {{ l.current_username }}</div>
               {% endif %}
               <div class="item-sub item-sub-badge">
-                <span class="badge badge-{{ 'unisex' if l.role_attempted == 'Admin' else 'transit' }}">{{ l.role_attempted }}</span>
+                <span class="badge badge-{{ 'neutral' if l.role_attempted == 'Admin' else 'transit' }}">{{ l.role_attempted }}</span>
                 {% if l.success %}
                 <span class="badge badge-active">Success</span>
                 {% else %}
@@ -159,7 +159,7 @@
                 <span class="mono">{{ l.created_at.strftime('%b %d, %Y') }}</span>
               </div>
             </td>
-            <td class="mobile-fold" data-label="Role tab"><span class="badge badge-{{ 'unisex' if l.role_attempted == 'Admin' else 'transit' }}">{{ l.role_attempted }}</span></td>
+            <td class="mobile-fold" data-label="Role tab"><span class="badge badge-{{ 'neutral' if l.role_attempted == 'Admin' else 'transit' }}">{{ l.role_attempted }}</span></td>
             <td class="mobile-fold" data-label="Result">
               {% if l.success %}
               <span class="badge badge-active">Success</span>

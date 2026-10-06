@@ -200,14 +200,14 @@
     </div>
   </div>
 
-  {% if req.status == 'Pending' %}
+  {% if req.status in ('Pending', 'Partially Fulfilled') %}
   <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=req.request_id) }}" id="dispatchForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
       <table class="rd-items-table table-fixed">
         <colgroup>
-          <col style="width:24%"><col style="width:12%"><col style="width:10%">
-          <col style="width:12%"><col style="width:14%"><col style="width:14%"><col style="width:14%">
+          <col style="width:21%"><col style="width:10%"><col style="width:8%">
+          <col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:20%">
         </colgroup>
         <thead>
           <tr>
@@ -215,8 +215,9 @@
             <th>Variant</th>
             <th>Unit</th>
             <th class="num">Requested</th>
+            <th class="num">Received</th>
+            <th class="num">Remaining</th>
             <th class="num">Ref. price</th>
-            <th class="num">Line total</th>
             <th class="num">Dispatch qty</th>
           </tr>
         </thead>
@@ -232,19 +233,20 @@
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
             <td class="mono text-soft mobile-fold" data-label="Unit">{{ item.unit }}</td>
             <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
+            <td class="num mono" data-label="Received">{{ item.received_qty or 0 }}</td>
+            <td class="num mono" data-label="Remaining">{{ item.remaining_qty }}</td>
             <td class="num mono" data-label="Ref. price">{{ item.unit_price|peso }}</td>
-            <td class="num mono" data-label="Line total">{{ (item.requested_qty * item.unit_price)|peso }}</td>
             <td class="num" data-label="Dispatch qty">
               <input type="hidden" name="item_id[]" value="{{ item.item_id }}">
-              <input type="number" name="dispatched_qty[]" value="{{ item.requested_qty }}" min="0"
-                     max="{{ item.requested_qty }}" class="mono" aria-label="Dispatch quantity for {{ item.item_name }} {{ item.unit }}">
+              <input type="number" name="dispatched_qty[]" value="{{ item.remaining_qty }}" min="0"
+                     max="{{ item.remaining_qty }}" class="mono" aria-label="Dispatch quantity for {{ item.item_name }} {{ item.unit }}">
             </td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot>
           <tr class="rd-total-row">
-            <td colspan="5" class="rd-total-label" data-label="">Total requested value</td>
+            <td colspan="6" class="rd-total-label" data-label="">Total requested value</td>
             <td class="num mono" data-label="Total">{{ total_value|peso }}</td>
             <td class="rd-total-empty" data-label=""></td>
           </tr>
@@ -252,7 +254,7 @@
       </table>
     </div>
     <div class="rd-actions">
-      <span class="rd-actions-note">Dispatch quantities default to what was requested — lower any line if HQ can't fully cover it, or set it to 0 to leave that item off this shipment.</span>
+      <span class="rd-actions-note">Dispatch up to each remaining quantity. A partial dispatch leaves the balance open; the branch can receive this shipment before another dispatch is created.</span>
       <div class="rd-actions-buttons">
         <!-- Reject delivery submits rejectForm (below, outside this
              <form>) via the button's `form` attribute — no custom JS
@@ -260,23 +262,23 @@
              delegated form[data-confirm] handler shows the confirm()
              prompt on submit, same pattern as requests.html /
              users.html / package_detail.html. -->
-        <button type="submit" form="rejectForm" class="btn btn-danger">Reject delivery</button>
-        <button type="submit" class="btn btn-accent">Dispatch this delivery</button>
+        {% if req.status == 'Pending' %}<button type="submit" form="rejectForm" class="btn btn-danger">Reject delivery</button>{% endif %}
+        <button type="submit" class="btn btn-accent">{{ 'Dispatch remaining quantity' if req.status == 'Partially Fulfilled' else 'Dispatch this delivery' }}</button>
       </div>
     </div>
   </form>
-  <form method="POST" action="{{ url_for('admin.reject_request', request_id=req.request_id) }}" id="rejectForm"
+  {% if req.status == 'Pending' %}<form method="POST" action="{{ url_for('admin.reject_request', request_id=req.request_id) }}" id="rejectForm"
     data-confirm="Reject this delivery? This can't be undone." style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  </form>
+  </form>{% endif %}
 
   {% else %}
   <div class="table-wrap">
     <table class="table-fixed">
       <colgroup>
-        <col style="width:20%"><col style="width:10%"><col style="width:8%">
-        <col style="width:9%"><col style="width:9%"><col style="width:9%">
-        <col style="width:9%"><col style="width:12%"><col style="width:14%">
+        <col style="width:18%"><col style="width:8%"><col style="width:7%">
+        <col style="width:8%"><col style="width:8%"><col style="width:8%">
+        <col style="width:8%"><col style="width:8%"><col style="width:11%"><col style="width:16%">
       </colgroup>
       <thead>
         <tr>
@@ -286,6 +288,7 @@
           <th class="num">Requested</th>
           <th class="num">Dispatched</th>
           <th class="num">Received</th>
+          <th class="num">Remaining</th>
           <th class="num">Damaged</th>
           <th class="num">Unit price</th>
           <th class="num">Line total</th>
@@ -305,6 +308,7 @@
           <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
           <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty if item.dispatched_qty is not none else '—' }}</td>
           <td class="num mono" data-label="Received">{{ item.received_qty if item.received_qty is not none else '—' }}</td>
+          <td class="num mono" data-label="Remaining">{{ item.remaining_qty }}</td>
           <td class="num mono" data-label="Damaged">{{ item.damaged_qty }}</td>
           <td class="num mono" data-label="Unit price">{{ item.unit_price|peso }}</td>
           <td class="num mono" data-label="Line total">{{ (item.requested_qty * item.unit_price)|peso }}</td>
@@ -313,7 +317,7 @@
       </tbody>
       <tfoot>
         <tr class="rd-total-row">
-          <td colspan="8" class="rd-total-label" data-label="">Total requested value</td>
+          <td colspan="9" class="rd-total-label" data-label="">Total requested value</td>
           <td class="num mono" data-label="Total">{{ total_value|peso }}</td>
         </tr>
       </tfoot>
@@ -324,9 +328,32 @@
     <span class="rd-actions-note">Dispatched — awaiting the branch to confirm receipt.</span>
     {% elif req.status == 'Fulfilled' %}
     <a href="{{ url_for('admin.request_receipt', request_id=req.request_id) }}" class="btn btn-accent" target="_blank" data-generate-file>Download receipt</a>
+    {% elif req.status == 'Partially Fulfilled' %}
+    <span class="rd-actions-note">Some quantities have been received. The remaining quantity can be dispatched above.</span>
     {% else %}
     <span class="rd-actions-note">This delivery was rejected.</span>
     {% endif %}
+  </div>
+  {% endif %}
+  {% if shipments %}
+  <div style="padding:0 22px 18px;">
+    <h3 style="font-size:14px; margin:0 0 10px;">Shipment history</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Shipment</th><th>Dispatched</th><th class="num">Units</th><th>Status</th><th>Received</th></tr></thead>
+        <tbody>
+          {% for shipment in shipments %}
+          <tr>
+            <td class="mono">#{{ shipment.shipment_id }}</td>
+            <td>{{ shipment.dispatched_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+            <td class="num mono">{{ shipment.total_dispatched }}</td>
+            <td>{{ m.status_badge('In Transit' if shipment.status == 'In Transit' else 'Fulfilled') }}</td>
+            <td>{{ shipment.received_at.strftime('%b %d, %Y %I:%M %p') if shipment.received_at else 'Awaiting branch confirmation' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
   {% endif %}
 </div>

@@ -49,7 +49,7 @@ def make_branch(sql, name=None, is_hq=False):
     return branch_id
 
 
-def make_product(sql, price="100.00", unit="50ML", variant="Unisex"):
+def make_product(sql, price="100.00", unit="50ML", variant="Male"):
     sku = f"TST-{unique_suffix().upper()}"
     cur = sql.cursor()
     cur.execute(
@@ -285,7 +285,9 @@ def make_stock_request(sql, branch_id, items, status="Pending"):
 
     Each entry in `items` is a dict with at least sku/requested_qty;
     unit_price/dispatched_qty/received_qty/damaged_qty all default the
-    same way a fresh Pending request line would. Returns request_id.
+    same way a fresh Pending request line would. An In Transit request
+    with dispatched lines also gets a matching shipment fixture.
+    Returns request_id.
     """
     cur = sql.cursor()
     cur.execute(
@@ -293,6 +295,7 @@ def make_stock_request(sql, branch_id, items, status="Pending"):
         (branch_id, f"DR-TEST-{unique_suffix()}", status),
     )
     request_id = cur.lastrowid
+    shipment_lines = []
     for item in items:
         cur.execute(
             """INSERT INTO stock_request_items
@@ -301,6 +304,21 @@ def make_stock_request(sql, branch_id, items, status="Pending"):
             (request_id, item["sku"], item["requested_qty"],
              item.get("unit_price", "0.00"), item.get("dispatched_qty"),
              item.get("received_qty"), item.get("damaged_qty", 0)),
+        )
+        dispatched_qty = int(item.get("dispatched_qty") or 0)
+        if dispatched_qty > 0:
+            shipment_lines.append((cur.lastrowid, dispatched_qty))
+    if status == "In Transit" and shipment_lines:
+        cur.execute(
+            "INSERT INTO stock_request_shipments (request_id, status) VALUES (%s, 'In Transit')",
+            (request_id,),
+        )
+        shipment_id = cur.lastrowid
+        cur.executemany(
+            """INSERT INTO stock_request_shipment_items
+                   (shipment_id, request_item_id, dispatched_qty)
+               VALUES (%s, %s, %s)""",
+            [(shipment_id, item_id, qty) for item_id, qty in shipment_lines],
         )
     sql.commit()
     cur.close()
@@ -324,6 +342,23 @@ def get_request_item(sql, request_id, sku):
     row = cur.fetchone()
     cur.close()
     return row
+
+
+def get_in_transit_shipment_items(sql, request_id):
+    cur = sql.cursor(dictionary=True)
+    cur.execute(
+        """SELECT ss.shipment_id, ssi.shipment_item_id, ssi.dispatched_qty,
+                  sri.item_id, sri.sku
+           FROM stock_request_shipments ss
+           JOIN stock_request_shipment_items ssi ON ssi.shipment_id = ss.shipment_id
+           JOIN stock_request_items sri ON sri.item_id = ssi.request_item_id
+           WHERE ss.request_id = %s AND ss.status = 'In Transit'
+           ORDER BY ssi.shipment_item_id""",
+        (request_id,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
 
 
 def count_sales(sql, branch_id, sku):

@@ -36,7 +36,7 @@
 
 {% block content %}
 <div class="tabs">
-  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Fulfilled','Fulfilled'),
+  {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Partially Fulfilled','Partially Fulfilled'), ('Fulfilled','Fulfilled'),
   ('Rejected','Rejected')] %}
   <a class="tab {{ 'active' if status_filter == key }}" href="{{ url_for('branch.requests_list', status=key) }}">{{ label
     }}</a>
@@ -85,6 +85,7 @@
               <div class="item-sub item-sub-badge">
                 {{ m.status_badge(r.status) }}
                 <span class="mono">{{ r.requested_at.strftime('%b %d, %Y') }}</span>
+                {% if r.status in ('Pending', 'Partially Fulfilled', 'In Transit') %}<span class="mono">{{ r.total_remaining }} remaining</span>{% endif %}
               </div>
             </td>
             <td class="num mono" data-label="Items">{{ r.item_count }}</td>
@@ -95,6 +96,8 @@
               <span class="text-faint" style="font-size:12.5px;">awaiting HQ dispatch</span>
               {% elif r.status == 'In Transit' %}
               <a href="{{ url_for('branch.receive_stock') }}" class="btn btn-accent btn-sm">Confirm receipt</a>
+              {% elif r.status == 'Partially Fulfilled' %}
+              <span class="text-faint" style="font-size:12.5px;">{{ r.total_remaining }} remaining · awaiting another dispatch</span>
               {% elif r.status == 'Fulfilled' %}
               <a href="{{ url_for('branch.receipt', request_id=r.request_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
               {% else %}

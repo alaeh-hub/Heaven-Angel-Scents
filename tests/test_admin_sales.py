@@ -58,8 +58,8 @@ def _make_scent_pair(sql, bulk_ml):
     cur = sql.cursor()
     cur.execute(
         """INSERT INTO products (sku, item_name, variant, category, unit, price) VALUES
-           (%s, %s, 'Unisex', 'Bottled', '50ML', 50.00),
-           (%s, %s, 'Unisex', 'Bulk/Refill', 'BULK', 5.00)""",
+           (%s, %s, 'Male', 'Bottled', '50ML', 50.00),
+           (%s, %s, 'Male', 'Bulk/Refill', 'BULK', 5.00)""",
         (f"{base}-50ML", f"Refill Scent {base}", f"{base}-BULK", f"Refill Scent {base}"),
     )
     sql.commit()

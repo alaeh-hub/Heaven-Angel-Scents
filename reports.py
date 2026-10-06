@@ -36,15 +36,18 @@ from reportlab.platypus import (
 
 from brand_assets import NumberedCanvas, logo_drawing, register_fonts
 from db import query
-from utils import BOTTLE_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES, bottle_size_ml
+from utils import (
+    BOTTLE_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES,
+    business_now, business_today, bottle_size_ml,
+)
 
 
 # Units behind a delivery discrepancy log row (DAMAGE or ADJUSTMENT,
 # reference_type='STOCK_REQUEST'). receive_stock() logs these with
-# change_qty = 0 (the units never entered branch stock, so nothing is
-# deducted), which means the unit count has to come from the delivery
-# line itself: damaged_qty for DAMAGE, and whatever was dispatched but
-# neither received nor reported damaged for ADJUSTMENT. A request holds
+# change_qty was 0 before shipment tracking and now carries a negative
+# discrepancy quantity on new rows (the units never entered branch stock),
+# so the unit count uses that event value when present and falls back to
+# the delivery line for legacy rows. A request holds
 # one line per SKU (request_stock() merges duplicates), so joining on
 # (request_id, sku) matches exactly one line. Falls back to
 # -change_qty for any row with no matching line.
@@ -59,6 +62,7 @@ LOW_STOCK_WHERE = "bi.stock_qty <= bi.reorder_level AND p.unit <> 'BULK'"
 
 DISCREPANCY_UNITS_SQL = (
     "(CASE WHEN sri.item_id IS NULL THEN -sml.change_qty "
+    "WHEN sml.change_qty <> 0 THEN -sml.change_qty "
     "WHEN sml.movement_type = 'DAMAGE' THEN sri.damaged_qty "
     "ELSE GREATEST(COALESCE(sri.dispatched_qty, 0) - COALESCE(sri.received_qty, 0) "
     "- sri.damaged_qty, 0) END)"
@@ -77,11 +81,11 @@ register_fonts()
 
 MAX_ROWS = 1000
 RECENT_CHOICES = (20, 50, 100, 200)
-STATUS_CHOICES = ("Pending", "In Transit", "Fulfilled", "Rejected")
+STATUS_CHOICES = ("Pending", "In Transit", "Partially Fulfilled", "Fulfilled", "Rejected")
 MOVEMENT_TYPE_CHOICES = ("PRODUCTION", "DISPATCH", "RECEIPT",
                          "SALE", "REFILL", "FREEBIE", "ADJUSTMENT", "DAMAGE",
                          "PACKAGE_ORDER", "PACKAGE_RETURN", "SALE_VOID")
-VARIANT_CHOICES = ("Male", "Female", "Unisex")
+VARIANT_CHOICES = ("Male", "Female")
 ROLE_CHOICES = ("Admin", "Branch")
 UNIT_CHOICES = PRODUCT_UNITS
 SALE_TYPE_CHOICES = SALE_TYPES
@@ -110,9 +114,8 @@ ROW_ALT = colors.HexColor("#F5F0E1")
 # Hex pairs (background, text) for each badge "style" — a direct port
 # of the badge-* classes in style.css (light-theme values), so a
 # Status/Type/Variant column in a generated report is colored exactly
-# like the matching badge the person already sees on screen. Male/
-# Female/Unisex is an identity category, not a status, so it gets its
-# own gold/ink/muted-ink scale rather than reusing red/blue.
+# like the matching badge the person already sees on screen. Product
+# variants use their own gold/ink scale rather than reusing status colors.
 BADGE_STYLES = {
     "pending":   ("#FBF0D9", "#C9820B"),  # --warning-soft / --warning
     "transit":   ("#FBF1D6", "#8A6D1F"),  # --accent-soft / --accent-ink
@@ -122,7 +125,7 @@ BADGE_STYLES = {
     "inactive":  ("#FAF7EF", "#948C76"),  # --bg / --ink-faint
     "male":      ("#FBF1D6", "#8A6D1F"),  # --accent-soft / --accent-ink
     "female":    ("#F5F0E1", "#17140D"),  # --surface-2 / --ink
-    "unisex":    ("#FAF7EF", "#5B5445"),  # --bg / --ink-soft
+    "neutral":   ("#FAF7EF", "#5B5445"),  # --bg / --ink-soft
 }
 
 # Maps a column's *semantic kind* (not its literal value) to the
@@ -132,28 +135,28 @@ BADGE_STYLES = {
 # coloring can never drift out of sync with what the web UI shows for
 # that same value.
 BADGE_KIND_MAPS = {
-    "status": {"Pending": "pending", "In Transit": "transit", "Fulfilled": "fulfilled", "Rejected": "rejected"},
+    "status": {"Pending": "pending", "In Transit": "transit", "Partially Fulfilled": "transit", "Fulfilled": "fulfilled", "Rejected": "rejected"},
     "movement_type": {
         "PRODUCTION": "fulfilled", "DISPATCH": "transit", "RECEIPT": "fulfilled",
-        "SALE": "unisex", "REFILL": "female", "FREEBIE": "pending",
+        "SALE": "neutral", "REFILL": "female", "FREEBIE": "pending",
         "ADJUSTMENT": "pending", "DAMAGE": "rejected",
         "PACKAGE_ORDER": "transit", "PACKAGE_RETURN": "inactive", "SALE_VOID": "rejected",
     },
     "sale_type": {"Sale": "fulfilled", "Refill": "transit", "Freebie": "pending"},
     "payment_method": {"Cash": "active", "Credit": "pending"},
-    "variant": {"Male": "male", "Female": "female", "Unisex": "unisex"},
+    "variant": {"Male": "male", "Female": "female"},
     "active_status": {"Active": "active", "Discontinued": "inactive", "Deactivated": "inactive"},
-    "role": {"Admin": "unisex", "Branch": "transit"},
+    "role": {"Admin": "neutral", "Branch": "transit"},
     # Mirrors partners.html / partner_inquiries.html's inline badge:
-    # badge-transit for Distributor, badge-unisex for Reseller.
-    "partner_type": {"Distributor": "transit", "Reseller": "unisex"},
+    # badge-transit for Distributor, badge-neutral for Reseller.
+    "partner_type": {"Distributor": "transit", "Reseller": "neutral"},
     # Mirrors packages.html's "For" column.
-    "package_scope": {"Both": "pending", "Distributor": "transit", "Reseller": "unisex"},
+    "package_scope": {"Both": "pending", "Distributor": "transit", "Reseller": "neutral"},
     # Mirrors packages.html's Status column (Active/Retired badge).
     "package_status": {"Active": "active", "Retired": "inactive"},
     # Mirrors _macros.html's inquiry_status_badge line for line.
     "inquiry_status": {
-        "New": "pending", "Contacted": "transit", "Follow-up": "unisex",
+        "New": "pending", "Contacted": "transit", "Follow-up": "neutral",
         "On Hold": "inactive", "Closed": "fulfilled", "Declined": "rejected",
     },
 }
@@ -327,7 +330,7 @@ def _month_bounds(month_str):
         year, mon = (int(p) for p in month_str.split("-"))
         first_day = datetime.date(year, mon, 1)
     except (AttributeError, TypeError, ValueError):
-        today = datetime.date.today()
+        today = business_today()
         first_day = today.replace(day=1)
         year, mon = first_day.year, first_day.month
     next_month_first = (
@@ -590,32 +593,49 @@ def _report_production_log(filters, branch_scope):
 
 
 def _report_materials(filters, branch_scope):
-    """One row per raw material, same as the Materials page: when it was
-    first bought, the running package quantity/cost (a Restock adds to
-    that same row rather than logging a new dated purchase — see
-    admin.restock_material()), cost per unit, and current stock on hand.
-    Windowed by that first-purchase date. branch_scope is unused
-    (materials aren't branch-scoped) but every builder is called with it.
+    """Dated initial/baseline purchases and individual restocks. Older
+    restocks made before event tracking remain combined into the baseline
+    row because their individual dates and amounts were never stored.
+    branch_scope is unused (materials aren't branch-scoped) but every
+    builder is called with it.
     """
     where, params = "", []
     if filters["search"]:
-        where += " AND (rm.material_name LIKE %s OR rm.receipt_number LIKE %s OR s.supplier_name LIKE %s)"
+        where += " AND (material_name LIKE %s OR receipt_number LIKE %s OR supplier_name LIKE %s)"
         like = f"%{filters['search']}%"
         params += [like, like, like]
-    # raw_materials.created_at actually holds the purchase date entered
-    # on the Materials page (see routes/admin.py's materials(), which
-    # inserts parse_past_date(...) into this column) — not necessarily
-    # when the row was saved, so "Purchased" below is accurate either way.
     time_where, order, limit_n, truncated = _time_window(
-        "rm.created_at", filters, params)
+        "purchased_at", filters, params)
     where += time_where
 
     rows = query(
-        f"""SELECT rm.created_at AS purchased_at, rm.material_name, s.supplier_name, rm.unit,
-                   rm.purchase_mode, rm.package_qty, rm.package_cost, rm.cost_per_unit, rm.receipt_number,
-                   rm.stock_qty AS stock_on_hand
-            FROM raw_materials rm
-            LEFT JOIN suppliers s ON rm.supplier_id = s.supplier_id
+        f"""SELECT * FROM (
+                SELECT rm.created_at AS purchased_at, rm.material_name, s.supplier_name, rm.unit,
+                       rm.purchase_mode, GREATEST(rm.package_qty - COALESCE(re.total_qty, 0), 0) AS package_qty,
+                       GREATEST(rm.package_cost - COALESCE(re.total_cost, 0), 0) AS package_cost,
+                       CASE
+                           WHEN rm.package_qty > COALESCE(re.total_qty, 0)
+                           THEN GREATEST(rm.package_cost - COALESCE(re.total_cost, 0), 0)
+                                / (rm.package_qty - COALESCE(re.total_qty, 0))
+                           ELSE rm.cost_per_unit
+                       END AS cost_per_unit,
+                       rm.receipt_number, rm.stock_qty AS stock_on_hand
+                FROM raw_materials rm
+                LEFT JOIN suppliers s ON rm.supplier_id = s.supplier_id
+                LEFT JOIN (
+                    SELECT material_id, SUM(qty) AS total_qty, SUM(cost) AS total_cost
+                    FROM material_restock_events GROUP BY material_id
+                ) re ON re.material_id = rm.material_id
+                UNION ALL
+                SELECT mre.purchased_at, mre.material_name_snapshot,
+                        COALESCE(mre.supplier_name_snapshot, s.supplier_name), mre.unit_snapshot,
+                        'Restock', mre.qty, mre.cost,
+                        CASE WHEN mre.qty > 0 THEN mre.cost / mre.qty ELSE 0 END,
+                        NULL, rm.stock_qty
+                FROM material_restock_events mre
+                LEFT JOIN suppliers s ON mre.supplier_id = s.supplier_id
+                LEFT JOIN raw_materials rm ON rm.material_id = mre.material_id
+            ) purchases
             WHERE 1=1 {where} {order} LIMIT {limit_n}""",
         tuple(params),
     )
@@ -628,7 +648,7 @@ def _report_materials(filters, branch_scope):
         r["receipt_number"] = r["receipt_number"] or "—"
 
     columns = [
-        ("purchased_at", "First Purchased", "datetime"),
+        ("purchased_at", "Purchased", "datetime"),
         ("material_name", "Material", "str"),
         ("supplier_name", "Supplier", "str"),
         ("unit", "Unit", "str"),
@@ -657,11 +677,16 @@ def _report_suppliers(filters, branch_scope):
 
     rows = query(
         f"""SELECT s.supplier_name, s.contact_person, s.phone, s.email, s.created_at,
-                   COUNT(rm.material_id) AS material_count,
+                   COUNT(DISTINCT rm.material_id) AS material_count,
                    COALESCE(SUM(rm.package_cost), 0) AS total_spent,
-                   MAX(rm.created_at) AS last_purchase_at
+                   MAX(CASE WHEN re.last_restock_at > rm.created_at
+                            THEN re.last_restock_at ELSE rm.created_at END) AS last_purchase_at
             FROM suppliers s
             LEFT JOIN raw_materials rm ON rm.supplier_id = s.supplier_id
+            LEFT JOIN (
+                SELECT material_id, MAX(purchased_at) AS last_restock_at
+                FROM material_restock_events GROUP BY material_id
+            ) re ON re.material_id = rm.material_id
             WHERE 1=1 {where}
             GROUP BY s.supplier_id, s.supplier_name, s.contact_person, s.phone, s.email, s.created_at
             ORDER BY total_spent DESC, s.supplier_name LIMIT {MAX_ROWS}""",
@@ -874,7 +899,8 @@ def _report_stock_requests(filters, branch_scope):
 
     rows = query(
         f"""SELECT sr.requested_at, sr.delivery_number, b.branch_name, p.item_name, p.sku,
-                   sri.requested_qty, sri.dispatched_qty, sri.received_qty, sri.damaged_qty, sr.status,
+                   sri.requested_qty, sri.dispatched_qty, sri.received_qty, sri.damaged_qty,
+                   GREATEST(sri.requested_qty - COALESCE(sri.received_qty, 0), 0) AS remaining_qty, sr.status,
                    sri.unit_price, (sri.requested_qty * sri.unit_price) AS line_value
             FROM stock_request_items sri
             JOIN stock_requests sr ON sri.request_id = sr.request_id
@@ -899,7 +925,8 @@ def _report_stock_requests(filters, branch_scope):
                                        "str"), ("requested_qty", "Requested Qty", "int"),
         ("dispatched_qty", "Dispatched Qty",
          "int"), ("received_qty", "Received Qty", "int"),
-        ("damaged_qty", "Damaged Qty", "int"), ("unit_price", "Unit Price", "money"),
+        ("damaged_qty", "Damaged Qty", "int"), ("remaining_qty", "Remaining Qty", "int"),
+        ("unit_price", "Unit Price", "money"),
         ("line_value", "Value", "money"), ("status", "Status", "badge:status"),
     ]
     truncated = truncated and len(rows) == MAX_ROWS
@@ -926,10 +953,9 @@ def _report_inventory_log(filters, branch_scope):
     where += time_where
 
     rows = query(
-        # Delivery DAMAGE/ADJUSTMENT rows are logged with change_qty = 0
-        # (stock was never added), so their real units lost come from the
-        # same DISCREPANCY_UNITS_SQL the Discrepancies pages use, shown
-        # as a negative change like any other stock loss.
+        # Delivery DAMAGE/ADJUSTMENT rows carry negative change_qty values
+        # for the units that never entered branch stock. DISCREPANCY_UNITS_SQL
+        # also supports legacy zero-valued rows from before that change.
         f"""SELECT sml.created_at, b.branch_name, p.item_name, p.sku, p.unit,
                    sml.movement_type,
                    CASE WHEN sml.reference_type = 'STOCK_REQUEST'
@@ -1437,10 +1463,9 @@ def _report_discrepancies(filters, branch_scope):
     """Delivery discrepancies — DAMAGE (reported damaged at receipt) and
     ADJUSTMENT (dispatched but never received) rows tied to a delivery
     (reference_type='STOCK_REQUEST'), the same rows both Discrepancies
-    pages list. Those rows are logged with change_qty = 0 (the stock was
-    never added), so units lost come from DISCREPANCY_UNITS_SQL — the
-    delivery item's damaged / dispatched-minus-received figures — same as
-    the admin page's summary.
+    pages list. New rows carry negative change_qty values for units that
+    never entered branch stock; DISCREPANCY_UNITS_SQL falls back to the
+    delivery item quantities for legacy zero-valued rows.
     """
     where, params = "", []
     if branch_scope is not None:
@@ -1640,7 +1665,18 @@ def _report_financial_summary(filters, branch_scope):
         "SELECT COUNT(*) AS v FROM partner_inquiries WHERE status = 'Closed'", "created_at"))
     cogs = float(total("SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE 1=1", "created_at"))
     materials = float(total(
-        "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials WHERE 1=1", "created_at"))
+        """SELECT COALESCE(SUM(package_cost), 0) AS v FROM (
+               SELECT rm.created_at AS purchased_at,
+                      GREATEST(rm.package_cost - COALESCE(re.total_cost, 0), 0) AS package_cost
+               FROM raw_materials rm
+               LEFT JOIN (
+                   SELECT material_id, SUM(cost) AS total_cost
+                   FROM material_restock_events GROUP BY material_id
+               ) re ON re.material_id = rm.material_id
+               UNION ALL
+               SELECT purchased_at, cost AS package_cost
+               FROM material_restock_events
+           ) material_purchases WHERE 1=1""", "purchased_at"))
     revenue = sales + packages
     rows = [
         {"figure": "Register sales (HQ + branches)", "figure_amount": sales},
@@ -1815,7 +1851,7 @@ def get_report(report_type, filters, branch_scope=None, actor_label=""):
         "title": label,
         "subtitle": subtitle,
         "actor_label": actor_label,
-        "generated_at": datetime.datetime.now(),
+        "generated_at": business_now(),
         "columns": columns,
         "rows": rows,
         "row_count": len(rows),

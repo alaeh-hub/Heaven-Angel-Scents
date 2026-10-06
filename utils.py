@@ -7,12 +7,13 @@ ValueError bubbling up into an unhandled 500.
 import decimal
 import hashlib
 import hmac
+import os
 import re
 import secrets
 import string
-from datetime import date, datetime
+from datetime import datetime, timedelta, timezone
 
-from flask import current_app, request, session
+from flask import current_app, has_app_context, request, session
 
 # Packaging sizes a product SKU can be. Kept here (rather than duplicated
 # in admin.py/branch.py/reports.py) so the one allow-list is what every
@@ -160,6 +161,40 @@ class ValidationError(ValueError):
     redirect/re-render — messages are always hand-written and safe to
     show directly to the user.
     """
+
+
+def business_now():
+    """Return the current business wall-clock time as a naive datetime.
+
+    MySQL connections use BUSINESS_TIMEZONE_OFFSET for every session, so
+    Python-generated business dates must use that same configured offset
+    instead of the host machine's local timezone.
+    """
+    raw_offset = (
+        current_app.config.get("BUSINESS_TIMEZONE_OFFSET", "+08:00")
+        if has_app_context()
+        else os.environ.get("BUSINESS_TIMEZONE_OFFSET", "+08:00")
+    )
+    try:
+        if (not isinstance(raw_offset, str) or len(raw_offset) != 6
+                or raw_offset[0] not in ("+", "-") or raw_offset[3] != ":"):
+            raise ValueError
+        hours = int(raw_offset[1:3])
+        minutes = int(raw_offset[4:6])
+        if hours > 23 or minutes > 59:
+            raise ValueError
+        total_minutes = hours * 60 + minutes
+        if raw_offset[0] == "-":
+            total_minutes = -total_minutes
+        business_timezone = timezone(timedelta(minutes=total_minutes))
+    except (TypeError, ValueError):
+        raise ValueError("BUSINESS_TIMEZONE_OFFSET must use the ±HH:MM format.")
+    return datetime.now(business_timezone).replace(tzinfo=None)
+
+
+def business_today():
+    """Return today's date using the configured business timezone."""
+    return business_now().date()
 
 
 def parse_positive_int(raw, field_label="Value"):
@@ -359,7 +394,8 @@ def parse_past_date(raw, field_label="Date"):
     for logging something that already happened.
     """
     raw = str(raw or "").strip()
-    today = date.today()
+    now = business_now()
+    today = now.date()
     if not raw:
         picked = today
     else:
@@ -369,7 +405,7 @@ def parse_past_date(raw, field_label="Date"):
             raise ValidationError(f"{field_label} isn't a valid date.")
         if picked > today:
             raise ValidationError(f"{field_label} can't be in the future.")
-    return datetime.combine(picked, datetime.now().time())
+    return datetime.combine(picked, now.time())
 
 
 # ---------------------------------------------------------------------------

@@ -231,7 +231,7 @@ def _stock_request_items_by_request(request_ids):
 
 def _get_pending_deliveries(args, ctx):
     status = (args.get("status") or "").strip()
-    valid_statuses = {"Pending", "In Transit", "Fulfilled", "Rejected"}
+    valid_statuses = {"Pending", "In Transit", "Partially Fulfilled", "Fulfilled", "Rejected"}
     if status and status not in valid_statuses:
         return {"error": f"status must be one of {sorted(valid_statuses)}."}
 
@@ -246,7 +246,7 @@ def _get_pending_deliveries(args, ctx):
         conditions.append("sr.status = %s")
         params.append(status)
     else:
-        conditions.append("sr.status IN ('Pending','In Transit')")
+        conditions.append("sr.status IN ('Pending','Partially Fulfilled','In Transit')")
     if branch_ids is not None:
         if not branch_ids:
             return {"results": [], "note": "No matching branch."}
@@ -1096,7 +1096,7 @@ _READ_ONLY_DECLARATIONS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "description": "One of Pending, In Transit, Fulfilled, Rejected."},
+                "status": {"type": "string", "description": "One of Pending, In Transit, Partially Fulfilled, Fulfilled, Rejected."},
                 "branch_name": {"type": "string", "description": "Admin only — restrict to one branch (partial match ok)."},
             },
         },

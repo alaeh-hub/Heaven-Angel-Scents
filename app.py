@@ -1,4 +1,3 @@
-import datetime
 import decimal
 import logging
 import os
@@ -203,7 +202,7 @@ def create_app():
         # ISO date string for capping date-picker inputs at "today" (e.g.
         # Add material/supplier, Record sale's backdating field) — a
         # picker shouldn't let someone log a record dated in the future.
-        return {"today": datetime.date.today().isoformat()}
+        return {"today": utils.business_today().isoformat()}
 
     @app.context_processor
     def inject_login_splash():
@@ -222,7 +221,8 @@ def create_app():
             role = session.get("role")
             if role == "Admin":
                 row = db.query(
-                    "SELECT COUNT(*) c FROM stock_requests WHERE status = 'Pending'", fetchone=True
+                    "SELECT COUNT(*) c FROM stock_requests WHERE status IN ('Pending', 'Partially Fulfilled')",
+                    fetchone=True,
                 )
                 inquiries_row = db.query(
                     "SELECT COUNT(*) c FROM partner_inquiries WHERE status = 'New'", fetchone=True

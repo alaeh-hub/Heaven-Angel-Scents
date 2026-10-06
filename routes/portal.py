@@ -54,6 +54,7 @@ slug, with no login to throttle via the usual account-lockout path —
 see the rate limit on inquire() below.
 """
 import decimal
+import hashlib
 import os
 import secrets
 import threading
@@ -99,6 +100,17 @@ def _package_value(discount_percent, reference_total):
     return reference_total, discounted_total
 
 
+class _PartnerLockUnavailable(Exception):
+    """Raised when an identity lock cannot be acquired before its timeout."""
+
+
+def _partner_lock_name(kind, identity):
+    normalized = (identity or "").strip().casefold()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    # MySQL limits named locks to 64 bytes; this prefix is 10 bytes.
+    return f"partner:{kind}:{digest[:54]}"
+
+
 def _find_or_create_partner(partner_type, company_name, contact_person, phone, email, address,
                             source="package inquiry"):
     """Match an inquiry to an existing partner by email, then phone, so
@@ -122,17 +134,25 @@ def _find_or_create_partner(partner_type, company_name, contact_person, phone, e
     nearly the same instant (e.g. a double-tap, or two browser tabs)
     would otherwise both miss the SELECT below and each create their own
     partner row — a classic check-then-act race. A MySQL named lock
-    (GET_LOCK/RELEASE_LOCK), keyed on the identity being matched,
+    (GET_LOCK/RELEASE_LOCK), keyed separately on email and phone,
     serializes that window across connections/processes without needing
-    a schema change: the second caller simply waits for the first to
-    finish its find-or-create before running its own SELECT.
+    a schema change. Both supplied identities are locked in a stable
+    order because matching can fall back from email to phone.
     """
-    lock_key = f"partner_dedup:{email or phone or ''}"
-    got_lock = bool(email or phone)
-    if got_lock:
-        row = query("SELECT GET_LOCK(%s, 5) AS ok", (lock_key,), fetchone=True)
-        got_lock = bool(row and row["ok"])
+    lock_keys = sorted({
+        _partner_lock_name(kind, value)
+        for kind, value in (("e", email), ("p", phone))
+        if value
+    })
+    acquired_locks = []
     try:
+        for lock_key in lock_keys:
+            row = query("SELECT GET_LOCK(%s, 5) AS ok", (lock_key,), fetchone=True)
+            if not row or not row["ok"]:
+                raise _PartnerLockUnavailable(
+                    "Couldn't safely match this inquiry to a partner yet.")
+            acquired_locks.append(lock_key)
+
         partner = None
         if email:
             partner = query("SELECT partner_id FROM partners WHERE email = %s",
@@ -148,22 +168,22 @@ def _find_or_create_partner(partner_type, company_name, contact_person, phone, e
                    WHERE partner_id = %s""",
                 (partner["partner_id"],),
             )
-            notify_admin(["partners"])
-            return partner["partner_id"]
-
-        partner_id, _ = execute(
-            """INSERT INTO partners
-                   (partner_type, partner_name, contact_person, phone, email, address, notes,
-                    last_inquiry_at, inquiry_count)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
-            (partner_type, company_name, contact_person, phone, email, address,
-             f"Added automatically from a partner portal {source}."),
-        )
-        notify_admin(["partners"])
-        return partner_id
+            partner_id = partner["partner_id"]
+        else:
+            partner_id, _ = execute(
+                """INSERT INTO partners
+                       (partner_type, partner_name, contact_person, phone, email, address, notes,
+                        last_inquiry_at, inquiry_count)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
+                (partner_type, company_name, contact_person, phone, email, address,
+                 f"Added automatically from a partner portal {source}."),
+            )
     finally:
-        if got_lock:
+        for lock_key in reversed(acquired_locks):
             query("SELECT RELEASE_LOCK(%s)", (lock_key,), fetchone=True)
+
+    notify_admin(["partners"])
+    return partner_id
 
 
 def _active_package_or_none(package_id):
@@ -317,7 +337,7 @@ def products_page(slug):
 
 
 PRODUCTS_PER_PAGE = 12
-PRODUCT_GENDERS = ("Male", "Female", "Unisex")
+PRODUCT_GENDERS = ("Male", "Female")
 # Smallest bottle first, bulk last, whatever order the SKUs were added in.
 _UNIT_ORDER = "FIELD(unit, '3ML', '10ML', '50ML', '85ML', 'BULK')"
 
@@ -328,7 +348,7 @@ def api_products(slug):
     (the SKU table has a row per size, so sizes are folded into a list),
     optionally filtered by gender and paginated.
 
-    ?gender=Male|Female|Unisex (anything else = all), ?page=N (1-based,
+    ?gender=Male|Female (anything else = all), ?page=N (1-based,
     clamped to the last page). Also returns per-gender counts for the
     filter tabs.
     """
@@ -337,7 +357,7 @@ def api_products(slug):
     gender = request.args.get("gender", "all")
     if gender not in PRODUCT_GENDERS:
         gender = "all"
-    where = "WHERE variant = %s" if gender != "all" else ""
+    where = "WHERE variant = %s" if gender != "all" else "WHERE variant IN ('Male', 'Female')"
     params = (gender,) if gender != "all" else ()
 
     count_rows = query(
@@ -347,7 +367,8 @@ def api_products(slug):
     )
     counts = {g: 0 for g in PRODUCT_GENDERS}
     for row in count_rows:
-        counts[row["variant"]] = int(row["c"])
+        if row["variant"] in counts:
+            counts[row["variant"]] = int(row["c"])
     counts["all"] = sum(counts.values())
 
     total = counts[gender]
@@ -563,11 +584,16 @@ def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order
     endpoints: save the inquiry, link it to a partner, email HQ off the
     request thread, and ping every open admin tab. Returns the visitor's
     201 response, carrying the inquiry's reference."""
-    partner_id = _find_or_create_partner(
-        fields["partner_type"], fields["company_name"], fields["contact_person"],
-        fields["phone"], fields["email"], fields["address"],
-        source="package inquiry" if package_id else "general inquiry",
-    )
+    try:
+        partner_id = _find_or_create_partner(
+            fields["partner_type"], fields["company_name"], fields["contact_person"],
+            fields["phone"], fields["email"], fields["address"],
+            source="package inquiry" if package_id else "general inquiry",
+        )
+    except _PartnerLockUnavailable:
+        return jsonify(
+            error="Your inquiry couldn't be matched safely right now. Please try again shortly."
+        ), 503
 
     # The inquiry and its package-contents snapshot (partner_inquiry_items,
     # what Fulfill later takes out of HQ stock) are saved together, so an

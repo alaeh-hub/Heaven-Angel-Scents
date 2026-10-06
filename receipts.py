@@ -192,17 +192,16 @@ def build_receipt_pdf(request_id, branch_id=None):
     items = _fetch_items(request_id)
     movements = _fetch_movements(request_id)
 
-    # One DISPATCH/RECEIPT row per SKU on the delivery — since they're all
-    # written inside the same admin/branch transaction, the first of each
-    # type is representative for the shared timeline below. Per-line
-    # detail (which item, how much) lives in the items table instead.
+    # A delivery can now have several shipment dispatch/receipt events.
+    # Keep the aggregate line-item quantities below and show the first
+    # dispatch plus the latest receipt in the compact timeline.
     dispatch_mvs = [m for m in movements if m["movement_type"] == "DISPATCH"]
     receipt_mvs = [m for m in movements if m["movement_type"] == "RECEIPT"]
     damage_mvs = [m for m in movements if m["movement_type"] == "DAMAGE"]
     adjustment_mvs = [
         m for m in movements if m["movement_type"] == "ADJUSTMENT"]
     dispatch_mv = dispatch_mvs[0] if dispatch_mvs else None
-    receipt_mv = receipt_mvs[0] if receipt_mvs else None
+    receipt_mv = receipt_mvs[-1] if receipt_mvs else None
 
     sku_to_name = {item["sku"]: item["item_name"] for item in items}
 
@@ -406,9 +405,9 @@ def build_receipt_pdf(request_id, branch_id=None):
                  color=BORDER, spaceBefore=2, spaceAfter=8))
     timeline_rows = [
         ("Requested", req["requested_at"], None),
-        ("Dispatched by HQ", dispatch_mv["created_at"] if dispatch_mv else None,
+        ("First shipment dispatched", dispatch_mv["created_at"] if dispatch_mv else None,
          dispatch_mv["username"] if dispatch_mv else None),
-        ("Received by branch", receipt_mv["created_at"] if receipt_mv else None,
+        ("Latest shipment received", receipt_mv["created_at"] if receipt_mv else None,
          receipt_mv["username"] if receipt_mv else None),
     ]
     tl_data = []

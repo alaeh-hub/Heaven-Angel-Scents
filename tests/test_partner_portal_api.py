@@ -332,7 +332,7 @@ def test_catalog_gender_filter_and_counts(client, sql, slug):
     men = client.get(f"/partner-portal/{slug}/api/products?gender=Male").get_json()
 
     assert everything["gender"] == "all"
-    assert everything["counts"]["all"] == sum(everything["counts"][g] for g in ("Male", "Female", "Unisex"))
+    assert everything["counts"]["all"] == sum(everything["counts"][g] for g in ("Male", "Female"))
     assert men["gender"] == "Male"
     assert men["total"] == everything["counts"]["Male"]
     assert all(p["variant"] == "Male" for p in men["products"])
@@ -340,10 +340,10 @@ def test_catalog_gender_filter_and_counts(client, sql, slug):
 
 def test_catalog_paginates_and_clamps_the_page(client, sql, slug):
     for _ in range(13):
-        make_named_product(sql, f"Catalog Page {unique_suffix()}", "Unisex", "50ML")
+        make_named_product(sql, f"Catalog Page {unique_suffix()}", "Male", "50ML")
 
-    first = client.get(f"/partner-portal/{slug}/api/products?gender=Unisex").get_json()
-    beyond = client.get(f"/partner-portal/{slug}/api/products?gender=Unisex&page=999").get_json()
+    first = client.get(f"/partner-portal/{slug}/api/products?gender=Male").get_json()
+    beyond = client.get(f"/partner-portal/{slug}/api/products?gender=Male&page=999").get_json()
 
     assert first["per_page"] == 12
     assert len(first["products"]) == 12
