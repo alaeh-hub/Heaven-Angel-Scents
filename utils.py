@@ -453,6 +453,16 @@ def percent_change(current, previous):
     return round(float((current - previous) / previous * 100), 1)
 
 
+def compact_peso(value):
+    """Short peso amount for tight spots (the phone top bar chip):
+    ₱850, ₱12.4k, ₱10k, ₱1.2M."""
+    amount = float(value or 0)
+    for limit, suffix in ((1_000_000, "M"), (1_000, "k")):
+        if abs(amount) >= limit:
+            return f"₱{amount / limit:,.1f}".removesuffix(".0") + suffix
+    return f"₱{amount:,.0f}"
+
+
 def generate_temp_password(length=12):
     """Generate a random temporary password for admin-triggered resets."""
     alphabet = string.ascii_letters + string.digits

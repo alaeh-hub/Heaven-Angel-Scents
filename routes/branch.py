@@ -260,7 +260,7 @@ def request_stock():
     if request.method == "POST":
         if not consume_form_token("request_stock"):
             flash(
-                "This delivery request already went through, or the form expired — check the history below before resending.", "error")
+                "This delivery request already went through, or the form expired — check your open requests below before resending.", "error")
             return redirect(url_for("branch.request_stock"))
 
         skus = request.form.getlist("sku[]")
@@ -355,10 +355,11 @@ def request_stock():
             ORDER BY item_name""",
         BOTTLE_UNITS,
     )
-    # One row per delivery, with item count / total qty / total value
-    # rolled up from stock_request_items — the line-item breakdown itself
-    # only ever needs to be seen on the receipt (once Fulfilled).
-    history = query(
+    # Only requests still in play, so whoever is filling in a new request
+    # can see what's already on its way and avoid asking twice. The full
+    # record lives on the History tab (branch.requests_list).
+    open_statuses = ("Pending", "Partially Fulfilled", "In Transit")
+    open_requests = query(
         """SELECT sr.request_id, sr.delivery_number, sr.status, sr.requested_at,
                   COUNT(sri.item_id) AS item_count,
                   COALESCE(SUM(sri.requested_qty), 0) AS total_qty,
@@ -366,13 +367,19 @@ def request_stock():
                   COALESCE(SUM(sri.requested_qty * sri.unit_price), 0) AS total_value
            FROM stock_requests sr
            LEFT JOIN stock_request_items sri ON sri.request_id = sr.request_id
-           WHERE sr.branch_id = %s
+           WHERE sr.branch_id = %s AND sr.status IN (%s, %s, %s)
            GROUP BY sr.request_id, sr.delivery_number, sr.status, sr.requested_at
-           ORDER BY sr.requested_at DESC LIMIT 10""",
-        (bid,),
+           ORDER BY sr.requested_at DESC LIMIT 5""",
+        (bid, *open_statuses),
     )
+    open_count = query(
+        "SELECT COUNT(*) AS c FROM stock_requests WHERE branch_id = %s AND status IN (%s, %s, %s)",
+        (bid, *open_statuses),
+        fetchone=True,
+    )["c"]
     return render_template(
-        "branch/request_stock.html", products=products_list, history=history,
+        "branch/request_stock.html", products=products_list,
+        open_requests=open_requests, open_count=open_count,
         form_token=issue_form_token("request_stock"),
     )
 

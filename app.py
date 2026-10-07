@@ -212,6 +212,57 @@ def create_app():
         # only place that sets it.
         return {"show_login_splash": session.pop("show_login_splash", False)}
 
+    def today_sales_summary():
+        """Today's sales for the top bar chip — the signed-in branch's own,
+        or every branch's for an admin. Same revenue formula as the branch
+        dashboard (qty x unit price, voids already deleted), with the trend
+        compared against yesterday up to this same time of day."""
+        if "user_id" not in session:
+            return None
+        role = session.get("role")
+        if role == "Admin":
+            scope_sql, params = "", ()
+        elif role == "Branch" and session.get("branch_id"):
+            scope_sql, params = " AND branch_id = %s", (session["branch_id"],)
+        else:
+            return None
+        today = db.query(
+            f"""SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS revenue, COUNT(*) AS sale_count
+                FROM sales
+                WHERE sold_at >= CURDATE() AND sold_at < CURDATE() + INTERVAL 1 DAY{scope_sql}""",
+            params, fetchone=True,
+        )
+        yesterday = db.query(
+            f"""SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS revenue
+                FROM sales
+                WHERE sold_at >= CURDATE() - INTERVAL 1 DAY AND sold_at < NOW() - INTERVAL 1 DAY{scope_sql}""",
+            params, fetchone=True,
+        )
+        revenue = today["revenue"]
+        return {
+            "revenue": float(revenue),
+            "revenue_display": peso(revenue),
+            "revenue_compact": utils.compact_peso(revenue),
+            "count": int(today["sale_count"]),
+            "trend": utils.percent_change(revenue, yesterday["revenue"]),
+            "scope": "all branches" if role == "Admin" else (session.get("branch_name") or "your branch"),
+        }
+
+    @app.context_processor
+    def inject_today_sales():
+        try:
+            return {"today_sales_chip": today_sales_summary()}
+        except Exception:
+            app.logger.exception("Failed to compute today's sales for the top bar")
+            return {"today_sales_chip": None}
+
+    @app.route("/api/today-sales")
+    def api_today_sales():
+        summary = today_sales_summary()
+        if summary is None:
+            return {"error": "not signed in"}, 401
+        return summary
+
     @app.context_processor
     def inject_sidebar_task_counts():
 

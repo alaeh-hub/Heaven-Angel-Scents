@@ -159,10 +159,6 @@ function initSidebarNavTooltips() {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
 
-    // The sidebar rests collapsed to an icon-only rail and expands on
-    // hover/keyboard-focus purely via CSS (see style.css's :not(:hover)
-    // :not(:focus-within) rules) — no JS involved in that part at all.
-    //
     // Collapsed nav-link labels are only clipped out of view, not
     // display: none (see style.css), so a screen reader still gets the
     // text, but there's no visible label to read at a glance. Mirror
@@ -188,44 +184,319 @@ function initSidebarNavTooltips() {
 
     // Stagger index for the expand animation (see style.css's
     // --reveal-delay), top to bottom, capped so long menus don't lag.
-    sidebar.querySelectorAll('.nav-label, .nav-text').forEach((el, i) => {
+    sidebar.querySelectorAll('.nav-label, .nav-link:not(.nav-sub) .nav-text').forEach((el, i) => {
         el.style.setProperty('--i', String(Math.min(i, 14)));
     });
 }
 
-// Wires up the footer's "Pin sidebar open" button — the only way to
-// hold the sidebar expanded, since the rest of the collapse/expand
-// behavior is pure CSS hover/focus-within (see style.css's .sidebar
-// comment). Toggles html.sidebar-pinned, which every collapsed-rail
-// rule in style.css is scoped with html:not(.sidebar-pinned), and
-// persists the choice to localStorage so it survives across sessions
-// like the theme setting. The inline <head> script in base.html
-// applies that stored choice (or a touch/coarse-pointer default)
-// before first paint — this only needs to handle clicks from here on
-// and keep the button's own label/aria-pressed in sync.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+function isEditableTarget(el) {
+    return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+
+// Wires up the brand header's pin button (and Ctrl/⌘+B) — the only way
+// to hold the sidebar expanded. Toggles html.sidebar-pinned, which every
+// collapsed-rail rule in style.css is scoped with
+// html:not(.sidebar-pinned), and persists the choice to localStorage.
+// The inline <head> script in base.html applies that stored choice (or
+// a touch/coarse-pointer default) before first paint.
 function initSidebarPinToggle() {
     const btn = document.getElementById('sidebarPinToggle');
-    const label = document.getElementById('sidebarPinToggleLabel');
-    if (!btn || !label) return;
+    if (!btn) return;
 
     const root = document.documentElement;
+    const shortcut = IS_MAC ? '⌘B' : 'Ctrl+B';
 
     function sync() {
         const pinned = root.classList.contains('sidebar-pinned');
+        const label = pinned ? 'Collapse sidebar' : 'Keep sidebar open';
         btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-        label.textContent = pinned ? 'Unpin sidebar' : 'Pin sidebar open';
+        btn.setAttribute('aria-label', label);
+        btn.title = label + ' (' + shortcut + ')';
     }
 
-    sync();
-
-    btn.addEventListener('click', () => {
+    function toggle() {
         const pinned = !root.classList.contains('sidebar-pinned');
         root.classList.toggle('sidebar-pinned', pinned);
         try {
             localStorage.setItem('sidebarPinned', String(pinned));
         } catch (e) { }
         sync();
+        requestAnimationFrame(syncSidebarIndicator);
+    }
+
+    sync();
+    btn.addEventListener('click', toggle);
+
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        if (e.key.toLowerCase() !== 'b' || isEditableTarget(e.target)) return;
+        if (window.innerWidth <= 760) return;
+        e.preventDefault();
+        toggle();
     });
+}
+
+// Expands the collapsed rail only once the pointer has rested on it for
+// a beat, so sweeping the cursor past the left edge doesn't fling the
+// whole menu open, and keeps it open through a brief slip off the edge.
+// Mouse/pen only — touch defaults to pinned (see base.html).
+function initSidebarHoverIntent() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    const OPEN_DELAY = 140;
+    const CLOSE_DELAY = 200;
+    let timer = null;
+
+    function schedule(peek, delay) {
+        clearTimeout(timer);
+        timer = setTimeout(() => sidebar.classList.toggle('is-peeking', peek), delay);
+    }
+
+    sidebar.addEventListener('pointerenter', (e) => {
+        if (e.pointerType === 'touch') return;
+        schedule(true, sidebar.classList.contains('is-peeking') ? 0 : OPEN_DELAY);
+    });
+
+    sidebar.addEventListener('pointerleave', (e) => {
+        if (e.pointerType === 'touch') return;
+        schedule(false, CLOSE_DELAY);
+    });
+}
+
+// Positions the shared sliding highlight (#navIndicator) on the active
+// nav link. Called on load, after every soft nav (patchSidebarNav()),
+// when the search filter changes which rows are visible, and on resize.
+function syncSidebarIndicator() {
+    const sidebar = document.getElementById('sidebar');
+    const indicator = document.getElementById('navIndicator');
+    if (!sidebar || !indicator) return;
+
+    const link = Array.from(sidebar.querySelectorAll('.nav-link.active'))
+        .find((l) => l.getClientRects().length > 0);
+    if (!link) {
+        indicator.classList.add('is-hidden');
+        return;
+    }
+
+    const top = link.getBoundingClientRect().top - sidebar.getBoundingClientRect().top
+        + sidebar.scrollTop - sidebar.clientTop;
+    indicator.style.setProperty('--y', top + 'px');
+    indicator.style.setProperty('--h', link.offsetHeight + 'px');
+    indicator.classList.remove('is-hidden');
+    sidebar.classList.add('has-indicator');
+
+    if (!indicator.classList.contains('is-ready')) {
+        // First placement lands without animating; every later move glides.
+        requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.add('is-ready')));
+    }
+}
+
+function initSidebarIndicator() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    syncSidebarIndicator();
+
+    const active = sidebar.querySelector('.nav-link.active:not(.nav-sub)');
+    if (active) {
+        const s = sidebar.getBoundingClientRect();
+        const r = active.getBoundingClientRect();
+        const footer = sidebar.querySelector('.sidebar-footer');
+        const bottomLimit = s.bottom - (footer ? footer.offsetHeight : 0);
+        if (r.top < s.top || r.bottom > bottomLimit) {
+            sidebar.scrollTop += r.top - s.top - (s.height - r.height) / 3;
+        }
+    }
+
+    // Anything above the active row changing height (the header easing
+    // between layouts, a badge appearing, fonts settling) shifts it.
+    let raf = 0;
+    const resync = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(syncSidebarIndicator);
+    };
+    window.addEventListener('resize', resync);
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(resync);
+        sidebar.querySelectorAll('.brand, .nav-search, .nav-group').forEach((el) => ro.observe(el));
+    }
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(syncSidebarIndicator);
+    }
+}
+
+// "Jump to…" filter at the top of the menu. Matches every word typed
+// against a link's label and its section name, highlights the hit, and
+// hides sections left empty. Enter opens the top result, ↓ moves into
+// the list, Esc clears then leaves. Ctrl/⌘+K focuses it from anywhere,
+// which also expands the collapsed rail (it's :focus-visible).
+function initSidebarSearch() {
+    const sidebar = document.getElementById('sidebar');
+    const input = document.getElementById('sidebarSearch');
+    if (!sidebar || !input) return;
+
+    const field = input.closest('.nav-search-field');
+    const empty = document.getElementById('sidebarSearchEmpty');
+    const emptyQuery = document.getElementById('sidebarSearchEmptyQuery');
+    const kbd = document.getElementById('sidebarSearchKbd');
+    if (kbd) kbd.textContent = IS_MAC ? '⌘K' : 'Ctrl K';
+
+    const groups = Array.from(sidebar.querySelectorAll('.nav-group'));
+    const entries = Array.from(sidebar.querySelectorAll('.nav-group .nav-link')).map((link) => {
+        const textEl = link.querySelector('.nav-text');
+        const group = link.closest('.nav-group');
+        const groupLabel = group.querySelector('.nav-label');
+        const label = textEl ? textEl.textContent : '';
+        return {
+            link,
+            textEl,
+            label,
+            haystack: (label + ' ' + (groupLabel ? groupLabel.textContent : '')).toLowerCase(),
+        };
+    });
+
+    function highlight(entry, query) {
+        if (!entry.textEl) return;
+        const i = query ? entry.label.toLowerCase().indexOf(query) : -1;
+        if (i < 0) {
+            entry.textEl.textContent = entry.label;
+            return;
+        }
+        const mark = document.createElement('mark');
+        mark.textContent = entry.label.slice(i, i + query.length);
+        entry.textEl.replaceChildren(entry.label.slice(0, i), mark, entry.label.slice(i + query.length));
+    }
+
+    function visibleLinks() {
+        return entries.map((e) => e.link).filter((l) => l.getClientRects().length > 0);
+    }
+
+    function apply() {
+        const raw = input.value.trim();
+        const query = raw.toLowerCase();
+        const tokens = query.split(/\s+/).filter(Boolean);
+        let first = null;
+
+        entries.forEach((entry) => {
+            // Group parents give way to their individual pages while searching.
+            const match = tokens.every((t) => entry.haystack.includes(t))
+                && !(tokens.length && entry.link.classList.contains('has-subs'));
+            entry.link.classList.toggle('is-filtered-out', !match);
+            entry.link.classList.remove('is-search-target');
+            highlight(entry, query);
+            if (match && !first) first = entry.link;
+        });
+
+        groups.forEach((group) => {
+            group.classList.toggle('is-filtered-out', !group.querySelector('.nav-link:not(.is-filtered-out)'));
+        });
+
+        if (first && query) first.classList.add('is-search-target');
+        if (empty) empty.hidden = !!first;
+        if (emptyQuery) emptyQuery.textContent = raw;
+        if (field) field.classList.toggle('has-value', !!input.value);
+        sidebar.classList.toggle('is-filtering', tokens.length > 0);
+        syncSidebarIndicator();
+    }
+
+    function reset() {
+        if (!input.value) return;
+        input.value = '';
+        apply();
+    }
+
+    input.addEventListener('input', apply);
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const target = sidebar.querySelector('.nav-link.is-search-target') || visibleLinks()[0];
+            if (!target || !input.value.trim()) return;
+            target.click();
+            reset();
+            input.blur();
+        } else if (e.key === 'ArrowDown') {
+            const links = visibleLinks();
+            if (links.length) {
+                e.preventDefault();
+                links[0].focus();
+            }
+        } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            if (input.value) reset();
+            else input.blur();
+        }
+    });
+
+    // Never leave the rail showing a filtered menu once the user is done
+    // with it: clear after picking a result or once focus leaves the menu.
+    sidebar.addEventListener('click', (e) => {
+        if (e.target.closest('.nav-link')) setTimeout(reset, 0);
+    });
+    sidebar.addEventListener('focusout', (e) => {
+        if (!e.relatedTarget || !sidebar.contains(e.relatedTarget)) reset();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
+        e.preventDefault();
+        if (window.innerWidth <= 760 && !sidebar.classList.contains('open')) {
+            const menuBtn = document.getElementById('menuToggle');
+            if (menuBtn) menuBtn.click();
+        }
+        input.focus();
+        input.select();
+    });
+}
+
+// Arrow keys move between visible menu links (Home/End jump to the
+// ends; ↑ from the first link returns to the search field), the same as
+// a native list, instead of tabbing through two dozen links one by one.
+function initSidebarKeyboardNav() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    const search = document.getElementById('sidebarSearch');
+
+    sidebar.addEventListener('keydown', (e) => {
+        const current = e.target.closest && e.target.closest('.nav-link');
+        if (!current || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+
+        const links = Array.from(sidebar.querySelectorAll('.nav-link'))
+            .filter((l) => l.getClientRects().length > 0);
+        const i = links.indexOf(current);
+        let next = null;
+        if (e.key === 'ArrowDown') next = links[i + 1];
+        else if (e.key === 'ArrowUp') next = i === 0 ? search : links[i - 1];
+        else if (e.key === 'Home') next = links[0];
+        else if (e.key === 'End') next = links[links.length - 1];
+        if (!next) return;
+        e.preventDefault();
+        next.focus();
+        next.scrollIntoView({ block: 'nearest' });
+    });
+}
+
+// Gives the sticky footer a lift shadow only while menu items are
+// scrolled underneath it.
+function initSidebarScrollShadow() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    function update() {
+        const below = sidebar.scrollHeight - sidebar.clientHeight - sidebar.scrollTop > 1;
+        sidebar.classList.toggle('can-scroll-down', below);
+    }
+
+    update();
+    sidebar.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(update);
+        sidebar.querySelectorAll('.nav-group').forEach((g) => ro.observe(g));
+    }
 }
 
 function initThemeToggle() {
@@ -236,17 +507,37 @@ function initThemeToggle() {
 
     btn.addEventListener('click', () => {
         const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-
-        root.classList.add('theme-transitioning');
-        root.setAttribute('data-theme', next);
         try {
             localStorage.setItem('theme', next);
         } catch (e) {
 
         }
 
-        const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-        window.setTimeout(() => root.classList.remove('theme-transitioning'), isTouch ? 180 : 400);
+        // The new theme spreads out in a circle from the button. One
+        // snapshot is clipped on the compositor, which is far cheaper than
+        // transitioning the colours of every element on the page.
+        if (typeof document.startViewTransition === 'function' && !PREFERS_REDUCED_MOTION.matches) {
+            const r = btn.getBoundingClientRect();
+            const x = r.left + r.width / 2;
+            const y = r.top + r.height / 2;
+            const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+            root.classList.add('vt-theme');
+            const transition = document.startViewTransition(() => {
+                root.setAttribute('data-theme', next);
+            });
+            transition.ready.then(() => {
+                root.animate(
+                    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+                    { duration: 560, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' }
+                );
+            }).catch(() => { });
+            transition.finished.finally(() => root.classList.remove('vt-theme'));
+        } else {
+            root.classList.add('theme-transitioning');
+            root.setAttribute('data-theme', next);
+            const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+            window.setTimeout(() => root.classList.remove('theme-transitioning'), isTouch ? 180 : 400);
+        }
 
         if (window.Motion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             var toggleAnim = window.Motion.animate(
@@ -414,8 +705,15 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initMobileSidebar, 'mobileSidebar');
     safeInit(initSidebarNavTooltips, 'sidebarNavTooltips');
     safeInit(initSidebarPinToggle, 'sidebarPinToggle');
+    safeInit(initSidebarHoverIntent, 'sidebarHoverIntent');
+    safeInit(initSidebarIndicator, 'sidebarIndicator');
+    safeInit(initSidebarSearch, 'sidebarSearch');
+    safeInit(initSidebarKeyboardNav, 'sidebarKeyboardNav');
+    safeInit(initSidebarScrollShadow, 'sidebarScrollShadow');
     safeInit(initThemeToggle, 'themeToggle');
     safeInit(initPhClock, 'phClock');
+    safeInit(initTopbarMotion, 'topbarMotion');
+    safeInit(initTodaySalesChip, 'todaySalesChip');
     safeInit(revealContent, 'revealContent');
     safeInit(initStatCountUp, 'statCountUp');
     safeInit(initFillBars, 'fillBars');
@@ -429,6 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initDispatchQtyWarnings, 'dispatchQtyWarnings');
     safeInit(initCustomSelects, 'customSelects');
     safeInit(initDatePickers, 'datePickers');
+    safeInit(watchForNewFormControls, 'watchFormControls');
     // Registered BEFORE initSoftNav() — both are delegated on
     // `document` in the bubble phase, and listeners on the same node
     // fire in registration order, so this must run first. initSoftNav()'s
@@ -493,7 +792,9 @@ function pulseBadge(el) {
 function patchSidebarNav(freshDoc) {
     document.querySelectorAll('.nav-link[href]').forEach((link) => {
         const href = link.getAttribute('href');
-        const freshLink = freshDoc.querySelector(`.nav-link[href="${href}"]`);
+        // A group parent and its first page share an href; keep them apart.
+        const kind = link.classList.contains('nav-sub') ? '.nav-sub' : ':not(.nav-sub)';
+        const freshLink = freshDoc.querySelector(`.nav-link${kind}[href="${href}"]`);
         if (!freshLink) return;
 
         const liveBadge = link.querySelector('.nav-badge');
@@ -513,6 +814,7 @@ function patchSidebarNav(freshDoc) {
 
         link.classList.toggle('active', freshLink.classList.contains('active'));
     });
+    syncSidebarIndicator();
 }
 
 // Copies the topbar's eyebrow + heading (base.html's {% block eyebrow %}
@@ -534,6 +836,218 @@ function patchTopbar(freshDoc) {
     const liveHeading = document.querySelector('.topbar h1');
     const freshHeading = freshDoc.querySelector('.topbar h1');
     if (liveHeading && freshHeading) liveHeading.textContent = freshHeading.textContent;
+
+    // The chip keeps its live odometer DOM; only its values are updated.
+    const freshChip = freshDoc.getElementById('todaySalesChip');
+    if (freshChip && freshChip.dataset.summary) {
+        try { applyTodaySales(JSON.parse(freshChip.dataset.summary)); } catch (e) { }
+    }
+}
+
+const PREFERS_REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+// Gold hairline along the top bar's bottom edge while a soft navigation
+// is in flight. Waits a beat before showing so instant loads don't
+// flicker it; finishing sweeps it to full width and fades it out.
+const navProgress = (() => {
+    let showTimer = null;
+    let shown = false;
+
+    function el() { return document.getElementById('topbarProgress'); }
+
+    function start() {
+        const bar = el();
+        if (!bar) return;
+        clearTimeout(showTimer);
+        showTimer = setTimeout(() => {
+            shown = true;
+            bar.classList.remove('is-done');
+            bar.style.removeProperty('--from');
+            void bar.offsetWidth;
+            bar.classList.add('is-loading');
+        }, 120);
+    }
+
+    function done() {
+        const bar = el();
+        clearTimeout(showTimer);
+        if (!bar || !shown) return;
+        shown = false;
+        const m = /matrix\(([^,]+)/.exec(getComputedStyle(bar).transform);
+        bar.style.setProperty('--from', m ? m[1] : '0.3');
+        bar.classList.remove('is-loading');
+        void bar.offsetWidth;
+        bar.classList.add('is-done');
+    }
+
+    return { start, done };
+})();
+
+// One-time entrance for the top bar's items on a full page load (never
+// on soft navigation, which keeps the same bar), plus the "content is
+// scrolled underneath" shadow, driven by an IntersectionObserver on a
+// marker above the sticky bar instead of a scroll listener.
+function initTopbarMotion() {
+    const bar = document.getElementById('topbar');
+    if (!bar) return;
+
+    if (!PREFERS_REDUCED_MOTION.matches) {
+        const items = bar.querySelectorAll('.topbar-left > :not(.topbar-title), .topbar-right > *');
+        items.forEach((item, i) => item.style.setProperty('--tb-i', String(i)));
+        bar.classList.add('is-entering');
+        setTimeout(() => bar.classList.remove('is-entering'), 900 + items.length * 50);
+    }
+
+    const sentinel = document.getElementById('topbarSentinel');
+    if (sentinel && typeof IntersectionObserver === 'function') {
+        new IntersectionObserver(([entry]) => {
+            bar.classList.toggle('is-scrolled', !entry.isIntersecting);
+        }).observe(sentinel);
+    }
+}
+
+// Odometer: each digit is a 0-9 column that slides to its value, so a
+// changing figure rolls instead of blinking. Transform-only, and only
+// the digits whose value changed actually move.
+function setOdometer(el, text, opts) {
+    if (!el) return;
+    text = String(text);
+    const animate = !(opts && opts.instant) && !PREFERS_REDUCED_MOTION.matches;
+    const prev = el.dataset.odoText;
+    if (prev === text) return;
+
+    const sameShape = prev !== undefined && prev.length === text.length &&
+        prev.replace(/\d/g, '0') === text.replace(/\d/g, '0');
+
+    if (!sameShape) {
+        el.textContent = '';
+        el.classList.add('odo');
+        Array.from(text).forEach((ch, i) => {
+            if (/\d/.test(ch)) {
+                const cell = document.createElement('span');
+                cell.className = 'odo-cell';
+                const strip = document.createElement('span');
+                strip.className = 'odo-strip';
+                for (let d = 0; d <= 9; d++) {
+                    const n = document.createElement('span');
+                    n.textContent = d;
+                    strip.appendChild(n);
+                }
+                cell.appendChild(strip);
+                // A new shape starts every digit at 0 and rolls up to its value.
+                strip.style.transform = 'translateY(0)';
+                cell.style.setProperty('--odo-i', String(text.length - i));
+                el.appendChild(cell);
+            } else {
+                const sym = document.createElement('span');
+                sym.className = 'odo-sym';
+                sym.textContent = ch;
+                el.appendChild(sym);
+            }
+        });
+        if (animate) void el.offsetWidth;
+    }
+
+    const strips = el.querySelectorAll('.odo-strip');
+    let s = 0;
+    el.classList.toggle('odo-animate', animate);
+    Array.from(text).forEach((ch) => {
+        if (!/\d/.test(ch)) return;
+        strips[s++].style.transform = `translateY(${-Number(ch) * 10}%)`;
+    });
+    el.dataset.odoText = text;
+}
+
+// Top bar "Today" chip: re-fetched (small JSON, not a page render) when
+// a sale is recorded/voided anywhere this user can see, when the tab
+// comes back into view, and every few minutes so it rolls over at
+// midnight even on a quiet day.
+let todaySalesInFlight = false;
+
+function refreshTodaySales() {
+    if (todaySalesInFlight || !document.getElementById('todaySalesChip')) return;
+    todaySalesInFlight = true;
+    fetch('/api/today-sales', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data) => applyTodaySales(data))
+        .catch(() => { })
+        .finally(() => { todaySalesInFlight = false; });
+}
+
+function applyTodaySales(data, opts) {
+    const chip = document.getElementById('todaySalesChip');
+    if (!chip || !data) return;
+    const instant = !!(opts && opts.instant);
+    const last = chip._todayLast;
+    const changed = !last || last.revenue !== data.revenue || last.count !== data.count;
+
+    setOdometer(chip.querySelector('[data-today-odo="revenue_display"]'), data.revenue_display, { instant });
+    setOdometer(chip.querySelector('[data-today-odo="revenue_compact"]'), data.revenue_compact, { instant });
+    setOdometer(chip.querySelector('[data-today-odo="count"]'), data.count, { instant });
+    const word = chip.querySelector('[data-today-field="count_word"]');
+    if (word) word.textContent = data.count === 1 ? 'sale' : 'sales';
+
+    const trendEl = chip.querySelector('[data-today-field="trend"]');
+    if (trendEl) {
+        const t = data.trend;
+        const wasHidden = trendEl.hidden;
+        trendEl.hidden = t === null || t === undefined;
+        if (!trendEl.hidden) {
+            trendEl.className = 'today-chip-trend ' + (t > 0 ? 'up' : t < 0 ? 'down' : 'flat');
+            trendEl.textContent = (t > 0 ? '▲ ' : t < 0 ? '▼ ' : '• ') + Math.abs(t) + '%';
+            if (wasHidden && !instant) trendEl.classList.add('is-new');
+        }
+    }
+
+    const countLabel = data.count + ' sale' + (data.count === 1 ? '' : 's');
+    chip.title = "Today's sales · " + data.scope;
+    chip.setAttribute('aria-label', "Today's sales for " + data.scope + ': ' + data.revenue_display +
+        ' from ' + countLabel);
+    chip.dataset.summary = JSON.stringify(data);
+    chip._todayLast = { revenue: data.revenue, count: data.count };
+
+    if (last && changed && !instant && !PREFERS_REDUCED_MOTION.matches) {
+        chip.classList.remove('is-updated');
+        void chip.offsetWidth;
+        chip.classList.add('is-updated');
+    }
+}
+
+function initTodaySalesChip() {
+    const chip = document.getElementById('todaySalesChip');
+    if (!chip) return;
+    chip.addEventListener('animationend', (e) => {
+        if (e.target === chip) chip.classList.remove('is-updated');
+    });
+
+    // First paint: lay the odometers out at zero, then roll them up to
+    // today's figures once the top bar has entered.
+    let data = null;
+    try { data = JSON.parse(chip.dataset.summary); } catch (e) { }
+    if (data) {
+        if (PREFERS_REDUCED_MOTION.matches) {
+            applyTodaySales(data, { instant: true });
+        } else {
+            const zeroed = Object.assign({}, data, {
+                revenue_display: data.revenue_display.replace(/\d/g, '0'),
+                revenue_compact: data.revenue_compact.replace(/\d/g, '0'),
+                count: Number(String(data.count).replace(/\d/g, '0')),
+            });
+            applyTodaySales(zeroed, { instant: true });
+            chip._todayLast = null;
+            setTimeout(() => {
+                applyTodaySales(data);
+                chip._todayLast = { revenue: data.revenue, count: data.count };
+            }, 260);
+        }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshTodaySales();
+    });
+    setInterval(() => {
+        if (document.visibilityState === 'visible') refreshTodaySales();
+    }, 5 * 60 * 1000);
 }
 
 // Copies a page's own {% block head %} (base.html wraps it in
@@ -860,6 +1374,7 @@ function initSoftNav() {
     function go(request, url, historyMode, preserveScroll) {
         const myToken = ++navToken;
         const scrollY = window.scrollY;
+        navProgress.start();
 
         request()
             .then((r) => {
@@ -878,6 +1393,7 @@ function initSoftNav() {
                 // Harmless no-op if a form submit never showed it (a
                 // plain link navigation, say) — see showLoadingOverlay().
                 hideLoadingOverlay();
+                navProgress.done();
 
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
                 if (!swapContent(fresh, preserveScroll)) {
@@ -914,6 +1430,7 @@ function initSoftNav() {
             .catch(() => {
                 if (myToken !== navToken) return;
                 hideLoadingOverlay();
+                navProgress.done();
                 window.location.href = url;
             });
     }
@@ -1176,6 +1693,14 @@ function enhanceSelect(select) {
         } else {
             panel.style.maxHeight = Math.max(120, Math.min(defaultMax, spaceBelow)) + 'px';
         }
+
+        // A narrow trigger's panel is allowed to be wider than it (see
+        // .cs-panel's min-width); keep that wider panel on screen by
+        // anchoring it to the trigger's right edge when it would spill.
+        wrap.classList.remove('cs-align-right');
+        if (panel.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
+            wrap.classList.add('cs-align-right');
+        }
     }
 
     function open() {
@@ -1349,14 +1874,60 @@ function enhanceSelect(select) {
         }
     });
 
-    document.addEventListener('click', function (e) {
+    // Page scripts rebuild rows that contain selects (e.g. Bulk Batches'
+    // material list), so drop these global listeners once this select
+    // has left the page instead of piling them up.
+    function onDocumentClick(e) {
+        if (!wrap.isConnected) { detachGlobalListeners(); return; }
         if (isOpen() && !wrap.contains(e.target)) close();
-    });
-
-    window.addEventListener('resize', function () { if (isOpen()) position(); });
+    }
+    function onWindowResize() {
+        if (!wrap.isConnected) { detachGlobalListeners(); return; }
+        if (isOpen()) position();
+    }
+    function detachGlobalListeners() {
+        document.removeEventListener('click', onDocumentClick);
+        window.removeEventListener('resize', onWindowResize);
+    }
+    document.addEventListener('click', onDocumentClick);
+    window.addEventListener('resize', onWindowResize);
 
     rebuildPanel();
     sync();
+}
+
+// Selects and date inputs that page scripts create after load (rows
+// added to a cart/ingredient list, a modal filled in on demand) would
+// otherwise stay native, and on a phone a native <select> opens the
+// OS's full-screen picker. Watching the whole page enhances them the
+// moment they're inserted, so every dropdown in the app looks and
+// behaves the same.
+function watchForNewFormControls() {
+    if (typeof MutationObserver !== 'function' || !document.body) return;
+    const FIELD = 'select, input[type="date"], input[type="month"]';
+    const roots = new Set();
+    let scheduled = false;
+
+    new MutationObserver((mutations) => {
+        mutations.forEach((m) => {
+            m.addedNodes.forEach((node) => {
+                if (node.nodeType !== 1 || node.tagName === 'OPTION') return;
+                if (node.matches(FIELD)) roots.add(node.parentNode);
+                else if (node.querySelector(FIELD)) roots.add(node);
+            });
+        });
+        if (!roots.size || scheduled) return;
+        scheduled = true;
+        queueMicrotask(() => {
+            scheduled = false;
+            roots.forEach((root) => {
+                if (!root || !root.isConnected) return;
+                initCustomSelects(root);
+                initDatePickers(root);
+            });
+            roots.clear();
+        });
+    }).observe(document.body, { childList: true, subtree: true });
 }
 
 // Custom date/month picker — the same progressive-enhancement idea as
@@ -2390,6 +2961,11 @@ function initNotificationBell() {
         save(items.slice(0, MAX_ITEMS));
         render();
         pulseBadge(badge);
+        if (!PREFERS_REDUCED_MOTION.matches) {
+            toggle.classList.remove('is-ringing');
+            void toggle.offsetWidth;
+            toggle.classList.add('is-ringing');
+        }
     }
 
     function markAllRead() {
@@ -2733,6 +3309,7 @@ function initRealtime(notifBell) {
     const socket = io();
     socket.on('data_changed', (payload) => {
         const scopes = (payload && payload.scopes) || [];
+        if (scopes.includes('sales')) refreshTodaySales();
         const mine = currentScopes();
         if (scopes.some((s) => mine.includes(s))) {
             softRefresh();
@@ -2761,8 +3338,37 @@ function initPhClock() {
         hour12: true,
     });
 
+    // One span per character; each second only the characters that
+    // actually changed get re-rendered with a short slide-in, so the
+    // ticking seconds read as motion without touching the rest.
+    let prev = '';
+    let cells = [];
+
     function tick() {
-        el.textContent = formatter.format(new Date());
+        const next = formatter.format(new Date());
+        if (next.length !== prev.length) {
+            el.textContent = '';
+            cells = Array.from(next).map((ch) => {
+                const span = document.createElement('span');
+                span.className = 'clock-char';
+                span.textContent = ch;
+                el.appendChild(span);
+                return span;
+            });
+        } else {
+            const animate = !PREFERS_REDUCED_MOTION.matches && document.visibilityState === 'visible';
+            Array.from(next).forEach((ch, i) => {
+                if (ch === prev[i]) return;
+                const old = cells[i];
+                const span = document.createElement('span');
+                span.className = 'clock-char';
+                span.textContent = ch;
+                if (animate && /\d/.test(ch)) span.classList.add('clock-tick');
+                old.replaceWith(span);
+                cells[i] = span;
+            });
+        }
+        prev = next;
     }
 
     tick();

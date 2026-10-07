@@ -79,6 +79,159 @@
     cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
   }
   .fm-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
+
+  /* ---- Phone layout ----
+     Six columns can't fit a phone (the size code wrapped one letter per
+     line and the × landed on the prices), so each packaging line becomes
+     a card: size badge + remove on top, material name, then qty / rate /
+     line cost; each size's total closes its group as a bar. */
+  @media (max-width: 680px) {
+    .fm-rate-form .form-row { flex-direction: column; align-items: stretch !important; gap: 10px; }
+    .fm-rate-form .field { flex: 1 1 auto !important; }
+    .fm-rate-form .btn { width: 100%; }
+
+    .cogs-inline-form { width: 100%; justify-content: stretch; }
+    .cogs-inline-form input[type="number"] { flex: 1 1 auto; width: auto; min-width: 0; text-align: left; }
+    .cogs-inline-form .btn { flex: 0 0 auto; min-height: 2.5rem; padding-inline: 1.125rem; }
+
+    .fm-add-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+    .fm-add-row .field-material { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+    .fm-add-row .field-unit,
+    .fm-add-row .field-qty { min-width: 0; }
+    .fm-add-row .btn { grid-column: 1 / -1; width: 100%; }
+
+    .fm-table-wrap {
+      border: none;
+      border-radius: 0;
+      overflow: visible;
+    }
+    .fm-table,
+    .fm-table tbody { display: block; width: 100%; }
+    .fm-table colgroup,
+    .fm-table thead { display: none; }
+    .fm-table tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .fm-table tbody tr:not(.fm-total-row):not(.fm-empty-row) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+      grid-template-areas:
+        "size size remove"
+        "name name name"
+        "qty  rate cost";
+      align-items: end;
+      gap: 6px 12px;
+      padding: 10px 12px 12px 14px;
+      background: var(--field);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .fm-table tbody td {
+      display: block;
+      padding: 0;
+      border: none;
+      min-width: 0;
+      text-align: left;
+      white-space: normal;
+    }
+    .fm-table tbody td:nth-child(1) {
+      grid-area: size;
+      align-self: center;
+      justify-self: start;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent-ink);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+    .fm-table tbody td:nth-child(2) {
+      grid-area: name;
+      font-size: 14px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+      margin-bottom: 2px;
+    }
+    .fm-table tbody td.num:nth-child(3) { grid-area: qty; text-align: left; }
+    .fm-table tbody td.num:nth-child(4) { grid-area: rate; text-align: left; }
+    .fm-table tbody td.num:nth-child(5) {
+      grid-area: cost;
+      text-align: right;
+      font-weight: 700;
+      font-size: 13.5px;
+    }
+    .fm-table tbody td:nth-child(3)::before,
+    .fm-table tbody td:nth-child(4)::before,
+    .fm-table tbody td:nth-child(5)::before {
+      content: attr(data-label);
+      display: block;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-faint);
+      margin-bottom: 2px;
+    }
+    .fm-table tbody td:nth-child(6) {
+      grid-area: remove;
+      justify-self: end;
+      align-self: start;
+      margin: -4px -6px 0 0;
+    }
+    .fm-remove {
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      font-size: 22px;
+      border-radius: 10px;
+    }
+
+    .fm-table .fm-total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 14px;
+      margin-bottom: 10px;
+      background: color-mix(in srgb, var(--accent) 10%, var(--field));
+      border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+      border-radius: var(--radius-sm);
+    }
+    .fm-table .fm-total-row:last-child { margin-bottom: 0; }
+    .fm-table .fm-total-row td {
+      display: block;
+      padding: 0;
+      border: none;
+      background: none;
+    }
+    .fm-table .fm-total-row td:last-child { display: none; }
+    .fm-table .fm-total-row .fm-total-label {
+      text-align: left;
+      font-size: 13px;
+      letter-spacing: 0;
+      color: var(--ink);
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    .fm-table .fm-empty-row { display: block; }
+    .fm-table .fm-empty-row td {
+      display: block;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+    }
+  }
 </style>
 {% endblock %}
 
@@ -106,7 +259,7 @@
     typed in). Production starts from this rate too, but lets it be retyped per batch since material costs
     fluctuate — this figure is only ever a starting point there, not read live.
   </p>
-  <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" style="padding: 0 22px 22px;">
+  <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" class="fm-rate-form" style="padding: 0 22px 22px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row" style="align-items:flex-end;">
       <div class="field" style="flex:1 1 220px; margin-bottom: 0;">
@@ -256,7 +409,8 @@
                   onsubmit="return confirm('Remove this material from the {{ u.unit }} formula?');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="formula_item_id" value="{{ item.formula_item_id }}">
-                  <button type="submit" class="fm-remove" title="Remove" aria-label="Remove">&times;</button>
+                  <button type="submit" class="fm-remove" title="Remove"
+                    aria-label="Remove {{ item.material_name }} from {{ u.unit }}">&times;</button>
                 </form>
               </td>
             </tr>

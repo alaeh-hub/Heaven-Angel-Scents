@@ -369,3 +369,31 @@ def test_discrepancies_page_counts_units_from_the_delivery(app, client, sql):
     assert cell("Shortfall units") == 1
     assert cell("Total discrepancies") == 2
     assert re.findall(r'data-label="Units">\s*(\d+)\s*<', html) == ["1", "1"]
+
+
+def test_request_page_lists_only_open_requests(client, sql):
+    """The Request form only shows requests still in play (so a branch
+    doesn't ask twice); finished ones live on the History tab."""
+    branch_id = _signed_in_branch(client, sql)
+    sku = make_product(sql)
+    items = [{"sku": sku, "requested_qty": 2}]
+    pending = make_stock_request(sql, branch_id, items, status="Pending")
+    fulfilled = make_stock_request(sql, branch_id, items, status="Fulfilled")
+    rejected = make_stock_request(sql, branch_id, items, status="Rejected")
+
+    cur = sql.cursor(dictionary=True)
+    cur.execute(
+        "SELECT request_id, delivery_number FROM stock_requests WHERE request_id IN (%s, %s, %s)",
+        (pending, fulfilled, rejected),
+    )
+    numbers = {row["request_id"]: row["delivery_number"] for row in cur.fetchall()}
+    cur.close()
+
+    html = client.get(REQUEST_STOCK_URL).get_data(as_text=True)
+    assert "Still open" in html
+    assert numbers[pending] in html
+    assert numbers[fulfilled] not in html
+    assert numbers[rejected] not in html
+
+    history = client.get("/branch/stock-requests").get_data(as_text=True)
+    assert numbers[fulfilled] in history
