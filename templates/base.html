@@ -398,6 +398,19 @@
             height: 16px;
         }
 
+        /* The mascot is a cut-out character, so the circle has to do the
+           cropping that the old inline glyph didn't need. */
+        .halo-avatar.mascot-host {
+            overflow: hidden;
+        }
+
+        /* Top margin, not just centring: the greeting bubble sits above
+           the mascot and .halo-log scrolls, so without room reserved
+           here the bubble would be clipped by the log's own overflow. */
+        .halo-empty-mascot {
+            margin: 2.75rem auto 0.5rem;
+        }
+
         .halo-panel-name {
             font-size: 13.5px;
             font-weight: 700;
@@ -1192,7 +1205,7 @@
                hole. Reset to look identical to the .footer-action <a>
                it replaces (buttons carry their own browser chrome by
                default that a plain link doesn't). -->
-                    <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;" data-no-soft-submit>
+                    <form method="POST" action="{{ url_for('auth.logout') }}" style="margin:0;" data-no-soft-submit data-confirm-dialog="Sign out?" data-confirm-detail="You will need to sign in again to get back to your workspace." data-confirm-ok="Sign out">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- footer-action-btn (style.css) resets button chrome
                  without the `font: inherit` bug that used to make this
@@ -1288,6 +1301,17 @@
                             </div>
                         </div>
                     </div>
+<button type="button" class="theme-toggle sfx-toggle" data-sfx-toggle aria-pressed="true"
+                        aria-label="Sound effects on. Click to mute." title="Sound on">
+                        <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" />
+                            <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+                        </svg>
+                        <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" />
+                            <path d="M16 9.5l5 5M21 9.5l-5 5" />
+                        </svg>
+                    </button>
                     <button type="button" class="theme-toggle" id="themeToggle"
                         aria-label="Switch between light and dark theme">
                         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -1372,7 +1396,7 @@
         <div class="halo-panel" id="haloPanel" hidden role="dialog" aria-label="Halo, the AI assistant" aria-modal="false">
             <div class="halo-panel-header">
                 <div class="halo-panel-title">
-                    <div class="halo-avatar">
+                    <div class="halo-avatar" data-mascot data-mascot-replace>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <path
                                 d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
@@ -1394,6 +1418,8 @@
             </div>
             <div class="halo-log" id="haloLog">
                 <div class="halo-empty" id="haloEmpty">
+                    <div class="halo-empty-mascot" data-mascot data-mascot-size="88" data-mascot-say="auto"
+                        data-mascot-say-name="{{ session.username }}"></div>
                     <p>Hi, I'm Halo. Ask about {{ 'company-wide' if session.role == 'Admin' else 'your branch' }}
                         stock, requests, sales, customers or credit{{ ', materials, production costs or partner inquiries' if session.role == 'Admin' }}
                         — I can also draft a reorder for you to review.</p>
@@ -1450,6 +1476,8 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
     <script src="{{ url_for('static', filename='js/anime.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sfx.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/mascot.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <!-- Wrapped in an id'd container, deliberately kept outside
          <main class="content"> — a page's own {% raw %}{% block scripts

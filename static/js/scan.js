@@ -246,6 +246,7 @@
         resultEmpty.style.display = "none";
         resultCard.style.display = "";
         popResult(true);
+        if (window.Sfx) window.Sfx.play("scanOk");
         resultHead.innerHTML =
             '<span class="scan-badge-ok">&#10003; Verified &mdash; on file</span>' +
             '<span class="mono text-soft" style="margin-left:auto;font-size:12px;">' + esc(sale.receipt_no) + "</span>";
@@ -273,6 +274,7 @@
         resultEmpty.style.display = "none";
         resultCard.style.display = "";
         popResult(false);
+        if (window.Sfx) window.Sfx.play("scanBad");
         resultHead.innerHTML = '<span class="scan-badge-bad">&#10007; Not verified</span>';
         resultBody.innerHTML = '<div class="scan-field-full">' + esc(message) + "</div>";
         actionsEl.style.display = "none";

@@ -86,6 +86,62 @@
       margin-bottom: 1.75rem;
     }
 
+    /* The mascot sits beside the heading, not above it: stacked, it
+       pushed the whole form down the card and read as an illustration
+       rather than as something greeting you. */
+    .auth-head-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    /* The heading block can shrink; the mascot cannot. */
+    .auth-head-text {
+      min-width: 0;
+    }
+
+    /* Two classes deep on purpose: .auth-card-head h1 below sets a
+       bottom margin and ties with this on specificity, so matching it
+       plainly would lose on source order and leave the heading sitting
+       high against the mascot. */
+    .auth-card-head .auth-head-text h1 {
+      margin-bottom: 0;
+    }
+
+    /* Sized here rather than from the script, so the breakpoints below
+       can change it. A size passed to mount() lands as an inline style
+       on this element, which no media query could then override. */
+    .auth-mascot {
+      --mascot-size: 7.5rem;
+      width: var(--mascot-size);
+      height: var(--mascot-size);
+      flex-shrink: 0;
+    }
+
+    /* The mascot sits at the card's left edge, so its bubble hangs off
+       that edge instead of being centred on it — centred, the bubble
+       ran past the card on a phone and took the page with it. The tail
+       still points at the middle of the head. */
+    .auth-mascot .mascot-bubble {
+      left: 0;
+      right: auto;
+      max-width: min(13rem, calc(100vw - 3rem));
+      transform: translate(0, 0.375rem) scale(0.96);
+      transform-origin: calc(var(--mascot-size) / 2) 100%;
+    }
+
+    .auth-mascot .mascot-bubble.is-shown {
+      transform: translate(0, 0) scale(1);
+    }
+
+    .auth-mascot .mascot-bubble::after {
+      left: calc(var(--mascot-size) / 2 - 0.3125rem);
+      right: auto;
+      margin-left: 0;
+    }
+
     .auth-greeting {
       font-size: 15px;
       font-weight: 600;
@@ -346,6 +402,10 @@
         font-size: 2.25rem;
       }
 
+      .auth-mascot {
+        --mascot-size: 5.5rem;
+      }
+
       .auth-card-head p {
         font-size: 14px;
       }
@@ -366,9 +426,60 @@
       }
     }
 
+    /* On a phone the mascot-and-heading pair centres as a group, still
+       side by side. The bubble hangs centred on the head. */
+    @media (max-width: 600px) {
+      /* Drop the arched banner on a phone so the form is the first
+         thing on screen. */
+      .auth-shell {
+        align-content: center;
+      }
+
+      .auth-stage {
+        display: none;
+      }
+
+      .auth-form-col {
+        grid-row: 1;
+      }
+
+      .auth-head-row {
+        justify-content: center;
+      }
+
+      .auth-card-head p {
+        text-align: center;
+      }
+
+      .auth-mascot .mascot-bubble {
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, 0.375rem) scale(0.96);
+        transform-origin: 50% 100%;
+      }
+
+      .auth-mascot .mascot-bubble.is-shown {
+        transform: translate(-50%, 0) scale(1);
+      }
+
+      .auth-mascot .mascot-bubble::after {
+        left: 50%;
+        right: auto;
+        margin-left: -0.3125rem;
+      }
+    }
+
     @media (max-width: 400px) {
       .auth-card-head h1 {
         font-size: 2rem;
+      }
+
+      .auth-head-row {
+        gap: 0.625rem;
+      }
+
+      .auth-mascot {
+        --mascot-size: 4.5rem;
       }
 
       .role-option {
@@ -389,6 +500,11 @@
 </head>
 
 <body>
+  <button type="button" class="theme-toggle theme-toggle-fixed sfx-toggle sfx-toggle-fixed" data-sfx-toggle aria-pressed="true"
+    aria-label="Sound effects on. Click to mute." title="Sound on">
+    <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+    <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+  </button>
   <button type="button" class="theme-toggle theme-toggle-fixed" id="themeToggle" aria-label="Switch between light and dark theme">
     <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
     <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
@@ -441,8 +557,13 @@
     <div class="auth-form-col">
       <div class="auth-card" id="authCard">
         <div class="auth-card-head">
-          <p class="auth-greeting" id="auth-greeting">Welcome back</p>
-          <h1>Sign in</h1>
+          <div class="auth-head-row">
+            <div class="auth-mascot" id="authMascot"></div>
+            <div class="auth-head-text">
+              <p class="auth-greeting" id="auth-greeting">Welcome back</p>
+              <h1>Sign in</h1>
+            </div>
+          </div>
           <p>Use your HQ Admin or branch account to continue.</p>
         </div>
 
@@ -534,6 +655,8 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sfx.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/mascot.js') }}"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
   <script>
     (function () {
@@ -551,6 +674,154 @@
       var greeting = document.getElementById('auth-greeting');
       var hour = new Date().getHours();
       greeting.textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+      // ---- Mascot ----
+      // It talks back to what the user is actually doing. A sign-in
+      // screen is mostly spent typing, where a head that only tracked
+      // the pointer would sit perfectly still — so the interesting
+      // moments are the form's, not the cursor's.
+      if (window.Mascot) {
+        var mascot = window.Mascot.mount(document.getElementById('authMascot'));
+        if (mascot) {
+          // Never say the same line twice running: with a handful of
+          // lines per event, repetition is what makes it read as canned.
+          var lastLine = '';
+          function pick(lines) {
+            var line = lines[Math.floor(Math.random() * lines.length)];
+            if (lines.length > 1 && line === lastLine) {
+              line = lines[(lines.indexOf(line) + 1) % lines.length];
+            }
+            lastLine = line;
+            return line;
+          }
+          // While a password is being typed the mascot keeps its eyes
+          // shut and says nothing at all.
+          var typingPassword = false;
+          // `face` is one of the mascot's expressions, shown with the line
+          // so the words and the face say the same thing.
+          function say(lines, ms, face) {
+            if (typingPassword) return;
+            if (face) mascot.react(face, Math.min(ms || 2200, 2200));
+            mascot.say(typeof lines === 'string' ? lines : pick(lines), ms);
+          }
+
+          // ---- arrival ----
+          // The greeting line above the card already states the time of
+          // day in plain words, so this says the next thing rather than
+          // repeating it. A failed attempt takes priority over a hello.
+          var failed = document.querySelector('.flash-error, .flash-danger');
+          var signedOut = document.querySelector('.flash-success');
+          setTimeout(function () {
+            // A failed attempt outranks any other state worth greeting.
+            if (failed) {
+              say([
+                "Even angels fat-finger things. Try again?",
+                "That's not in the Book. One more go.",
+                'Denied. Politely, but denied.'
+              ], 3600, 'surprised');
+              return;
+            }
+            if (signedOut) {
+              say(['Rest well. I will guard the stock.', 'Signed out. Go forth and unwind.'], 3400, 'delighted');
+              return;
+            }
+            if (hour < 5) say(['Up before the sun? Even angels yawn.', 'Sleepless? The warehouse is dreaming.'], 4000, 'sleepy');
+            else if (hour < 12) say(['Good morning. The shelves look blessed.', 'A new day, a clean ledger.'], 4000, 'sparkle');
+            else if (hour < 18) say(["Afternoon. Let's make some heavenly sales.", 'Halfway there. Keep that halo polished.'], 4000, 'delighted');
+            else if (hour < 21) say(['Evening. Time to count your blessings. And bottles.', 'Closing time? Sign in, finish strong.'], 4000, 'heart');
+            else say(['Burning the midnight oil? I will keep the halo on.', 'Late shift. Miracles still happen.'], 4000, 'sleepy');
+          }, 900);
+
+          // ---- the form ----
+          var usernameField = document.getElementById('username');
+          if (usernameField) {
+            usernameField.addEventListener('blur', function () {
+              var name = usernameField.value.trim();
+              if (!name || name.length > 24) return;
+              say(['Ah, ' + name + '. I have been expecting you.', name + '. Good name. Very reliable.'], 2600, 'delighted');
+            });
+          }
+
+          var passwordField = document.getElementById('password');
+          if (passwordField) {
+            passwordField.addEventListener('focus', function () {
+              typingPassword = true;
+              mascot.hush();
+              mascot.cover('blink');
+            });
+            passwordField.addEventListener('blur', function () {
+              typingPassword = false;
+              mascot.cover(null);
+            });
+          }
+
+          // ---- the role switch ----
+          document.querySelectorAll('.role-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+              if (opt.dataset.role === 'Admin') {
+                say(['HQ Admin. With great stock comes great responsibility.', 'The whole kingdom, at your fingertips.'], 2800, 'delighted');
+              } else {
+                say(['Branch duty. Go sell some miracles.', 'Counter side. Make it count.'], 2800, 'sparkle');
+              }
+            });
+          });
+
+          var theme = document.getElementById('themeToggle');
+          if (theme) {
+            theme.addEventListener('click', function () {
+              say(['Let there be a different light.', 'A fresh look. Divine.'], 2200, 'sparkle');
+            });
+          }
+
+          // ---- idle ----
+          // Only ever once, and only if they have genuinely stopped: a
+          // sign-in screen someone is reading is not a screen that needs
+          // nagging twice.
+          var idle = setTimeout(function () {
+            say(['Still there? Even my halo is dimming.', 'Take your time. I have eternity.'], 3400, 'sleepy');
+          }, 50000);
+          ['pointerdown', 'keydown'].forEach(function (evt) {
+            document.addEventListener(evt, function () { clearTimeout(idle); }, { once: true });
+          });
+
+          // ---- clicking it ----
+          // Answers the poke it was actually given: the lines climb with
+          // each rapid click and the fourth lands on the dizzy face.
+          document.getElementById('authMascot').addEventListener('mascot:boop', function (e) {
+            if (e.detail.dizzy) {
+              say(['The room is spinning. Halo too.', 'Okay, okay. I surrender.'], 2600);
+            } else if (e.detail.count === 3) {
+              say(['Third poke. I am keeping count.', 'Careful. Heavenly patience has limits.'], 2400);
+            } else if (e.detail.count === 2) {
+              say(['Again? Fine. One more.', 'Persistent. I like that.'], 2200);
+            } else {
+              say(['Careful, the halo is fragile.', 'I am a guardian, not a button.', 'Heavenly poke received.'], 2400);
+            }
+          });
+
+          // ---- submitting ----
+          // Deferred to the next tick on purpose. The form's own
+          // validation handler is registered after this one, so at the
+          // moment this fires it is not yet known whether the submit
+          // will be blocked — but by the next tick defaultPrevented
+          // tells us, and the mascot can say the right one of the two.
+          var loginForm = document.getElementById('login-form');
+          if (loginForm) {
+            loginForm.addEventListener('submit', function (e) {
+              // Enter in the password field submits without a blur.
+              typingPassword = false;
+              mascot.cover(null);
+              setTimeout(function () {
+                if (e.defaultPrevented) {
+                  say(['Whoa. Even miracles need all the fields.', 'Something is missing. Not my halo, I checked.'], 2800, 'surprised');
+                } else {
+                  say(['Opening the gates…', 'Granting access. Try not to cause a flood.'], 0, 'delighted');
+                }
+              }, 0);
+            });
+          }
+        }
+      }
 
       document.querySelectorAll('.role-option').forEach(function (opt) {
         opt.addEventListener('click', function () {

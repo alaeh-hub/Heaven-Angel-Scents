@@ -691,6 +691,16 @@ function initLoginSplash() {
 // own real, full-reload navigation instead of a soft one. Isolating
 // each init this way means one broken widget stays broken on its own,
 // instead of quietly taking soft nav down with it.
+// The mascot (static/js/mascot.js). Both of its slots — Halo's avatar
+// and Halo's greeting — are [data-mascot] elements in the shell rather
+// than in .content, so they survive a soft navigation untouched and
+// this only needs to run on a real page load. (The sign-in screen
+// mounts its own, in login.html; it is not part of this shell.)
+function initMascots() {
+    if (!window.Mascot) return;
+    window.Mascot.initAll();
+}
+
 function safeInit(fn, label) {
     try {
         return fn();
@@ -717,10 +727,12 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(revealContent, 'revealContent');
     safeInit(initStatCountUp, 'statCountUp');
     safeInit(initFillBars, 'fillBars');
+    safeInit(initMascots, 'mascots');
 
     safeInit(() => document.querySelectorAll('.flash').forEach(attachFlashDismiss), 'flashDismiss');
 
     safeInit(initConfirmDialogs, 'confirmDialogs');
+    safeInit(initConfirmModal, 'confirmModal');
 
     safeInit(initSmartTables, 'smartTables');
     safeInit(initSmartLists, 'smartLists');
@@ -2249,6 +2261,88 @@ function initConfirmDialogs() {
     }, true);
 }
 
+// Styled, floating variant of the confirm pattern above, for forms that
+// deserve more than the browser's confirm() popup (currently Sign out):
+// data-confirm-dialog="Title", optional data-confirm-detail="Body" and
+// data-confirm-ok="Button label". Built lazily and appended to <body> so
+// it survives soft-nav content swaps, like the loading overlay below.
+function initConfirmModal() {
+    let overlay = null;
+    let pendingForm = null;
+    let returnFocus = null;
+
+    function build() {
+        overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.hidden = true;
+        overlay.innerHTML =
+            '<div class="confirm-dialog" role="alertdialog" aria-modal="true" ' +
+            'aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDetail">' +
+            '<h2 class="confirm-dialog-title" id="confirmDialogTitle"></h2>' +
+            '<p class="confirm-dialog-detail" id="confirmDialogDetail"></p>' +
+            '<div class="confirm-dialog-actions">' +
+            '<button type="button" class="btn btn-ghost" data-confirm-cancel>Cancel</button>' +
+            '<button type="button" class="btn btn-danger" data-confirm-accept></button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay || e.target.closest('[data-confirm-cancel]')) close();
+            else if (e.target.closest('[data-confirm-accept]')) accept();
+        });
+    }
+
+    function close() {
+        if (!overlay || overlay.hidden) return;
+        overlay.hidden = true;
+        pendingForm = null;
+        if (returnFocus && returnFocus.focus) returnFocus.focus();
+    }
+
+    function accept() {
+        const form = pendingForm;
+        overlay.hidden = true;
+        pendingForm = null;
+        // submit() skips the submit event, so this doesn't re-open the dialog.
+        if (form) form.submit();
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (!overlay || overlay.hidden) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        } else if (e.key === 'Tab') {
+            const btns = overlay.querySelectorAll('button');
+            const first = btns[0];
+            const last = btns[btns.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    });
+
+    document.addEventListener('submit', (e) => {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement) || !form.dataset.confirmDialog) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!overlay) build();
+        pendingForm = form;
+        returnFocus = document.activeElement;
+        overlay.querySelector('.confirm-dialog-title').textContent = form.dataset.confirmDialog;
+        const detail = overlay.querySelector('.confirm-dialog-detail');
+        detail.textContent = form.dataset.confirmDetail || '';
+        detail.hidden = !detail.textContent;
+        overlay.querySelector('[data-confirm-accept]').textContent = form.dataset.confirmOk || 'Confirm';
+        overlay.hidden = false;
+        overlay.querySelector('[data-confirm-cancel]').focus();
+    }, true);
+}
+
 // A full-screen, centered "Loading…" dialog (see .loading-overlay in
 // style.css) shown for the duration of a form submission. Built once,
 // lazily, and appended straight to <body> — not .content — so it
@@ -2592,6 +2686,7 @@ function triggerBlobDownload(blob, filename) {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    if (window.Sfx) window.Sfx.play('download');
     // Not revoked immediately — some browsers start the actual save
     // asynchronously right after the click, and revoking too early can
     // cancel that in-flight save.

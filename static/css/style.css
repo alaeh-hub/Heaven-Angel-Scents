@@ -1865,6 +1865,53 @@ th.num {
   transform: rotate(0deg) scale(1);
 }
 
+/* Speaker button: shares the theme toggle's shape; its two icons swap
+   on mute instead of on theme. */
+.sfx-toggle svg {
+  transform: none;
+}
+
+.sfx-toggle .icon-on,
+.theme-toggle.sfx-toggle .icon-on {
+  opacity: 1;
+}
+
+.sfx-toggle .icon-off,
+.theme-toggle.sfx-toggle .icon-off {
+  opacity: 0;
+}
+
+.sfx-toggle.is-muted .icon-on {
+  opacity: 0;
+}
+
+.sfx-toggle.is-muted .icon-off {
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .theme-toggle.sfx-toggle .icon-on {
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-theme="dark"] .theme-toggle.sfx-toggle.is-muted .icon-on {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] .theme-toggle.sfx-toggle .icon-off {
+  opacity: 0;
+  transform: none;
+}
+
+:root[data-theme="dark"] .theme-toggle.sfx-toggle.is-muted .icon-off {
+  opacity: 1;
+}
+
+/* On the sign-in page the speaker sits to the left of the theme toggle. */
+.theme-toggle-fixed.sfx-toggle-fixed {
+  right: 4.125rem;
+}
+
 .theme-toggle-fixed {
   position: fixed;
   top: 1.25rem;
@@ -5258,6 +5305,10 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
 
   /* 44px touch target for the theme toggle, tucked into the empty
      corner beside the arched banner. */
+  .sfx-toggle-fixed {
+    right: calc(max(0.75rem, env(safe-area-inset-right)) + 3.5rem);
+  }
+
   .theme-toggle-fixed {
     width: 2.75rem;
     height: 2.75rem;
@@ -5719,4 +5770,188 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
 .card.ac-host-open {
   position: relative;
   z-index: 400;
+}
+
+/* ---- mascot --------------------------------------------------------
+   The sprite-sheet character (static/js/mascot.js). Two 3x3 sheets sit
+   stacked in the same box; `background-size: 300%` makes each cell a
+   clean 0/50/100% step, and the script moves `background-position` to
+   choose one. Only the opacity cross-fade between the two sheets is a
+   transition — turning the head is a position jump, which is what makes
+   it read as a drawing rather than a tween.
+
+   The host element sizes it: --mascot-size when the script was given
+   one, otherwise the mascot fills whatever box it was dropped into
+   (Halo's .halo-avatar). */
+.mascot-host {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+/* Only a mascot given an explicit size sets its own box. An unsized one
+   (Halo's .halo-avatar) is dropped into a slot that is already sized,
+   and this rule is appended after that slot's own — so sizing every
+   host here would silently override the dimensions it set for itself. */
+.mascot-host-sized {
+  width: var(--mascot-size);
+  height: var(--mascot-size);
+}
+
+.mascot {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mascot-squash {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Below centre: the bounce should plant on the shoulders rather than
+     scaling about the middle of the head. */
+  transform-origin: 50% 78%;
+}
+
+.mascot-squash {
+  transition: transform 0.12s var(--ease-out);
+}
+
+.mascot-host.is-pressed .mascot-squash {
+  transform: scale(1.04, 0.93);
+}
+
+.mascot-layer {
+  position: absolute;
+  inset: 0;
+  background-size: 300% 300%;
+  background-repeat: no-repeat;
+  transition: opacity 0.08s linear;
+}
+
+.mascot-layer-react {
+  opacity: 0;
+}
+
+.mascot-host.is-reacting .mascot-layer {
+  opacity: 0;
+}
+
+.mascot-host.is-reacting .mascot-layer-react {
+  opacity: 1;
+}
+
+/* ---- speech bubble ---- */
+.mascot-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.6rem);
+  z-index: 5;
+  max-width: 13rem;
+  width: max-content;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 0.375rem) scale(0.96);
+  transform-origin: 50% 100%;
+  transition: opacity 0.18s ease, transform 0.26s var(--ease-out);
+}
+
+.mascot-bubble.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+/* The tail is the bubble's own bottom-left corner rotated under it, so
+   it inherits the border and background without a second element
+   needing to track theme changes. */
+.mascot-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -0.3125rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-left: -0.3125rem;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-bottom-right-radius: 2px;
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-layer,
+  .mascot-bubble {
+    transition: none;
+  }
+}
+
+/* Floating confirm dialog (initConfirmModal() in main.js). Same layer
+   and backdrop as .loading-overlay so it sits above every modal. */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgb(12 11 9 / 0.4);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: loading-overlay-in 0.18s ease-out;
+}
+
+.confirm-overlay[hidden] {
+  display: none;
+}
+
+.confirm-dialog {
+  width: min(100%, 24rem);
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: loading-dialog-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.confirm-dialog-title {
+  margin: 0 0 0.375rem;
+  font-size: 1.125rem;
+  color: var(--ink);
+}
+
+.confirm-dialog-detail {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
 }

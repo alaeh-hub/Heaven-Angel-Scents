@@ -56,3 +56,8 @@ static/video/*.mp4
 
 # Reference-only prototype experiments and standalone scene demos
 public-site/prototype/
+
+# Mascot source art (keyed sheets, original drawings, prompts). Only the
+# built atlases in static/mascots/ are needed to run the app; rebuild them
+# from here with the page-mascot skill's scripts/mascot.py.
+characters/
