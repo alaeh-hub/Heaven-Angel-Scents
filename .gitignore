@@ -61,3 +61,6 @@ public-site/prototype/
 # built atlases in static/mascots/ are needed to run the app; rebuild them
 # from here with the page-mascot skill's scripts/mascot.py.
 characters/
+
+# Docker backup job output (copy off-server, never commit)
+backups/

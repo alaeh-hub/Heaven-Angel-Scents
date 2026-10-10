@@ -98,6 +98,15 @@ def create_app():
                 f"/partner-portal/{app.config['PARTNER_PORTAL_SLUG']}/packages"
             )
 
+    if os.environ.get("TRUST_PROXY", "0") == "1":
+        # Behind a reverse proxy (Caddy in docker-compose.yml) every request
+        # arrives from the proxy's IP over plain HTTP. Without this, rate
+        # limiting would treat all users as one client and Talisman would
+        # redirect-loop trying to force HTTPS. Only enable it when the app is
+        # reachable exclusively through that proxy, or X-Forwarded-* can be forged.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     db.init_app(app)
     CSRFProtect(app)
     limiter.init_app(app)
@@ -137,6 +146,17 @@ def create_app():
     app.register_blueprint(branch_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(portal_bp)
+
+    @app.route("/healthz")
+    def healthz():
+        # Liveness + DB reachability for the Docker healthcheck. Returns no
+        # data and no details, so it is safe to leave unauthenticated.
+        try:
+            db.query("SELECT 1", fetchone=True)
+        except Exception:
+            app.logger.exception("Health check failed")
+            return "unhealthy", 503, {"Content-Type": "text/plain; charset=utf-8"}
+        return "ok", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
     @app.route("/robots.txt")
     def robots_txt():

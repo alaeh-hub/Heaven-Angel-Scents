@@ -1,0 +1,156 @@
+# Production stack: Caddy (HTTPS) -> web (gunicorn) -> db (MySQL), plus a
+# one-shot schema migration and a daily backup job.
+# Required in .env (see .env.example): DOMAIN, DB_ROOT_PASSWORD, DB_APP_PASSWORD,
+# SECRET_KEY. Full steps in DOCKER_DEPLOY.md.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DB:-heaven_and_angel_scents}
+      # Limited user the app connects as; it only has rights on MYSQL_DATABASE.
+      MYSQL_USER: ${DB_APP_USER:-heaven_app}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:?set DB_APP_PASSWORD in .env}
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Applies schema.sql on every `up`. It is idempotent (CREATE ... IF NOT EXISTS
+  # plus guarded migration blocks), so this covers both the first run and later
+  # schema changes. Back up before deploying schema changes (see BACKUP.md).
+  migrate:
+    image: mysql:8.4
+    restart: "no"
+    logging: *default-logging
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_PWD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - ./schema.sql:/schema.sql:ro
+    # Retries because after a Docker daemon restart containers start without
+    # honouring depends_on, so the db may not accept connections yet.
+    command:
+      - sh
+      - -c
+      - |
+        for i in $$(seq 1 30); do
+          mysql -h db -uroot < /schema.sql && exit 0
+          echo "migrate: db not ready (attempt $$i/30), retrying" >&2
+          sleep 3
+        done
+        exit 1
+
+  web:
+    build: .
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    environment:
+      APP_ENV: production
+      FLASK_DEBUG: "0"
+      ALLOW_DATA_RESET: "0"
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${DB_APP_USER:-heaven_app}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB:-heaven_and_angel_scents}
+      # Only Caddy can reach this container (no published port), so trusting
+      # its X-Forwarded-* headers is safe.
+      SOCKETIO_CORS_ALLOWED_ORIGINS: https://${DOMAIN}
+      TRUST_PROXY: "1"
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    volumes:
+      - uploads:/app/static/uploads
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      - web
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Daily database dump + uploads archive into ./backups on the host. Copy that
+  # folder off the server too (see BACKUP.md "Off-site copy").
+  backup:
+    image: mysql:8.4
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      MYSQL_PWD: ${DB_ROOT_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB:-heaven_and_angel_scents}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - uploads:/data/uploads:ro
+      - ./backups:/backups
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        # pipefail: a failed mysqldump must fail the pipeline, otherwise gzip's
+        # success hides it and an empty .sql.gz is reported as "backup ok".
+        set -o pipefail
+        while true; do
+          ts=$$(date +%Y%m%d_%H%M%S)
+          tmp="/backups/$${MYSQL_DB}_$$ts.sql.gz.tmp"
+          # Retry briefly so a daemon restart (db not up yet) doesn't cost a whole day.
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if mysqldump -h db -uroot --single-transaction --routines --triggers --events "$$MYSQL_DB" | gzip > "$$tmp" && [ "$$(stat -c %s "$$tmp")" -gt 200 ]; then
+              ok=1; break
+            fi
+            rm -f "$$tmp"
+            sleep 10
+          done
+          if [ "$$ok" = 1 ]; then
+            mv "$$tmp" "/backups/$${MYSQL_DB}_$$ts.sql.gz"
+            echo "backup ok: $$ts"
+          else
+            echo "backup FAILED: $$ts" >&2
+          fi
+          tar -czf "/backups/uploads_$$ts.tar.gz" -C /data uploads || echo "uploads archive FAILED: $$ts" >&2
+          find /backups -type f \( -name '*.sql.gz' -o -name '*.tar.gz' \) -mtime +$$BACKUP_RETENTION_DAYS -delete
+          sleep 86400
+        done
+
+volumes:
+  dbdata:
+  uploads:
+  caddy_data:
+  caddy_config:

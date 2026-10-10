@@ -17,10 +17,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      # Mirrors DEPLOY.md's "Redeploying / updating" section (step 11):
-      # pull, reinstall deps, rebuild the portal front end, back up the
-      # database, re-apply schema.sql (idempotent — see DEPLOY.md step 3),
-      # then restart the service.
+      # Docker deploy, see DOCKER_DEPLOY.md section 4: pull, take a pre-deploy
+      # database dump, rebuild and restart the stack (the migrate job applies
+      # schema.sql), then fail the run unless web reports healthy.
       - name: Deploy over SSH
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" \
@@ -30,17 +29,25 @@ jobs:
 
             git pull --ff-only
 
-            .venv/bin/pip install -r requirements.txt
+            # pipefail + size check: otherwise a failed mysqldump leaves an empty
+            # .gz that looks like a good backup and the deploy carries on.
+            docker compose exec -T backup bash -c '
+              set -euo pipefail
+              f=/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).sql.gz
+              mysqldump -h db -uroot --single-transaction --routines --triggers --events "$MYSQL_DB" | gzip > "$f"
+              [ "$(stat -c %s "$f")" -gt 200 ] || { rm -f "$f"; echo "pre-deploy dump is empty" >&2; exit 1; }
+            '
 
-            (cd public-site && npm ci && npm run build)
+            docker compose up -d --build --remove-orphans
 
-            ./scripts/backup_db.sh
-            set -a; source .env; set +a
-            mysql -h "${MYSQL_HOST:-localhost}" -P "${MYSQL_PORT:-3306}" -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DB}" < schema.sql
-
-            sudo systemctl restart heaven-and-angel
-            sleep 2
-            systemctl is-active --quiet heaven-and-angel
+            for i in $(seq 1 30); do
+              status="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q web)")"
+              [ "$status" = "healthy" ] && { echo "web is healthy"; exit 0; }
+              sleep 5
+            done
+            echo "web did not become healthy" >&2
+            docker compose logs --tail 50 web >&2
+            exit 1
           REMOTE
 
       - name: Clean up SSH key

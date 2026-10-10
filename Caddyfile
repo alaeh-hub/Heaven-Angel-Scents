@@ -1,0 +1,12 @@
+# Caddy terminates HTTPS (automatic Let's Encrypt certificate for $DOMAIN) and
+# proxies to the app. WebSocket upgrades (Socket.IO) pass through automatically.
+{
+	# Clients connecting by IP address (LAN testing) send no hostname, so serve
+	# the $DOMAIN certificate by default. Harmless when DOMAIN is a real hostname.
+	default_sni {$DOMAIN}
+}
+
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy web:8000
+}
