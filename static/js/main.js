@@ -3301,6 +3301,12 @@ function initRealtime(notifBell) {
         { match: /^\/admin\/packages(\/\d+)?\/?$/, scopes: ['packages'] },
         { match: /^\/admin\/partners\/inquiries\/?$/, scopes: ['partner_inquiries'] },
         { match: /^\/admin\/users\/?$/, scopes: ['users'] },
+        { match: /^\/admin\/(materials|suppliers|formulas)\/?$/, scopes: ['materials'] },
+        { match: /^\/admin\/bulk-batches\/?$/, scopes: ['materials', 'production'] },
+        { match: /^\/admin\/partners\/\d+\/?$/, scopes: ['partners'] },
+        { match: /^\/admin\/requests\/\d+\/?$/, scopes: ['requests'] },
+        { match: /^\/admin\/(low-stock|discrepancies)\/?$/, scopes: ['inventory', 'movement_logs'] },
+        { match: /^\/admin\/(sales-history|customers|credit-purchases|record-sale)\/?$/, scopes: ['sales'] },
         { match: /^\/ai\/drafts\/?$/, scopes: ['ai_drafts'] },
         { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production'] },
         { match: /^\/branch\/inventory\/?$/, scopes: ['inventory'] },
@@ -3317,15 +3323,45 @@ function initRealtime(notifBell) {
         return hit ? hit.scopes : [];
     }
 
-    function activeFieldInsideContent() {
-        const el = document.activeElement;
-        if (!el) return false;
+    // Search boxes and GET filter forms hold no data worth protecting, so
+    // they must never block a live refresh.
+    function isDataField(el) {
+        if (!el || !el.closest) return false;
         if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.tagName !== 'SELECT') return false;
-        return !!el.closest('.content');
+        if (el.type === 'search' || el.type === 'hidden' || el.type === 'button' || el.type === 'submit') return false;
+        if (!el.closest('.content')) return false;
+        // Only fields inside a POST form hold data worth protecting. Table
+        // search boxes and filter dropdowns live outside forms.
+        const form = el.closest('form');
+        if (!form || (form.getAttribute('method') || 'get').toLowerCase() === 'get') return false;
+        return true;
+    }
+
+    // The table search box and filters aren't protected from a refresh, so
+    // carry their values across the content swap instead of resetting them.
+    const VIEW_CONTROLS = '.smart-search-input, .smart-filter-select';
+
+    function snapshotViewControls() {
+        return Array.from(document.querySelectorAll(`.content ${VIEW_CONTROLS}`)).map((el) => el.value);
+    }
+
+    function restoreViewControls(values) {
+        const els = document.querySelectorAll(`.content ${VIEW_CONTROLS}`);
+        els.forEach((el, i) => {
+            if (values[i] === undefined || el.value === values[i]) return;
+            el.value = values[i];
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+
+    function activeFieldInsideContent() {
+        return isDataField(document.activeElement);
     }
 
     let pendingRefresh = false;
     let suppressUntil = 0;
+    let retryTimer = null;
 
     // Whether the user has typed/selected anything, anywhere in .content,
     // that a soft-refresh would silently discard. activeFieldInsideContent()
@@ -3337,44 +3373,100 @@ function initRealtime(notifBell) {
     // with a fresh server render, wiping every field the user had already
     // filled in and visibly jumping the page under them. Tracking "has
     // anything changed" independently of focus closes that gap.
-    let contentDirty = false;
+    // Self-clearing: a field the user touched only counts while its value
+    // still differs from what the server rendered, so cancelling a modal,
+    // resetting a form or clearing the field unblocks refreshes again
+    // (a sticky flag used to block them until a full page reload).
+    const touchedFields = new WeakSet();
 
-    document.addEventListener('input', (e) => {
-        if (e.target && e.target.closest && e.target.closest('.content')) {
-            contentDirty = true;
-        }
-    }, true);
-    document.addEventListener('change', (e) => {
-        if (e.target && e.target.closest && e.target.closest('.content')) {
-            contentDirty = true;
-        }
-    }, true);
+    function markTouched(e) {
+        if (isDataField(e.target)) touchedFields.add(e.target);
+    }
+    document.addEventListener('input', markTouched, true);
+    document.addEventListener('change', markTouched, true);
+
+    function fieldDiffers(el) {
+        if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+        if (el.tagName === 'SELECT') return Array.from(el.options).some((o) => o.selected !== o.defaultSelected);
+        return el.value !== el.defaultValue;
+    }
+
+    // Forms in .content the user has actually changed.
+    function dirtyForms() {
+        const content = document.querySelector('.content');
+        if (!content) return [];
+        const forms = new Set();
+        content.querySelectorAll('input, textarea, select').forEach((el) => {
+            if (touchedFields.has(el) && isDataField(el) && fieldDiffers(el)) forms.add(el.closest('form'));
+        });
+        return Array.from(forms);
+    }
+
+    function hasUnsavedInput() {
+        return dirtyForms().length > 0;
+    }
 
     document.addEventListener('submit', (e) => {
         if (e.target && e.target.closest && e.target.closest('.content')) {
             suppressUntil = Date.now() + 2500;
-            contentDirty = false;
         }
     }, true);
 
+    function scheduleRetry(ms) {
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(softRefresh, ms);
+    }
+
     function softRefresh() {
-        if (Date.now() < suppressUntil) return;
-        if (activeFieldInsideContent() || contentDirty) {
+        const wait = suppressUntil - Date.now();
+        if (wait > 0) {
+            // Our own submit just happened; don't drop the update, replay it after.
             pendingRefresh = true;
+            scheduleRetry(wait + 100);
             return;
         }
+        pendingRefresh = false;
 
+        const viewValues = snapshotViewControls();
         fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
             .then((html) => {
                 const fresh = new DOMParser().parseFromString(html, 'text/html');
+
+                // A form the user is part-way through filling in is carried
+                // over as-is (same node, so values, listeners and custom
+                // selects survive) while the rest of the page refreshes. If
+                // such a form can't be matched in the new page, hold the
+                // whole refresh back and retry instead of wiping their input.
+                const keep = [];
+                for (const form of dirtyForms()) {
+                    const freshForm = form.id ? fresh.getElementById(form.id) : null;
+                    if (!freshForm) {
+                        console.debug('[realtime] refresh deferred: unsaved form cannot be preserved');
+                        pendingRefresh = true;
+                        scheduleRetry(3000);
+                        return;
+                    }
+                    keep.push([form, freshForm]);
+                }
+                keep.forEach(([form, freshForm]) => freshForm.replaceWith(form));
+
                 swapContent(fresh);
-                contentDirty = false;
+                restoreViewControls(viewValues);
             })
             .catch(() => {
-
+                // Transient failure (network blip, restart): try again shortly.
+                pendingRefresh = true;
+                scheduleRetry(5000);
             });
     }
+
+    // Safety net: if the socket was down (sleep, Wi-Fi switch, container
+    // restart) any pushes were lost, so catch up when it reconnects or the
+    // tab becomes visible again.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') softRefresh();
+    });
 
     function refreshBadgesOnly() {
 
@@ -3394,18 +3486,27 @@ function initRealtime(notifBell) {
         // field in the same form) — checking synchronously here risks
         // treating an in-form focus move as "left the form entirely."
         setTimeout(() => {
-            if (pendingRefresh && !activeFieldInsideContent() && !contentDirty) {
-                pendingRefresh = false;
+            if (pendingRefresh && !activeFieldInsideContent() && !hasUnsavedInput()) {
                 softRefresh();
             }
         }, 0);
     }, true);
 
     const socket = io();
+    // Pushes sent while disconnected are gone for good; refetch on reconnect.
+    let hasConnected = false;
+    socket.on('connect', () => {
+        console.debug('[realtime] connected', socket.id);
+        if (hasConnected) softRefresh();
+        hasConnected = true;
+    });
+    socket.on('disconnect', (reason) => console.debug('[realtime] disconnected:', reason));
+    socket.on('connect_error', (err) => console.debug('[realtime] connect_error:', err && err.message));
     socket.on('data_changed', (payload) => {
         const scopes = (payload && payload.scopes) || [];
         if (scopes.includes('sales')) refreshTodaySales();
         const mine = currentScopes();
+        console.debug('[realtime] data_changed', scopes, 'page listens for', mine);
         if (scopes.some((s) => mine.includes(s))) {
             softRefresh();
         } else if (scopes.includes('requests') || scopes.includes('partner_inquiries') || scopes.includes('ai_drafts')) {

@@ -153,7 +153,9 @@ class ProductionConfig(Config):
 
     DEBUG = False
     TESTING = False
-    ALLOW_DATA_RESET = False
+    # Off by default. Only a deliberate, separately named opt-in turns it on,
+    # for wiping a deployment that holds test data. Set it back to 0 afterwards.
+    ALLOW_DATA_RESET = os.environ.get("ALLOW_DATA_RESET_IN_PRODUCTION", "0") == "1"
     SECRET_KEY = os.environ.get("SECRET_KEY")
     SESSION_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = "https"

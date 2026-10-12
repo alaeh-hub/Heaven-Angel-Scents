@@ -22,7 +22,12 @@ limiter = Limiter(
 
 _socketio_origins = os.environ.get("SOCKETIO_CORS_ALLOWED_ORIGINS", "*")
 socketio_cors_is_wildcard = _socketio_origins == "*"
-if _socketio_origins != "*":
+if _socketio_origins == "same-origin":
+    # python-engineio's default: accept only when the Origin header matches the
+    # Host the request came in on. Works for the domain *and* LAN/IP access
+    # through the proxy, while still refusing other websites.
+    _socketio_origins = None
+elif _socketio_origins != "*":
     _socketio_origins = [o.strip()
                          for o in _socketio_origins.split(",") if o.strip()]
 

@@ -65,6 +65,8 @@ services:
       APP_ENV: production
       FLASK_DEBUG: "0"
       ALLOW_DATA_RESET: "0"
+      # Set to 1 in .env ONLY to wipe test data via Admin > Clear Data, then set it back to 0.
+      ALLOW_DATA_RESET_IN_PRODUCTION: ${ALLOW_DATA_RESET_IN_PRODUCTION:-0}
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
       MYSQL_USER: ${DB_APP_USER:-heaven_app}
@@ -72,7 +74,9 @@ services:
       MYSQL_DB: ${MYSQL_DB:-heaven_and_angel_scents}
       # Only Caddy can reach this container (no published port), so trusting
       # its X-Forwarded-* headers is safe.
-      SOCKETIO_CORS_ALLOWED_ORIGINS: https://${DOMAIN}
+      # "same-origin" accepts whichever host the browser used (domain or LAN IP),
+      # unlike a fixed https://DOMAIN which silently kills realtime on other hosts.
+      SOCKETIO_CORS_ALLOWED_ORIGINS: ${SOCKETIO_CORS_ALLOWED_ORIGINS:-same-origin}
       TRUST_PROXY: "1"
       FORWARDED_ALLOW_IPS: "*"
     depends_on:
