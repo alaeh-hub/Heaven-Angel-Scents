@@ -16,7 +16,7 @@ Refuses to run when APP_ENV=production.
 import os
 import random
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

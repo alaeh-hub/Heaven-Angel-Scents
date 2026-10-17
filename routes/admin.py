@@ -16,7 +16,7 @@ from db import TransactionAborted, execute, get_db, query, transaction
 from decorators import admin_required
 from audit import log_action
 import login_activity
-from finance import PACKAGE_DATE_SQL, SALES_COGS_SQL, UNIT_COST_SQL, cogs_sold
+from finance import PACKAGE_DATE_SQL, UNIT_COST_SQL, cogs_sold
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import (DISCREPANCY_ITEM_JOIN, DISCREPANCY_UNITS_SQL, LOW_STOCK_WHERE, REPORT_TYPES, get_report,
                      parse_report_filters, render_report_excel, render_report_pdf)
