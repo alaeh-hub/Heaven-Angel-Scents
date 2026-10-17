@@ -549,7 +549,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   wireOverlay('newSaleOverlay', 'openNewSaleBtn', 'newSaleCloseBtn');
   wireOverlay('importSalesOverlay', 'openImportSalesBtn', 'importSalesCloseBtn');
 
@@ -905,11 +905,6 @@
 
       updateFreebieVisibility();
       recomputeSaleType();
-    }
-
-    if (productNames.length) {
-      productSelect.value = productNames[0];
-      populateUnits(productNames[0]);
     }
 
     updateFreebieVisibility();

@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="csp-nonce" content="{{ csp_nonce() }}">
     <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
     <!-- The tab icon is icon.svg alone now — the PNG/.ico rel="icon"
          links that used to sit after it here were what actually won in
@@ -17,7 +18,7 @@
          icon — so it stays. -->
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
-    <script>
+    <script nonce="{{ csp_nonce() }}">
         // Set the theme attribute before the stylesheet even loads, so
         // there's no flash of the light theme on a person who's chosen
         // dark. Kept intentionally tiny and inline (not in main.js, which

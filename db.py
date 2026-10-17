@@ -27,6 +27,7 @@ def _get_pool():
             password=current_app.config["MYSQL_PASSWORD"],
             database=current_app.config["MYSQL_DB"],
             autocommit=False,
+            use_pure=current_app.config.get("MYSQL_USE_PURE", True),
         )
     return _pool
 

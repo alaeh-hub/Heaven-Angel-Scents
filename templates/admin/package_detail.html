@@ -169,7 +169,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // "Add a product": one searchable field instead of a long <select>.
   // Every option is one SKU (a scent in one size), matched on its name,
   // its SKU code, or its size; picking one fills the hidden `sku` input

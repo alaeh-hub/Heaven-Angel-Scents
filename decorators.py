@@ -1,3 +1,4 @@
+import hashlib
 from functools import wraps
 
 from flask import abort, flash, redirect, request, session, url_for
@@ -9,6 +10,14 @@ from db import query
 # must_change_password is set — otherwise they'd be locked out of the
 # one page that lets them clear it.
 _PASSWORD_CHANGE_EXEMPT_ENDPOINTS = {"auth.change_password", "auth.logout"}
+
+
+def password_fingerprint(password_hash):
+    """Short, non-reversible tag for the current password hash. Stored in the
+    session at login; once the password changes (self-service or HQ reset)
+    the tag no longer matches, so every other signed-in session for that
+    account is rejected on its next request."""
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]
 
 
 def _current_account_or_none():
@@ -29,7 +38,7 @@ def _current_account_or_none():
         return None
     return query(
         """SELECT u.user_id, u.role, u.is_active, u.must_change_password,
-                  u.branch_id, b.branch_name
+                  u.password_hash, u.branch_id, b.branch_name
            FROM users u LEFT JOIN branches b ON u.branch_id = b.branch_id
            WHERE u.user_id = %s""",
         (user_id,), fetchone=True,
@@ -50,6 +59,20 @@ def _require_session(required_role=None):
     if account is None or not account["is_active"]:
         session.clear()
         flash("This account is no longer active. Please contact HQ.", "error")
+        return redirect(url_for("auth.login"))
+
+    if session.get("pwv") != password_fingerprint(account["password_hash"]):
+        session.clear()
+        flash("Your password changed, so please sign in again.", "warning")
+        return redirect(url_for("auth.login"))
+
+    # A Branch account must belong to a branch. users.branch_id is
+    # ON DELETE SET NULL, and several helpers (scan, void_sale, settle_credit)
+    # read branch_id=None as "HQ, unrestricted" — so a branchless Branch
+    # account is refused outright instead of failing open.
+    if account["role"] == "Branch" and account["branch_id"] is None:
+        session.clear()
+        flash("This account isn't assigned to a branch. Please contact HQ.", "error")
         return redirect(url_for("auth.login"))
 
     # Keep the session's branch in sync with the database on every

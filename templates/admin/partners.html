@@ -226,7 +226,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var copyBtn = document.getElementById('portalLinkCopyBtn');
     var valueEl = document.getElementById('portalLinkValue');

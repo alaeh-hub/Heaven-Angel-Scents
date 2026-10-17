@@ -1,5 +1,5 @@
 {# Behaviour for _void_sale_modal.html — include it in the page's scripts block. #}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var overlay = document.getElementById('voidSaleOverlay');
     var form = document.getElementById('voidSaleForm');

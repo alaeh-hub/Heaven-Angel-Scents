@@ -357,7 +357,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var combo = document.getElementById('productCombo');
     var input = document.getElementById('productNameInput');

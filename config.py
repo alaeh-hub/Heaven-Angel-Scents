@@ -44,6 +44,14 @@ class Config:
     # free pooled connection under real traffic.
     MYSQL_POOL_SIZE = int(os.environ.get("MYSQL_POOL_SIZE", 10))
 
+    # Use mysql-connector's pure-Python driver instead of its C extension.
+    # Production runs gunicorn's gevent worker, which can only switch between
+    # requests during socket I/O it has patched; the C extension does its I/O
+    # in native code, so a slow query froze every other request on the single
+    # worker (measured: 5 concurrent 1s queries took 5.0s instead of ~1s).
+    # Set MYSQL_USE_PURE=0 only if you run a non-gevent server.
+    MYSQL_USE_PURE = os.environ.get("MYSQL_USE_PURE", "1") == "1"
+
     WTF_CSRF_TIME_LIMIT = None
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

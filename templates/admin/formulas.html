@@ -406,7 +406,7 @@
               <td class="num mono" data-label="Line cost">₱{{ '%.4f'|format(item.line_cost) }}</td>
               <td>
                 <form method="POST" action="{{ url_for('admin.delete_formula_item') }}" data-preserve-scroll
-                  onsubmit="return confirm('Remove this material from the {{ u.unit }} formula?');">
+                  data-confirm="Remove this material from the {{ u.unit }} formula?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="formula_item_id" value="{{ item.formula_item_id }}">
                   <button type="submit" class="fm-remove" title="Remove"

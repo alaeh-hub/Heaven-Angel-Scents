@@ -124,7 +124,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Same row-stagger + count-up treatment as admin's Products page (see
   // its block scripts for the fuller comment on the load-order gate) —
   // scoped to .binv-table so it doesn't touch any other fill_bar() page.

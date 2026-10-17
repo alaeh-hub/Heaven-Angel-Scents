@@ -219,7 +219,7 @@
                   <button type="submit" class="btn btn-accent btn-sm">Approve</button>
                 </form>
                 <form method="POST" action="{{ url_for('ai.reject_draft', draft_id=d.draft_id) }}"
-                  onsubmit="return confirm('Reject this draft? This can\'t be undone.');">
+                  data-confirm="Reject this draft? This can't be undone.">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger btn-sm">Reject</button>
                 </form>

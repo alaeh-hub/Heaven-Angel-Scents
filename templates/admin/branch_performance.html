@@ -154,7 +154,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var canvas = document.getElementById('bpRevenueChart');
     if (!canvas || typeof Chart === 'undefined') return;

@@ -13,16 +13,16 @@ from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
 from extensions import limiter, socketio, socketio_cors_is_wildcard
 
 
-# Content-Security-Policy for Talisman below. 'unsafe-inline' is kept for
-# script-src/style-src because several templates (login.html, chat.html,
-# production.html, reports.html) use inline <script>/<style> blocks —
-# removing it cleanly would mean adding a nonce to every one of those,
-# which is a bigger follow-up than this pass. Everything else here is
-# still real hardening: clickjacking, MIME-sniffing, and (in production)
-# HSTS are all covered regardless.
+# Content-Security-Policy for Talisman below. script-src has no
+# 'unsafe-inline': every inline <script> carries the per-request nonce
+# ({{ csp_nonce() }}), and templates use data- attributes handled in main.js
+# instead of on*= handlers. style-src keeps 'unsafe-inline' because the
+# templates use several hundred inline style="" attributes; that is the
+# remaining gap. Clickjacking, MIME-sniffing and (in production) HSTS are
+# covered regardless.
 _CSP = {
     "default-src": "'self'",
-    "script-src": ["'self'", "'unsafe-inline'", "https://cdn.socket.io"],
+    "script-src": ["'self'", "https://cdn.socket.io"],
     # motion.js used to load from cdn.jsdelivr.net — it's now vendored at
     # static/js/motion.js (see base.html / login.html), so jsdelivr no
     # longer needs to be here. Being a third-party origin was also why
@@ -114,6 +114,7 @@ def create_app():
     Talisman(
         app,
         content_security_policy=_CSP,
+        content_security_policy_nonce_in=["script-src"],
         force_https=(environment == "production"),
         strict_transport_security=(environment == "production"),
         session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],

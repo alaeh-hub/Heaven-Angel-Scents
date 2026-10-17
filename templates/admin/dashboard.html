@@ -351,7 +351,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // KPI sparklines (sparklineSVG lives in main.js).
   (function () {
     var t = chartTheme();

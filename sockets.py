@@ -29,6 +29,7 @@ Scopes in use (kept intentionally coarse):
 from flask import session
 from flask_socketio import join_room
 
+from decorators import _current_account_or_none, password_fingerprint
 from extensions import socketio
 
 
@@ -43,12 +44,19 @@ def handle_connect():
     """
     if "user_id" not in session:
         return False
-    if session.get("role") == "Admin":
+    # Same live checks as the HTTP routes (decorators._require_session): a
+    # deactivated account, a changed password or a branchless Branch account
+    # must not keep receiving pushes just because its cookie is still valid.
+    account = _current_account_or_none()
+    if (account is None or not account["is_active"]
+            or session.get("pwv") != password_fingerprint(account["password_hash"])):
+        return False
+    if account["role"] == "Admin":
         join_room("admin")
+    elif account["branch_id"]:
+        join_room(f"branch:{account['branch_id']}")
     else:
-        branch_id = session.get("branch_id")
-        if branch_id:
-            join_room(f"branch:{branch_id}")
+        return False
 
 
 def _emit(scopes, room=None):

@@ -507,7 +507,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   var log = document.getElementById('chatLog');
   var empty = document.getElementById('chatEmpty');

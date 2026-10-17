@@ -4,7 +4,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import execute, query
-from decorators import login_required
+from decorators import login_required, password_fingerprint
 from extensions import limiter
 import login_activity
 
@@ -126,6 +126,7 @@ def login():
         session["branch_id"] = user["branch_id"]
         session["branch_name"] = user["branch_name"]
         session["must_change_password"] = bool(user["must_change_password"])
+        session["pwv"] = password_fingerprint(user["password_hash"])
 
         if session["must_change_password"]:
             flash(
@@ -181,11 +182,15 @@ def change_password():
         elif check_password_hash(user["password_hash"], new_password):
             flash("Choose a password different from your current one.", "error")
         else:
+            new_hash = generate_password_hash(new_password)
             execute(
                 "UPDATE users SET password_hash = %s, must_change_password = FALSE WHERE user_id = %s",
-                (generate_password_hash(new_password), session["user_id"]),
+                (new_hash, session["user_id"]),
             )
             session["must_change_password"] = False
+            # Keep this session signed in; any other session for the account
+            # now fails the fingerprint check in decorators.py.
+            session["pwv"] = password_fingerprint(new_hash)
             flash("Password updated.", "success")
             return redirect(url_for("admin.dashboard"
                                     if session["role"] == "Admin"

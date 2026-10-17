@@ -494,7 +494,7 @@
             <td data-label="Remaining">{{ m.fill_bar(b.remaining_ml, b.total_volume_ml, 'mL') }}</td>
             <td class="num mono" data-label="Cost / mL">₱{{ '%.6f'|format(b.all_in_cost_per_ml) }}</td>
             <td data-label="" class="mobile-inline-action">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="openBatchDetails(this)"
+              <button type="button" class="btn btn-ghost btn-sm" data-call="openBatchDetails"
                 data-scent-name="{{ b.scent_name }}" data-batch-code="{{ b.batch_code or '' }}"
                 data-total-cost="{{ b.total_cost }}" data-cost-per-ml="{{ b.all_in_cost_per_ml }}"
                 data-remaining-ml="{{ b.remaining_ml }}" data-notes="{{ b.notes or '' }}"
@@ -582,7 +582,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var mlPerBatchUnit = {{ ml_per_batch_unit | tojson }};
     var bottleMlMap = {{ bottle_ml_map | tojson }};

@@ -390,7 +390,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Reads a color straight off the theme so every chart repaints
   // correctly whether the page loaded in dark (the default) or light —
   // see style.css's :root / :root[data-theme="dark"] custom properties.
@@ -801,10 +801,20 @@
   // registered before adding this run's own keeps exactly one pair
   // alive at a time.
   if (window.__adminReportsCleanup) window.__adminReportsCleanup();
+  // These listeners live on window/document, so they outlast a soft nav to
+  // another page; once this page's markup is gone, remove them instead of
+  // fetching into elements that no longer exist.
+  const pageIsGone = () => {
+    if (document.getElementById('kpiPeriod')) return false;
+    if (window.__adminReportsCleanup) window.__adminReportsCleanup();
+    return true;
+  };
   const handlePageshow = (e) => {
+    if (pageIsGone()) return;
     if (e.persisted) loadReportsData();
   };
   const handleVisibilityChange = () => {
+    if (pageIsGone()) return;
     if (document.visibilityState === 'visible') loadReportsData();
   };
   window.addEventListener('pageshow', handlePageshow);
@@ -824,7 +834,7 @@
     window.__adminReportsCleanup = null;
   };
 </script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   // ---- Report builder: shows only the filters that apply to the
   // selected report type, and only the time-window sub-fields that
   // apply to the selected mode. Every field always exists in the DOM

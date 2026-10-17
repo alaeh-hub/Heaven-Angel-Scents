@@ -20,7 +20,7 @@
       </div>
       <div class="field">
         <label for="role">Role</label>
-        <select id="role" name="role" required onchange="document.getElementById('branch_id_field').style.display = this.value === 'Branch' ? 'block' : 'none';">
+        <select id="role" name="role" required data-reveal-target="branch_id_field" data-reveal-value="Branch">
           <option value="Branch">Branch</option>
           <option value="Admin">Admin</option>
         </select>
@@ -120,7 +120,7 @@
 
 {% block scripts %}
 {% if temp_password_reveal %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var overlay = document.getElementById('tempPasswordOverlay');
     var copyBtn = document.getElementById('tempPasswordCopyBtn');

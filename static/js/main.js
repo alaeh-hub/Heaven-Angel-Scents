@@ -1233,6 +1233,11 @@ function runPageScripts(freshDoc) {
         Array.prototype.forEach.call(oldScript.attributes, (attr) => {
             newScript.setAttribute(attr.name, attr.value);
         });
+        // The fetched page carries its own per-response nonce, which the live
+        // page's CSP header doesn't know. Stamp this page's nonce instead
+        // (from <meta name="csp-nonce">, which the browser doesn't hide).
+        const liveNonce = document.querySelector('meta[name="csp-nonce"]');
+        if (liveNonce) newScript.nonce = liveNonce.content;
 
         if (oldScript.src) {
             newScript.onload = () => runNext(index + 1);
@@ -2444,6 +2449,30 @@ function enhanceDateInput(input) {
     syncTrigger();
 }
 
+// Replacements for inline on*= attributes, which the CSP no longer allows.
+// Delegated on `document`, so they survive soft-nav content swaps:
+//   data-call="fnName"            click -> window.fnName(element)
+//   data-autosubmit (on <select>)  change -> submit its form
+//   data-reveal-target="id" data-reveal-value="v"
+//                                  change -> show #id only when value === v
+function initDelegatedActions() {
+    document.addEventListener('click', (e) => {
+        const el = e.target.closest ? e.target.closest('[data-call]') : null;
+        if (!el) return;
+        const fn = window[el.dataset.call];
+        if (typeof fn === 'function') fn(el);
+    });
+    document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!(el instanceof HTMLElement)) return;
+        if (el.matches('select[data-autosubmit]') && el.form) el.form.submit();
+        if (el.dataset.revealTarget) {
+            const target = document.getElementById(el.dataset.revealTarget);
+            if (target) target.style.display = el.value === el.dataset.revealValue ? 'block' : 'none';
+        }
+    });
+}
+
 // Unified confirm-dialog pattern for every "are you sure?" form in the
 // app: give the <form> a data-confirm="Message" attribute and this one
 // delegated (capture-phase) listener handles the rest — no per-page
@@ -2462,6 +2491,7 @@ function enhanceDateInput(input) {
 // softRefresh() swaps in fresh .content HTML from the server — no
 // re-init call needed the way the old per-form version required.
 function initConfirmDialogs() {
+    initDelegatedActions();
     document.addEventListener('submit', (e) => {
         const form = e.target;
         if (!(form instanceof HTMLFormElement)) return;

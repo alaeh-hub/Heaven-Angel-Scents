@@ -7,7 +7,7 @@
   <title>Sign in · Heaven &amp; Angel Scents</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       try {
         var stored = localStorage.getItem('theme');
@@ -658,7 +658,7 @@
   <script src="{{ url_for('static', filename='js/sfx.js') }}"></script>
   <script src="{{ url_for('static', filename='js/mascot.js') }}"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       var shell = document.getElementById('authShell');
       var hint = document.getElementById('auth-hint');

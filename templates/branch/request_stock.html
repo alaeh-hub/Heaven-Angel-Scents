@@ -443,7 +443,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var productSelect = document.getElementById('productName');
     var skuSelect = document.getElementById('sku');

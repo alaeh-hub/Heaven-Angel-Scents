@@ -64,3 +64,16 @@ characters/
 
 # Docker backup job output (copy off-server, never commit)
 backups/
+
+# Temporary local automation and QA artifacts
+scripts/*.sh
+scripts/*.ps1
+
+tests/test_branch_isolation.py
+tests/test_csp.py
+tests/test_session_security.py
+tests/test_socket_auth.py
+
+# Generated local test output
+*.pdf
+coverage.xml

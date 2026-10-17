@@ -278,7 +278,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Reads a color straight off the theme so every chart repaints
   // correctly whether the page loaded in dark (the default) or light —
   // see style.css's :root / :root[data-theme="dark"] custom properties.
@@ -625,10 +625,19 @@
   // pair the previous visit registered before adding this run's own
   // keeps exactly one pair alive at a time.
   if (window.__branchReportsCleanup) window.__branchReportsCleanup();
+  // Same as admin/reports.html: these listeners outlast a soft nav, so drop
+  // them once this page's markup is gone.
+  const pageIsGone = () => {
+    if (document.getElementById('kpiGrid')) return false;
+    if (window.__branchReportsCleanup) window.__branchReportsCleanup();
+    return true;
+  };
   const handlePageshow = (e) => {
+    if (pageIsGone()) return;
     if (e.persisted) loadReportsData();
   };
   const handleVisibilityChange = () => {
+    if (pageIsGone()) return;
     if (document.visibilityState === 'visible') loadReportsData();
   };
   window.addEventListener('pageshow', handlePageshow);
@@ -639,7 +648,7 @@
     window.__branchReportsCleanup = null;
   };
 </script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     const REPORT_FIELDS = {
       branch_stock: ['variant', 'unit', 'low_stock_only', 'search'],

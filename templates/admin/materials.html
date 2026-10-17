@@ -235,10 +235,10 @@
               mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }}</td>
             <td data-label="" class="mat-col-actions mobile-inline-action">
               <div class="inline-form">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openRestockMaterial(this)"
+                <button type="button" class="btn btn-ghost btn-sm" data-call="openRestockMaterial"
                   data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
                   data-unit="{{ mat.unit }}" data-stock-qty="{{ mat.stock_qty }}">Restock</button>
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditMaterial(this)"
+                <button type="button" class="btn btn-ghost btn-sm" data-call="openEditMaterial"
                   data-material-id="{{ mat.material_id }}" data-material-name="{{ mat.material_name }}"
                   data-purchase-mode="{{ mat.purchase_mode }}" data-package-qty="{{ mat.package_qty }}"
                   data-unit="{{ mat.unit }}" data-package-cost="{{ mat.package_cost }}"
@@ -339,11 +339,11 @@
             <td data-label="" class="sup-col-actions mobile-inline-action">
               <div class="inline-form">
                 {% if s.materials_supplied %}
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openSupplyHistory(this)"
+                <button type="button" class="btn btn-ghost btn-sm" data-call="openSupplyHistory"
                   data-supplier-name="{{ s.supplier_name }}"
                   data-materials='{{ s.materials_supplied | tojson }}'>History</button>
                 {% endif %}
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openEditSupplier(this)"
+                <button type="button" class="btn btn-ghost btn-sm" data-call="openEditSupplier"
                   data-supplier-id="{{ s.supplier_id }}" data-supplier-name="{{ s.supplier_name }}"
                   data-contact-person="{{ s.contact_person or '' }}" data-phone="{{ s.phone or '' }}"
                   data-email="{{ s.email or '' }}" data-address="{{ s.address or '' }}"
@@ -689,7 +689,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var packageQty = document.getElementById('package_qty');
     var packageCost = document.getElementById('package_cost');
