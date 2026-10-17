@@ -50,6 +50,66 @@ jobs:
         working-directory: public-site
         run: npm run build
 
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit
+        run: python -m pip install pip-audit && pip-audit -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm audit (production deps)
+        working-directory: public-site
+        run: npm audit --omit=dev --audit-level=high
+
+  docker-smoke:
+    name: Docker stack smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Write throwaway .env
+        run: |
+          {
+            echo "DOMAIN=localhost"
+            echo "DB_ROOT_PASSWORD=ci-root-$(openssl rand -hex 8)"
+            echo "DB_APP_PASSWORD=ci-app-$(openssl rand -hex 8)"
+            echo "SECRET_KEY=$(openssl rand -hex 32)"
+            echo "PARTNER_PORTAL_SLUG=ci-smoke-slug"
+          } > .env
+
+      - name: Build and start the production stack
+        run: docker compose up -d --build db migrate web
+
+      - name: Wait for web to report healthy
+        run: |
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q web)")"
+            [ "$status" = "healthy" ] && { echo "web is healthy"; exit 0; }
+            sleep 5
+          done
+          docker compose logs --tail 80 web migrate >&2
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   test:
     name: Python checks
     runs-on: ubuntu-latest

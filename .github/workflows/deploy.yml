@@ -8,8 +8,22 @@ jobs:
     name: Deploy to production
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      actions: read
 
     steps:
+      # Refuse to deploy a commit whose CI run has not finished green.
+      - name: Require a successful CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          result="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml             --commit "${{ github.sha }}" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
+          if [ "${result:-0}" -lt 1 ]; then
+            echo "No successful CI run found for ${{ github.sha }}; refusing to deploy." >&2
+            exit 1
+          fi
+
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh

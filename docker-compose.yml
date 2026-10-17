@@ -137,6 +137,7 @@ services:
       MYSQL_PWD: ${DB_ROOT_PASSWORD}
       MYSQL_DB: ${MYSQL_DB:-heaven_and_angel_scents}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
     volumes:
       - uploads:/data/uploads:ro
       - ./backups:/backups
@@ -161,6 +162,11 @@ services:
           if [ "$$ok" = 1 ]; then
             mv "$$tmp" "/backups/$${MYSQL_DB}_$$ts.sql.gz"
             echo "backup ok: $$ts"
+            # Dead-man's-switch: ping only on success, so the monitor alerts when
+            # pings stop (failure, container down, or host down). Optional.
+            if [ -n "$${BACKUP_HEARTBEAT_URL:-}" ]; then
+              curl -fsS -m 10 --retry 3 "$$BACKUP_HEARTBEAT_URL" >/dev/null || echo "heartbeat ping FAILED: $$ts" >&2
+            fi
           else
             echo "backup FAILED: $$ts" >&2
           fi
