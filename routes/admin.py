@@ -16,6 +16,7 @@ from db import TransactionAborted, execute, get_db, query, transaction
 from decorators import admin_required
 from audit import log_action
 import login_activity
+from finance import PACKAGE_DATE_SQL, SALES_COGS_SQL, UNIT_COST_SQL, cogs_sold
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
 from reports import (DISCREPANCY_ITEM_JOIN, DISCREPANCY_UNITS_SQL, LOW_STOCK_WHERE, REPORT_TYPES, get_report,
                      parse_report_filters, render_report_excel, render_report_pdf)
@@ -47,22 +48,47 @@ _TREND_GRANULARITIES = {
     "daily": {
         "trunc": "DATE(sml.created_at)",
         "window": "INTERVAL 14 DAY",
+        "window2": "INTERVAL 28 DAY",
     },
     "weekly": {
         # WEEKDAY() is 0 for Monday, so this rounds each timestamp back
         # to the Monday that starts its week.
         "trunc": "DATE(DATE_SUB(sml.created_at, INTERVAL WEEKDAY(sml.created_at) DAY))",
         "window": "INTERVAL 12 WEEK",
+        "window2": "INTERVAL 24 WEEK",
     },
     "monthly": {
         "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-%m-01'))",
         "window": "INTERVAL 12 MONTH",
+        "window2": "INTERVAL 24 MONTH",
     },
     "yearly": {
         "trunc": "DATE(DATE_FORMAT(sml.created_at, '%Y-01-01'))",
         "window": "INTERVAL 5 YEAR",
+        "window2": "INTERVAL 10 YEAR",
     },
 }
+
+
+def _trend_bucket_dates(granularity, today):
+    """The bucket start dates a trend window covers, oldest first, so
+    KPI sparklines can zero-fill buckets that had no activity."""
+    from datetime import timedelta
+    if granularity == "weekly":
+        monday = today - timedelta(days=today.weekday())
+        return [monday - timedelta(weeks=i) for i in range(11, -1, -1)]
+    if granularity == "monthly":
+        out = []
+        y, m = today.year, today.month
+        for _ in range(12):
+            out.append(today.replace(year=y, month=m, day=1))
+            m -= 1
+            if m == 0:
+                y, m = y - 1, 12
+        return out[::-1]
+    if granularity == "yearly":
+        return [today.replace(year=today.year - i, month=1, day=1) for i in range(4, -1, -1)]
+    return [today - timedelta(days=i) for i in range(13, -1, -1)]
 
 
 # LOW_STOCK_WHERE (imported from reports.py) is the shared low-stock
@@ -228,8 +254,8 @@ def dashboard():
     # month's last day (Mar 31 -> Feb 28/29). Rows between those two
     # windows (the rest of last month) fall in neither sum.
     #
-    # partner_inquiries has no "closed on" date, so a closed package
-    # order counts toward the month its inquiry was created in.
+    # A closed package order counts toward the month it was closed in
+    # (partner_inquiries.closed_at; older rows fall back to created_at).
     month_revenue = query(
         """SELECT
                COALESCE(SUM(CASE WHEN t.at >= CURDATE() - INTERVAL (DAY(CURDATE()) - 1) DAY
@@ -239,21 +265,78 @@ def dashboard():
            FROM (
                SELECT sold_at AS at, qty_sold * unit_price AS amount FROM sales
                UNION ALL
-               SELECT created_at, order_amount FROM partner_inquiries WHERE status = 'Closed'
+               SELECT COALESCE(closed_at, created_at), order_amount FROM partner_inquiries WHERE status = 'Closed'
            ) t
            WHERE t.at >= CURDATE() - INTERVAL (DAY(CURDATE()) - 1) DAY - INTERVAL 1 MONTH
              AND t.at < NOW()""",
         fetchone=True,
     )
 
+    # Profit is revenue minus cost of goods SOLD (see finance.py), not minus
+    # what was produced; production cost stays visible as "capital".
+    cogs_total = cogs_sold()
+    receivables = query(
+        "SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales "
+        "WHERE payment_method = 'Credit' AND credit_settled_at IS NULL", fetchone=True)["v"]
+
+    # Last 14 days of revenue (branch sales + closed package orders) and
+    # profit (that revenue minus the cost of what was sold that day), zero-
+    # filled, for the sparklines on the Total revenue / Net profit tiles.
+    from datetime import timedelta
+    spark_days = [business_today() - timedelta(days=i) for i in range(13, -1, -1)]
+    rev_by_day = {}
+    for r in query(
+        """SELECT d AS day, SUM(amount) AS amount FROM (
+               SELECT DATE(sold_at) AS d, qty_sold * unit_price AS amount FROM sales
+                 WHERE sold_at >= CURDATE() - INTERVAL 14 DAY
+               UNION ALL
+               SELECT DATE(COALESCE(closed_at, created_at)), order_amount FROM partner_inquiries
+                 WHERE status = 'Closed' AND COALESCE(closed_at, created_at) >= CURDATE() - INTERVAL 14 DAY
+           ) t GROUP BY d"""):
+        rev_by_day[r["day"]] = float(r["amount"] or 0)
+    production_by_day = {
+        r["day"]: float(r["amount"] or 0) for r in query(
+            """SELECT DATE(created_at) AS day, SUM(total_cogs) AS amount FROM cogs_logs
+               WHERE created_at >= CURDATE() - INTERVAL 14 DAY GROUP BY DATE(created_at)""")
+    }
+    cogs_by_day = {}
+    for r in query(
+        f"""SELECT DATE(s.sold_at) AS day, SUM(s.qty_sold * COALESCE(uc.unit_cost, 0)) AS amount
+            FROM sales s LEFT JOIN {UNIT_COST_SQL} uc ON uc.sku = s.sku
+            WHERE s.sold_at >= CURDATE() - INTERVAL 14 DAY GROUP BY DATE(s.sold_at)"""):
+        cogs_by_day[r["day"]] = cogs_by_day.get(r["day"], 0.0) + float(r["amount"] or 0)
+    for r in query(
+        f"""SELECT DATE({PACKAGE_DATE_SQL}) AS day, SUM(pii.qty * COALESCE(uc.unit_cost, 0)) AS amount
+            FROM partner_inquiry_items pii
+            JOIN partner_inquiries pi ON pi.inquiry_id = pii.inquiry_id
+            LEFT JOIN {UNIT_COST_SQL} uc ON uc.sku = pii.sku
+            WHERE pi.status = 'Closed' AND {PACKAGE_DATE_SQL} >= CURDATE() - INTERVAL 14 DAY
+            GROUP BY DATE({PACKAGE_DATE_SQL})"""):
+        cogs_by_day[r["day"]] = cogs_by_day.get(r["day"], 0.0) + float(r["amount"] or 0)
+    raw_by_day = {
+        r["day"]: float(r["amount"] or 0) for r in query(
+            """SELECT DATE(created_at) AS day, SUM(package_cost) AS amount FROM raw_materials
+               WHERE created_at >= CURDATE() - INTERVAL 14 DAY GROUP BY DATE(created_at)""")
+    }
+    spark_cost = [production_by_day.get(d, 0.0) for d in spark_days]
+    spark_raw = [raw_by_day.get(d, 0.0) for d in spark_days]
+    spark_revenue = [rev_by_day.get(d, 0.0) for d in spark_days]
+    spark_profit = [rev_by_day.get(d, 0.0) - cogs_by_day.get(d, 0.0) for d in spark_days]
+
     financials = {
+        "spark_revenue": spark_revenue,
+        "spark_profit": spark_profit,
+        "spark_cost": spark_cost,
+        "spark_raw": spark_raw,
+        "profit_margin": ((float(total_revenue) - cogs_total) / float(total_revenue) * 100) if total_revenue else None,
+        "receivables": receivables,
         "capital": total_cogs,
         "revenue": total_revenue,
         "branch_sales_revenue": branch_sales_revenue,
         "package_sales_revenue": package_sales_revenue,
-        "materials_cost": total_cogs,
+        "materials_cost": cogs_total,
         "raw_materials_purchased": raw_materials_purchased,
-        "profit": total_revenue - total_cogs,
+        "profit": float(total_revenue) - cogs_total,
         "revenue_trend": percent_change(
             month_revenue["current_period"], month_revenue["previous_period"]),
     }
@@ -930,22 +1013,9 @@ def production():
     # Counted by base code, same as the Products page.
     for row in hq_stock:
         row["base_code"] = base_code_from_sku(row["sku"], row["unit"])
-    # Per-ingredient audit trail of what every logged run actually drew
-    # on — this used to live on the Materials page ("Usage history")
-    # alongside the manual "Log material usage" form it was replaced by;
-    # it belongs here now that logging usage isn't a separate step.
-    usage_logs = query(
-        """SELECT mul.*, rm.material_name, rm.unit,
-                  pl.batch_code, p.item_name AS production_item_name
-           FROM material_usage_logs mul
-           JOIN raw_materials rm ON mul.material_id = rm.material_id
-           LEFT JOIN production_logs pl ON mul.production_log_id = pl.log_id
-           LEFT JOIN products p ON pl.sku = p.sku
-           ORDER BY mul.created_at DESC LIMIT 40"""
-    )
     return render_template(
         "admin/production.html", products=products_list, logs=logs, hq_stock=hq_stock,
-        usage_logs=usage_logs, active_batches=active_batches,
+        active_batches=active_batches,
         form_token=issue_form_token("log_production"),
     )
 
@@ -2359,15 +2429,16 @@ def reports_data():
         fetchone=True,
     )["v"]
     windowed_package_revenue = query(
-        f"""SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries
-            WHERE status = 'Closed' AND created_at >= NOW() - {window_sql}""",
+        f"""SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries pi
+            WHERE pi.status = 'Closed' AND {PACKAGE_DATE_SQL} >= NOW() - {window_sql}""",
         fetchone=True,
     )["v"]
     windowed_revenue = windowed_branch_revenue + windowed_package_revenue
-    windowed_materials_cost = query(
-        f"SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE created_at >= NOW() - {window_sql}",
-        fetchone=True,
-    )["v"]
+    # Cost of goods SOLD in the window (finance.py): what the bottles that
+    # went out the door — sales, refills, freebies, closed package orders —
+    # cost to make. Production batches are capital, not this period's expense.
+    windowed_materials_cost = cogs_sold(
+        f"s.sold_at >= NOW() - {window_sql}", f"{PACKAGE_DATE_SQL} >= NOW() - {window_sql}")
     financials = {
         "capital": capital_total,
         "raw_materials_purchased": raw_materials_purchased,
@@ -2378,13 +2449,120 @@ def reports_data():
         "profit": float(windowed_revenue) - float(windowed_materials_cost),
     }
 
+    # --- KPI tiles + Revenue/Cost/Profit chart: one point per bucket over
+    # the same window, plus the immediately preceding window's totals for
+    # the up/down chips. Bucket expressions reuse the allow-listed `trunc`
+    # fragment with its column swapped for the table being bucketed.
+    def _bucket(col):
+        return trend_bucket["trunc"].replace("sml.created_at", col)
+
+    def _series(sql_by_day):
+        return {r["day"].isoformat(): r for r in sql_by_day}
+
+    sales_series = _series(query(
+        f"""SELECT {_bucket('s.sold_at')} AS day,
+                   COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue,
+                   COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units
+            FROM sales s JOIN products p ON p.sku = s.sku
+            WHERE s.sold_at >= NOW() - {window_sql}
+            GROUP BY {_bucket('s.sold_at')}"""))
+    package_series = _series(query(
+        f"""SELECT {_bucket(PACKAGE_DATE_SQL)} AS day, COALESCE(SUM(order_amount), 0) AS revenue
+            FROM partner_inquiries pi
+            WHERE pi.status = 'Closed' AND {PACKAGE_DATE_SQL} >= NOW() - {window_sql}
+            GROUP BY {_bucket(PACKAGE_DATE_SQL)}"""))
+    # Cost of goods sold per bucket: register sales + closed package orders.
+    cost_series = _series(query(
+        f"""SELECT {_bucket('s.sold_at')} AS day,
+                   COALESCE(SUM(s.qty_sold * COALESCE(uc.unit_cost, 0)), 0) AS cost
+            FROM sales s LEFT JOIN {UNIT_COST_SQL} uc ON uc.sku = s.sku
+            WHERE s.sold_at >= NOW() - {window_sql}
+            GROUP BY {_bucket('s.sold_at')}"""))
+    package_cost_series = _series(query(
+        f"""SELECT {_bucket(PACKAGE_DATE_SQL)} AS day,
+                   COALESCE(SUM(pii.qty * COALESCE(uc.unit_cost, 0)), 0) AS cost
+            FROM partner_inquiry_items pii
+            JOIN partner_inquiries pi ON pi.inquiry_id = pii.inquiry_id
+            LEFT JOIN {UNIT_COST_SQL} uc ON uc.sku = pii.sku
+            WHERE pi.status = 'Closed' AND {PACKAGE_DATE_SQL} >= NOW() - {window_sql}
+            GROUP BY {_bucket(PACKAGE_DATE_SQL)}"""))
+    # Cost of goods PRODUCED per bucket — capital, drives the Capital sparkline.
+    produced_series = _series(query(
+        f"""SELECT {_bucket('created_at')} AS day, COALESCE(SUM(total_cogs), 0) AS cost
+            FROM cogs_logs WHERE created_at >= NOW() - {window_sql}
+            GROUP BY {_bucket('created_at')}"""))
+
+    raw_series = _series(query(
+        f"""SELECT {_bucket('created_at')} AS day, COALESCE(SUM(package_cost), 0) AS raw
+            FROM raw_materials WHERE created_at >= NOW() - {window_sql}
+            GROUP BY {_bucket('created_at')}"""))
+
+    bucket_days = {d.isoformat() for d in _trend_bucket_dates(granularity, business_today())}
+    bucket_days |= (set(sales_series) | set(package_series) | set(cost_series) | set(package_cost_series)
+                    | set(produced_series) | set(raw_series))
+    kpi_series = []
+    for day in sorted(bucket_days):
+        sale_row = sales_series.get(day)
+        pkg_row = package_series.get(day)
+        cost_row = cost_series.get(day)
+        pkg_cost_row = package_cost_series.get(day)
+        produced_row = produced_series.get(day)
+        kpi_series.append({
+            "day": day,
+            "revenue": float((sale_row["revenue"] if sale_row else 0) + (pkg_row["revenue"] if pkg_row else 0)),
+            "cost": float((cost_row["cost"] if cost_row else 0) + (pkg_cost_row["cost"] if pkg_cost_row else 0)),
+            "produced": float(produced_row["cost"]) if produced_row else 0.0,
+            "raw": float(raw_series[day]["raw"]) if day in raw_series else 0.0,
+            "units": int(sale_row["units"]) if sale_row else 0,
+        })
+
+    window2_sql = trend_bucket["window2"]
+    prev_revenue = query(
+        f"""SELECT (SELECT COALESCE(SUM(qty_sold * unit_price), 0) FROM sales
+                    WHERE sold_at >= NOW() - {window2_sql} AND sold_at < NOW() - {window_sql})
+                 + (SELECT COALESCE(SUM(order_amount), 0) FROM partner_inquiries pi
+                    WHERE pi.status = 'Closed' AND {PACKAGE_DATE_SQL} >= NOW() - {window2_sql}
+                      AND {PACKAGE_DATE_SQL} < NOW() - {window_sql}) AS v""",
+        fetchone=True)["v"]
+    prev_cost = cogs_sold(
+        f"s.sold_at >= NOW() - {window2_sql} AND s.sold_at < NOW() - {window_sql}",
+        f"{PACKAGE_DATE_SQL} >= NOW() - {window2_sql} AND {PACKAGE_DATE_SQL} < NOW() - {window_sql}")
+    prev_units = query(
+        f"""SELECT COALESCE(SUM(s.qty_sold), 0) AS v FROM sales s JOIN products p ON p.sku = s.sku
+            WHERE p.unit <> 'BULK' AND s.sold_at >= NOW() - {window2_sql} AND s.sold_at < NOW() - {window_sql}""",
+        fetchone=True)["v"]
+    windowed_units = query(
+        f"""SELECT COALESCE(SUM(s.qty_sold), 0) AS v FROM sales s JOIN products p ON p.sku = s.sku
+            WHERE p.unit <> 'BULK' AND s.sold_at >= NOW() - {window_sql}""",
+        fetchone=True)["v"]
+    kpi = {
+        "revenue": float(windowed_revenue), "cost": float(windowed_materials_cost),
+        "units": int(windowed_units),
+        "prev_revenue": float(prev_revenue), "prev_cost": float(prev_cost),
+        "prev_units": int(prev_units),
+        "series": kpi_series,
+    }
+
+    # Share of all-time sales by channel (each branch incl. the HQ
+    # warehouse, plus closed package orders) for the donut's legend.
+    channel_rows = query(
+        """SELECT b.branch_name AS name, COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
+           FROM branches b LEFT JOIN sales s ON s.branch_id = b.branch_id
+           GROUP BY b.branch_id, b.branch_name, b.is_hq
+           ORDER BY b.is_hq DESC, b.branch_name""")
+    sales_by_channel = [{"name": r["name"], "revenue": float(r["revenue"])} for r in channel_rows]
+    if package_totals["revenue"]:
+        sales_by_channel.append({"name": "Package orders", "revenue": float(package_totals["revenue"])})
+    sales_by_channel = sorted((c for c in sales_by_channel if c["revenue"] > 0),
+                              key=lambda c: c["revenue"], reverse=True)
+
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
 
     return jsonify(
         by_variant=by_variant, by_branch=by_branch,
         movement_trend=movement_trend, stock_by_branch=stock_by_branch, totals=totals,
-        financials=financials,
+        financials=financials, kpi=kpi, sales_by_channel=sales_by_channel,
     )
 
 
@@ -3977,15 +4155,19 @@ def update_inquiry_status(inquiry_id):
                     _return_inquiry_stock(cur, inquiry_id, company_name)
                     cur.execute(
                         """UPDATE partner_inquiries
-                           SET status = %s, fulfilled_at = NULL, fulfilled_by_user_id = NULL
+                           SET status = %s, fulfilled_at = NULL, fulfilled_by_user_id = NULL,
+                               closed_at = CASE WHEN %s = 'Closed' THEN COALESCE(closed_at, NOW()) ELSE NULL END
                            WHERE inquiry_id = %s""",
-                        (new_status, inquiry_id),
+                        (new_status, new_status, inquiry_id),
                     )
                     stock_returned = True
                 else:
                     cur.execute(
-                        "UPDATE partner_inquiries SET status = %s WHERE inquiry_id = %s",
-                        (new_status, inquiry_id),
+                        """UPDATE partner_inquiries
+                           SET status = %s,
+                               closed_at = CASE WHEN %s = 'Closed' THEN COALESCE(closed_at, NOW()) ELSE NULL END
+                           WHERE inquiry_id = %s""",
+                        (new_status, new_status, inquiry_id),
                     )
             finally:
                 cur.close()

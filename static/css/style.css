@@ -5461,9 +5461,13 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.375rem 0.5rem;
+  justify-content: flex-start;
+  gap: 0.375rem 1rem;
   margin-top: 0.875rem;
+}
+
+.chart-legend.chart-legend-top {
+  margin: 0 0 0.75rem;
 }
 
 .chart-legend:empty {
@@ -5475,13 +5479,12 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
   align-items: center;
   gap: 0.4375rem;
   min-width: 0;
-  padding: 0.3125rem 0.625rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  padding: 0.125rem 0;
+  border: 0;
   background: transparent;
   color: var(--ink-soft);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
 }
@@ -5496,9 +5499,9 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
 
 .chart-legend-swatch {
   flex-shrink: 0;
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.1875rem;
 }
 
 .chart-legend-label {
@@ -5954,4 +5957,217 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
   justify-content: flex-end;
   gap: 0.625rem;
   margin-top: 1.25rem;
+}
+
+/* ================================================================
+   Boss-Insights style stats: KPI tiles, chart cards, share lists
+   ================================================================ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1.25rem 1.375rem 0;
+  overflow: hidden;
+}
+
+.kpi-label {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.kpi-value {
+  margin-top: 0.375rem;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-value.success {
+  color: var(--success);
+}
+
+.kpi-value.danger {
+  color: var(--danger);
+}
+
+.kpi-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.kpi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kpi-chip-good {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.kpi-chip-bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.kpi-chip-flat {
+  background: var(--field);
+  color: var(--ink-soft);
+}
+
+.kpi-foot-link {
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.kpi-foot-link a {
+  color: var(--ink-soft);
+}
+
+/* Tiles in one grid row stretch to the tallest, so the sparkline takes the
+   leftover space above it (margin-top:auto) and always sits flush on the
+   tile's bottom edge instead of floating mid-card. */
+.kpi-spark {
+  flex: none;
+  height: 2.5rem;
+  margin: auto -1.375rem 0;
+}
+
+.kpi-meta:has(+ .kpi-spark),
+.kpi-foot-link:has(+ .kpi-spark) {
+  margin-bottom: 0.875rem;
+}
+
+.kpi-tile:not(:has(.kpi-spark)) {
+  padding-bottom: 1.25rem;
+}
+
+.kpi-spark-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.kpi-period {
+  margin: 1.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--ink-faint);
+}
+
+.kpi-period strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.insight-card {
+  padding: 1.375rem 1.5rem;
+  min-width: 0;
+}
+
+.insight-card h2 {
+  font-size: 1.0625rem;
+  letter-spacing: -0.015em;
+}
+
+.insight-sub {
+  margin: 0.25rem 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.insight-split {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 1000px) {
+  .insight-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.donut-wrap {
+  position: relative;
+  height: 13rem;
+  margin: 0.25rem 0 1.125rem;
+}
+
+.share-list {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.share-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 3.25rem;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+}
+
+.share-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.1875rem;
+}
+
+.share-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+.share-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.share-pct {
+  text-align: right;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.share-empty {
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+  text-align: center;
 }

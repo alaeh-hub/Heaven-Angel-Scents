@@ -191,73 +191,77 @@
   </form>
 </div>
 
-<div class="grid grid-2 stack">
-  <div class="card stat-tile">
-    <div class="stat-label">Total bottles sold</div>
-    <div class="stat-value" id="totalUnits">—</div>
-    <div class="stat-foot" id="totalUnitsFoot" data-base="at {{ session.branch_name }}">at {{ session.branch_name }}</div>
+<div class="kpi-grid stack" id="kpiGrid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+  <div class="card kpi-tile" id="kpiRevenue">
+    <div class="kpi-label">Total revenue</div>
+    <div class="kpi-value" id="totalRevenue">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Total revenue</div>
-    <div class="stat-value accent" id="totalRevenue">—</div>
-    <div class="stat-foot">at this branch's actual selling price</div>
+  <div class="card kpi-tile" id="kpiUnits">
+    <div class="kpi-label">Total bottles sold</div>
+    <div class="kpi-value" id="totalUnits">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+  <div class="card kpi-tile" id="kpiAvg">
+    <div class="kpi-label">Avg. price per bottle</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+</div>
+
+<div class="insight-split stack">
+  <div class="card insight-card">
+    <h2>Sales trend</h2>
+    <p class="insight-sub">Revenue and bottles sold, last 14 days · hover the chart for exact values</p>
+    <div class="chart-legend chart-legend-top" id="salesTrendLegend"></div>
+    <div class="chart-canvas-wrap" style="height:19rem;"><canvas id="salesTrendChart"></canvas></div>
+  </div>
+  <div class="card insight-card">
+    <h2>Sale vs. Refill</h2>
+    <p class="insight-sub">Share of revenue</p>
+    <div class="donut-wrap"><canvas id="saleTypeChart"></canvas></div>
+    <div class="share-list" id="saleTypeList"></div>
   </div>
 </div>
 
 <div class="grid grid-2 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Units sold by variant</h2>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="variantChart"></canvas></div>
+  <div class="card insight-card">
+    <h2>Units sold by variant</h2>
+    <p class="insight-sub">Bottles, all-time</p>
+    <div class="donut-wrap"><canvas id="variantChart"></canvas></div>
+    <div class="share-list" id="variantList"></div>
   </div>
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Sales trend</h2>
-      <span class="hint">last 14 days</span>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="salesTrendChart"></canvas></div>
+  <div class="card insight-card">
+    <h2>Cash vs. Credit</h2>
+    <p class="insight-sub">Share of revenue</p>
+    <div class="donut-wrap"><canvas id="paymentChart"></canvas></div>
+    <div class="share-list" id="paymentList"></div>
   </div>
 </div>
 
 <div class="grid grid-2 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Top selling products</h2>
-    </div>
+  <div class="card insight-card">
+    <h2>Top selling products</h2>
+    <p class="insight-sub">Bottles, all-time</p>
     <div class="chart-canvas-wrap"><canvas id="topProductsChart"></canvas></div>
   </div>
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Current stock by variant</h2>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="stockChart"></canvas></div>
-  </div>
-</div>
-
-<div class="grid grid-2 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Sale vs. Refill</h2>
-      <span class="hint">by revenue</span>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="saleTypeChart"></canvas></div>
-  </div>
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Cash vs. Credit</h2>
-      <span class="hint">by revenue</span>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="paymentChart"></canvas></div>
+  <div class="card insight-card">
+    <h2>Current stock by variant</h2>
+    <p class="insight-sub">Bottles on hand</p>
+    <div class="donut-wrap"><canvas id="stockChart"></canvas></div>
+    <div class="share-list" id="stockList"></div>
   </div>
 </div>
 
 <div class="grid grid-1 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+  <div class="card insight-card">
+    <div style="display:flex; align-items:flex-start; flex-wrap:wrap; gap:10px; justify-content:space-between;">
       <div>
         <h2>Ledger movement</h2>
-        <span class="hint" id="trendWindowLabel">last 14 days</span>
+        <p class="insight-sub" id="trendWindowLabel">last 14 days</p>
       </div>
       <div class="rb-mode" id="trendGranularitySwitch">
         <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
@@ -266,8 +270,8 @@
         <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
+    <div class="chart-legend chart-legend-top" id="trendLegend"></div>
     <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
-    <div class="chart-legend" id="trendLegend"></div>
   </div>
 </div>
 {% endblock %}
@@ -362,15 +366,8 @@
       return;
     }
 
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = themeColor('--ink-soft');
-    Chart.defaults.borderColor = themeColor('--border');
-    // Paired with .chart-canvas-wrap's fixed height in style.css — this
-    // stops Chart.js from deriving canvas height from the container's
-    // width (its default behavior), which is what let the Ledger
-    // chart's height and its wrapping bottom legend feed off each
-    // other during a burst of resize events and grow unbounded.
-    Chart.defaults.maintainAspectRatio = false;
+    applyChartDefaults();
+    const T = chartTheme();
 
     // "3 bottles" or "3 bottles + 250 mL" — bulk mL never added to bottles.
     function qtyLabel(row) {
@@ -389,104 +386,121 @@
         clearChartError();
         destroyCharts();
 
-        document.getElementById('totalUnits').textContent = Number(data.totals.units).toLocaleString();
-        // Bulk is sold by the mL, so it's shown beside the bottle count, never added to it.
-        const unitsFoot = document.getElementById('totalUnitsFoot');
+        // Last 14 days, zero-filled, so the sparklines and the trend chart
+        // keep a steady x-axis even on days with no sales.
+        const byDay = Object.fromEntries(data.sales_trend.map(d => [d.day, d]));
+        const days14 = [];
+        // Counted back from the server's business date, not the browser's clock.
+        for (let i = 13; i >= 0; i--) {
+          const dt = new Date(data.today + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - i);
+          days14.push(dt.toISOString().slice(0, 10));
+        }
+        const revDaily = days14.map(d => (byDay[d] ? byDay[d].revenue : 0));
+        const unitsDaily = days14.map(d => (byDay[d] ? Number(byDay[d].units_sold) : 0));
+        const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+        const lastRev = sum(revDaily.slice(7)), prevRev = sum(revDaily.slice(0, 7));
+        const lastUnits = sum(unitsDaily.slice(7)), prevUnits = sum(unitsDaily.slice(0, 7));
         const bulkMl = Number(data.totals.bulk_ml) || 0;
-        unitsFoot.textContent = unitsFoot.dataset.base + (bulkMl ? ' · + ' + bulkMl.toLocaleString() + ' mL bulk' : '');
-        document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
+        const totalUnits = Number(data.totals.units), totalRev = Number(data.totals.revenue);
 
-        charts.variant = new Chart(document.getElementById('variantChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.by_variant.map(d => d.variant),
-            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderWidth: 0 }]
-          },
-          options: { plugins: { legend: { position: 'bottom' } } }
+        fillKpiTile(document.getElementById('kpiRevenue'), {
+          value: compactPeso(totalRev), title: fullPeso(totalRev),
+          delta: pctChange(lastRev, prevRev), note: 'last 7 days vs. the 7 before',
+          series: revDaily, color: T.sales,
+        });
+        fillKpiTile(document.getElementById('kpiUnits'), {
+          value: totalUnits.toLocaleString(),
+          delta: pctChange(lastUnits, prevUnits),
+          note: bulkMl ? '+ ' + bulkMl.toLocaleString() + ' mL bulk' : 'at ' + {{ session.branch_name|tojson }},
+          series: unitsDaily, color: T.profit,
+        });
+        fillKpiTile(document.getElementById('kpiAvg'), {
+          value: fullPeso(totalUnits ? totalRev / totalUnits : 0),
+          note: 'revenue divided by bottles sold',
+          series: days14.map((d, i) => (unitsDaily[i] ? revDaily[i] / unitsDaily[i] : 0)), color: T.cream,
         });
 
         charts.salesTrend = new Chart(document.getElementById('salesTrendChart'), {
           type: 'line',
           data: {
-            labels: data.sales_trend.map(d => d.day),
-            datasets: [{
-              label: 'Units sold',
-              data: data.sales_trend.map(d => d.units_sold),
-              borderColor: themeColor('--accent'),
-              backgroundColor: themeColor('--accent'),
-              pointBackgroundColor: themeColor('--accent'),
-              pointRadius: 4,
-              tension: 0.35,
-              fill: false,
-            }]
+            labels: days14.map(shortDateLabel),
+            datasets: [
+              { label: 'Revenue', data: revDaily, borderColor: T.sales, backgroundColor: T.sales, yAxisID: 'y' },
+              { label: 'Bottles sold', data: unitsDaily, borderColor: T.profit, backgroundColor: T.profit, yAxisID: 'y1' },
+            ]
           },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          options: {
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + '  ' + (c.datasetIndex === 0 ? fullPeso(c.parsed.y) : c.parsed.y.toLocaleString()) } }
+            },
+            scales: {
+              y: { beginAtZero: true, border: { display: false }, grid: { color: T.grid }, ticks: { padding: 8, callback: (v) => compactPeso(v) } },
+              y1: { beginAtZero: true, position: 'right', border: { display: false }, grid: { display: false }, ticks: { padding: 8, precision: 0 } },
+              x: { border: { display: false }, grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 18 } }
+            }
+          }
         });
+        renderChartLegend(charts.salesTrend, document.getElementById('salesTrendLegend'));
+
+        const donut = (id, listId, allRows, palette, title, subtitle, fmt) => {
+          const rows = topWithOther(allRows, 8);
+          const colors = rowColors(rows, palette, T.faint);
+          charts[id] = new Chart(document.getElementById(id), {
+            type: 'doughnut',
+            data: {
+              labels: rows.map(r => r.name),
+              datasets: [{
+                data: rows.map(r => r.value),
+                backgroundColor: colors,
+                borderColor: T.surface, borderWidth: 2, hoverOffset: 4,
+              }]
+            },
+            options: {
+              cutout: '68%',
+              plugins: {
+                legend: { display: false },
+                donutCenter: { title, subtitle },
+                tooltip: {
+                  callbacks: {
+                    label: (c) => {
+                      const extra = rows[c.dataIndex].extra;
+                      return ' ' + c.label + '  ' + fmt(c.parsed) + (extra ? ' (' + extra + ')' : '');
+                    }
+                  }
+                }
+              }
+            }
+          });
+          renderShareList(document.getElementById(listId), rows, colors, fmt);
+        };
+        const sumVals = (rows) => rows.reduce((a, r) => a + r.value, 0);
+        const units = (v) => Number(v).toLocaleString();
+
+        const variants = data.by_variant.map(d => ({ name: d.variant, value: Number(d.units_sold) }));
+        donut('variantChart', 'variantList', variants, [T.accent, T.cream], units(sumVals(variants)), 'Bottles', units);
+
+        const stock = data.stock_by_variant.map(d => ({ name: d.variant, value: Number(d.total_stock) }));
+        donut('stockChart', 'stockList', stock, [T.accent, T.cream], units(sumVals(stock)), 'In stock', units);
+
+        const saleTypes = data.sale_type_breakdown.map(d => ({ name: d.sale_type, value: Number(d.revenue), extra: qtyLabel(d) }));
+        donut('saleTypeChart', 'saleTypeList', saleTypes, T.series, compactPeso(sumVals(saleTypes)), 'Revenue', compactPeso);
+
+        const payments = data.payment_breakdown.map(d => ({ name: d.payment_method, value: Number(d.revenue), extra: qtyLabel(d) }));
+        donut('paymentChart', 'paymentList', payments, [T.sales, T.cost, T.cream], compactPeso(sumVals(payments)), 'Revenue', compactPeso);
 
         charts.topProducts = new Chart(document.getElementById('topProductsChart'), {
           type: 'bar',
           data: {
             labels: data.top_products.map(d => d.item_name),
-            datasets: [{ label: 'Units sold', data: data.top_products.map(d => d.units_sold), backgroundColor: themeColor('--success'), borderRadius: 4 }]
-          },
-          options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: themeColor('--border') } }, y: { grid: { display: false } } } }
-        });
-
-        charts.stock = new Chart(document.getElementById('stockChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.stock_by_variant.map(d => d.variant),
-            datasets: [{ data: data.stock_by_variant.map(d => d.total_stock), backgroundColor: data.stock_by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderWidth: 0 }]
-          },
-          options: { plugins: { legend: { position: 'bottom' } } }
-        });
-
-        charts.saleType = new Chart(document.getElementById('saleTypeChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.sale_type_breakdown.map(d => d.sale_type),
-            datasets: [{
-              data: data.sale_type_breakdown.map(d => d.revenue),
-              backgroundColor: data.sale_type_breakdown.map(d => SALE_TYPE_COLORS[d.sale_type] || themeColor('--accent')),
-              borderWidth: 0,
-            }]
+            datasets: [{ label: 'Units sold', data: data.top_products.map(d => d.units_sold), backgroundColor: T.accent, maxBarThickness: 22 }]
           },
           options: {
-            plugins: {
-              legend: { position: 'bottom' },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const row = data.sale_type_breakdown[ctx.dataIndex];
-                    return `${row.sale_type}: ${formatPeso(row.revenue)} (${qtyLabel(row)})`;
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        charts.payment = new Chart(document.getElementById('paymentChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.payment_breakdown.map(d => d.payment_method),
-            datasets: [{
-              data: data.payment_breakdown.map(d => d.revenue),
-              backgroundColor: data.payment_breakdown.map(d => PAYMENT_COLORS[d.payment_method] || themeColor('--accent')),
-              borderWidth: 0,
-            }]
-          },
-          options: {
-            plugins: {
-              legend: { position: 'bottom' },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const row = data.payment_breakdown[ctx.dataIndex];
-                    return `${row.payment_method}: ${formatPeso(row.revenue)} (${qtyLabel(row)})`;
-                  }
-                }
-              }
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { beginAtZero: true, border: { display: false }, grid: { color: T.grid }, ticks: { precision: 0 } },
+              y: { border: { display: false }, grid: { display: false } }
             }
           }
         });
@@ -521,8 +535,7 @@
               borderColor: color,
               backgroundColor: color,
               pointBackgroundColor: color,
-              pointRadius: 3,
-              tension: 0.35,
+              pointRadius: 0,
               fill: false,
             });
           }
@@ -536,17 +549,16 @@
               borderColor: color,
               backgroundColor: color,
               pointBackgroundColor: color,
-              pointRadius: 3,
+              pointRadius: 0,
               borderDash: [6, 4],
-              tension: 0.35,
               fill: false,
             });
           }
         });
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'line',
-          data: { labels: days, datasets },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          data: { labels: days.map(shortDateLabel), datasets },
+          options: lineChartOptions(T, (v) => Number(v).toLocaleString())
         });
         renderChartLegend(charts.trend, document.getElementById('trendLegend'));
       })
@@ -557,6 +569,15 @@
   }
 
   loadReportsData();
+
+  // Live updates (main.js initRealtime): re-pull the numbers in place, at most
+  // once every 1.5s however many sales land at once. Registered per path so a
+  // later page never calls this one's refresh.
+  let liveTimer = null;
+  window.__liveRefresh = {
+    path: window.location.pathname,
+    fn: () => { clearTimeout(liveTimer); liveTimer = setTimeout(loadReportsData, 1500); },
+  };
 
   // loadReportsData() above runs the instant this script executes,
   // which can be before the page's layout has fully settled (webfonts

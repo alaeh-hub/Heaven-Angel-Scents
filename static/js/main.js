@@ -1616,6 +1616,224 @@ function renderChartLegend(chart, container) {
     });
 }
 
+// ---- Dashboard chart kit (Boss-Insights style) -------------------------
+// Shared by the admin and branch Reports pages: compact peso formatting,
+// SVG sparklines for KPI tiles, up/down delta chips, a donut with its total
+// in the middle plus a "name / amount / share" list, and one set of Chart.js
+// defaults so every graph reads as one system.
+function compactPeso(value) {
+    var n = Number(value) || 0;
+    var abs = Math.abs(n);
+    var sign = n < 0 ? '-' : '';
+    if (abs < 1000) return sign + '₱' + abs.toLocaleString('en-PH', { maximumFractionDigits: abs % 1 ? 2 : 0 });
+    var f = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
+    return sign + '₱' + f.format(abs);
+}
+
+function fullPeso(value) {
+    return '₱' + Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function pctChange(current, previous) {
+    if (!previous) return null;
+    return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function chartTheme() {
+    var css = getComputedStyle(document.documentElement);
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var accent = css.getPropertyValue('--accent').trim();
+    return {
+        dark: dark,
+        ink: css.getPropertyValue('--ink').trim(),
+        soft: css.getPropertyValue('--ink-soft').trim(),
+        faint: css.getPropertyValue('--ink-faint').trim(),
+        grid: css.getPropertyValue('--border').trim(),
+        surface: css.getPropertyValue('--surface').trim(),
+        accent: accent,
+        sales: dark ? '#4fb3bf' : '#1f93a1',
+        cost: dark ? '#ff7a8a' : '#e0475b',
+        profit: accent,
+        cream: dark ? '#d8d3c4' : '#a9a28c',
+        series: dark
+            ? [accent, '#4fb3bf', '#d8d3c4', '#ff7a8a', '#9085e9', '#199e70', '#d95926', '#3d9fd6']
+            : [accent, '#1f93a1', '#a9a28c', '#e0475b', '#4a3aa7', '#1baf7a', '#eb6834', '#1f78b4']
+    };
+}
+
+// Chart.js defaults + the "total in the middle" doughnut plugin. Safe to
+// call on every data load.
+function applyChartDefaults() {
+    var t = chartTheme();
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = t.soft;
+    Chart.defaults.borderColor = t.grid;
+    Chart.defaults.maintainAspectRatio = false;
+    Chart.defaults.elements.line.borderWidth = 2.5;
+    Chart.defaults.elements.line.tension = 0.4;
+    Chart.defaults.elements.point.radius = 0;
+    Chart.defaults.elements.point.hoverRadius = 5;
+    Chart.defaults.elements.bar.borderRadius = 6;
+    Chart.defaults.elements.bar.borderSkipped = false;
+    Chart.defaults.interaction = { mode: 'index', intersect: false };
+    var tip = Chart.defaults.plugins.tooltip;
+    tip.backgroundColor = t.surface;
+    tip.titleColor = t.ink;
+    tip.bodyColor = t.soft;
+    tip.borderColor = t.dark ? 'rgba(255,245,220,0.18)' : 'rgba(23,20,13,0.16)';
+    tip.borderWidth = 1;
+    tip.padding = 10;
+    tip.cornerRadius = 10;
+    tip.boxPadding = 4;
+    tip.usePointStyle = true;
+    if (!Chart.registry.plugins.get('donutCenter')) {
+        Chart.register({
+            id: 'donutCenter',
+            afterDraw: function (chart) {
+                var opts = chart.options.plugins && chart.options.plugins.donutCenter;
+                if (!opts || !opts.title) return;
+                var meta = chart.getDatasetMeta(0);
+                if (!meta || !meta.data.length) return;
+                var ctx = chart.ctx;
+                var x = meta.data[0].x, y = meta.data[0].y;
+                var th = chartTheme();
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = th.ink;
+                ctx.font = "700 22px 'Inter', sans-serif";
+                ctx.fillText(opts.title, x, y - 8);
+                ctx.fillStyle = th.faint;
+                ctx.font = "500 12px 'Inter', sans-serif";
+                ctx.fillText(opts.subtitle || 'Total', x, y + 14);
+                ctx.restore();
+            }
+        });
+    }
+}
+
+// Flat sparkline with a soft fill, as inline SVG (no axes, no library).
+function sparklineSVG(values, color) {
+    var w = 100, h = 30, pad = 2;
+    if (!values || values.length < 2) values = [0, 0];
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var span = max - min || 1;
+    var pts = values.map(function (v, i) {
+        var x = (i / (values.length - 1)) * w;
+        var y = h - pad - ((v - min) / span) * (h - pad * 2);
+        return x.toFixed(2) + ',' + y.toFixed(2);
+    });
+    var line = 'M' + pts.join(' L');
+    return '<svg class="kpi-spark-svg" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true">' +
+        '<path d="' + line + ' L' + w + ',' + h + ' L0,' + h + ' Z" fill="' + color + '" opacity="0.14"/>' +
+        '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
+        '</svg>';
+}
+
+// Fills one KPI tile (markup: .kpi-tile > .kpi-value, .kpi-meta, .kpi-spark).
+//   o.value      text for the big number (title gets o.title)
+//   o.delta      change vs previous period, or null (a % unless o.points)
+//   o.points     true when delta is in percentage points (margin tiles)
+//   o.goodWhenUp false for costs: an increase is shown red
+//   o.note       text beside the chip, e.g. "17.1% of total sales"
+//   o.series     values for the sparkline; o.color its colour
+function fillKpiTile(el, o) {
+    if (!el) return;
+    var val = el.querySelector('.kpi-value');
+    val.textContent = o.value;
+    if (o.title) val.title = o.title;
+    var meta = el.querySelector('.kpi-meta');
+    var chip = '';
+    var d = o.delta;
+    if (d !== null && d !== undefined && isFinite(d)) {
+        var up = d > 0, flat = Math.abs(d) < 0.05;
+        var good = flat ? null : (up === (o.goodWhenUp !== false));
+        var cls = flat ? 'flat' : (good ? 'good' : 'bad');
+        var arrow = flat ? '→' : (up ? '↑' : '↓');
+        chip = '<span class="kpi-chip kpi-chip-' + cls + '" title="vs previous period">' + arrow + ' ' +
+            Math.abs(d).toFixed(1) + (o.points ? ' pts' : '%') + '</span>';
+    }
+    meta.innerHTML = chip;
+    if (o.note) {
+        var note = document.createElement('span');
+        note.className = 'kpi-note';
+        note.textContent = o.note;
+        meta.appendChild(note);
+    }
+    var spark = el.querySelector('.kpi-spark');
+    if (spark) spark.innerHTML = o.series ? sparklineSVG(o.series, o.color) : '';
+}
+
+// "Dot  Name  Amount  Share%" rows under a doughnut.
+function renderShareList(container, items, colors, formatValue) {
+    if (!container) return;
+    var total = items.reduce(function (a, b) { return a + b.value; }, 0);
+    container.innerHTML = '';
+    if (!items.length) {
+        container.innerHTML = '<div class="share-empty">No data yet</div>';
+        return;
+    }
+    items.forEach(function (it, i) {
+        var row = document.createElement('div');
+        row.className = 'share-row';
+        var dot = document.createElement('span');
+        dot.className = 'share-dot';
+        dot.style.background = colors[i % colors.length];
+        var name = document.createElement('span');
+        name.className = 'share-name';
+        name.textContent = it.name;
+        var amt = document.createElement('span');
+        amt.className = 'share-amount';
+        amt.textContent = formatValue(it.value);
+        var pct = document.createElement('span');
+        pct.className = 'share-pct';
+        pct.textContent = (total ? (it.value / total) * 100 : 0).toFixed(1) + '%';
+        row.appendChild(dot); row.appendChild(name); row.appendChild(amt); row.appendChild(pct);
+        container.appendChild(row);
+    });
+}
+
+// Common options for a smooth line chart.
+function lineChartOptions(t, yFormat) {
+    return {
+        plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: function (c) { return ' ' + c.dataset.label + '  ' + (yFormat ? yFormat(c.parsed.y) : c.parsed.y); } } }
+        },
+        scales: {
+            y: { beginAtZero: true, border: { display: false }, grid: { color: t.grid }, ticks: { padding: 8, callback: function (v) { return yFormat ? yFormat(v) : v; } } },
+            x: { border: { display: false }, grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 18 } }
+        }
+    };
+}
+
+// Keeps a donut readable with many outlets: the biggest (max - 1) rows stay,
+// the rest fold into one "Other (n)" slice, flagged other:true so callers can
+// give it a neutral colour instead of recycling a palette colour.
+function topWithOther(rows, max) {
+    var sorted = rows.slice().sort(function (a, b) { return b.value - a.value; });
+    if (sorted.length <= max) return sorted;
+    var head = sorted.slice(0, max - 1);
+    var tail = sorted.slice(max - 1);
+    head.push({
+        name: 'Other (' + tail.length + ')',
+        value: tail.reduce(function (a, r) { return a + r.value; }, 0),
+        other: true
+    });
+    return head;
+}
+
+// One colour per row: palette order, with the folded "Other" slice neutral.
+function rowColors(rows, palette, neutral) {
+    return rows.map(function (r, i) { return r.other ? neutral : palette[i % palette.length]; });
+}
+
+function shortDateLabel(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function initCustomSelects(root) {
     (root || document).querySelectorAll('select').forEach(enhanceSelect);
 }
@@ -3308,7 +3526,10 @@ function initRealtime(notifBell) {
         { match: /^\/admin\/(low-stock|discrepancies)\/?$/, scopes: ['inventory', 'movement_logs'] },
         { match: /^\/admin\/(sales-history|customers|credit-purchases|record-sale)\/?$/, scopes: ['sales'] },
         { match: /^\/ai\/drafts\/?$/, scopes: ['ai_drafts'] },
-        { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production'] },
+        { match: /^\/admin\/?$/, scopes: ['requests', 'inventory', 'movement_logs', 'production', 'sales', 'partner_inquiries', 'materials'] },
+        { match: /^\/admin\/reports\/?$/, scopes: ['sales', 'inventory', 'movement_logs', 'production', 'materials', 'partner_inquiries', 'branches'] },
+        { match: /^\/admin\/branch-performance\/?$/, scopes: ['sales', 'inventory', 'movement_logs', 'branches'] },
+        { match: /^\/branch\/reports\/?$/, scopes: ['sales', 'inventory', 'movement_logs'] },
         { match: /^\/branch\/inventory\/?$/, scopes: ['inventory'] },
         { match: /^\/branch\/request-stock\/?$/, scopes: ['requests'] },
         { match: /^\/branch\/receive-stock\/?$/, scopes: ['requests', 'inventory'] },
@@ -3412,6 +3633,15 @@ function initRealtime(notifBell) {
         }
     }, true);
 
+    // Many sales can land in a burst (and every admin tab hears each one);
+    // a full-page refetch per event would hammer the server, so coalesce
+    // them into one refresh after things go quiet for a moment.
+    let queuedRefresh = null;
+    function queueSoftRefresh() {
+        clearTimeout(queuedRefresh);
+        queuedRefresh = setTimeout(softRefresh, 1500);
+    }
+
     function scheduleRetry(ms) {
         clearTimeout(retryTimer);
         retryTimer = setTimeout(softRefresh, ms);
@@ -3508,7 +3738,15 @@ function initRealtime(notifBell) {
         const mine = currentScopes();
         console.debug('[realtime] data_changed', scopes, 'page listens for', mine);
         if (scopes.some((s) => mine.includes(s))) {
-            softRefresh();
+            // A page can register its own in-place refresh (the Reports pages
+            // do, so a live update keeps the chosen Daily/Weekly/... view and
+            // never wipes the report builder form) instead of a full swap.
+            const live = window.__liveRefresh;
+            if (live && live.path === window.location.pathname && typeof live.fn === 'function') {
+                live.fn();
+            } else {
+                queueSoftRefresh();
+            }
         } else if (scopes.includes('requests') || scopes.includes('partner_inquiries') || scopes.includes('ai_drafts')) {
             refreshBadgesOnly();
         }

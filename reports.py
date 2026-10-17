@@ -35,6 +35,7 @@ from reportlab.platypus import (
 )
 
 from brand_assets import NumberedCanvas, logo_drawing, register_fonts
+from finance import PACKAGE_COGS_SQL, PACKAGE_DATE_SQL, SALES_COGS_SQL
 from db import query
 from utils import (
     BOTTLE_UNITS, PARTNER_TYPES, PAYMENT_METHODS, PRODUCT_UNITS, SALE_TYPES,
@@ -1650,20 +1651,24 @@ def _window_where(date_col, filters, params):
 def _report_financial_summary(filters, branch_scope):
     """Dashboard / Reports money figures for the chosen window, one row
     per figure: register sales (HQ + branches) + Closed partner package
-    orders = total revenue; cost of goods produced (cogs_logs); gross
-    profit = revenue - cost of goods; raw materials bought (for
-    comparison — they're costed into goods when produced, not here)."""
+    orders = total revenue; cost of goods SOLD (finance.py: what the sold
+    and shipped goods cost to make); gross profit = revenue - cost of goods
+    sold; cost of goods produced (capital) and raw materials bought are
+    shown for comparison only."""
     def total(sql, date_col):
         params = []
         frag = _window_where(date_col, filters, params)
         return query(sql + frag, tuple(params), fetchone=True)["v"]
 
     sales = float(total("SELECT COALESCE(SUM(qty_sold * unit_price), 0) AS v FROM sales WHERE 1=1", "sold_at"))
+    closed_on = "COALESCE(closed_at, created_at)"
     packages = float(total(
-        "SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries WHERE status = 'Closed'", "created_at"))
+        "SELECT COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries WHERE status = 'Closed'", closed_on))
     package_orders = int(total(
-        "SELECT COUNT(*) AS v FROM partner_inquiries WHERE status = 'Closed'", "created_at"))
-    cogs = float(total("SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE 1=1", "created_at"))
+        "SELECT COUNT(*) AS v FROM partner_inquiries WHERE status = 'Closed'", closed_on))
+    produced = float(total("SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE 1=1", "created_at"))
+    cogs = (float(total(SALES_COGS_SQL + " WHERE 1=1", "s.sold_at"))
+            + float(total(PACKAGE_COGS_SQL, PACKAGE_DATE_SQL)))
     materials = float(total(
         """SELECT COALESCE(SUM(package_cost), 0) AS v FROM (
                SELECT rm.created_at AS purchased_at,
@@ -1682,8 +1687,9 @@ def _report_financial_summary(filters, branch_scope):
         {"figure": "Register sales (HQ + branches)", "figure_amount": sales},
         {"figure": f"Partner package orders (Closed, {package_orders})", "figure_amount": packages},
         {"figure": "Total revenue", "figure_amount": revenue},
-        {"figure": "Cost of goods produced", "figure_amount": cogs},
-        {"figure": "Gross profit (revenue − cost of goods)", "figure_amount": revenue - cogs},
+        {"figure": "Cost of goods sold", "figure_amount": cogs},
+        {"figure": "Gross profit (revenue − cost of goods sold)", "figure_amount": revenue - cogs},
+        {"figure": "Cost of goods produced (capital, comparison only)", "figure_amount": produced},
         {"figure": "Raw materials purchased (comparison only)", "figure_amount": materials},
     ]
     columns = [("figure", "Figure", "str", 2.5), ("figure_amount", "Amount", "money", 1.0)]

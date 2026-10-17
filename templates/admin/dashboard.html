@@ -5,7 +5,7 @@
 {% block heading %}Welcome, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack stat-grid-highlight">
+<div class="grid grid-4 stack stat-grid-highlight">
   <div class="card stat-tile">
     <div class="stat-label">Branches</div>
     <div class="stat-value">{{ stats.branch_count }}</div>
@@ -21,31 +21,44 @@
     <div class="stat-value {{ 'danger' if stats.low_stock_count else '' }}">{{ stats.low_stock_count }}</div>
     <div class="stat-foot"><a href="{{ url_for('admin.low_stock') }}" class="text-soft">view all →</a></div>
   </div>
+  <div class="card stat-tile">
+    <div class="stat-label">Unsettled credit</div>
+    <div class="stat-value {{ 'accent' if financials.receivables else '' }}">{{ financials.receivables|compact_peso }}</div>
+    <div class="stat-foot"><a href="{{ url_for('admin.credit_purchases') }}" class="text-soft">credit purchases →</a></div>
+  </div>
 </div>
 
-<div class="grid grid-4 stack stat-grid-highlight">
-  <div class="card stat-tile">
-    <div class="stat-label">Total capital</div>
-    <div class="stat-value">{{ financials.capital|peso }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.production') }}" class="text-soft">cost of goods produced →</a></div>
+<div class="kpi-grid stack">
+  <div class="card kpi-tile">
+    <div class="kpi-label">Total revenue</div>
+    <div class="kpi-value">{{ financials.revenue|compact_peso }}</div>
+    <div class="kpi-meta">
+      {{ m.kpi_chip(financials.revenue_trend) }}
+      <span class="kpi-note">this month vs. same time last month</span>
+    </div>
+    <div class="kpi-foot-link" style="margin-top:0.25rem;">{{ financials.branch_sales_revenue|peso }} branches &middot; {{ financials.package_sales_revenue|peso }} packages</div>
+    <div class="kpi-spark" data-spark="{{ financials.spark_revenue|tojson|forceescape }}" data-tone="sales"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Raw materials bought</div>
-    <div class="stat-value">{{ financials.raw_materials_purchased|peso }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">for comparison →</a></div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Net profit</div>
+    <div class="kpi-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|compact_peso }}</div>
+    <div class="kpi-meta">
+      {% if financials.profit_margin is not none %}<span class="kpi-chip kpi-chip-flat">{{ '%.1f'|format(financials.profit_margin) }}% margin</span>{% endif %}
+      <span class="kpi-note">{{ 'revenue minus cost of goods sold' if financials.profit >= 0 else 'running at a loss' }}</span>
+    </div>
+    <div class="kpi-spark" data-spark="{{ financials.spark_profit|tojson|forceescape }}" data-tone="profit"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Total revenue</div>
-    <div class="stat-value accent">{{ financials.revenue|peso }}</div>
-    {{ m.trend(financials.revenue_trend, 'this month vs. same time last month') }}
-    <div class="stat-foot">{{ financials.branch_sales_revenue|peso }} branches &middot; {{
-      financials.package_sales_revenue|peso }} packages</div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Total capital</div>
+    <div class="kpi-value">{{ financials.capital|compact_peso }}</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.production') }}">cost of goods produced →</a></div>
+    <div class="kpi-spark" data-spark="{{ financials.spark_cost|tojson|forceescape }}" data-tone="cost"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Net profit</div>
-    <div class="stat-value {{ 'success' if financials.profit >= 0 else 'danger' }}">{{ financials.profit|peso }}</div>
-    <div class="stat-foot">{{ 'revenue (branches + packages) minus cost of goods' if financials.profit >= 0 else
-      'running at a loss — revenue minus cost of goods' }}</div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Raw materials bought</div>
+    <div class="kpi-value">{{ financials.raw_materials_purchased|compact_peso }}</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.materials') }}">for comparison →</a></div>
+    <div class="kpi-spark" data-spark="{{ financials.spark_raw|tojson|forceescape }}" data-tone="cream"></div>
   </div>
 </div>
 
@@ -335,4 +348,19 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // KPI sparklines (sparklineSVG lives in main.js).
+  (function () {
+    var t = chartTheme();
+    document.querySelectorAll('.kpi-spark[data-spark]').forEach(function (el) {
+      try {
+        var vals = JSON.parse(el.getAttribute('data-spark'));
+        el.innerHTML = sparklineSVG(vals, t[el.getAttribute('data-tone')] || t.accent);
+      } catch (e) { }
+    });
+  })();
+</script>
 {% endblock %}

@@ -5,26 +5,34 @@
 {% block heading %}Welcome, {{ session.username }}{% endblock %}
 
 {% block content %}
-<div class="bento-grid stack stat-grid-highlight">
-  <div class="card stat-tile bento-span-2">
-    <div class="stat-label">SKUs carried</div>
-    <div class="stat-value">{{ sku_count }}</div>
-    <div class="stat-foot">in your branch</div>
-  </div>
-  <div class="card stat-tile bento-span-2">
-    <div class="stat-label">Low stock</div>
-    <div class="stat-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
-    <div class="stat-foot"><a href="{{ url_for('branch.request_stock') }}" class="text-soft">request more →</a></div>
-  </div>
-  <div class="card stat-tile bento-hero bento-hero-end">
-    <div>
-      <div class="stat-label">Today's revenue</div>
+<div class="kpi-grid stack">
+  <div class="card kpi-tile">
+    <div class="kpi-label">Today's revenue</div>
+    <div class="kpi-value">{{ today_sales.revenue|compact_peso }}</div>
+    <div class="kpi-meta">
+      {{ m.kpi_chip(today_sales.trend) }}
+      <span class="kpi-note">{{ today_sales.units|int }} bottle{{ '' if today_sales.units|int == 1 else 's' }} sold{% if today_sales.bulk_ml %} · {{ today_sales.bulk_ml|int }} mL bulk{% endif %}</span>
     </div>
-    <div>
-      <div class="stat-value accent">{{ today_sales.revenue|peso }}</div>
-      <div class="stat-foot">{{ today_sales.units|int }} bottle{{ '' if today_sales.units|int == 1 else 's' }} sold{% if today_sales.bulk_ml %} · {{ today_sales.bulk_ml|int }} mL bulk{% endif %}</div>
-      {{ m.trend(today_sales.trend, 'revenue vs. same time yesterday') }}
+    <div class="kpi-spark" data-spark="{{ spark_revenue|tojson|forceescape }}" data-tone="sales"></div>
+  </div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Last 7 days</div>
+    <div class="kpi-value">{{ week_revenue|compact_peso }}</div>
+    <div class="kpi-meta">
+      {{ m.kpi_chip(week_trend) }}
+      <span class="kpi-note">vs. the 7 days before</span>
     </div>
+    <div class="kpi-spark" data-spark="{{ spark_units|tojson|forceescape }}" data-tone="profit"></div>
+  </div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">SKUs carried</div>
+    <div class="kpi-value">{{ sku_count }}</div>
+    <div class="kpi-foot-link">in your branch</div>
+  </div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Low stock</div>
+    <div class="kpi-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('branch.request_stock') }}">request more →</a></div>
   </div>
 </div>
 
@@ -119,4 +127,19 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // KPI sparklines (sparklineSVG lives in main.js).
+  (function () {
+    var t = chartTheme();
+    document.querySelectorAll('.kpi-spark[data-spark]').forEach(function (el) {
+      try {
+        var vals = JSON.parse(el.getAttribute('data-spark'));
+        el.innerHTML = sparklineSVG(vals, t[el.getAttribute('data-tone')] || t.accent);
+      } catch (e) { }
+    });
+  })();
+</script>
 {% endblock %}

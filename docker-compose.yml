@@ -20,6 +20,9 @@ services:
       # Limited user the app connects as; it only has rights on MYSQL_DATABASE.
       MYSQL_USER: ${DB_APP_USER:-heaven_app}
       MYSQL_PASSWORD: ${DB_APP_PASSWORD:?set DB_APP_PASSWORD in .env}
+    # Host-only access for MySQL Workbench; 3306 on the host is the local MySQL84.
+    ports:
+      - "127.0.0.1:3307:3306"
     volumes:
       - dbdata:/var/lib/mysql
     healthcheck:
@@ -43,16 +46,29 @@ services:
       MYSQL_PWD: ${DB_ROOT_PASSWORD}
     volumes:
       - ./schema.sql:/schema.sql:ro
-    # Retries because after a Docker daemon restart containers start without
-    # honouring depends_on, so the db may not accept connections yet.
+    # Retries only while the db isn't accepting connections yet (after a
+    # Docker daemon restart containers start without honouring depends_on).
+    # Any other failure is a real SQL error in schema.sql: print it and stop
+    # at once instead of re-running the same failing script for 100 seconds.
     command:
       - sh
       - -c
       - |
         for i in $$(seq 1 30); do
-          mysql -h db -uroot < /schema.sql && exit 0
-          echo "migrate: db not ready (attempt $$i/30), retrying" >&2
-          sleep 3
+          if out=$$(mysql -h db -uroot < /schema.sql 2>&1); then
+            exit 0
+          fi
+          echo "$$out" >&2
+          case "$$out" in
+            *"ERROR 2002"*|*"ERROR 2003"*|*"ERROR 2013"*)
+              echo "migrate: db not ready (attempt $$i/30), retrying" >&2
+              sleep 3
+              ;;
+            *)
+              echo "migrate: schema.sql failed with the error above - not retrying" >&2
+              exit 1
+              ;;
+          esac
         done
         exit 1
 

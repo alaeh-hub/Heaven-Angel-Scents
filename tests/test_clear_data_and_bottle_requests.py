@@ -221,4 +221,4 @@ def test_branch_skus_carried_counts_base_codes(client, sql):
 
     html = client.get("/branch/").get_data(as_text=True)
 
-    assert re.search(r'SKUs carried</div>\s*<div class="stat-value">1</div>', html)
+    assert re.search(r'SKUs carried</div>\s*<div class="kpi-value">1</div>', html)

@@ -29,7 +29,7 @@ def test_branch_dashboard_shows_revenue_up_vs_same_time_yesterday(client, sql):
 
     html = client.get("/branch/").get_data(as_text=True)
 
-    assert "stat-trend-up" in html
+    assert "kpi-chip-good" in html
     assert "50.0%" in html
 
 
@@ -42,8 +42,9 @@ def test_branch_dashboard_hides_trend_with_no_sales_yesterday(client, sql):
 
     html = client.get("/branch/").get_data(as_text=True)
 
-    # Today's sales is the only tile with a trend on this page.
-    assert "stat-trend" not in html
+    # No sales yesterday and none the week before, so neither the Today's
+    # revenue tile nor the Last 7 days tile has anything to compare against.
+    assert "kpi-chip" not in html
 
 
 def test_admin_dashboard_shows_revenue_trend(client, sql):
@@ -58,5 +59,5 @@ def test_admin_dashboard_shows_revenue_trend(client, sql):
 
     # Exact % depends on other tests' rows in the shared test DB, so
     # just check the badge renders with a comparison.
-    assert "stat-trend" in html
+    assert "kpi-chip" in html
     assert "same time last month" in html

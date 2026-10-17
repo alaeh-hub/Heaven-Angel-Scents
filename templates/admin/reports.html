@@ -266,98 +266,72 @@
   </form>
 </div>
 
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
-    <div class="stat-label">Total bottles sold</div>
-    <div class="stat-value" id="totalUnits">—</div>
-    <div class="stat-foot" id="totalUnitsFoot">across all branches</div>
+<p class="kpi-period" id="kpiPeriod">&nbsp;</p>
+
+<div class="kpi-grid stack" id="kpiGrid">
+  <div class="card kpi-tile" id="kpiProfit">
+    <div class="kpi-label">Net profit</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Total revenue</div>
-    <div class="stat-value accent" id="totalRevenue">—</div>
-    <div class="stat-foot">combined, at each branch's actual selling price</div>
+  <div class="card kpi-tile" id="kpiSales">
+    <div class="kpi-label">Total sales</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Net profit</div>
-    <div class="stat-value" id="totalProfit">—</div>
-    <div class="stat-foot" id="totalProfitFoot">revenue minus cost of goods</div>
+  <div class="card kpi-tile" id="kpiCost">
+    <div class="kpi-label">Cost of goods sold</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+  <div class="card kpi-tile" id="kpiMargin">
+    <div class="kpi-label">Profit margin</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+  <div class="card kpi-tile" id="kpiUnits">
+    <div class="kpi-label">Bottles sold</div>
+    <div class="kpi-value" id="totalUnits">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+  <div class="card kpi-tile" id="kpiAvg">
+    <div class="kpi-label">Avg. price per bottle</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-meta"></div>
+    <div class="kpi-spark"></div>
+  </div>
+  <!-- Capital (cost of goods produced) and raw materials bought sit side by
+       side deliberately — the whole point of splitting them is to compare
+       what's gone into produced goods against what's been spent buying the
+       ingredients for them. Both are all-time, so no sparkline/chip. -->
+  <div class="card kpi-tile">
+    <div class="kpi-label">Total capital (cost of goods)</div>
+    <div class="kpi-value" id="totalCapital">—</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.formulas') }}">from logged formulas →</a></div>
+    <div class="kpi-spark" id="sparkCapital"></div>
+  </div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Raw materials bought</div>
+    <div class="kpi-value" id="totalRawMaterials">—</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.materials') }}">for comparison →</a></div>
+    <div class="kpi-spark" id="sparkRaw"></div>
   </div>
 </div>
 
-<!-- Capital (cost of goods produced) and raw materials bought sit side by
-     side deliberately — the whole point of splitting them is to compare
-     what's gone into produced goods against what's been spent buying the
-     ingredients for them. -->
-<div class="grid grid-2 stack">
-  <div class="card stat-tile">
-    <div class="stat-label">Total capital (cost of goods)</div>
-    <div class="stat-value" id="totalCapital">—</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.formulas') }}" class="text-soft">from logged formulas →</a></div>
-  </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Raw materials bought</div>
-    <div class="stat-value" id="totalRawMaterials">—</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">for comparison →</a></div>
-  </div>
-</div>
-
-<div class="grid grid-2 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Units sold by variant</h2>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="variantChart"></canvas></div>
-  </div>
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Units sold by branch</h2>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="branchSalesChart"></canvas></div>
-  </div>
-</div>
-
-<div class="grid grid-2 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Revenue vs. Capital</h2>
-      <span class="hint">cost of goods vs. raw materials bought vs. revenue earned, all-time</span>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
-  </div>
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Revenue, Materials &amp; Profit</h2>
-      <span class="hint" id="profitWindowLabel">last 14 days</span>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="profitChart"></canvas></div>
-  </div>
-</div>
-
-<!-- Revenue-by-branch (all-time) already lives on the Branch Performance
-     page's own bar chart — a second, time-windowed version of the same
-     comparison here was the same story told twice a click apart. Only
-     the windowed chart was dropped; Current stock by branch stays,
-     since nothing else in the app shows per-branch stock as a chart. -->
-<div class="grid grid-1 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none;">
-      <h2>Current stock by branch</h2>
-    </div>
-    <div class="chart-canvas-wrap"><canvas id="stockChart"></canvas></div>
-  </div>
-</div>
-
-<div class="grid grid-1 stack">
-  <div class="card chart-card">
-    <div class="card-header" style="padding:0 0 14px; border:none; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+<div class="insight-split stack">
+  <div class="card insight-card">
+    <div style="display:flex; align-items:flex-start; flex-wrap:wrap; gap:10px; justify-content:space-between;">
       <div>
-        <h2>Ledger movement</h2>
-        <span class="hint" id="trendWindowLabel">last 14 days</span>
+        <h2>Sales, cost and net profit</h2>
+        <p class="insight-sub" id="trendWindowLabel">last 14 days · hover the chart for exact values</p>
       </div>
-      <!-- Granularity switch used to live on the Revenue-by-branch card
-           (removed above) — it also drives this chart and the
-           Revenue/Materials/Profit window label, so it moved here
-           rather than disappearing along with that card. -->
+      <!-- Granularity switch drives this chart, the KPI tiles' window and
+           the Ledger movement chart below. -->
       <div class="rb-mode" id="trendGranularitySwitch">
         <button type="button" class="rb-mode-opt active" data-granularity="daily">Daily</button>
         <button type="button" class="rb-mode-opt" data-granularity="weekly">Weekly</button>
@@ -365,8 +339,51 @@
         <button type="button" class="rb-mode-opt" data-granularity="yearly">Yearly</button>
       </div>
     </div>
+    <div class="chart-legend chart-legend-top" id="profitLegend"></div>
+    <div class="chart-canvas-wrap" style="height:19rem;"><canvas id="profitChart"></canvas></div>
+  </div>
+  <div class="card insight-card">
+    <h2>Sales by channel</h2>
+    <p class="insight-sub">Share of all-time sales</p>
+    <div class="donut-wrap"><canvas id="channelChart"></canvas></div>
+    <div class="share-list" id="channelList"></div>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card insight-card">
+    <h2>Units sold by variant</h2>
+    <p class="insight-sub">Bottles, all-time</p>
+    <div class="donut-wrap"><canvas id="variantChart"></canvas></div>
+    <div class="share-list" id="variantList"></div>
+  </div>
+  <div class="card insight-card">
+    <h2>Units sold by branch</h2>
+    <p class="insight-sub">Bottles, all-time</p>
+    <div class="chart-canvas-wrap"><canvas id="branchSalesChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card insight-card">
+    <h2>Revenue vs. Capital</h2>
+    <p class="insight-sub">cost of goods vs. raw materials bought vs. revenue earned, all-time</p>
+    <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
+  </div>
+  <div class="card insight-card">
+    <h2>Current stock by branch</h2>
+    <p class="insight-sub">Bottles on hand</p>
+    <div class="donut-wrap"><canvas id="stockChart"></canvas></div>
+    <div class="share-list" id="stockList"></div>
+  </div>
+</div>
+
+<div class="grid grid-1 stack">
+  <div class="card insight-card">
+    <h2>Ledger movement</h2>
+    <p class="insight-sub" id="ledgerWindowLabel">last 14 days</p>
+    <div class="chart-legend chart-legend-top" id="trendLegend"></div>
     <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
-    <div class="chart-legend" id="trendLegend"></div>
   </div>
 </div>
 {% endblock %}
@@ -414,6 +431,16 @@
     yearly: 'last 5 years',
   };
   let trendGranularity = 'daily';
+
+  // Axis label per bucket: a day/week reads "Oct 17", a month "Oct 2026",
+  // a year just "2026".
+  function bucketLabel(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return iso;
+    if (trendGranularity === 'yearly') return String(d.getFullYear());
+    if (trendGranularity === 'monthly') return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    return shortDateLabel(iso);
+  }
 
   function formatPeso(value) {
     return '₱' + Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -479,15 +506,8 @@
       return;
     }
 
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = themeColor('--ink-soft');
-    Chart.defaults.borderColor = themeColor('--border');
-    // Paired with .chart-canvas-wrap's fixed height in style.css — this
-    // stops Chart.js from deriving canvas height from the container's
-    // width (its default behavior), which is what let the Ledger
-    // chart's height and its wrapping bottom legend feed off each
-    // other during a burst of resize events and grow unbounded.
-    Chart.defaults.maintainAspectRatio = false;
+    applyChartDefaults();
+    const T = chartTheme();
 
     fetch("{{ url_for('admin.reports_data') }}?granularity=" + encodeURIComponent(trendGranularity))
       .then(r => {
@@ -498,34 +518,129 @@
         clearChartError();
         destroyCharts();
 
-        document.getElementById('totalUnits').textContent = Number(data.totals.units).toLocaleString();
-        // Bulk is sold by the mL, so it's shown beside the bottle count, never added to it.
+        const windowLabel = TREND_WINDOW_LABELS[trendGranularity] || '';
+        const k = data.kpi;
+        const series = k.series;
+        const profit = k.revenue - k.cost;
+        const prevProfit = k.prev_revenue - k.prev_cost;
+        const margin = k.revenue ? (profit / k.revenue) * 100 : 0;
+        const prevMargin = k.prev_revenue ? (prevProfit / k.prev_revenue) * 100 : null;
+        const avgPrice = k.units ? k.revenue / k.units : 0;
+        const prevAvg = k.prev_units ? k.prev_revenue / k.prev_units : null;
+        const share = (v) => (k.revenue ? (v / k.revenue) * 100 : 0).toFixed(1) + '% of total sales';
+
         const bulkMl = Number(data.totals.bulk_ml) || 0;
-        document.getElementById('totalUnitsFoot').textContent = bulkMl
-          ? 'across all branches · + ' + bulkMl.toLocaleString() + ' mL bulk'
-          : 'across all branches';
-        document.getElementById('totalRevenue').textContent = formatPeso(data.totals.revenue);
-        document.getElementById('totalCapital').textContent = formatPeso(data.financials.capital);
-        document.getElementById('totalRawMaterials').textContent = formatPeso(data.financials.raw_materials_purchased);
+        document.getElementById('kpiPeriod').innerHTML =
+          'Showing <strong>' + windowLabel + '</strong>, grouped ' + trendGranularity +
+          ', compared with the ' + windowLabel.replace('last ', 'previous ') + '.';
+        document.getElementById('totalCapital').textContent = compactPeso(data.financials.capital);
+        document.getElementById('totalCapital').title = fullPeso(data.financials.capital);
+        document.getElementById('totalRawMaterials').textContent = compactPeso(data.financials.raw_materials_purchased);
+        document.getElementById('totalRawMaterials').title = fullPeso(data.financials.raw_materials_purchased);
 
-        const profitEl = document.getElementById('totalProfit');
-        const profitValue = Number(data.financials.profit);
-        profitEl.textContent = formatPeso(profitValue);
-        profitEl.classList.remove('success', 'danger');
-        profitEl.classList.add(profitValue >= 0 ? 'success' : 'danger');
-        document.getElementById('totalProfitFoot').textContent =
-          (profitValue >= 0 ? 'revenue minus cost of goods' : 'running at a loss this window') +
-          ' \u00b7 ' + (TREND_WINDOW_LABELS[trendGranularity] || '');
+        const profitSeries = series.map(d => d.revenue - d.cost);
+        const marginSeries = series.map(d => (d.revenue ? ((d.revenue - d.cost) / d.revenue) * 100 : 0));
+        const avgSeries = series.map(d => (d.units ? d.revenue / d.units : 0));
 
-        charts.variant = new Chart(document.getElementById('variantChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.by_variant.map(d => d.variant),
-            datasets: [{ data: data.by_variant.map(d => d.units_sold), backgroundColor: data.by_variant.map(d => VARIANT_COLORS[d.variant] || themeColor('--accent')), borderWidth: 0 }]
-          },
-          options: { plugins: { legend: { position: 'bottom' } } }
+        const profitEl = document.querySelector('#kpiProfit .kpi-value');
+        fillKpiTile(document.getElementById('kpiProfit'), {
+          value: compactPeso(profit), title: fullPeso(profit),
+          delta: pctChange(profit, prevProfit), note: share(profit),
+          series: profitSeries, color: T.profit,
+        });
+        profitEl.classList.toggle('danger', profit < 0);
+        fillKpiTile(document.getElementById('kpiSales'), {
+          value: compactPeso(k.revenue), title: fullPeso(k.revenue),
+          delta: pctChange(k.revenue, k.prev_revenue),
+          note: 'branch sales & closed package orders',
+          series: series.map(d => d.revenue), color: T.sales,
+        });
+        fillKpiTile(document.getElementById('kpiCost'), {
+          value: compactPeso(k.cost), title: fullPeso(k.cost),
+          delta: pctChange(k.cost, k.prev_cost), goodWhenUp: false, note: share(k.cost),
+          series: series.map(d => d.cost), color: T.cost,
+        });
+        fillKpiTile(document.getElementById('kpiMargin'), {
+          value: margin.toFixed(1) + '%',
+          delta: prevMargin === null ? null : margin - prevMargin, points: true,
+          note: 'net profit divided by total sales',
+          series: marginSeries, color: T.cream,
+        });
+        // All-time values, but the sparkline shows this window's trend.
+        document.getElementById('sparkCapital').innerHTML = sparklineSVG(series.map(d => d.produced), T.cost);
+        document.getElementById('sparkRaw').innerHTML = sparklineSVG(series.map(d => d.raw), T.cream);
+        document.getElementById('totalUnits').textContent = Number(k.units).toLocaleString();
+        fillKpiTile(document.getElementById('kpiUnits'), {
+          value: Number(k.units).toLocaleString(),
+          delta: pctChange(k.units, k.prev_units),
+          note: bulkMl ? '+ ' + bulkMl.toLocaleString() + ' mL bulk (all-time)' : 'bottles across all branches',
+          series: series.map(d => d.units), color: T.series[4],
+        });
+        fillKpiTile(document.getElementById('kpiAvg'), {
+          value: fullPeso(avgPrice),
+          delta: prevAvg === null ? null : pctChange(avgPrice, prevAvg),
+          note: 'revenue divided by bottles sold',
+          series: avgSeries, color: T.series[5],
         });
 
+        // Sales, cost and net profit — smooth lines, legend on top.
+        const labels = series.map(d => bucketLabel(d.day));
+        charts.profit = new Chart(document.getElementById('profitChart'), {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Sales', data: series.map(d => d.revenue), borderColor: T.sales, backgroundColor: T.sales },
+              { label: 'Cost of goods sold', data: series.map(d => d.cost), borderColor: T.cost, backgroundColor: T.cost },
+              { label: 'Net profit', data: profitSeries, borderColor: T.profit, backgroundColor: T.profit },
+            ]
+          },
+          options: lineChartOptions(T, compactPeso)
+        });
+        renderChartLegend(charts.profit, document.getElementById('profitLegend'));
+
+        // Donuts: total in the middle, "name / amount / share" list below.
+        const donutOptions = (title, subtitle, fmt) => ({
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            donutCenter: { title, subtitle },
+            tooltip: { callbacks: { label: (c) => ' ' + c.label + '  ' + fmt(c.parsed) } }
+          }
+        });
+        const donut = (id, listId, allRows, title, subtitle, fmt, colors) => {
+          const rows = topWithOther(allRows, 8);
+          const cols = rowColors(rows, colors || T.series, T.faint);
+          charts[id] = new Chart(document.getElementById(id), {
+            type: 'doughnut',
+            data: {
+              labels: rows.map(r => r.name),
+              datasets: [{
+                data: rows.map(r => r.value),
+                backgroundColor: cols,
+                borderColor: T.surface, borderWidth: 2, hoverOffset: 4,
+              }]
+            },
+            options: donutOptions(title, subtitle, fmt)
+          });
+          renderShareList(document.getElementById(listId), rows, cols, fmt);
+        };
+
+        const channels = data.sales_by_channel.map(c => ({ name: c.name, value: c.revenue }));
+        donut('channelChart', 'channelList', channels,
+          compactPeso(channels.reduce((a, c) => a + c.value, 0)), 'Total', compactPeso);
+
+        const variants = data.by_variant.map(d => ({ name: d.variant, value: Number(d.units_sold) }));
+        donut('variantChart', 'variantList', variants,
+          variants.reduce((a, c) => a + c.value, 0).toLocaleString(), 'Bottles',
+          (v) => Number(v).toLocaleString(), [T.accent, T.cream]);
+
+        const stock = data.stock_by_branch.map(d => ({ name: d.branch_name, value: Number(d.total_stock) }));
+        donut('stockChart', 'stockList', stock,
+          stock.reduce((a, c) => a + c.value, 0).toLocaleString(), 'In stock',
+          (v) => Number(v).toLocaleString());
+
+        // Units by branch: smooth area line.
         charts.branchSales = new Chart(document.getElementById('branchSalesChart'), {
           type: 'line',
           data: {
@@ -533,15 +648,11 @@
             datasets: [{
               label: 'Units sold',
               data: data.by_branch.map(d => d.units_sold),
-              borderColor: themeColor('--accent'),
-              backgroundColor: themeColor('--accent'),
-              pointBackgroundColor: themeColor('--accent'),
-              pointRadius: 4,
-              tension: 0.35,
-              fill: false,
+              borderColor: T.accent, backgroundColor: T.accent + '22',
+              pointBackgroundColor: T.accent, pointRadius: 4, fill: true,
             }]
           },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          options: lineChartOptions(T, (v) => Number(v).toLocaleString())
         });
 
         charts.capital = new Chart(document.getElementById('capitalChart'), {
@@ -550,52 +661,24 @@
             labels: ['Capital (cost of goods)', 'Raw materials bought', 'Total revenue'],
             datasets: [{
               data: [data.financials.capital, data.financials.raw_materials_purchased, data.totals.revenue],
-              backgroundColor: [themeColor('--warning'), themeColor('--ink-soft'), themeColor('--accent')],
-              borderRadius: 4,
+              backgroundColor: [T.cost, T.cream, T.sales],
+              maxBarThickness: 64,
             }]
           },
           options: {
-            plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
-            },
-            scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } }
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ' ' + fullPeso(c.parsed.y) } } },
+            scales: {
+              y: { beginAtZero: true, border: { display: false }, grid: { color: T.grid }, ticks: { padding: 8, callback: (v) => compactPeso(v) } },
+              x: { border: { display: false }, grid: { display: false } }
+            }
           }
         });
 
-        charts.profit = new Chart(document.getElementById('profitChart'), {
-          type: 'bar',
-          data: {
-            labels: ['Revenue', 'Cost of goods', 'Profit'],
-            datasets: [{
-              data: [data.financials.revenue_windowed, data.financials.materials_cost, data.financials.profit],
-              backgroundColor: [themeColor('--accent'), themeColor('--danger'), profitValue >= 0 ? themeColor('--success') : themeColor('--danger')],
-              borderRadius: 4,
-            }]
-          },
-          options: {
-            plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (ctx) => formatPeso(ctx.parsed.y) } }
-            },
-            scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } }
-          }
-        });
-
-        charts.stock = new Chart(document.getElementById('stockChart'), {
-          type: 'doughnut',
-          data: {
-            labels: data.stock_by_branch.map(d => d.branch_name),
-            datasets: [{ data: data.stock_by_branch.map(d => d.total_stock), backgroundColor: data.stock_by_branch.map((d, i) => PALETTE[i % PALETTE.length]), borderWidth: 0 }]
-          },
-          options: { plugins: { legend: { position: 'bottom' } } }
-        });
-
-        const windowLabel = TREND_WINDOW_LABELS[trendGranularity] || '';
         const trendLabelEl = document.getElementById('trendWindowLabel');
-        if (trendLabelEl) trendLabelEl.textContent = windowLabel;
-        const profitLabelEl = document.getElementById('profitWindowLabel');
-        if (profitLabelEl) profitLabelEl.textContent = windowLabel;
+        if (trendLabelEl) trendLabelEl.textContent = windowLabel + ' · hover the chart for exact values';
+        const ledgerLabelEl = document.getElementById('ledgerWindowLabel');
+        if (ledgerLabelEl) ledgerLabelEl.textContent = windowLabel;
+
 
         const days = [...new Set(data.movement_trend.map(d => d.day))].sort();
         // Fixed order (MOVEMENT_TYPE_ORDER in main.js), and each type's
@@ -625,8 +708,7 @@
               borderColor: color,
               backgroundColor: color,
               pointBackgroundColor: color,
-              pointRadius: 3,
-              tension: 0.35,
+              pointRadius: 0,
               fill: false,
             });
           }
@@ -640,17 +722,16 @@
               borderColor: color,
               backgroundColor: color,
               pointBackgroundColor: color,
-              pointRadius: 3,
+              pointRadius: 0,
               borderDash: [6, 4],
-              tension: 0.35,
               fill: false,
             });
           }
         });
         charts.trend = new Chart(document.getElementById('trendChart'), {
           type: 'line',
-          data: { labels: days, datasets },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: themeColor('--border') } }, x: { grid: { display: false } } } }
+          data: { labels: days.map(bucketLabel), datasets },
+          options: lineChartOptions(T, (v) => Number(v).toLocaleString())
         });
         renderChartLegend(charts.trend, document.getElementById('trendLegend'));
       })
@@ -728,7 +809,16 @@
   };
   window.addEventListener('pageshow', handlePageshow);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  // Live updates (main.js initRealtime): re-pull the numbers in place, at most
+  // once every 1.5s however many sales land at once.
+  let liveTimer = null;
+  window.__liveRefresh = {
+    path: window.location.pathname,
+    fn: () => { clearTimeout(liveTimer); liveTimer = setTimeout(loadReportsData, 1500); },
+  };
   window.__adminReportsCleanup = () => {
+    clearTimeout(liveTimer);
+    window.__liveRefresh = null;
     window.removeEventListener('pageshow', handlePageshow);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.__adminReportsCleanup = null;

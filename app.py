@@ -206,6 +206,19 @@ def create_app():
     def server_error(e):
         return render_template("errors/error.html", code=500, message="Something went wrong on our end."), 500
 
+    @app.template_filter("compact_peso")
+    def compact_peso(value):
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return "₱0"
+        sign, a = ("-" if n < 0 else ""), abs(n)
+        for limit, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+            if a >= limit:
+                text = f"{a / limit:.2f}".rstrip("0").rstrip(".")
+                return f"{sign}₱{text}{suffix}"
+        return f"{sign}₱{a:,.0f}" if a % 1 == 0 else f"{sign}₱{a:,.2f}"
+
     @app.template_filter("peso")
     def peso(value):
         try:

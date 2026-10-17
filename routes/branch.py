@@ -118,6 +118,28 @@ def dashboard():
         (bid,), fetchone=True,
     )
 
+    # Last 14 days of daily revenue, zero-filled, for the hero tile's sparkline.
+    from datetime import timedelta
+    spark_rows = {
+        r["day"]: float(r["amount"] or 0) for r in query(
+            """SELECT DATE(sold_at) AS day, SUM(qty_sold * unit_price) AS amount
+               FROM sales WHERE branch_id = %s AND sold_at >= CURDATE() - INTERVAL 14 DAY
+               GROUP BY DATE(sold_at)""", (bid,))
+    }
+    spark_days = [business_today() - timedelta(days=i) for i in range(13, -1, -1)]
+    spark_revenue = [spark_rows.get(d, 0.0) for d in spark_days]
+    unit_rows = {
+        r["day"]: int(r["units"] or 0) for r in query(
+            """SELECT DATE(s.sold_at) AS day, SUM(s.qty_sold) AS units
+               FROM sales s JOIN products p ON p.sku = s.sku
+               WHERE s.branch_id = %s AND p.unit <> 'BULK' AND s.sold_at >= CURDATE() - INTERVAL 14 DAY
+               GROUP BY DATE(s.sold_at)""", (bid,))
+    }
+    spark_units = [unit_rows.get(d, 0) for d in spark_days]
+    week_revenue = sum(spark_revenue[7:])
+    prev_week_revenue = sum(spark_revenue[:7])
+    week_trend = percent_change(week_revenue, prev_week_revenue)
+
     # Trend arrow on the Today's sales tile: today's revenue vs.
     # yesterday up to this same time of day, so a morning isn't
     # compared against a whole finished day.
@@ -134,6 +156,8 @@ def dashboard():
         inventory=inventory, low_stock=low_stock,
         pending_requests=pending_requests, today_sales=today_sales,
         reorder_all_url=reorder_all_url, sku_count=sku_count,
+        spark_revenue=spark_revenue, spark_units=spark_units,
+        week_revenue=week_revenue, week_trend=week_trend,
     )
 
 
@@ -1057,7 +1081,8 @@ def reports_data():
     # for the admin page's "units sold by branch" chart, which doesn't
     # make sense when there's only one branch to look at.
     sales_trend = query(
-        """SELECT DATE(s.sold_at) AS day, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold
+        """SELECT DATE(s.sold_at) AS day, COALESCE(SUM(CASE WHEN p.unit <> 'BULK' THEN s.qty_sold ELSE 0 END), 0) AS units_sold,
+                  COALESCE(SUM(s.qty_sold * s.unit_price), 0) AS revenue
            FROM sales s JOIN products p ON p.sku = s.sku
            WHERE s.branch_id = %s AND s.sold_at >= NOW() - INTERVAL 14 DAY
            GROUP BY DATE(s.sold_at) ORDER BY day""",
@@ -1124,6 +1149,7 @@ def reports_data():
 
     for row in sales_trend:
         row["day"] = row["day"].isoformat()
+        row["revenue"] = float(row["revenue"])
     for row in movement_trend:
         row["day"] = row["day"].isoformat()
 
@@ -1131,6 +1157,7 @@ def reports_data():
         by_variant=by_variant, sales_trend=sales_trend, top_products=top_products,
         stock_by_variant=stock_by_variant, movement_trend=movement_trend,
         payment_breakdown=payment_breakdown, sale_type_breakdown=sale_type_breakdown, totals=totals,
+        today=business_today().isoformat(),
     )
 
 

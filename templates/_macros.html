@@ -53,6 +53,15 @@
   {% endif %}
   {% endmacro %}
 
+  {# Pill chip like the Reports KPI tiles (see fillKpiTile in main.js). #}
+  {% macro kpi_chip(pct, good_when_up=true) %}
+  {% if pct is not none %}
+  {% set up = pct > 0 %}
+  {% set flat = pct|abs < 0.05 %}
+  <span class="kpi-chip kpi-chip-{{ 'flat' if flat else ('good' if up == good_when_up else 'bad') }}" title="vs previous period">{{ '→' if flat else ('↑' if up else '↓') }} {{ '%.1f'|format(pct|abs) }}%</span>
+  {% endif %}
+  {% endmacro %}
+
   {% macro status_badge(status) %}
   {% set map = {'Pending': 'pending', 'In Transit': 'transit', 'Partially Fulfilled': 'transit', 'Fulfilled': 'fulfilled', 'Rejected': 'rejected'} %}
   <span class="badge badge-{{ map.get(status, 'pending') }}">{{ status }}</span>

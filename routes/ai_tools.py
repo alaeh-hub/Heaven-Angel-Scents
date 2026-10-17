@@ -36,6 +36,7 @@ Schema notes (confirmed against schema.sql / routes/ai.py):
 from flask import current_app, url_for
 
 from db import query, transaction
+from finance import PACKAGE_DATE_SQL, cogs_sold
 from reports import DISCREPANCY_ITEM_JOIN, DISCREPANCY_UNITS_SQL, LOW_STOCK_WHERE
 from utils import BOTTLE_UNITS, ValidationError, bottle_size_ml
 
@@ -875,8 +876,9 @@ def _get_branch_performance(args, ctx):
 def _get_financials(args, ctx):
     """Business-level figures, same rules as the Dashboard / Reports page:
     revenue = register sales (HQ + branches) + Closed partner package
-    orders; cost of goods = SUM(cogs_logs.total_cogs); gross profit =
-    revenue - cost of goods. Rent, payroll etc. aren't tracked."""
+    orders; cost of goods sold = the production cost of what was sold or
+    shipped (finance.py); gross profit = revenue - cost of goods sold.
+    Rent, payroll etc. aren't tracked."""
     period = (args.get("period") or "this_month").strip()
     if period not in _PERIOD_TMPL:
         return {"error": f"period must be one of {PERIOD_NAMES}."}
@@ -886,13 +888,14 @@ def _get_financials(args, ctx):
     )["v"]
     pkg = query(
         "SELECT COUNT(*) AS n, COALESCE(SUM(order_amount), 0) AS v FROM partner_inquiries "
-        "WHERE status = 'Closed' AND " + _period_sql(period, "created_at"),
+        "WHERE status = 'Closed' AND " + _period_sql(period, "COALESCE(closed_at, created_at)"),
         fetchone=True,
     )
-    cogs = query(
+    produced = query(
         "SELECT COALESCE(SUM(total_cogs), 0) AS v FROM cogs_logs WHERE " + _period_sql(period, "created_at"),
         fetchone=True,
     )["v"]
+    cogs = cogs_sold(_period_sql(period, "s.sold_at"), _period_sql(period, PACKAGE_DATE_SQL))
     materials = query(
         "SELECT COALESCE(SUM(package_cost), 0) AS v FROM raw_materials WHERE " + _period_sql(period, "created_at"),
         fetchone=True,
@@ -900,7 +903,7 @@ def _get_financials(args, ctx):
     top_packages = query(
         "SELECT package_name_snapshot AS package, COUNT(*) AS orders, SUM(order_amount) AS revenue "
         "FROM partner_inquiries WHERE status = 'Closed' AND package_name_snapshot IS NOT NULL AND " +
-        _period_sql(period, "created_at") +
+        _period_sql(period, "COALESCE(closed_at, created_at)") +
         " GROUP BY package_name_snapshot ORDER BY revenue DESC LIMIT 5"
     )
     revenue = float(sales_rev) + float(pkg["v"])
@@ -910,14 +913,16 @@ def _get_financials(args, ctx):
         "package_revenue": float(pkg["v"]),
         "package_orders_closed": pkg["n"],
         "total_revenue": round(revenue, 2),
-        "cost_of_goods": float(cogs),
+        "cost_of_goods_sold": round(float(cogs), 2),
         "gross_profit": round(revenue - float(cogs), 2),
+        "cost_of_goods_produced": float(produced),
         "raw_materials_purchased": float(materials),
         "top_packages": [
             {"package": r["package"], "orders": r["orders"], "revenue": float(r["revenue"] or 0)}
             for r in top_packages
         ],
-        "note": "Package orders count as revenue only once Closed, dated by when the inquiry came in. "
+        "note": "Package orders count as revenue only once Closed, dated by when they were closed. "
+                "Gross profit subtracts the cost of goods sold, not the cost of goods produced in the period. "
                 "Gross profit doesn't subtract rent, payroll or other costs the system doesn't track.",
     }
 
@@ -1232,7 +1237,7 @@ _ADMIN_DECLARATIONS = [
     },
     {
         "name": "get_financials",
-        "description": "Business financials for a period, same rules as the Dashboard/Reports: sales revenue (HQ + branches), Closed package-order revenue, total revenue, cost of goods produced, gross profit, raw materials purchased, top packages.",
+        "description": "Business financials for a period, same rules as the Dashboard/Reports: sales revenue (HQ + branches), Closed package-order revenue, total revenue, cost of goods sold, gross profit, cost of goods produced (capital), raw materials purchased, top packages.",
         "parameters": {"type": "object", "properties": {
             "period": {"type": "string", "description": "One of " + PERIOD_NAMES + ". Defaults to this_month."},
         }},

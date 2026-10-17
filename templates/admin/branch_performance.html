@@ -32,29 +32,47 @@
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
-    <div class="stat-label">Combined revenue</div>
-    <div class="stat-value accent">{{ totals.revenue|peso }}</div>
-    <div class="stat-foot">branch sales, all-time</div>
+{% set top_branch = (rows|sort(attribute='revenue', reverse=true)|first) if rows else none %}
+<div class="kpi-grid stack">
+  <div class="card kpi-tile">
+    <div class="kpi-label">Combined revenue</div>
+    <div class="kpi-value" title="{{ totals.revenue|peso }}">{{ totals.revenue|compact_peso }}</div>
+    <div class="kpi-foot-link">branch sales, all-time</div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Combined bottles sold</div>
-    <div class="stat-value">{{ totals.units_sold|int }}</div>
-    <div class="stat-foot">across every retail branch{% if totals.bulk_ml_sold %} · + {{ totals.bulk_ml_sold|int }} mL bulk{% endif %}</div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Combined bottles sold</div>
+    <div class="kpi-value">{{ '{:,}'.format(totals.units_sold|int) }}</div>
+    <div class="kpi-foot-link">across every retail branch{% if totals.bulk_ml_sold %} · + {{ totals.bulk_ml_sold|int }} mL bulk{% endif %}</div>
   </div>
-  <div class="card stat-tile">
-    <div class="stat-label">Combined discrepancies</div>
-    <div class="stat-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.discrepancies') }}" class="text-soft">full breakdown →</a></div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Top branch</div>
+    <div class="kpi-value" style="font-size:1.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ top_branch.branch_name if top_branch else '—' }}</div>
+    <div class="kpi-meta">
+      {% if top_branch and totals.revenue|float %}
+      <span class="kpi-chip kpi-chip-good">{{ '%.1f'|format(top_branch.revenue|float / totals.revenue|float * 100) }}%</span>
+      <span class="kpi-note">of combined revenue</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card kpi-tile">
+    <div class="kpi-label">Combined discrepancies</div>
+    <div class="kpi-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.discrepancies') }}">full breakdown →</a></div>
   </div>
 </div>
 
-<div class="card chart-card">
-  <div class="card-header" style="padding:0 0 14px; border:none;">
+<div class="grid grid-2 stack">
+  <div class="card insight-card">
     <h2>Revenue by branch</h2>
+    <p class="insight-sub">Share of combined branch sales, all-time</p>
+    <div class="donut-wrap"><canvas id="bpRevenueChart"></canvas></div>
+    <div class="share-list" id="bpRevenueList"></div>
   </div>
-  <div class="chart-canvas-wrap"><canvas id="bpRevenueChart"></canvas></div>
+  <div class="card insight-card">
+    <h2>Bottles sold by branch</h2>
+    <p class="insight-sub">All-time, ranked</p>
+    <div class="chart-canvas-wrap" style="height:21rem;"><canvas id="bpUnitsChart"></canvas></div>
+  </div>
 </div>
 
 <div class="tabs">
@@ -143,51 +161,57 @@
 
     var branchNames = {{ rows | map(attribute='branch_name') | list | tojson }};
     var branchRevenue = {{ rows | map(attribute='revenue') | list | map('float') | list | tojson }};
+    var branchUnits = {{ rows | map(attribute='units_sold') | list | map('float') | list | tojson }};
 
-    // Reads a color straight off the theme so the chart repaints
-    // correctly whether the page loaded in dark (the default) or light.
-    function themeColor(name) {
-      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    }
+    applyChartDefaults();
+    var T = chartTheme();
+    var colors = T.series;
 
-    // Same validated, colorblind-safe categorical order as Reports'
-    // PALETTE (see admin/reports.html for the full rationale) \u2014 slot 1 is
-    // the theme's gold accent, the rest a fixed hue sequence so a chart
-    // with many branches still stays distinguishable at a glance.
-    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var PALETTE = (isDark
-      ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9']
-      : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']);
-
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = themeColor('--ink-soft');
-    Chart.defaults.borderColor = themeColor('--border');
-    Chart.defaults.maintainAspectRatio = false;
+    var allRevenueRows = branchNames.map(function (n, i) { return { name: n, value: branchRevenue[i] }; });
+    var revenueRows = topWithOther(allRevenueRows, 8);
+    colors = rowColors(revenueRows, colors, T.faint);
+    var totalRevenue = branchRevenue.reduce(function (a, b) { return a + b; }, 0);
 
     // Revenue by branch is a share of the combined total shown in the
-    // stat tile above, so a doughnut reads that relationship better
-    // than a bar ranking would \u2014 same reasoning as the other proportion
-    // breakdowns across Reports (units by variant, stock by branch, ...).
+    // tile above, so a doughnut (total in the middle, share list below)
+    // reads that relationship better than a bar ranking would.
     var chart = new Chart(canvas, {
       type: 'doughnut',
       data: {
-        labels: branchNames,
+        labels: revenueRows.map(function (r) { return r.name; }),
         datasets: [{
-          data: branchRevenue,
-          backgroundColor: branchNames.map(function (_, i) { return PALETTE[i % PALETTE.length]; }),
-          borderWidth: 0,
+          data: revenueRows.map(function (r) { return r.value; }),
+          backgroundColor: colors,
+          borderColor: T.surface, borderWidth: 2, hoverOffset: 4,
         }]
       },
       options: {
+        cutout: '68%',
         plugins: {
-          legend: { position: 'bottom' },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) {
-                return ctx.label + ': \u20b1' + Number(ctx.parsed).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              }
-            }
-          }
+          legend: { display: false },
+          donutCenter: { title: compactPeso(totalRevenue), subtitle: 'Total' },
+          tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.label + '  ' + fullPeso(ctx.parsed); } } }
+        }
+      }
+    });
+    renderShareList(document.getElementById('bpRevenueList'), revenueRows, colors, compactPeso);
+
+    var unitsCanvas = document.getElementById('bpUnitsChart');
+    // One row per branch: let the card grow with the number of branches
+    // instead of squeezing dozens of bars into a fixed height.
+    unitsCanvas.parentElement.style.height = Math.max(336, branchNames.length * 30 + 72) + 'px';
+    var unitsChart = new Chart(unitsCanvas, {
+      type: 'bar',
+      data: {
+        labels: branchNames,
+        datasets: [{ label: 'Bottles sold', data: branchUnits, backgroundColor: T.accent, maxBarThickness: 22 }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, border: { display: false }, grid: { color: T.grid }, ticks: { precision: 0 } },
+          y: { border: { display: false }, grid: { display: false } }
         }
       }
     });
@@ -197,8 +221,8 @@
     // sidebar/webfonts finish settling, and Chart.js never re-measures
     // it after that on its own. Re-running resize() once things have
     // actually settled corrects that without rebuilding the chart.
-    document.fonts.ready.then(function () { chart.resize(); });
-    window.addEventListener('load', function () { chart.resize(); });
+    document.fonts.ready.then(function () { chart.resize(); unitsChart.resize(); });
+    window.addEventListener('load', function () { chart.resize(); unitsChart.resize(); });
   })();
 </script>
 {% endblock %}

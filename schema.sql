@@ -749,6 +749,8 @@ CREATE TABLE IF NOT EXISTS partner_inquiries (
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _has_migrations_applied$$
+
 CREATE PROCEDURE _has_migrations_applied()
 BEGIN
     -- products.unit -----------------------------------------------------
@@ -926,6 +928,8 @@ DROP PROCEDURE _has_migrations_applied;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_stock_requests_to_multi_item$$
+
 CREATE PROCEDURE _migrate_stock_requests_to_multi_item()
 BEGIN
     DECLARE fk_name VARCHAR(128) DEFAULT NULL;
@@ -994,6 +998,8 @@ DROP PROCEDURE _migrate_stock_requests_to_multi_item;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_partner_inquiry_rollup$$
+
 CREATE PROCEDURE _migrate_partner_inquiry_rollup()
 BEGIN
     IF NOT EXISTS (
@@ -1047,6 +1053,8 @@ SET p.inquiry_count = COALESCE(agg.cnt, 0),
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_partner_inquiry_order_amount$$
+
 CREATE PROCEDURE _migrate_partner_inquiry_order_amount()
 BEGIN
     IF NOT EXISTS (
@@ -1089,6 +1097,8 @@ WHERE pinq.order_amount IS NULL;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_raw_materials_stock_qty$$
+
 CREATE PROCEDURE _migrate_raw_materials_stock_qty()
 BEGIN
     IF NOT EXISTS (
@@ -1120,6 +1130,8 @@ DROP PROCEDURE _migrate_raw_materials_stock_qty;
 --     Guarded and re-run-safe like every other step in this file.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_drop_material_usage_cost_columns$$
 
 CREATE PROCEDURE _migrate_drop_material_usage_cost_columns()
 BEGIN
@@ -1167,6 +1179,8 @@ DROP TABLE IF EXISTS capital_contributions;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_partner_inquiries_remarks_and_status$$
+
 CREATE PROCEDURE _migrate_partner_inquiries_remarks_and_status()
 BEGIN
     IF NOT EXISTS (
@@ -1207,6 +1221,8 @@ DROP PROCEDURE _migrate_partner_inquiries_remarks_and_status;
 --     still being marked Individual.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_raw_materials_purchase_mode_and_receipt$$
 
 CREATE PROCEDURE _migrate_raw_materials_purchase_mode_and_receipt()
 BEGIN
@@ -1401,6 +1417,8 @@ CREATE TABLE IF NOT EXISTS login_activity (
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_material_usage_logs_cogs_log_id$$
+
 CREATE PROCEDURE _migrate_material_usage_logs_cogs_log_id()
 BEGIN
     IF NOT EXISTS (
@@ -1448,6 +1466,8 @@ DROP PROCEDURE _migrate_material_usage_logs_cogs_log_id;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_product_formula_items_to_unit_formula_items$$
+
 CREATE PROCEDURE _migrate_product_formula_items_to_unit_formula_items()
 BEGIN
     IF EXISTS (
@@ -1488,6 +1508,8 @@ DROP PROCEDURE _migrate_product_formula_items_to_unit_formula_items;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_drop_raw_materials_stock_qty$$
+
 CREATE PROCEDURE _migrate_drop_raw_materials_stock_qty()
 BEGIN
     IF EXISTS (
@@ -1520,6 +1542,8 @@ DROP PROCEDURE _migrate_drop_raw_materials_stock_qty;
 --     Guarded and re-run-safe like every other step in this file.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_unit_formula_items_unit_cost$$
 
 CREATE PROCEDURE _migrate_unit_formula_items_unit_cost()
 BEGIN
@@ -1558,6 +1582,8 @@ DROP PROCEDURE _migrate_unit_formula_items_unit_cost;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_unit_formula_items_unit_cost_to_line_cost$$
+
 CREATE PROCEDURE _migrate_unit_formula_items_unit_cost_to_line_cost()
 BEGIN
     IF EXISTS (
@@ -1592,6 +1618,8 @@ DROP PROCEDURE _migrate_unit_formula_items_unit_cost_to_line_cost;
 --     no-op on a database that never had either column.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_remove_refill_cogs_feature$$
 
 CREATE PROCEDURE _migrate_remove_refill_cogs_feature()
 BEGIN
@@ -1635,15 +1663,27 @@ DROP PROCEDURE _migrate_remove_refill_cogs_feature;
 --     'REFILL' above). Guarded and re-run-safe like every other step
 --     in this file — a no-op on a fresh install, which already gets
 --     70ML straight from the CREATE TABLE statements above.
+--
+--     Re-run safety (migrations 30 and 31): migration 34 below later
+--     narrows both unit ENUMs to the sizes the app supports today (BULK
+--     added to products). A database that has already been through 34
+--     therefore no longer contains '70ML'/'55ML', so "does the column
+--     mention 70ML?" alone would wrongly say "not migrated yet" on every
+--     re-run and try to widen back to a list that has no 'BULK'/'3ML' —
+--     failing with error 1265 as soon as a Bulk product exists. So these
+--     steps also skip when the column is already in its post-34 form.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_add_70ml_unit$$
 
 CREATE PROCEDURE _migrate_add_70ml_unit()
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'products'
-              AND column_name = 'unit' AND column_type LIKE '%70ML%'
+              AND column_name = 'unit'
+              AND (column_type LIKE '%70ML%' OR column_type LIKE '%BULK%')
     ) THEN
         ALTER TABLE products
             MODIFY COLUMN unit ENUM('85ML', '70ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
@@ -1653,7 +1693,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items'
-              AND column_name = 'unit' AND column_type LIKE '%70ML%'
+              AND column_name = 'unit'
+              AND (column_type LIKE '%70ML%' OR column_type = "enum('85ML','50ML','10ML','3ML')")
     ) THEN
         ALTER TABLE unit_formula_items
             MODIFY COLUMN unit ENUM('85ML', '70ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL;
@@ -1680,12 +1721,15 @@ DROP PROCEDURE _migrate_add_70ml_unit;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_add_55ml_unit$$
+
 CREATE PROCEDURE _migrate_add_55ml_unit()
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'products'
-              AND column_name = 'unit' AND column_type LIKE '%55ML%'
+              AND column_name = 'unit'
+              AND (column_type LIKE '%55ML%' OR column_type LIKE '%BULK%')
     ) THEN
         ALTER TABLE products
             MODIFY COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester')
@@ -1695,7 +1739,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'unit_formula_items'
-              AND column_name = 'unit' AND column_type LIKE '%55ML%'
+              AND column_name = 'unit'
+              AND (column_type LIKE '%55ML%' OR column_type = "enum('85ML','50ML','10ML','3ML')")
     ) THEN
         ALTER TABLE unit_formula_items
             MODIFY COLUMN unit ENUM('85ML', '70ML', '55ML', '50ML', '1L', '100ML', '10ML', '3ML Tester') NOT NULL;
@@ -1719,6 +1764,8 @@ DROP PROCEDURE _migrate_add_55ml_unit;
 --     above.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_add_freebie$$
 
 CREATE PROCEDURE _migrate_add_freebie()
 BEGIN
@@ -1776,6 +1823,8 @@ DELETE FROM unit_formula_items WHERE unit = '1L';
 --     right failure mode here.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_bulk_refill_category$$
 
 CREATE PROCEDURE _migrate_bulk_refill_category()
 BEGIN
@@ -1835,6 +1884,8 @@ INSERT IGNORE INTO bulk_rate_settings (id, rate_per_ml) VALUES (1, 0.0000);
 --     history to subtract yet, since the feature starts here.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_raw_materials_stock_qty_v2$$
 
 CREATE PROCEDURE _migrate_raw_materials_stock_qty_v2()
 BEGIN
@@ -1955,6 +2006,8 @@ CREATE TABLE IF NOT EXISTS bulk_batch_materials (
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_cogs_logs_bulk_batch_id$$
+
 CREATE PROCEDURE _migrate_cogs_logs_bulk_batch_id()
 BEGIN
     IF NOT EXISTS (
@@ -2043,6 +2096,8 @@ INSERT IGNORE INTO unit_cogs_settings (unit, base_cost_per_unit) VALUES
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_qty_used_unit_and_stock_precision$$
+
 CREATE PROCEDURE _migrate_qty_used_unit_and_stock_precision()
 BEGIN
     IF NOT EXISTS (
@@ -2084,6 +2139,8 @@ DROP PROCEDURE _migrate_qty_used_unit_and_stock_precision;
 --     safe like every other step in this file.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_partner_inquiries_preferred_contact$$
 
 CREATE PROCEDURE _migrate_partner_inquiries_preferred_contact()
 BEGIN
@@ -2135,6 +2192,8 @@ CREATE TABLE IF NOT EXISTS partner_inquiry_items (
 );
 
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_package_order_fulfillment$$
 
 CREATE PROCEDURE _migrate_package_order_fulfillment()
 BEGIN
@@ -2218,6 +2277,8 @@ CREATE TABLE IF NOT EXISTS sale_voids (
 
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_refill_bulk_and_sale_void$$
+
 CREATE PROCEDURE _migrate_refill_bulk_and_sale_void()
 BEGIN
     IF NOT EXISTS (
@@ -2279,6 +2340,8 @@ DROP PROCEDURE _migrate_refill_bulk_and_sale_void;
 -- ----------------------------------------------------------------------------
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS _migrate_bulk_batches_target_unit$$
+
 CREATE PROCEDURE _migrate_bulk_batches_target_unit()
 BEGIN
     IF NOT EXISTS (
@@ -2338,6 +2401,8 @@ UPDATE products SET unit = 'BULK' WHERE category = 'Bulk/Refill' AND unit <> 'BU
 --     leaderboard reflects what's still outstanding.
 -- ----------------------------------------------------------------------------
 DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_sales_credit_settled$$
 
 CREATE PROCEDURE _migrate_sales_credit_settled()
 BEGIN
@@ -2493,3 +2558,42 @@ DELIMITER ;
 
 CALL _migrate_products_remove_unisex_variant();
 DROP PROCEDURE _migrate_products_remove_unisex_variant;
+
+-- ----------------------------------------------------------------------------
+-- 49. Migration — stats performance + package orders dated by close
+--
+--     * sales.sold_at gets its own index: the existing (branch_id, sold_at)
+--       index can't serve the all-branches "last N days" queries behind the
+--       dashboard and Reports charts, which scanned the whole table.
+--     * partner_inquiries.closed_at is when an order became Closed (set by
+--       the status change in admin.partner_inquiry_status). Package revenue
+--       is dated by it instead of by when the inquiry came in. Existing
+--       Closed rows are backfilled from fulfilled_at, else created_at.
+-- ----------------------------------------------------------------------------
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS _migrate_stats_indexes_and_closed_at$$
+
+CREATE PROCEDURE _migrate_stats_indexes_and_closed_at()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND table_name = 'sales' AND index_name = 'idx_sales_sold_at'
+    ) THEN
+        ALTER TABLE sales ADD INDEX idx_sales_sold_at (sold_at);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'partner_inquiries' AND column_name = 'closed_at'
+    ) THEN
+        ALTER TABLE partner_inquiries ADD COLUMN closed_at DATETIME NULL AFTER fulfilled_by_user_id;
+        UPDATE partner_inquiries SET closed_at = COALESCE(fulfilled_at, created_at) WHERE status = 'Closed';
+        ALTER TABLE partner_inquiries ADD INDEX idx_partner_inquiries_closed (closed_at);
+    END IF;
+END$$
+
+DELIMITER ;
+
+CALL _migrate_stats_indexes_and_closed_at();
+DROP PROCEDURE _migrate_stats_indexes_and_closed_at;
