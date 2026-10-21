@@ -45,6 +45,18 @@ def _current_account_or_none():
     )
 
 
+def live_account_or_none():
+    """The signed-in account if its session is still valid right now, else
+    None — same active / password-fingerprint checks as _require_session(),
+    for JSON endpoints that must answer 401 instead of redirecting."""
+    account = _current_account_or_none()
+    if account is None or not account["is_active"]:
+        return None
+    if session.get("pwv") != password_fingerprint(account["password_hash"]):
+        return None
+    return account
+
+
 def _require_session(required_role=None):
     """Shared gate used by all three decorators below.
 

@@ -10,6 +10,7 @@ from flask_wtf import CSRFProtect
 import db
 import utils
 from config import CONFIG_BY_ENV, INSECURE_DEFAULT_SECRET_KEY
+from decorators import live_account_or_none
 from extensions import limiter, socketio, socketio_cors_is_wildcard
 
 
@@ -246,18 +247,24 @@ def create_app():
         # only place that sets it.
         return {"show_login_splash": session.pop("show_login_splash", False)}
 
-    def today_sales_summary():
+    def today_sales_summary(account=None):
         """Today's sales for the top bar chip — the signed-in branch's own,
         or every branch's for an admin. Same revenue formula as the branch
         dashboard (qty x unit price, voids already deleted), with the trend
-        compared against yesterday up to this same time of day."""
+        compared against yesterday up to this same time of day.
+
+        Pass `account` (a live users row, see decorators.live_account_or_none)
+        to scope by the database's current role/branch instead of the
+        session's login-time copy."""
         if "user_id" not in session:
             return None
-        role = session.get("role")
+        role = account["role"] if account else session.get("role")
+        branch_id = account["branch_id"] if account else session.get("branch_id")
+        branch_name = account["branch_name"] if account else session.get("branch_name")
         if role == "Admin":
             scope_sql, params = "", ()
-        elif role == "Branch" and session.get("branch_id"):
-            scope_sql, params = " AND branch_id = %s", (session["branch_id"],)
+        elif role == "Branch" and branch_id:
+            scope_sql, params = " AND branch_id = %s", (branch_id,)
         else:
             return None
         today = db.query(
@@ -279,7 +286,7 @@ def create_app():
             "revenue_compact": utils.compact_peso(revenue),
             "count": int(today["sale_count"]),
             "trend": utils.percent_change(revenue, yesterday["revenue"]),
-            "scope": "all branches" if role == "Admin" else (session.get("branch_name") or "your branch"),
+            "scope": "all branches" if role == "Admin" else (branch_name or "your branch"),
         }
 
     @app.context_processor
@@ -292,7 +299,11 @@ def create_app():
 
     @app.route("/api/today-sales")
     def api_today_sales():
-        summary = today_sales_summary()
+        # Re-check the account against the database like @login_required
+        # does, so a deactivated or demoted user stops getting revenue
+        # figures immediately instead of when their cookie expires.
+        account = live_account_or_none()
+        summary = today_sales_summary(account) if account else None
         if summary is None:
             return {"error": "not signed in"}, 401
         return summary

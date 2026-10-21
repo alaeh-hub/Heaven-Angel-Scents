@@ -26,7 +26,11 @@ services:
     volumes:
       - dbdata:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      test:
+        [
+          "CMD-SHELL",
+          "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -uroot --silent",
+        ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -114,8 +118,8 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
       - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

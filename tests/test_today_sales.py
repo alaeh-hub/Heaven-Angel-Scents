@@ -61,6 +61,37 @@ def test_today_sales_requires_sign_in(client):
     assert client.get("/api/today-sales").status_code == 401
 
 
+def test_today_sales_rejects_deactivated_user_with_live_session(client, sql):
+    branch_id = make_branch(sql)
+    user = make_user(sql, role="Branch", branch_id=branch_id)
+    login(client, user["username"], user["password"], "Branch")
+    assert client.get("/api/today-sales").status_code == 200
+
+    cur = sql.cursor()
+    cur.execute("UPDATE users SET is_active = FALSE WHERE user_id = %s", (user["user_id"],))
+    sql.commit()
+    cur.close()
+
+    assert client.get("/api/today-sales").status_code == 401
+
+
+def test_today_sales_uses_current_role_not_login_time_role(client, sql):
+    branch_id = make_branch(sql)
+    sku = make_product(sql)
+    _insert_sale(sql, branch_id, sku, 1, "100.00")
+    admin = make_user(sql, role="Admin")
+    login(client, admin["username"], admin["password"], "Admin")
+
+    cur = sql.cursor()
+    cur.execute("UPDATE users SET role = 'Branch', branch_id = %s WHERE user_id = %s",
+                (branch_id, admin["user_id"]))
+    sql.commit()
+    cur.close()
+
+    data = client.get("/api/today-sales").get_json()
+    assert data["scope"] != "all branches"
+
+
 def test_compact_amounts():
     assert compact_peso(0) == "₱0"
     assert compact_peso(850) == "₱850"
