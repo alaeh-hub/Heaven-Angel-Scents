@@ -19,14 +19,13 @@ from db import TransactionAborted, execute, get_db, query, transaction
 from decorators import admin_required
 from audit import log_action
 import backup_jobs
-from backup import (RestoreError, TooLargeError, build_backup_zip, prepare_restore, restore_uploads,
-                    run_restore, save_safety_backup)
+from backup import RestoreError, prepare_restore, restore_uploads, run_restore, save_safety_backup
 from backup_jobs import ALLOWED_DAYS
 from backup_jobs import backup_lock as _backup_lock
 from backup_jobs import backup_state as _backup_state
 from backup_jobs import run_backup_job as _backup_job
 from extensions import limiter
-from mailer import backup_email_configured, backup_recipient, send_backup_email
+from mailer import backup_email_configured, backup_recipient
 import login_activity
 from finance import PACKAGE_DATE_SQL, UNIT_COST_SQL, cogs_sold
 from receipts import build_receipt_pdf, build_sale_receipt_pdf
@@ -2446,7 +2445,7 @@ _restore_lock = threading.Lock()
 _upload_lock = threading.Lock()
 _upload = {"path": None, "received": 0, "total": 0, "user": None}
 _restore_state = {"running": False, "phase": "", "error": None, "done": False, "summary": ""}
-backup_jobs.restore_running = lambda: _restore_state["running"]
+backup_jobs.set_restore_probe(lambda: _restore_state["running"])
 _RESTORE_PHRASE = "RESTORE"
 _RESTORE_MAX_BYTES = 250 * 1024 * 1024
 

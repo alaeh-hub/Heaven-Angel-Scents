@@ -29,7 +29,17 @@ from utils import business_now
 
 backup_lock = threading.Lock()          # held for the whole of a backup
 backup_state = {"phase": ""}            # what the running backup is doing
-restore_running = lambda: False         # replaced by routes/admin.py
+_restore_probe = None                  # set by routes/admin.py (see set_restore_probe)
+
+
+def set_restore_probe(fn):
+    """Lets routes/admin.py tell the scheduler when a restore is running."""
+    global _restore_probe
+    _restore_probe = fn
+
+
+def restore_running():
+    return bool(_restore_probe and _restore_probe())
 
 AUTO_ACTOR = "Automatic backup"
 ALLOWED_DAYS = (7, 15, 30)
