@@ -113,3 +113,56 @@ better to find out on a Tuesday afternoon than during an actual outage.
 | Date | Backup tested | Result | Notes |
 |---|---|---|---|
 | _(none yet)_ | | | |
+
+## Emailed backup (Settings -> Backup)
+
+Admins can press **Email backup now** in the sidebar's Settings dialog. It
+builds one `.zip` and emails it over the same SMTP account the partner
+inquiries use (to `BACKUP_NOTIFY_EMAIL`, or `PARTNER_INQUIRY_NOTIFY_EMAIL` if
+that is blank):
+
+- `database.sql` - full restore script (`mysql -u <user> -p <db> < database.sql`)
+- `csv/<table>.csv` - every table as a spreadsheet-friendly file
+- `uploads/` - product photos
+- `MANIFEST.txt` - timestamp, row counts, restore steps
+
+It is a consistent snapshot (one REPEATABLE READ transaction) and does not
+block the live app. If the zip would exceed `BACKUP_EMAIL_MAX_MB` (default 18)
+the photos, then the CSVs, are dropped; if `database.sql` alone is too big, use
+`scripts/backup_db.sh` instead. Each attempt is recorded in the Admin Log.
+
+The zip contains customer details and password hashes and is **not
+encrypted** - treat that mailbox accordingly. This does not replace the
+nightly off-server copy described above; it is the quick "give me a copy now".
+
+### Restoring one (Settings -> Backup -> Restore from a backup)
+
+Choose the `.zip` from Email backup, enter your password and type `RESTORE`.
+The whole file is validated first (only the statements this app writes are
+accepted - anything else is refused); then a safety copy of the *current*
+data is written to `backups/before-restore-<stamp>.zip`; then every table in
+the backup is dropped and recreated with the backup's data, and the product
+photos are copied back. Everyone is held on a "restore in progress" page
+while it runs, and you are signed out at the end (your account is whatever
+the backup says it was). Tables that exist now but not in the backup are
+left alone. Backups made by `scripts/backup_db.sh` (mysqldump `.sql.gz`) are
+not accepted here - restore those with `scripts/restore_db.sh`.
+
+### Reminders and automatic backups (Settings -> Backup)
+
+How often should you back up? **Weekly is the safe choice** for a shop that records sales every day:
+a month-old backup can mean losing a month of sales if the server dies. Every 15 days is the
+minimum we would suggest; monthly only for very low activity. The choices are Week / 15 days / Month
+(default 15 days).
+
+- **Reminder (always on):** once the newest successful backup is that many calendar days old (or there
+  has never been one), admins see a banner above every page - **Back up now**, **Make it automatic**,
+  or the x to be reminded again tomorrow - and a red dot on the sidebar's Settings button. It disappears
+  as soon as a backup succeeds. If automatic backups are on but failing, the banner says why.
+- **Automatic backups (opt-in):** turn on "Back up automatically and email it to me" and pick an hour.
+  A background thread in the app checks every 5 minutes; when a backup is due and the hour has been
+  reached it builds and emails the same zip as the manual button, logged in the Admin Log as
+  "Automatic backup". A manual backup restarts the count. A failed automatic attempt is retried after 6
+  hours. A MySQL advisory lock stops two workers running the same backup. Needs mail configured and the
+  app running at that hour (use `BACKUP_SCHEDULER=0` to disable the thread in a given process).
+- The schedule lives in the `app_settings` table, which (like the Admin Log) is kept when you restore.

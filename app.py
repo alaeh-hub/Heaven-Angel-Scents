@@ -348,6 +348,14 @@ def create_app():
             app.logger.exception("Failed to compute sidebar task-count badges")
         return {}
 
+    # Scheduled backups (Settings -> Backup): one background thread per
+    # process. Skipped for tests, for the dev reloader's parent process,
+    # and when BACKUP_SCHEDULER=0.
+    if (os.environ.get("BACKUP_SCHEDULER", "1") != "0" and not app.testing
+            and not (app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true")):
+        import backup_jobs
+        backup_jobs.start_scheduler(app)
+
     return app
 
 

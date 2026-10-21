@@ -423,7 +423,7 @@
 <div id="importSalesOverlay" class="rs-dialog" role="dialog" aria-modal="true" aria-labelledby="importSalesOverlayTitle" style="display:none;">
 <div class="card card-pad rs-dialog-panel is-narrow">
   <div class="rs-dialog-head">
-    <h2 id="importSalesOverlayTitle">Import from Excel</h2>
+    <h2 id="importSalesOverlayTitle">Upload from Excel</h2>
     <button type="button" class="btn btn-ghost btn-sm" id="importSalesCloseBtn" aria-label="Close">✕</button>
   </div>
   <p class="text-faint" style="font-size:12.5px; margin: 0 0 16px;">
@@ -441,7 +441,7 @@
       <input type="file" id="import_file" name="import_file" accept=".xlsx" required>
       <div class="help">Only SKUs already stocked at this branch can be imported — see the "Products (reference)" sheet in the template.</div>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%;">Import sales</button>
+    <button type="submit" class="btn btn-accent" style="width:100%;">Upload sales</button>
   </form>
 </div>
 </div>
@@ -452,8 +452,8 @@
     <div class="rs-header-actions">
       <span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if recent_sales|length != 1 }} · <a
         href="{{ url_for('branch.sales_history') }}" class="text-soft">full history →</a></span>
-      <button type="button" class="btn btn-ghost btn-sm" id="openImportSalesBtn">Import from Excel</button>
-      <button type="button" class="btn btn-accent btn-sm" id="openNewSaleBtn">+ New sale</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="openImportSalesBtn">Upload from Excel</button>
+      <button type="button" class="btn btn-accent btn-sm" id="openNewSaleBtn">New sale</button>
     </div>
   </div>
   {% if recent_sales %}

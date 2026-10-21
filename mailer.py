@@ -409,3 +409,61 @@ def send_partner_inquiry_email(
         current_app.logger.exception(
             "Failed to send partner inquiry email for %s", company_name)
         return False
+
+
+def backup_recipient(cfg):
+    """Where backups go: BACKUP_NOTIFY_EMAIL if set, otherwise the same
+    HQ inbox the partner-inquiry notifications use."""
+    return cfg.get("BACKUP_NOTIFY_EMAIL") or cfg.get("PARTNER_INQUIRY_NOTIFY_EMAIL") or ""
+
+
+def backup_email_configured(cfg):
+    return bool(cfg.get("MAIL_SERVER") and cfg.get("MAIL_DEFAULT_SENDER") and backup_recipient(cfg))
+
+
+def send_backup_email(*, zip_bytes, filename, subject, body):
+    """Email a backup .zip to HQ. Returns (True, None) or (False, reason).
+
+    Same SMTP settings as the inquiry notifications; a longer timeout
+    because the attachment can be several MB. Never raises.
+    """
+    cfg = current_app.config
+    if not backup_email_configured(cfg):
+        return False, "Email isn't set up (MAIL_SERVER, MAIL_DEFAULT_SENDER and a recipient are required)."
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = cfg["MAIL_DEFAULT_SENDER"]
+        msg["To"] = backup_recipient(cfg)
+        msg.set_content(body)
+        msg.add_attachment(zip_bytes, maintype="application", subtype="zip", filename=filename)
+        last_error = None
+        for attempt in range(1, _SEND_ATTEMPTS + 1):
+            try:
+                with smtplib.SMTP(cfg["MAIL_SERVER"], cfg.get("MAIL_PORT", 587), timeout=90) as smtp:
+                    if cfg.get("MAIL_USE_TLS", True):
+                        smtp.starttls()
+                    if cfg.get("MAIL_USERNAME") and cfg.get("MAIL_PASSWORD"):
+                        smtp.login(cfg["MAIL_USERNAME"], cfg["MAIL_PASSWORD"])
+                    smtp.send_message(msg)
+                return True, None
+            except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
+                    smtplib.SMTPHeloError, ConnectionError, TimeoutError, OSError) as exc:
+                last_error = exc
+                if attempt < _SEND_ATTEMPTS:
+                    time.sleep(_RETRY_DELAY_SECONDS)
+        raise last_error
+    except smtplib.SMTPAuthenticationError:
+        current_app.logger.exception("Backup email: SMTP login rejected")
+        return False, "The mail server rejected the login (check MAIL_USERNAME / MAIL_PASSWORD)."
+    except smtplib.SMTPServerDisconnected:
+        current_app.logger.exception("Backup email: server closed the connection")
+        return False, ("The mail server hung up while signing in. Check the Gmail App Password in .env "
+                       "(16 letters, from Google Account > Security > App passwords), that "
+                       "MAIL_PORT=587 with MAIL_USE_TLS=1, and that antivirus/firewall isn't blocking SMTP.")
+    except smtplib.SMTPDataError:
+        current_app.logger.exception("Backup email: message refused")
+        return False, "The mail server refused the message (the attachment is probably too large)."
+    except Exception as exc:
+        current_app.logger.exception("Failed to send backup email")
+        return False, "Could not send the email (%s)." % type(exc).__name__

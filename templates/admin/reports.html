@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Reports{% endblock %}
 {% block eyebrow %}Organization{% endblock %}
 {% block heading %}Reports{% endblock %}
@@ -364,17 +365,161 @@
   </div>
 </div>
 
-<div class="grid grid-2 stack">
+<div class="grid grid-1 stack">
   <div class="card insight-card">
     <h2>Revenue vs. Capital</h2>
     <p class="insight-sub">cost of goods vs. raw materials bought vs. revenue earned, all-time</p>
     <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
   </div>
-  <div class="card insight-card">
-    <h2>Current stock by branch</h2>
-    <p class="insight-sub">Bottles on hand</p>
-    <div class="donut-wrap"><canvas id="stockChart"></canvas></div>
-    <div class="share-list" id="stockList"></div>
+</div>
+
+<div class="stack">
+  <h2 style="font-size:16.5px; margin-bottom: 4px;">Rankings</h2>
+  <p class="text-faint" style="font-size:12.5px; margin:0;">All-time leaders &mdash; best-selling items, package orders and partners.</p>
+</div>
+
+<div class="card stack">
+  <div class="card-header">
+    <h2>Top sellers</h2>
+    <span class="hint">all-time · by units sold</span>
+  </div>
+  {% if top_sellers %}
+  <div class="table-wrap">
+    <table class="table-fixed">
+      <colgroup>
+        <col style="width:40px">
+        <col style="width:46%">
+        <col style="width:27%">
+        <col style="width:27%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Item</th>
+          <th class="num">Units sold</th>
+          <th class="num">Revenue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in top_sellers %}
+        <tr>
+          <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+          <td data-label="Item">
+            <div class="item-name-row"><span class="item-name">{{ p.item_name }}</span>{{ m.variant_tag(p.variant) }}
+            </div>
+          </td>
+          <td class="num mono" data-label="Units sold">{{ p.total_units }}</td>
+          <td class="num mono" data-label="Revenue">{{ p.total_revenue|peso }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="glyph">—</div>
+    <p>No sales recorded yet.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid grid-2 stack">
+  <div class="card">
+    <div class="card-header">
+      <h2>Top packages</h2>
+      <span class="hint"><a href="{{ url_for('admin.packages') }}" class="text-soft">all packages →</a></span>
+    </div>
+    {% if top_packages %}
+    <div class="table-wrap">
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:40px">
+          <col style="width:48%">
+          <col style="width:26%">
+          <col style="width:26%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Package</th>
+            <th class="num">Orders</th>
+            <th class="num">Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in top_packages %}
+          <tr>
+            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td class="item-name" data-label="Package">{{ pkg.package_name }}</td>
+            <td class="num mono" data-label="Orders">{{ pkg.order_count }}</td>
+            <td class="num mono" data-label="Revenue">{{ pkg.total_revenue|peso }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Only inquiries marked Closed count as an order here — a New or
+        Contacted lead hasn't converted yet.</p>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="glyph">—</div>
+      <p>No closed package orders yet.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Top distributors &amp; resellers</h2>
+      <span class="hint"><a href="{{ url_for('admin.partners') }}" class="text-soft">all partners →</a></span>
+    </div>
+    {% if top_partners %}
+    <div class="table-wrap">
+      <table class="table-fixed">
+        <colgroup>
+          <col style="width:56px">
+          <col style="width:30%">
+          <col style="width:28%">
+          <col style="width:16%">
+          <col style="width:26%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Partner</th>
+            <th>Type</th>
+            <th class="num">Orders</th>
+            <th class="num">Total sales</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in top_partners %}
+          <tr>
+            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td data-label="Partner"><a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}"
+                class="item-name">{{ p.partner_name }}</a></td>
+            <td data-label="Type"><span
+                class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type
+                }}</span></td>
+            <td class="num mono" data-label="Orders">{{ p.order_count }}</td>
+            <td class="num mono" data-label="Total sales">{{ p.total_spent|peso }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 4px 22px 18px;">
+      <p class="text-faint" style="font-size:12px;">Total sales counts Closed package orders only, same rule as Top
+        packages.</p>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="glyph">—</div>
+      <p>No closed package orders yet.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -634,11 +779,6 @@
         donut('variantChart', 'variantList', variants,
           variants.reduce((a, c) => a + c.value, 0).toLocaleString(), 'Bottles',
           (v) => Number(v).toLocaleString(), [T.accent, T.cream]);
-
-        const stock = data.stock_by_branch.map(d => ({ name: d.branch_name, value: Number(d.total_stock) }));
-        donut('stockChart', 'stockList', stock,
-          stock.reduce((a, c) => a + c.value, 0).toLocaleString(), 'In stock',
-          (v) => Number(v).toLocaleString());
 
         // Units by branch: smooth area line.
         charts.branchSales = new Chart(document.getElementById('branchSalesChart'), {

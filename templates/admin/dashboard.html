@@ -28,7 +28,7 @@
   </div>
 </div>
 
-<div class="kpi-grid stack">
+<div class="kpi-grid kpi-grid-2 stack">
   <div class="card kpi-tile">
     <div class="kpi-label">Total revenue</div>
     <div class="kpi-value">{{ financials.revenue|compact_peso }}</div>
@@ -47,18 +47,6 @@
       <span class="kpi-note">{{ 'revenue minus cost of goods sold' if financials.profit >= 0 else 'running at a loss' }}</span>
     </div>
     <div class="kpi-spark" data-spark="{{ financials.spark_profit|tojson|forceescape }}" data-tone="profit"></div>
-  </div>
-  <div class="card kpi-tile">
-    <div class="kpi-label">Total capital</div>
-    <div class="kpi-value">{{ financials.capital|compact_peso }}</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('admin.production') }}">cost of goods produced →</a></div>
-    <div class="kpi-spark" data-spark="{{ financials.spark_cost|tojson|forceescape }}" data-tone="cost"></div>
-  </div>
-  <div class="card kpi-tile">
-    <div class="kpi-label">Raw materials bought</div>
-    <div class="kpi-value">{{ financials.raw_materials_purchased|compact_peso }}</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('admin.materials') }}">for comparison →</a></div>
-    <div class="kpi-spark" data-spark="{{ financials.spark_raw|tojson|forceescape }}" data-tone="cream"></div>
   </div>
 </div>
 
@@ -154,36 +142,31 @@
 
 <div class="card stack">
   <div class="card-header">
-    <h2>Top sellers</h2>
-    <span class="hint">all-time · by units sold</span>
+    <h2>Stock on hand by branch</h2>
+    <a href="{{ url_for('admin.low_stock') }}" class="hint">inventory →</a>
   </div>
-  {% if top_sellers %}
+  {% if stock_by_branch %}
+  {% set max_stock = stock_by_branch|map(attribute='total_stock')|map('int')|max or 1 %}
   <div class="table-wrap">
     <table class="table-fixed">
       <colgroup>
-        <col style="width:40px">
-        <col style="width:46%">
-        <col style="width:27%">
-        <col style="width:27%">
+        <col style="width:30%">
+        <col style="width:50%">
+        <col style="width:20%">
       </colgroup>
       <thead>
         <tr>
-          <th></th>
-          <th>Item</th>
-          <th class="num">Units sold</th>
-          <th class="num">Revenue</th>
+          <th>Branch</th>
+          <th>Share of the busiest branch</th>
+          <th class="num">Bottles</th>
         </tr>
       </thead>
       <tbody>
-        {% for p in top_sellers %}
+        {% for b in stock_by_branch %}
         <tr>
-          <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-          <td data-label="Item">
-            <div class="item-name-row"><span class="item-name">{{ p.item_name }}</span>{{ m.variant_tag(p.variant) }}
-            </div>
-          </td>
-          <td class="num mono" data-label="Units sold">{{ p.total_units }}</td>
-          <td class="num mono" data-label="Revenue">{{ p.total_revenue|peso }}</td>
+          <td class="item-name" data-label="Branch">{{ b.branch_name }}</td>
+          <td data-label="Share">{{ m.fill_bar(b.total_stock|int, max_stock) }}</td>
+          <td class="num mono" data-label="Bottles">{{ b.total_stock|int }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -192,109 +175,9 @@
   {% else %}
   <div class="empty-state">
     <div class="glyph">—</div>
-    <p>No sales recorded yet.</p>
+    <p>No branches are carrying stock yet.</p>
   </div>
   {% endif %}
-</div>
-
-<div class="grid grid-2 stack">
-  <div class="card">
-    <div class="card-header">
-      <h2>Top packages</h2>
-      <span class="hint"><a href="{{ url_for('admin.packages') }}" class="text-soft">all packages →</a></span>
-    </div>
-    {% if top_packages %}
-    <div class="table-wrap">
-      <table class="table-fixed">
-        <colgroup>
-          <col style="width:40px">
-          <col style="width:48%">
-          <col style="width:26%">
-          <col style="width:26%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Package</th>
-            <th class="num">Orders</th>
-            <th class="num">Revenue</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for pkg in top_packages %}
-          <tr>
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-            <td class="item-name" data-label="Package">{{ pkg.package_name }}</td>
-            <td class="num mono" data-label="Orders">{{ pkg.order_count }}</td>
-            <td class="num mono" data-label="Revenue">{{ pkg.total_revenue|peso }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Only inquiries marked Closed count as an order here — a New or
-        Contacted lead hasn't converted yet.</p>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">—</div>
-      <p>No closed package orders yet.</p>
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <h2>Top distributors &amp; resellers</h2>
-      <span class="hint"><a href="{{ url_for('admin.partners') }}" class="text-soft">all partners →</a></span>
-    </div>
-    {% if top_partners %}
-    <div class="table-wrap">
-      <table class="table-fixed">
-        <colgroup>
-          <col style="width:56px">
-          <col style="width:30%">
-          <col style="width:28%">
-          <col style="width:16%">
-          <col style="width:26%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Partner</th>
-            <th>Type</th>
-            <th class="num">Orders</th>
-            <th class="num">Total sales</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in top_partners %}
-          <tr>
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-            <td data-label="Partner"><a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}"
-                class="item-name">{{ p.partner_name }}</a></td>
-            <td data-label="Type"><span
-                class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type
-                }}</span></td>
-            <td class="num mono" data-label="Orders">{{ p.order_count }}</td>
-            <td class="num mono" data-label="Total sales">{{ p.total_spent|peso }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Total sales counts Closed package orders only, same rule as Top
-        packages.</p>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="glyph">—</div>
-      <p>No closed package orders yet.</p>
-    </div>
-    {% endif %}
-  </div>
 </div>
 
 <div class="card">

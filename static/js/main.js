@@ -274,8 +274,13 @@ function syncSidebarIndicator() {
     const indicator = document.getElementById('navIndicator');
     if (!sidebar || !indicator) return;
 
+    // Groups only really fold away while the sidebar is pinned open (or on
+    // the phone drawer) — on the icon rail they always show (style.css).
+    const foldable = document.documentElement.classList.contains('sidebar-pinned')
+        || !window.matchMedia('(min-width: 761px)').matches;
     const link = Array.from(sidebar.querySelectorAll('.nav-link.active'))
-        .find((l) => l.getClientRects().length > 0);
+        .find((l) => l.getClientRects().length > 0
+            && (sidebar.classList.contains('is-filtering') || !foldable || !l.closest('.nav-group.is-collapsed')));
     if (!link) {
         indicator.classList.add('is-hidden');
         return;
@@ -499,6 +504,607 @@ function initSidebarScrollShadow() {
     }
 }
 
+// Sidebar groups (Overview, Catalog & Supply, …) as drop-downs: each
+// .nav-label becomes a toggle and its links are wrapped so they can ease
+// open/closed (see "Collapsible nav groups" in style.css). The group
+// holding the current page opens on load and on every soft nav; other
+// groups default to closed (the first, Overview, to open) and remember
+// the user's choice in localStorage ('navGroups').
+function initNavAccordion() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    let saved = {};
+    try {
+        saved = JSON.parse(localStorage.getItem('navGroups') || '{}') || {};
+    } catch (e) { }
+    const persist = () => {
+        try { localStorage.setItem('navGroups', JSON.stringify(saved)); } catch (e) { }
+    };
+    const exclusive = () => {
+        try { return localStorage.getItem('navExclusive') === 'true'; } catch (e) { return false; }
+    };
+
+    const groups = [];
+    sidebar.querySelectorAll('.nav-group').forEach((group, i) => {
+        const label = group.querySelector(':scope > .nav-label');
+        if (!label) return;
+
+        const items = document.createElement('div');
+        items.className = 'nav-items';
+        items.id = 'navItems' + i;
+        const inner = document.createElement('div');
+        inner.className = 'nav-items-inner';
+        while (label.nextSibling) inner.appendChild(label.nextSibling);
+        items.appendChild(inner);
+        group.appendChild(items);
+
+        label.setAttribute('role', 'button');
+        label.setAttribute('tabindex', '0');
+        label.setAttribute('aria-controls', items.id);
+
+        const key = label.textContent.trim();
+        const entry = { group, inner, label, key };
+        groups.push(entry);
+
+        entry.hasActive = () => !!inner.querySelector('.nav-link.active');
+        entry.set = (open) => {
+            group.classList.toggle('is-collapsed', !open);
+            label.setAttribute('aria-expanded', String(open));
+            syncSidebarIndicator();
+        };
+        entry.badges = () => {
+            let n = 0;
+            inner.querySelectorAll('.nav-link:not(.nav-sub) .nav-badge').forEach((b) => {
+                n += parseInt(b.textContent, 10) || 0;
+            });
+            if (n > 0) label.setAttribute('data-badge', n > 99 ? '99+' : String(n));
+            else label.removeAttribute('data-badge');
+            // Page count, shown faintly on a closed group (grouped pages
+            // count once, via their parent link).
+            label.setAttribute('data-count', String(inner.querySelectorAll('.nav-link:not(.nav-sub)').length));
+        };
+
+        entry.set(entry.hasActive() || (key in saved ? !!saved[key] : i === 0));
+        entry.badges();
+
+        const toggle = () => {
+            const open = group.classList.contains('is-collapsed');
+            saved[key] = open;
+            // "One group open at a time" (Settings): opening one closes the rest.
+            if (open && exclusive()) {
+                groups.forEach((o) => {
+                    if (o !== entry) {
+                        saved[o.key] = false;
+                        o.set(false);
+                    }
+                });
+            }
+            persist();
+            entry.set(open);
+        };
+        label.addEventListener('click', toggle);
+        label.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggle();
+                return;
+            }
+            // Arrow keys / Home / End move between group headers.
+            const heads = groups.map((g) => g.label).filter((l) => l.getClientRects().length > 0);
+            const at = heads.indexOf(label);
+            let to = null;
+            if (e.key === 'ArrowDown') to = heads[at + 1];
+            else if (e.key === 'ArrowUp') to = heads[at - 1];
+            else if (e.key === 'Home') to = heads[0];
+            else if (e.key === 'End') to = heads[heads.length - 1];
+            if (to) {
+                e.preventDefault();
+                to.focus();
+            }
+        });
+    });
+
+    // Driven by the Settings dialog (initSettings).
+    const setAll = (open) => {
+        groups.forEach((g) => {
+            // The current page's group stays open so the page never "vanishes".
+            const keep = open || g.hasActive();
+            saved[g.key] = keep;
+            g.set(keep);
+        });
+        persist();
+    };
+    document.addEventListener('nav:expand-all', () => setAll(true));
+    document.addEventListener('nav:collapse-all', () => setAll(false));
+    document.addEventListener('nav:exclusive', () => {
+        if (!exclusive()) return;
+        // Turning it on tidies up: keep only the current page's group open.
+        groups.forEach((g) => {
+            if (!g.hasActive()) {
+                saved[g.key] = false;
+                g.set(false);
+            }
+        });
+        persist();
+    });
+
+    // Soft nav moves .active between links (and badge counts can change):
+    // open the group of the new page, and refresh the counts.
+    let queued = false;
+    let activeMoved = false;
+    new MutationObserver((mutations) => {
+        if (mutations.some((m) => m.type === 'attributes' && m.target.classList.contains('nav-link'))) activeMoved = true;
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+            queued = false;
+            groups.forEach((g) => {
+                if (activeMoved && g.group.classList.contains('is-collapsed') && g.hasActive()) g.set(true);
+                else if (activeMoved && exclusive() && !g.hasActive() && !g.group.classList.contains('is-collapsed')) g.set(false);
+                g.badges();
+            });
+            activeMoved = false;
+        });
+    }).observe(sidebar, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+}
+
+// Settings dialog (sidebar footer → Settings): light/dark mode plus the
+// interface style (html[data-style], defined in static/css/themes.css).
+// Both are per-browser, stored in localStorage; base.html's head script
+// re-applies them before first paint.
+function initSettings() {
+    const overlay = document.getElementById('settingsOverlay');
+    const opener = document.getElementById('settingsOpen');
+    if (!overlay || !opener) return;
+
+    const root = document.documentElement;
+    const STYLES = ['classic', 'neobrutalism', 'minimalism', 'glassmorphism',
+        'skeuomorphism', 'neumorphism', 'claymorphism', 'cyberpunk', 'terminal',
+        'paper', 'vaporwave', 'pixel', 'aero', 'aurora', 'bauhaus'];
+    const store = (key, value) => {
+        try { localStorage.setItem(key, value); } catch (e) { }
+    };
+    const modeBtns = overlay.querySelectorAll('[data-mode]');
+    const styleBtns = overlay.querySelectorAll('[data-style-option]');
+    let lastFocus = null;
+
+    function sync() {
+        const mode = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const style = root.getAttribute('data-style') || 'classic';
+        modeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+        styleBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.styleOption === style)));
+    }
+
+    function setStyle(style) {
+        if (!STYLES.includes(style)) return;
+        root.setAttribute('data-style', style);
+        store('uiStyle', style);
+        sync();
+    }
+
+    function setMode(mode) {
+        root.setAttribute('data-theme', mode);
+        store('theme', mode);
+        sync();
+    }
+
+    function open() {
+        lastFocus = document.activeElement;
+        sync();
+        overlay.hidden = false;
+        const active = overlay.querySelector('.style-option[aria-pressed="true"]');
+        (active || overlay.querySelector('.settings-close')).focus();
+    }
+
+    function close() {
+        overlay.hidden = true;
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+    }
+
+    opener.addEventListener('click', open);
+    // The account link may be handled by soft nav, which would leave the
+    // dialog open over the new page.
+    overlay.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { overlay.hidden = true; }));
+    overlay.querySelector('#settingsClose').addEventListener('click', close);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+    modeBtns.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+    styleBtns.forEach((b) => b.addEventListener('click', () => setStyle(b.dataset.styleOption)));
+    overlay.querySelector('#settingsReset').addEventListener('click', () => setStyle('classic'));
+
+    // Sidebar group behaviour (handled by initNavAccordion via events).
+    const exclusiveBtn = overlay.querySelector('#navExclusive');
+    const syncExclusive = () => {
+        let on = false;
+        try { on = localStorage.getItem('navExclusive') === 'true'; } catch (e) { }
+        exclusiveBtn.setAttribute('aria-checked', String(on));
+    };
+    syncExclusive();
+    exclusiveBtn.addEventListener('click', () => {
+        const on = exclusiveBtn.getAttribute('aria-checked') !== 'true';
+        store('navExclusive', String(on));
+        syncExclusive();
+        document.dispatchEvent(new Event('nav:exclusive'));
+    });
+    // ---- Backup + restore (admins only) --------------------------------
+    // Shared status helper: text with a busy/ok/bad mark that slides in
+    // each time it changes, plus an optional progress bar (a number is a
+    // percentage, null is "working, unknown length", false hides it).
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    const makeUi = (textEl, barEl, warnEl) => ({
+        say(text, tone, busy) {
+            if (textEl.textContent !== text || textEl.dataset.tone !== (tone || '')) {
+                textEl.textContent = text;
+                textEl.dataset.tone = tone || '';
+                textEl.classList.remove('is-swap');
+                void textEl.offsetWidth;            // restart the animation
+                textEl.classList.add('is-swap');
+            }
+            textEl.classList.toggle('is-ok', tone === 'ok');
+            textEl.classList.toggle('is-bad', tone === 'bad');
+            textEl.classList.toggle('is-busy', !!busy);
+        },
+        warn(text) {
+            if (!warnEl) return;
+            warnEl.hidden = !text;
+            if (!text) return;
+            if (warnEl.textContent !== text) {
+                warnEl.textContent = text;
+                warnEl.classList.remove('is-swap');
+                void warnEl.offsetWidth;
+                warnEl.classList.add('is-swap');
+            }
+            warnEl.classList.add('is-bad');
+        },
+        bar(pct) {
+            if (!barEl) return;
+            barEl.hidden = pct === false;
+            barEl.classList.toggle('is-indeterminate', pct === null);
+            barEl.firstElementChild.style.width = typeof pct === 'number' ? pct + '%' : '';
+        },
+    });
+    const getJson = (url) => fetch(url, { headers: { Accept: 'application/json' } }).then((r) => {
+        if (r.redirected || r.status === 401 || r.status === 403) throw new Error('signed-out');
+        return r.json();
+    });
+
+    // Backup: email a full backup, then watch for the result.
+    const backupBtn = overlay.querySelector('#backupNow');
+    if (backupBtn) {
+        const ui = makeUi(overlay.querySelector('#backupStatus'), overlay.querySelector('#backupBar'),
+            overlay.querySelector('#backupWarn'));
+        const toEl = overlay.querySelector('#backupTo');
+        let baseline = null;     // latest backup log id before we started
+        let timer = 0;
+
+        // ---- schedule: how often, automatic on/off, what time ----
+        const daysEl = overlay.querySelector('#backupDays');
+        const hourEl = overlay.querySelector('#backupHour');
+        const autoEl = overlay.querySelector('#backupAuto');
+        const noteEl = overlay.querySelector('#scheduleNote');
+        const schedUi = makeUi(overlay.querySelector('#scheduleStatus'), null, null);
+        let syncing = false;
+        let schedTimer = 0;
+
+        const explain = (sch, runSoon, nextRun) => {
+            const every = sch.days === 7 ? 'week' : (sch.days === 30 ? 'month' : sch.days + ' days');
+            if (sch.auto) {
+                noteEl.textContent = runSoon
+                    ? 'A backup is due, so the next automatic one starts within a few minutes.'
+                    : 'Next automatic backup: ' + nextRun + '. A manual backup restarts the count.';
+            } else {
+                noteEl.textContent = 'You will get a reminder here once a backup is more than 1 ' + every
+                    + ' old' + (sch.days === 7 ? '' : ' (' + sch.days + ' days)')
+                    + '. Weekly suits a shop that records sales every day; a month can lose a lot if something goes wrong.';
+            }
+        };
+        function syncSchedule(d) {
+            if (!d || !d.schedule) return;
+            syncing = true;
+            daysEl.value = String(d.schedule.days);
+            hourEl.value = String(d.schedule.hour);
+            autoEl.setAttribute('aria-checked', String(d.schedule.auto));
+            hourEl.disabled = !d.schedule.auto;
+            const wrap = hourEl.closest('.cs-select');
+            if (wrap) wrap.classList.toggle('cs-disabled', !d.schedule.auto);
+            explain(d.schedule, d.schedule.run_soon, d.schedule.next_run);
+            syncing = false;
+        }
+        const saveSchedule = () => {
+            if (syncing) return;
+            const sch = {
+                days: parseInt(daysEl.value, 10),
+                hour: parseInt(hourEl.value, 10),
+                auto: autoEl.getAttribute('aria-checked') === 'true',
+            };
+            schedUi.say('Saving\u2026', '', true);
+            fetch(backupBtn.dataset.scheduleUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify(sch),
+            }).then((r) => r.json().then((b) => ({ ok: r.ok, b })))
+                .then(({ ok, b }) => {
+                    if (!ok) {
+                        schedUi.say(b.error || 'Could not save the schedule.', 'bad');
+                        refresh();                       // put the controls back to what is saved
+                        return;
+                    }
+                    hourEl.disabled = !sch.auto;
+                    const wrap = hourEl.closest('.cs-select');
+                    if (wrap) wrap.classList.toggle('cs-disabled', !sch.auto);
+                    explain(sch, b.run_soon, b.next_run);
+                    schedUi.say('Saved', 'ok');
+                    window.clearTimeout(schedTimer);
+                    schedTimer = window.setTimeout(() => schedUi.say('', ''), 2500);
+                })
+                .catch(() => schedUi.say('Could not reach the server.', 'bad'));
+        };
+        daysEl.addEventListener('change', saveSchedule);
+        hourEl.addEventListener('change', saveSchedule);
+        autoEl.addEventListener('click', () => {
+            const on = autoEl.getAttribute('aria-checked') !== 'true';
+            autoEl.setAttribute('aria-checked', String(on));
+            autoEl.classList.remove('is-pulse');
+            hourEl.disabled = !on;
+            saveSchedule();
+        });
+
+        // ---- reminder banner (outside the dialog) + the dot on Settings ----
+        const banner = document.getElementById('backupReminder');
+        function clearReminder() {
+            opener.removeAttribute('data-alert');
+            opener.removeAttribute('title');
+            const el = document.getElementById('backupReminder');
+            if (!el) return;
+            el.classList.add('is-leaving');
+            window.setTimeout(() => el.remove(), 450);
+        }
+        if (banner) {
+            banner.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-reminder]');
+                if (!btn) return;
+                const what = btn.dataset.reminder;
+                if (what === 'snooze') {
+                    fetch(backupBtn.dataset.snoozeUrl, {
+                        method: 'POST', headers: { 'X-CSRFToken': csrfToken, Accept: 'application/json' },
+                    }).catch(() => { });
+                    clearReminder();
+                } else if (what === 'now') {
+                    open();
+                    window.setTimeout(() => { if (!backupBtn.disabled) backupBtn.click(); }, 350);
+                } else if (what === 'auto') {
+                    open();
+                    window.setTimeout(() => {
+                        autoEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        autoEl.classList.add('is-pulse');
+                        autoEl.focus({ preventScroll: true });
+                    }, 300);
+                }
+            });
+        }
+
+        const idle = (d) => {
+            ui.bar(false);
+            backupBtn.disabled = false;
+            if (d.last_ok) ui.say('Last backup: ' + d.last_ok.at + ' (' + d.last_ok.details + ').', 'ok');
+            else ui.say('No backup has been sent yet.');
+            ui.warn(d.last_failed
+                ? (d.last_ok ? 'A later attempt failed' : 'The last attempt failed') + ' (' + d.last_failed.at + '): ' + d.last_failed.details
+                : '');
+        };
+        const describe = (d) => {
+            syncSchedule(d);
+            if (!d.configured) {
+                backupBtn.disabled = true;
+                ui.bar(false);
+                ui.say('Email is not set up yet. Add the mail settings to .env first.', 'bad');
+                return;
+            }
+            if (d.recipient && toEl) toEl.textContent = 'to ' + d.recipient;
+            if (d.running) {
+                backupBtn.disabled = true;
+                ui.say((d.phase || 'Working') + '\u2026', '', true);
+                ui.bar(null);
+                watch();
+            } else {
+                idle(d);
+            }
+        };
+        const refresh = () => getJson(backupBtn.dataset.statusUrl).then((d) => {
+            baseline = d.latest_id;
+            describe(d);
+        }).catch(() => { });
+
+        // Poll until the server has logged a new result.
+        const watch = () => {
+            if (timer) return;
+            const started = Date.now();
+            let misses = 0;
+            timer = window.setInterval(() => {
+                getJson(backupBtn.dataset.statusUrl).then((d) => {
+                    misses = 0;
+                    if (d.running) {
+                        ui.say((d.phase || 'Working') + '\u2026', '', true);
+                    } else if (d.latest_id !== baseline) {
+                        window.clearInterval(timer);
+                        timer = 0;
+                        baseline = d.latest_id;
+                        const newest = d.last_failed && (!d.last_ok || d.last_failed.id > d.last_ok.id);
+                        if (newest) {
+                            backupBtn.disabled = false;
+                            ui.bar(false);
+                            ui.say('Backup failed: ' + d.last_failed.details, 'bad');
+                            ui.warn('');
+                        } else {
+                            idle(d);
+                            ui.say('Backup sent ' + d.last_ok.at + ' (' + d.last_ok.details + ').', 'ok');
+                            clearReminder();
+                            syncSchedule(d);
+                        }
+                    }
+                }).catch(() => {
+                    if (++misses >= 5) {
+                        window.clearInterval(timer);
+                        timer = 0;
+                        backupBtn.disabled = false;
+                        ui.bar(false);
+                        ui.say('Lost contact with the server. Check your inbox in a few minutes.', 'bad');
+                    }
+                });
+                if (Date.now() - started > 300000) {
+                    window.clearInterval(timer);
+                    timer = 0;
+                    backupBtn.disabled = false;
+                    ui.bar(false);
+                    ui.say('Still working. Check your inbox in a few minutes.');
+                }
+            }, 1500);
+        };
+
+        backupBtn.addEventListener('click', () => {
+            backupBtn.disabled = true;
+            ui.warn('');
+            ui.say('Starting the backup\u2026', '', true);
+            ui.bar(null);
+            fetch(backupBtn.dataset.emailUrl, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken, Accept: 'application/json' },
+            }).then((r) => r.json().then((body) => ({ ok: r.ok, body })))
+                .then(({ ok, body }) => {
+                    if (!ok) {
+                        ui.bar(false);
+                        ui.say(body.error || 'Could not start the backup.', 'bad');
+                        backupBtn.disabled = false;
+                        return;
+                    }
+                    watch();
+                })
+                .catch(() => {
+                    ui.bar(false);
+                    ui.say('Could not reach the server.', 'bad');
+                    backupBtn.disabled = false;
+                });
+        });
+
+        opener.addEventListener('click', refresh);
+        refresh();
+    }
+
+    // Restore: confirm with password + phrase, upload in 4 MB pieces, then
+    // follow the server's progress until it is finished.
+    const restoreBtn = overlay.querySelector('#restoreNow');
+    if (restoreBtn) {
+        const ui = makeUi(overlay.querySelector('#restoreStatus'), overlay.querySelector('#restoreBar'));
+        const fileEl = overlay.querySelector('#restoreFile');
+        const pwEl = overlay.querySelector('#restorePassword');
+        const phraseEl = overlay.querySelector('#restorePhrase');
+        const CHUNK = 4 * 1024 * 1024;
+        const fail = (text) => {
+            ui.bar(false);
+            ui.say(text, 'bad');
+            restoreBtn.disabled = false;
+        };
+        const finished = (text) => {
+            ui.bar(100);
+            ui.say(text, 'ok');
+            window.setTimeout(() => { window.location.href = '/'; }, 3000);
+        };
+
+        const follow = () => {
+            ui.bar(null);
+            const started = Date.now();
+            let misses = 0;
+            const timer = window.setInterval(() => {
+                getJson(restoreBtn.dataset.statusUrl).then((d) => {
+                    misses = 0;
+                    if (d.running) {
+                        ui.say((d.phase || 'Working') + '\u2026', '', true);
+                    } else if (d.done) {
+                        window.clearInterval(timer);
+                        if (d.error) fail(d.error);
+                        else finished('Restore complete. ' + d.summary + ' Signing you out\u2026');
+                    }
+                }).catch((err) => {
+                    // Signed out = the restored data has no session for us: it worked.
+                    if (err && err.message === 'signed-out') {
+                        window.clearInterval(timer);
+                        finished('Restore complete. Signing you out\u2026');
+                    } else if (++misses >= 6) {
+                        window.clearInterval(timer);
+                        fail('Lost contact with the server. Wait a minute, then refresh the page.');
+                    }
+                });
+                if (Date.now() - started > 900000) window.clearInterval(timer);
+            }, 2000);
+        };
+
+        const sendChunks = (file) => {
+            const piece = (offset) => {
+                const end = Math.min(offset + CHUNK, file.size);
+                ui.say('Uploading the backup\u2026 ' + Math.round((end / file.size) * 100) + '%', '', true);
+                ui.bar(Math.round((end / file.size) * 100));
+                return fetch(restoreBtn.dataset.chunkUrl + '?offset=' + offset + '&total=' + file.size, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream', 'X-CSRFToken': csrfToken, Accept: 'application/json' },
+                    body: file.slice(offset, end),
+                }).then((r) => r.json().then((b) => ({ ok: r.ok, b })))
+                    .then(({ ok, b }) => {
+                        if (!ok) return fail(b.error || 'The upload was refused.');
+                        if (end < file.size) return piece(end);
+                        ui.say('Restoring\u2026', '', true);
+                        follow();
+                    });
+            };
+            return piece(0);
+        };
+
+        restoreBtn.addEventListener('click', () => {
+            const file = fileEl.files && fileEl.files[0];
+            if (!file) return fail('Choose the backup file first.');
+            if (!pwEl.value) return fail('Enter your password.');
+            if (phraseEl.value !== 'RESTORE') return fail('Type RESTORE exactly to confirm.');
+            restoreBtn.disabled = true;
+            ui.say('Checking your password\u2026', '', true);
+            ui.bar(null);
+            fetch(restoreBtn.dataset.verifyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({ password: pwEl.value, phrase: phraseEl.value }),
+            }).then((r) => r.json().then((b) => ({ ok: r.ok, b })))
+                .then(({ ok, b }) => {
+                    if (!ok) return fail(b.error || 'Could not confirm.');
+                    pwEl.value = '';
+                    return sendChunks(file);
+                })
+                .catch(() => fail('Could not reach the server.'));
+        });
+    }
+
+    overlay.querySelector('#navExpandAll').addEventListener('click', () => document.dispatchEvent(new Event('nav:expand-all')));
+    overlay.querySelector('#navCollapseAll').addEventListener('click', () => document.dispatchEvent(new Event('nav:collapse-all')));
+
+    // Esc closes; Tab stays inside the dialog while it is open.
+    document.addEventListener('keydown', (e) => {
+        if (overlay.hidden) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        } else if (e.key === 'Tab') {
+            const items = Array.from(overlay.querySelectorAll('button')).filter((b) => b.offsetParent !== null);
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    });
+}
+
 function initThemeToggle() {
     const btn = document.getElementById('themeToggle');
     if (!btn) return;
@@ -712,6 +1318,7 @@ function safeInit(fn, label) {
 
 document.addEventListener('DOMContentLoaded', () => {
     safeInit(initLoginSplash, 'loginSplash');
+    safeInit(initNavAccordion, 'navAccordion');
     safeInit(initMobileSidebar, 'mobileSidebar');
     safeInit(initSidebarNavTooltips, 'sidebarNavTooltips');
     safeInit(initSidebarPinToggle, 'sidebarPinToggle');
@@ -721,6 +1328,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initSidebarKeyboardNav, 'sidebarKeyboardNav');
     safeInit(initSidebarScrollShadow, 'sidebarScrollShadow');
     safeInit(initThemeToggle, 'themeToggle');
+    safeInit(initSettings, 'settings');
     safeInit(initPhClock, 'phClock');
     safeInit(initTopbarMotion, 'topbarMotion');
     safeInit(initTodaySalesChip, 'todaySalesChip');
@@ -1548,10 +2156,10 @@ function initSoftNav() {
 // truth for the field's submitted value; this never removes or
 // clones the select — only changes how it's shown and interacted
 // with. An individual select can opt out with a `data-cs-skip`
-// attribute (see admin/partner_inquiries.html's tiny inline status
-// dropdown, which is deliberately a bare native picker behind a
-// custom-styled dot, not a form field this component's box-shaped
-// trigger would fit well next to).
+// attribute — nothing in the app uses it any more (the Partner
+// Inquiries status picker is now an enhanced select with
+// data-cs-variant="status"; see the .cs-variant-status rules in
+// style.css).
 //
 // Existing code elsewhere in the app sets these selects' .value
 // directly (edit-item modals, the product/unit autocombos on Record
@@ -1841,6 +2449,88 @@ function shortDateLabel(iso) {
 
 function initCustomSelects(root) {
     (root || document).querySelectorAll('select').forEach(enhanceSelect);
+    (root || document).querySelectorAll('input[list]').forEach(enhanceDatalistInput);
+}
+
+// Replaces the browser's own <datalist> suggestion popup (e.g. Record
+// Sale's customer name) with the same custom panel the selects use. The
+// input keeps its name/id/value; picking a suggestion fires the same
+// input + change events typing would.
+function enhanceDatalistInput(input) {
+    if (input.dataset.dlEnhanced) return;
+    const dl = document.getElementById(input.getAttribute('list'));
+    if (!dl) return;
+    input.dataset.dlEnhanced = '1';
+    input.removeAttribute('list');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cs-select';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    const panel = document.createElement('div');
+    panel.className = 'cs-panel';
+    panel.setAttribute('role', 'listbox');
+    wrap.appendChild(panel);
+
+    let items = [];
+    let active = -1;
+
+    const close = () => {
+        wrap.classList.remove('cs-open');
+        active = -1;
+    };
+    const mark = () => {
+        Array.from(panel.children).forEach((el, i) => el.classList.toggle('cs-active', i === active));
+        const el = panel.children[active];
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    };
+    const pick = (value) => {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        close();
+    };
+    const render = () => {
+        const q = input.value.trim().toLowerCase();
+        items = Array.from(dl.options).map((o) => o.value)
+            .filter((v) => v && v.toLowerCase() !== q && v.toLowerCase().includes(q))
+            .slice(0, 8);
+        panel.replaceChildren();
+        items.forEach((v) => {
+            const el = document.createElement('div');
+            el.className = 'cs-option';
+            el.setAttribute('role', 'option');
+            el.textContent = v;
+            el.addEventListener('mousedown', (e) => e.preventDefault());
+            el.addEventListener('click', () => pick(v));
+            panel.appendChild(el);
+        });
+        active = -1;
+        if (items.length) wrap.classList.add('cs-open');
+        else close();
+    };
+
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
+    input.addEventListener('blur', close);
+    input.addEventListener('keydown', (e) => {
+        if (!wrap.classList.contains('cs-open')) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            active = (active + 1) % items.length;
+            mark();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            active = (active - 1 + items.length) % items.length;
+            mark();
+        } else if (e.key === 'Enter' && active >= 0) {
+            e.preventDefault();
+            pick(items[active]);
+        } else if (e.key === 'Escape') {
+            close();
+        }
+    });
 }
 
 function enhanceSelect(select) {
@@ -1849,6 +2539,9 @@ function enhanceSelect(select) {
 
     const wrap = document.createElement('div');
     wrap.className = 'cs-select';
+    // Optional look (e.g. "status": a coloured pill with a dot per
+    // option and a one-line description under each choice).
+    if (select.dataset.csVariant) wrap.classList.add('cs-variant-' + select.dataset.csVariant);
     select.parentNode.insertBefore(wrap, select);
     wrap.appendChild(select);
 
@@ -1872,8 +2565,14 @@ function enhanceSelect(select) {
     panel.className = 'cs-panel';
     panel.setAttribute('role', 'listbox');
     wrap.appendChild(panel);
+    // The status picker's panel is moved to <body> while open: a page
+    // reveal animation leaves a transform on the cards, and a transformed
+    // ancestor re-anchors position:fixed to itself instead of the viewport.
+    const floating = wrap.classList.contains('cs-variant-status');
+    if (floating) panel.classList.add('cs-panel-floating');
 
     const labelEl = trigger.querySelector('.cs-trigger-label');
+    let triggerDot = null;
     let activeIndex = -1;
 
     function optionEls() {
@@ -1884,7 +2583,36 @@ function enhanceSelect(select) {
         return wrap.classList.contains('cs-open');
     }
 
+    // The status picker lives in a scrolling table, whose overflow would
+    // clip or scroll a normally-positioned panel, so its panel is fixed to
+    // the viewport instead (and closed if the page scrolls under it).
+    function positionFixed() {
+        const r = trigger.getBoundingClientRect();
+        const w = Math.min(272, window.innerWidth - 16);
+        const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+        const below = window.innerHeight - r.bottom - 12;
+        const above = r.top - 12;
+        panel.style.width = w + 'px';
+        panel.style.left = left + 'px';
+        panel.style.right = 'auto';
+        if (panel.scrollHeight > below && above > below) {
+            wrap.classList.add('cs-open-up');
+            panel.style.top = 'auto';
+            panel.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+            panel.style.maxHeight = Math.min(320, above) + 'px';
+        } else {
+            wrap.classList.remove('cs-open-up');
+            panel.style.bottom = 'auto';
+            panel.style.top = (r.bottom + 6) + 'px';
+            panel.style.maxHeight = Math.min(320, below) + 'px';
+        }
+    }
+
     function position() {
+        if (wrap.classList.contains('cs-variant-status')) {
+            positionFixed();
+            return;
+        }
         // Flip the panel above the trigger when there isn't room below
         // — the same reasoning as every other floating panel in the
         // app (e.g. the product-search combos), just generalized here
@@ -1941,6 +2669,10 @@ function enhanceSelect(select) {
     function open() {
         if (select.disabled || isOpen()) return;
         rebuildPanel();
+        if (floating) {
+            document.body.appendChild(panel);
+            panel.classList.add('cs-panel-open');
+        }
         wrap.classList.add('cs-open');
         trigger.setAttribute('aria-expanded', 'true');
         activeIndex = select.selectedIndex;
@@ -1953,6 +2685,7 @@ function enhanceSelect(select) {
     function close() {
         if (!isOpen()) return;
         wrap.classList.remove('cs-open');
+        panel.classList.remove('cs-panel-open');
         // Deliberately NOT clearing 'cs-open-up' (or the inline
         // max-height position() set) here — the panel is still
         // visible for the rest of its closing transform transition,
@@ -1989,6 +2722,9 @@ function enhanceSelect(select) {
 
     function selectIndex(i) {
         if (i < 0 || i >= select.options.length || select.options[i].disabled) return;
+        // Re-picking the current value of an auto-submitting select (a
+        // status switch) must not post the form again.
+        if (i === select.selectedIndex && select.hasAttribute('data-autosubmit')) return;
         select.selectedIndex = i;
         sync();
         select.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2013,7 +2749,27 @@ function enhanceSelect(select) {
             el.className = 'cs-option' + (opt.disabled ? ' cs-option-disabled' : '');
             el.setAttribute('role', 'option');
             el.dataset.index = i;
-            el.textContent = opt.textContent.trim() || ' ';
+            // Optional per-option extras: data-tone paints a leading dot,
+            // data-desc adds a muted second line.
+            if (opt.dataset.tone) {
+                const dot = document.createElement('span');
+                dot.className = 'cs-dot';
+                dot.dataset.tone = opt.dataset.tone;
+                el.appendChild(dot);
+            }
+            const body = document.createElement('span');
+            body.className = 'cs-option-body';
+            const name = document.createElement('span');
+            name.className = 'cs-option-name';
+            name.textContent = opt.textContent.trim() || ' ';
+            body.appendChild(name);
+            if (opt.dataset.desc) {
+                const desc = document.createElement('span');
+                desc.className = 'cs-option-desc';
+                desc.textContent = opt.dataset.desc;
+                body.appendChild(desc);
+            }
+            el.appendChild(body);
             panel.appendChild(el);
         });
         optionEls().forEach(function (el) {
@@ -2043,6 +2799,17 @@ function enhanceSelect(select) {
         const text = opt ? opt.textContent.trim() : '';
         labelEl.textContent = text || ' ';
         labelEl.classList.toggle('cs-placeholder', !!opt && select.selectedIndex === 0 && opt.value === '');
+        // Tone dot on the trigger itself, and the tone on the wrapper so
+        // the variant's CSS can tint the whole pill.
+        if (opt && opt.dataset.tone) {
+            if (!triggerDot) {
+                triggerDot = document.createElement('span');
+                triggerDot.className = 'cs-dot';
+                trigger.insertBefore(triggerDot, labelEl);
+            }
+            triggerDot.dataset.tone = opt.dataset.tone;
+            wrap.dataset.tone = opt.dataset.tone;
+        }
         wrap.classList.toggle('cs-disabled', select.disabled);
     }
 
@@ -2114,18 +2881,25 @@ function enhanceSelect(select) {
     // has left the page instead of piling them up.
     function onDocumentClick(e) {
         if (!wrap.isConnected) { detachGlobalListeners(); return; }
-        if (isOpen() && !wrap.contains(e.target)) close();
+        if (isOpen() && !wrap.contains(e.target) && !panel.contains(e.target)) close();
     }
     function onWindowResize() {
         if (!wrap.isConnected) { detachGlobalListeners(); return; }
         if (isOpen()) position();
     }
+    function onAnyScroll(e) {
+        if (!wrap.isConnected) { detachGlobalListeners(); return; }
+        if (isOpen() && !panel.contains(e.target)) close();
+    }
     function detachGlobalListeners() {
         document.removeEventListener('click', onDocumentClick);
         window.removeEventListener('resize', onWindowResize);
+        window.removeEventListener('scroll', onAnyScroll, true);
+        if (floating) panel.remove();
     }
     document.addEventListener('click', onDocumentClick);
     window.addEventListener('resize', onWindowResize);
+    if (wrap.classList.contains('cs-variant-status')) window.addEventListener('scroll', onAnyScroll, true);
 
     rebuildPanel();
     sync();
@@ -2139,7 +2913,7 @@ function enhanceSelect(select) {
 // behaves the same.
 function watchForNewFormControls() {
     if (typeof MutationObserver !== 'function' || !document.body) return;
-    const FIELD = 'select, input[type="date"], input[type="month"]';
+    const FIELD = 'select, input[list], input[type="date"], input[type="month"]';
     const roots = new Set();
     let scheduled = false;
 

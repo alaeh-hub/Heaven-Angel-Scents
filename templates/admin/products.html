@@ -100,7 +100,7 @@
         <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>
       </div>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%; max-width:280px;">Add to catalog</button>
+    <button type="submit" class="btn btn-accent btn-cta">Add to catalog</button>
   </form>
 </div>
 
@@ -132,14 +132,12 @@
       <label for="csvFile">CSV file</label>
       <input type="file" id="csvFile" name="csv_file" accept=".csv,text/csv" form="importProductsForm" required>
     </div>
-    <div class="field" style="flex:0 0 auto;">
-      <button type="submit" form="importProductsForm" class="btn btn-accent">Import CSV</button>
-    </div>
-    <div class="field" style="flex:0 0 auto;">
-      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank" data-generate-file>Export CSV</a>
+    <div class="field csv-actions">
+      <button type="submit" form="importProductsForm" class="btn btn-accent">Upload CSV</button>
+      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank" data-generate-file>Download CSV</a>
     </div>
   </div>
-  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price — same order as Export CSV.</div>
+  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price — same order as Download CSV.</div>
   <form method="POST" action="{{ url_for('admin.import_products') }}" enctype="multipart/form-data" id="importProductsForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>

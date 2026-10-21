@@ -62,7 +62,7 @@ public-site/prototype/
 # from here with the page-mascot skill's scripts/mascot.py.
 characters/
 
-# Docker backup job output (copy off-server, never commit)
+# Local database backup archives and restore safety copies (never commit)
 backups/
 
 # Temporary local automation and QA artifacts

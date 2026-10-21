@@ -267,7 +267,7 @@
         <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0" value="{{ bulk_rate }}" required>
       </div>
       <div class="field" style="flex:0 0 auto; margin-bottom: 0;">
-        <button type="submit" class="btn btn-accent">Save rate</button>
+        <button type="submit" class="btn btn-accent">Update rate</button>
       </div>
     </div>
     {% if reference_rate_per_ml is not none %}
@@ -329,7 +329,7 @@
               <input type="hidden" name="unit" value="{{ u.unit }}">
               <input type="number" name="base_cost_per_unit" step="0.0001" min="0" value="{{ u.base_cost_per_unit }}"
                 required>
-              <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+              <button type="submit" class="btn btn-ghost btn-sm">Update</button>
             </form>
           </td>
         </tr>
@@ -375,7 +375,7 @@
       <label for="fmQty">Qty per unit</label>
       <input type="number" id="fmQty" name="qty_per_unit" step="0.0001" min="0.0001" required>
     </div>
-    <button type="submit" class="btn btn-ghost">Add</button>
+    <button type="submit" class="btn btn-ghost btn-center-sm">Add to formula</button>
   </form>
 
   {% set any_items = units|selectattr('formula_items')|list %}

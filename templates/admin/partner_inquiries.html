@@ -31,10 +31,23 @@
     vertical-align: top;
   }
 
-  .pi-col-when,
-  .pi-col-type,
   .pi-col-status {
     white-space: nowrap;
+  }
+
+  /* The type badge + submitted date used to be mobile-only duplicates of
+     the When/Type columns; those columns are gone, so this line is now
+     the one place they live, on desktop too. */
+  .pi-table .item-sub-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .pi-when {
+    font-size: 11.5px;
+    color: var(--ink-faint);
   }
 
   /* These four max-widths only bite when they're on the actual data
@@ -60,9 +73,6 @@
       max-width: 240px;
     }
 
-    .pi-col-package {
-      max-width: 150px;
-    }
   }
 
   .pi-table .mono.text-soft {
@@ -158,16 +168,29 @@
     text-decoration: underline;
   }
 
+  /* A long package name used to wrap inside a fully-rounded pill, which
+     stretched into a tall oval (and an unbreakable word overflowed the
+     cell). Now: a block capped to the cell width, softly rounded, wrapping
+     at word boundaries (or anywhere for a single long word) and clamped
+     to two lines — the full name is in the title tooltip. */
   .pi-package-chip {
-    display: inline-block;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    width: fit-content;
+    max-width: 100%;
     font-size: 11.5px;
     font-weight: 600;
     color: var(--ink-soft);
     background: var(--surface-2);
     border: var(--border-width-strong) solid var(--border-strong);
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: 0.75rem;
     line-height: 1.4;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .pi-status-cell {
@@ -177,75 +200,17 @@
     flex-wrap: wrap;
   }
 
-  /* Hidden by default — the dot's title attribute is enough on desktop,
-     where a mouse can hover it. There's no hover on a touch screen, so
-     the mobile media query below turns this back on: without it, the
-     phone view was just an unlabeled colored dot with no way to tell
-     what status it actually meant. */
-  .pi-status-text {
-    display: none;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--ink-soft);
-  }
-
-  /* The colored dot is a plain, non-interactive div; the real <select>
-     sits invisibly on top of it so clicking still opens a normal native
-     dropdown (with normal text and background) instead of the select
-     itself being styled, which is what produced the oversized green
-     swatch when the dropdown opened before. */
-  .pi-status-wrap {
-    position: relative;
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-  }
-
-  .pi-status-dot {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--surface);
-    pointer-events: none;
-  }
-
-  /* Class names are the status slugified (lowercased, spaces -> hyphens)
-     — see the `|lower|replace(' ', '-')` used below when the class is
-     printed. Keep this list in sync with INQUIRY_STATUSES in admin.py. */
-  .pi-status-dot.status-new {
-    background: var(--danger);
-  }
-
-  .pi-status-dot.status-contacted {
-    background: var(--accent);
-  }
-
-  .pi-status-dot.status-follow-up {
-    background: var(--ink-soft);
-  }
-
-  .pi-status-dot.status-on-hold {
-    background: var(--ink-faint);
-  }
-
-  .pi-status-dot.status-closed {
-    background: var(--success);
-  }
-
-  .pi-status-dot.status-declined {
-    background: var(--danger);
-  }
-
-  .pi-status-select {
-    position: absolute;
-    inset: 0;
-    width: 18px;
-    height: 18px;
+  /* Status is the row's primary control: an enhanced select (see
+     .cs-variant-status in style.css) rendered as a tinted pill, with the
+     Fulfill action stacked under it once an order is Closed. */
+  .pi-status-form {
     margin: 0;
-    padding: 0;
-    border: 0;
-    opacity: 0;
-    cursor: pointer;
+    min-width: 0;
+  }
+
+  .pi-status-cell .pi-fulfill-row {
+    flex-basis: 100%;
+    margin-top: 2px;
   }
 
   .pi-email-dot {
@@ -342,10 +307,6 @@
        mobile card padding used elsewhere. */
     .pi-intro {
       padding: 4px 14px 14px;
-    }
-
-    .pi-status-text {
-      display: inline;
     }
 
     /* Same approach used to fix the Partners table on mobile: leave
@@ -551,14 +512,11 @@
     <div class="table-wrap">
       <table class="smart-table table-fixed pi-table table-collapsible">
         <colgroup>
-          <col style="width:11%"><col style="width:21%"><col style="width:9%"><col style="width:18%">
-          <col style="width:11%"><col style="width:14%"><col style="width:16%">
+          <col style="width:27%"><col style="width:22%"><col style="width:16%"><col style="width:17%"><col style="width:18%">
         </colgroup>
         <thead>
           <tr>
-            <th class="pi-col-when">When</th>
             <th class="pi-col-company">Company</th>
-            <th class="pi-col-type">Type</th>
             <th class="pi-col-contact">Contact</th>
             <th class="pi-col-package">Package</th>
             <th class="pi-col-status">Status</th>
@@ -569,8 +527,6 @@
           {% for inq in inquiries %}
           <tr
             data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or '') ~ ' ' ~ (inq.remarks or ''))|lower }}">
-            <td class="mono text-soft mobile-fold" data-label="When"><span class="pi-when-date">{{ inq.created_at.strftime('%b %d, %Y') }}</span><br><span class="pi-when-time">{{
-              inq.created_at.strftime('%I:%M %p') }}</span></td>
             <td data-label="Company" class="pi-col-company">
               <div class="pi-company">
                 <div class="pi-avatar">{{ inq.company_name[:2]|upper }}</div>
@@ -584,14 +540,10 @@
                   <div class="item-sub item-sub-badge">
                     <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{
                       inq.partner_type }}</span>
-                    <span class="mono">{{ inq.created_at.strftime('%b %d') }}</span>
+                    <span class="mono pi-when" title="Submitted {{ inq.created_at.strftime('%b %d, %Y at %I:%M %p') }}">{{ inq.created_at.strftime('%b %d, %Y') }} &middot; {{ inq.created_at.strftime('%I:%M %p') }}</span>
                   </div>
                 </div>
               </div>
-            </td>
-            <td class="mobile-fold" data-label="Type">
-              <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{
-                inq.partner_type }}</span>
             </td>
             <td data-label="Contact" class="pi-col-contact mobile-detail">
               {% if inq.phone %}
@@ -616,13 +568,54 @@
               {% if not inq.phone and not inq.email %}<span class="text-faint">—</span>{% endif %}
               {% if inq.preferred_contact %}<div class="item-sub">Prefers {{ inq.preferred_contact }}</div>{% endif %}
             </td>
-            <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
+            <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip" title="{{ inq.package_name_snapshot }}">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
               {% if inq.fulfilled_at %}
               <div class="item-sub pi-fulfill-row">
                 <span class="badge badge-fulfilled">Fulfilled</span>
                 <span class="mono">{{ inq.fulfilled_at.strftime('%b %d') }}</span>
               </div>
-              {% elif inq.status == 'Closed' and inq['items'] %}
+              {% endif %}
+            </td>
+            <td data-label="Status" class="mobile-detail">
+              {% set status_meta = {
+                'New': ('danger', 'Just submitted, not reviewed yet'),
+                'Contacted': ('accent', 'You have reached out to them'),
+                'Follow-up': ('soft', 'Waiting on a reply - check back'),
+                'On Hold': ('warning', 'Paused for now'),
+                'Closed': ('success', 'Order confirmed - counts as a sale'),
+                'Declined': ('faint', 'Not going ahead')
+              } %}
+              <div class="pi-status-cell">
+                <form method="POST" action="{{ url_for('admin.update_inquiry_status', inquiry_id=inq.inquiry_id) }}"
+                  class="inline-form pi-status-form" data-preserve-scroll>
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="return_status" value="{{ status_filter }}">
+                  <select name="status" class="pi-status-select" data-autosubmit data-cs-variant="status"
+                    aria-label="Update status for {{ inq.company_name }}'s inquiry">
+                    {% for s in inquiry_statuses %}
+                    <option value="{{ s }}" data-tone="{{ status_meta[s][0] if s in status_meta else 'faint' }}"
+                      data-desc="{{ status_meta[s][1] if s in status_meta else '' }}" {{ 'selected' if inq.status==s }}>{{ s }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+                {% if inq.email_sent %}
+                <span class="pi-email-dot sent" title="HQ notification email was sent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </span>
+                {% else %}
+                <span class="pi-email-dot not-sent"
+                  title="Notification email wasn't sent - mail may be unconfigured. The inquiry itself is still saved.">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M4 4h16v16H4z" opacity="0" />
+                    <path d="M22 6 12 13 2 6" />
+                    <path d="M2 6h20v12H2z" />
+                  </svg>
+                </span>
+                {% endif %}
+              </div>
+              {% if not inq.fulfilled_at and inq.status == 'Closed' and inq['items'] %}
               <div class="item-sub pi-fulfill-row">
                 <button type="button" class="btn btn-accent btn-sm pi-fulfill-btn"
                   data-template="fulfill-{{ inq.inquiry_id }}" data-company="{{ inq.company_name }}">Fulfill</button>
@@ -649,42 +642,6 @@
                 </form>
               </template>
               {% endif %}
-            </td>
-            <td data-label="Status" class="mobile-detail">
-              <div class="pi-status-cell">
-                <div class="pi-status-wrap">
-                  <div class="pi-status-dot status-{{ inq.status|lower|replace(' ', '-') }}"
-                    title="Status: {{ inq.status }}"></div>
-                  <form method="POST" action="{{ url_for('admin.update_inquiry_status', inquiry_id=inq.inquiry_id) }}"
-                    class="inline-form" data-preserve-scroll>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="return_status" value="{{ status_filter }}">
-                    <select name="status" class="pi-status-select" data-autosubmit
-                      aria-label="Update status for {{ inq.company_name }}'s inquiry" data-cs-skip>
-                      {% for s in inquiry_statuses %}
-                      <option value="{{ s }}" {{ 'selected' if inq.status==s }}>{{ s }}</option>
-                      {% endfor %}
-                    </select>
-                  </form>
-                </div>
-                <span class="pi-status-text">{{ inq.status }}</span>
-                {% if inq.email_sent %}
-                <span class="pi-email-dot sent" title="HQ notification email was sent">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </span>
-                {% else %}
-                <span class="pi-email-dot not-sent"
-                  title="Notification email wasn't sent — mail may be unconfigured. The inquiry itself is still saved.">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M4 4h16v16H4z" opacity="0" />
-                    <path d="M22 6 12 13 2 6" />
-                    <path d="M2 6h20v12H2z" />
-                  </svg>
-                </span>
-                {% endif %}
-              </div>
             </td>
             <td data-label="Remarks" class="pi-col-remarks mobile-detail">
               <div class="pi-remarks-cell">
@@ -750,7 +707,7 @@
     </p>
     <div style="display:flex; gap:8px; margin-top:14px;">
       <button type="button" class="btn btn-ghost" style="flex:1;" id="fulfillCancelBtn">Cancel</button>
-      <button type="button" class="btn btn-accent" style="flex:1;" id="fulfillSubmitBtn">Fulfill &amp; deduct stock</button>
+      <button type="button" class="btn btn-accent" style="flex:1;" id="fulfillSubmitBtn">Ship order</button>
     </div>
   </div>
 </div>

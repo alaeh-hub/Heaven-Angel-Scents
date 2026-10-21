@@ -15,6 +15,7 @@ This repository is an active operational application. The system currently inclu
 - Audit trail and movement logging for operational accountability
 - Receipt generation and QR-code scan verification for branch sales
 - Bulk sales import/export via Excel, with the same stock and validation rules as manual entry
+- In-app database backup, restore, reminders, and optional scheduled email delivery
 
 ---
 
@@ -67,6 +68,9 @@ The app is a single Flask application with several route blueprints, a shared da
 | `audit.py` | Admin action audit log (`admin_actions` table) |
 | `login_activity.py` | Login/logout activity tracking (`login_activity` table) |
 | `mailer.py` | Outbound SMTP notifications (currently: new partner-inquiry alerts to HQ) |
+| `appsettings.py` | Small database-backed store for admin-managed settings such as the backup schedule |
+| `backup.py` | Consistent database snapshots, backup archives, and validated in-app restore |
+| `backup_jobs.py` | Backup reminders, schedule tracking, and optional automatic email backups |
 | `receipts.py` | PDF sale receipt generation, including the signed QR verification code |
 | `brand_assets.py` | Shared reportlab-drawn brand mark used in generated PDFs (reports, receipts) |
 | `reports.py` | Financial/operational report building (branch, HQ, partner) and Excel export |
@@ -179,6 +183,20 @@ The system keeps two separate but complementary records:
 
 Together they make it possible to answer both operational and administrative "what happened and who did it" questions after the fact.
 
+### 10. Backups and restore
+
+Admins can create and restore database backups from **Settings → Backup**. A backup
+contains a consistent database snapshot, spreadsheet-friendly CSVs, and uploaded
+product photos when the email attachment limit allows. Restore validates the
+archive before replacing database tables, keeps a safety copy of the current data,
+and records the attempt in the Admin Log. Admins can also enable reminders and
+opt-in scheduled email backups. These archives contain customer data and password
+hashes; they are not encrypted, so handle the destination mailbox carefully.
+
+For off-server scheduled backups, retention, secrets, and restore drills, see
+[BACKUP.md](./BACKUP.md). In-app email backups complement rather than replace an
+independent off-server copy.
+
 ---
 
 ## Security and operational safeguards
@@ -211,6 +229,7 @@ The app reads configuration from environment variables and a local `.env` file w
 - `PARTNER_PORTAL_SLUG` = stable public portal slug for partner access (auto-generated and logged if unset in dev — unsuitable for production, since it changes every restart)
 - `GEMINI_API_KEY` and `GEMINI_MODEL` for the AI assistant, plus `AI_CHAT_RATE_LIMIT`
 - `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`, `PARTNER_INQUIRY_NOTIFY_EMAIL`
+- `BACKUP_NOTIFY_EMAIL` (defaults to the partner-inquiry notification address), `BACKUP_EMAIL_MAX_MB` (attachment limit), and `BACKUP_SCHEDULER` (disable scheduled backup checks in a process)
 - `PORTAL_CONTACT_PHONE`, `PORTAL_CONTACT_EMAIL`, `PORTAL_CONTACT_VIBER`, `PORTAL_CONTACT_MESSENGER_URL`, `PORTAL_REPLY_TIME` — optional contact details shown on the public portal
 - `RATELIMIT_ENABLED` and `MAX_CONTENT_LENGTH`
 - `SOCKETIO_CORS_ALLOWED_ORIGINS` = origins allowed to connect over Socket.IO (defaults to any origin; should be locked down in production)
@@ -271,6 +290,10 @@ pytest
 ├── audit.py
 ├── login_activity.py
 ├── mailer.py
+├── appsettings.py
+├── backup.py
+├── backup_jobs.py
+├── BACKUP.md
 ├── receipts.py
 ├── brand_assets.py
 ├── reports.py

@@ -544,6 +544,17 @@ CREATE TABLE IF NOT EXISTS admin_actions (
 );
 
 -- ----------------------------------------------------------------------------
+-- app_settings: small key/value store for settings changed from the UI
+-- (the backup schedule: backup_days, backup_auto, backup_hour). Also created
+-- on first use by appsettings.py for a database that predates this.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key   VARCHAR(60) PRIMARY KEY,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- ----------------------------------------------------------------------------
 -- 10. Capital — no longer its own table.
 --
 --     There used to be a capital_contributions ledger here that an admin

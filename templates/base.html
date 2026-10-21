@@ -32,6 +32,11 @@
                 var theme = stored || 'dark';
                 document.documentElement.setAttribute('data-theme', theme);
 
+                // UI style chosen in Settings (see initSettings() in
+                // main.js and static/css/themes.css). Stamped here for
+                // the same no-flash reason; 'classic' is the original look.
+                document.documentElement.setAttribute('data-style', localStorage.getItem('uiStyle') || 'classic');
+
                 // Same before-first-paint reasoning as the theme attribute
                 // above: setting html.sidebar-pinned here, not in main.js
                 // (which loads at the end of body), avoids a flash of the
@@ -56,6 +61,8 @@
         })();
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Nunito:wght@500;700;800&family=Pixelify+Sans:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <style>
         .notif-wrap {
             position: relative;
@@ -1193,13 +1200,15 @@
                     </div>
                 </div>
                 <div class="footer-actions">
-                    <a class="footer-action" href="{{ url_for('auth.change_password') }}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                            <rect x="3" y="11" width="18" height="10" rx="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    <button type="button" class="footer-action footer-action-btn" id="settingsOpen"
+                        aria-haspopup="dialog" aria-controls="settingsOverlay"{% if backup_reminder %} data-alert title="A backup is due"{% endif %}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
                         </svg>
-                        <span>Change password</span>
-                    </a>
+                        <span>Settings</span>
+                    </button>
                     <!-- POST, not a plain <a href>, so this goes through CSRFProtect
                like every other state-changing form in the app — see
                auth.py's logout() for why a GET here was the actual
@@ -1327,6 +1336,28 @@
                 </div>
             </div>
 
+            {% if backup_reminder %}
+            <div class="backup-reminder{{ ' is-failed' if backup_reminder.failed }}" id="backupReminder" role="status">
+                <span class="backup-reminder-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
+                        <path d="M12 8.5v4M12 15.5h.01" />
+                    </svg>
+                </span>
+                <div class="backup-reminder-text">
+                    <strong>{% if backup_reminder.failed %}Your automatic backup is failing{% elif backup_reminder.days_since is none %}You haven't made a backup yet{% else %}Time for a backup{% endif %}</strong>
+                    <span>{% if backup_reminder.failed %}{{ backup_reminder.failed }}{% elif backup_reminder.days_since is none %}Right now your records only exist on this server.{% else %}Your last backup was {{ backup_reminder.days_since }} day{{ 's' if backup_reminder.days_since != 1 }} ago &mdash; you asked to be reminded every {{ backup_reminder.days }} days.{% endif %}</span>
+                </div>
+                <div class="backup-reminder-actions">
+                    <button type="button" class="btn btn-accent btn-sm" data-reminder="now">Back up now</button>
+                    {% if not backup_reminder.auto %}<button type="button" class="btn btn-ghost btn-sm" data-reminder="auto">Make it automatic</button>{% endif %}
+                    <button type="button" class="backup-reminder-close" data-reminder="snooze" aria-label="Remind me tomorrow" title="Remind me tomorrow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             <div class="flashes" role="status" aria-live="polite">
@@ -1381,6 +1412,160 @@
                 {% endfor %}
                 {% block content %}{% endblock %}
             </main>
+        </div>
+    </div>
+
+    <!-- Settings dialog (sidebar footer → Settings). Global chrome like
+         Halo below, so soft nav never touches it. Choices are stored per
+         browser in localStorage ('uiStyle', 'theme'); see initSettings()
+         in main.js and static/css/themes.css. -->
+    <div class="settings-overlay" id="settingsOverlay" hidden>
+        <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+            <div class="settings-head">
+                <div>
+                    <h2 id="settingsTitle">Settings</h2>
+                    <p>Choose how the system looks. Saved on this device.</p>
+                </div>
+                <button type="button" class="settings-close" id="settingsClose" aria-label="Close settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div>
+                    <p class="settings-label">Account</p>
+                    <a class="settings-account-link" href="{{ url_for('auth.change_password') }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="11" width="18" height="10" rx="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        <span>Change password</span>
+                    </a>
+                </div>
+                <div>
+                    <p class="settings-label">Sidebar</p>
+                    <div class="settings-row">
+                        <button type="button" class="settings-switch" id="navExclusive" role="switch" aria-checked="false">
+                            <span class="settings-switch-track" aria-hidden="true"></span>
+                            <span>Keep one group open at a time</span>
+                        </button>
+                        <span class="settings-row-actions">
+                            <button type="button" class="settings-chip" id="navExpandAll">Expand all</button>
+                            <button type="button" class="settings-chip" id="navCollapseAll">Collapse all</button>
+                        </span>
+                    </div>
+                </div>
+                {% if session.role == 'Admin' %}
+                <div>
+                    <p class="settings-label">Backup</p>
+                    <div class="settings-schedule" id="backupSchedule">
+                        <div class="settings-sched-row">
+                            <div class="settings-sched-field">
+                                <label for="backupDays">Back up every</label>
+                                <select id="backupDays">
+                                    <option value="7">Week (recommended)</option>
+                                    <option value="15">15 days</option>
+                                    <option value="30">Month</option>
+                                </select>
+                            </div>
+                            <div class="settings-sched-field">
+                                <label for="backupHour">Automatic backups run at</label>
+                                <select id="backupHour">
+                                    {% for h in range(24) %}<option value="{{ h }}">{{ '{}:00 {}'.format((h % 12) or 12, 'AM' if h < 12 else 'PM') }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <button type="button" class="settings-switch" id="backupAuto" role="switch" aria-checked="false">
+                            <span class="settings-switch-track" aria-hidden="true"></span>
+                            <span>Back up automatically and email it to me</span>
+                        </button>
+                        <p class="settings-note" id="scheduleNote"></p>
+                        <p class="settings-status" id="scheduleStatus" role="status" aria-live="polite"></p>
+                    </div>
+                    <p class="settings-note">Emails a full copy of the system &mdash; database (restorable), one spreadsheet per table and product photos &mdash; <span id="backupTo">to your HQ inbox</span>.</p>
+                    <div class="settings-row">
+                        <button type="button" class="settings-chip settings-chip-accent" id="backupNow"
+                            data-status-url="{{ url_for('admin.backup_status') }}"
+                            data-email-url="{{ url_for('admin.backup_email') }}"
+                            data-schedule-url="{{ url_for('admin.backup_schedule_save') }}"
+                            data-snooze-url="{{ url_for('admin.backup_snooze') }}">Email backup now</button>
+                        <span class="settings-status" id="backupStatus" role="status" aria-live="polite"></span>
+                    </div>
+                    <div class="settings-progress" id="backupBar" hidden><span></span></div>
+                    <p class="settings-status settings-status-warn" id="backupWarn" role="status" hidden></p>
+                    <details class="settings-restore" id="restoreBox">
+                        <summary>Restore from a backup</summary>
+                        <p class="settings-note settings-warn"><strong>This replaces the current data</strong> with the backup's
+                            (sales, stock, accounts &mdash; everything). A safety copy of what is there now is saved first in the
+                            server's backups folder. You will be signed out when it finishes.</p>
+                        <label class="settings-field">Backup file <span>(the .zip from Email backup)</span>
+                            <input type="file" id="restoreFile" accept=".zip,.sql">
+                        </label>
+                        <label class="settings-field">Your password
+                            <input type="password" id="restorePassword" autocomplete="current-password">
+                        </label>
+                        <label class="settings-field">Type <strong>RESTORE</strong> to confirm
+                            <input type="text" id="restorePhrase" autocomplete="off" spellcheck="false">
+                        </label>
+                        <div class="settings-row">
+                            <button type="button" class="settings-chip settings-chip-danger" id="restoreNow"
+                                data-verify-url="{{ url_for('admin.restore_verify') }}"
+                                data-chunk-url="{{ url_for('admin.restore_chunk') }}"
+                                data-status-url="{{ url_for('admin.restore_status') }}">Restore now</button>
+                            <span class="settings-status" id="restoreStatus" role="status" aria-live="polite"></span>
+                        </div>
+                        <div class="settings-progress" id="restoreBar" hidden><span></span></div>
+                    </details>
+                </div>
+                {% endif %}
+                <div>
+                    <p class="settings-label">Mode</p>
+                    <div class="settings-modes" role="group" aria-label="Color mode">
+                        <button type="button" class="settings-mode" data-mode="light" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></svg>
+                            Light
+                        </button>
+                        <button type="button" class="settings-mode" data-mode="dark" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" /></svg>
+                            Dark
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <p class="settings-label">Interface style</p>
+                    <div class="settings-styles" role="group" aria-label="Interface style">
+                        {% for key, name, desc in [
+                            ('classic', 'Classic', 'The original black &amp; gold look.'),
+                            ('neobrutalism', 'Neobrutalism', 'Thick outlines, hard shadows, loud color.'),
+                            ('minimalism', 'Minimalism', 'Quiet, flat and spacious.'),
+                            ('glassmorphism', 'Glassmorphism', 'Frosted translucent panels.'),
+                            ('skeuomorphism', 'Skeuomorphism', 'Real-world bevels, textures and gloss.'),
+                            ('neumorphism', 'Neumorphism', 'Soft extruded, same-color surfaces.'),
+                            ('claymorphism', 'Claymorphism', 'Puffy, rounded, pastel 3D.'),
+                            ('cyberpunk', 'Cyberpunk', 'Neon glow on a dark grid.'),
+                            ('terminal', 'Retro Terminal', 'Monospace, green phosphor, scanlines.'),
+                            ('paper', 'Paper', 'Editorial serif on warm paper.'),
+                            ('vaporwave', 'Vaporwave', 'Pink and cyan sunset gradients.'),
+                            ('pixel', 'Pixel', '8-bit blocks and chunky borders.'),
+                            ('aero', 'Aero', 'Glossy Frutiger-Aero sky and bubbles.'),
+                            ('aurora', 'Aurora', 'Glowing northern-lights gradients.'),
+                            ('bauhaus', 'Bauhaus', 'Primary colors and hard geometry.'),
+                        ] %}
+                        <button type="button" class="style-option" data-style-option="{{ key }}" aria-pressed="false">
+                            <span class="sp sp-{{ key }}" aria-hidden="true"><i class="sp-card"><i class="sp-btn"></i></i></span>
+                            <span class="style-name">{{ name }}</span>
+                            <span class="style-desc">{{ desc|safe }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="settings-foot">
+                <span>Applies instantly to every page.</span>
+                <button type="button" class="settings-reset" id="settingsReset">Reset to default</button>
+            </div>
         </div>
     </div>
 

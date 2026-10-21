@@ -109,12 +109,25 @@ class Config:
     MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "1") == "1"
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    # Gmail shows an App Password as four groups ("abcd efgh ijkl mnop");
+    # the spaces are display-only and never part of it, so they are
+    # stripped here for Gmail (a stray space makes the login fail).
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    if "gmail.com" in MAIL_SERVER.lower() or "googlemail.com" in MAIL_SERVER.lower():
+        MAIL_PASSWORD = MAIL_PASSWORD.replace(" ", "")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "")
     # Where new-inquiry notifications are sent — the HQ inbox that should
     # follow up with the distributor/reseller.
     PARTNER_INQUIRY_NOTIFY_EMAIL = os.environ.get(
         "PARTNER_INQUIRY_NOTIFY_EMAIL", "")
+
+    # In-app backup (Settings -> Backup, see backup.py): the .zip is
+    # emailed over the same SMTP account as the inquiries, to
+    # BACKUP_NOTIFY_EMAIL if set, otherwise PARTNER_INQUIRY_NOTIFY_EMAIL.
+    # BACKUP_EMAIL_MAX_MB is the largest attachment to send (Gmail's cap
+    # is 25 MB *after* base64 encoding, so ~18 MB of file).
+    BACKUP_NOTIFY_EMAIL = os.environ.get("BACKUP_NOTIFY_EMAIL", "")
+    BACKUP_EMAIL_MAX_MB = float(os.environ.get("BACKUP_EMAIL_MAX_MB", 18))
 
     # Partner Portal (public, unauthenticated — see routes/portal.py).
     # The portal is never linked from the login page or anywhere else in
