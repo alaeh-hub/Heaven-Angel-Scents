@@ -23,7 +23,7 @@ test_logo.pdf
 static/uploads/
 
 # Partner portal front end (public-site/): dependencies, and the build
-# Flask serves — rebuilt on every deploy, see DEPLOY.md
+# Flask serves — rebuilt on every deploy, see docs/DEPLOY.md
 public-site/node_modules/
 static/public-site/
 
@@ -49,7 +49,7 @@ skills-lock.json
 # Local media assets and generated files
 static/video/*.mp4
 # ...except the web-sized clips the public site plays, so a fresh clone
-# (see DEPLOY.md) serves them. Keep these small: re-encode, don't swap
+# (see docs/DEPLOY.md) serves them. Keep these small: re-encode, don't swap
 # in a raw export.
 !static/video/behind-the-scent.mp4
 !static/video/black_background_web.mp4
@@ -65,15 +65,7 @@ characters/
 # Local database backup archives and restore safety copies (never commit)
 backups/
 
-# Temporary local automation and QA artifacts
-scripts/*.sh
-scripts/*.ps1
-
-tests/test_branch_isolation.py
-tests/test_csp.py
-tests/test_session_security.py
-tests/test_socket_auth.py
-
 # Generated local test output
 *.pdf
+!docs/*.pdf
 coverage.xml

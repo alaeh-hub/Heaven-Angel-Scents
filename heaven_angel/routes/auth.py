@@ -1,0 +1,200 @@
+import secrets
+
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from heaven_angel.db import execute, query
+from heaven_angel.decorators import login_required, password_fingerprint
+from heaven_angel.extensions import limiter
+from heaven_angel.services import login_activity
+
+bp = Blueprint("auth", __name__)
+
+# Burned in place of a real check_password_hash() call when the username
+# doesn't exist, so that branch takes about as long as the "user found,
+# wrong password" branch instead of returning early. Without this, an
+# attacker who can measure response time gets a (slow, but free) oracle
+# for which usernames exist — hashing is the expensive part of this
+# check, so skipping it entirely for unknown usernames is the tell.
+# Not a real credential: generated once per process, never stored.
+_DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_hex(32))
+
+
+@bp.route("/", methods=["GET"])
+def index():
+    if "user_id" in session:
+        return redirect(url_for("admin.dashboard"
+                                if session["role"] == "Admin"
+                                else "branch.dashboard"))
+    return redirect(url_for("auth.login"))
+
+
+@bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
+def login():
+    if "user_id" in session:
+        return redirect(url_for("admin.dashboard"
+                                if session["role"] == "Admin"
+                                else "branch.dashboard"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        login_type = request.form.get("login_type", "Branch")
+        if login_type not in ("Admin", "Branch"):
+            login_type = "Branch"
+
+        if not username or not password:
+            login_activity.log_attempt(
+                username_attempted=username or "(blank)", role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_MISSING_FIELDS,
+            )
+            flash("Please enter both your username and password.", "error")
+            return render_template("login.html", login_type=login_type), 400
+
+        user = query(
+            """SELECT u.user_id, u.username, u.password_hash, u.role, u.branch_id,
+            u.is_active, u.must_change_password, b.branch_name
+            FROM users u LEFT JOIN  branches b ON u.branch_id = b.branch_id
+            WHERE u.username = %s""",
+            (username,), fetchone=True,
+        )
+
+        # Always run a real check_password_hash() call, win or lose, so a
+        # nonexistent username doesn't return measurably faster than a
+        # wrong password for one that exists — see _DUMMY_PASSWORD_HASH.
+        #
+        # This has to happen *before* the is_locked_out() check below,
+        # not after: is_locked_out() is a cheap DB query with none of
+        # check_password_hash()'s deliberate cost, so if it ran first and
+        # short-circuited on a lockout, a locked-out username would
+        # respond measurably faster than every other case — an oracle
+        # for "this username is currently under a lockout" by timing
+        # alone, the same class of leak _DUMMY_PASSWORD_HASH exists to
+        # close. Paying the hash cost unconditionally first keeps every
+        # branch below the same shape.
+        password_ok = check_password_hash(
+            user["password_hash"] if user else _DUMMY_PASSWORD_HASH, password)
+
+        if login_activity.is_locked_out(username):
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_LOCKED_OUT,
+            )
+            flash(
+                "Too many failed attempts for this account. Please wait 15 minutes and try again.",
+                "error",
+            )
+            return render_template("login.html", login_type=login_type), 429
+
+        if not user or not password_ok:
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_BAD_CREDENTIALS,
+                user_id=(user["user_id"] if user else None),
+            )
+            flash("Incorrect username or password.", "error")
+            return render_template("login.html", login_type=login_type), 401
+
+        if not user["is_active"]:
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_INACTIVE_ACCOUNT,
+                user_id=user["user_id"],
+            )
+            flash("This account is no longer active. Please contact HQ.", "error")
+            return render_template("login.html", login_type=login_type), 403
+
+        if user["role"] != login_type:
+            login_activity.log_attempt(
+                username_attempted=username, role_attempted=login_type,
+                success=False, failure_reason=login_activity.FAILURE_WRONG_ROLE_TAB,
+                user_id=user["user_id"],
+            )
+            flash(
+                f"That account is a {user['role']} account. Switch tabs above and try again.", "error")
+            return render_template("login.html", login_type=login_type), 403
+
+        login_activity.log_attempt(
+            username_attempted=username, role_attempted=login_type,
+            success=True, user_id=user["user_id"],
+        )
+
+        session.clear()
+        session.permanent = True
+        session["user_id"] = user["user_id"]
+        session["username"] = user["username"]
+        session["role"] = user["role"]
+        session["branch_id"] = user["branch_id"]
+        session["branch_name"] = user["branch_name"]
+        session["must_change_password"] = bool(user["must_change_password"])
+        session["pwv"] = password_fingerprint(user["password_hash"])
+
+        if session["must_change_password"]:
+            flash(
+                f"Welcome back, {user['username']}. Please set a new password to continue.", "warning")
+            return redirect(url_for("auth.change_password"))
+
+        flash(f"Welcome back, {user['username']}.", "success")
+        # One-shot flag, popped by app.py's inject_login_splash() the
+        # first time any base.html page renders after this — shows the
+        # branded splash in base.html once, then never again until the
+        # next login.
+        session["show_login_splash"] = True
+        return redirect(url_for("admin.dashboard"
+                                if user["role"] == "Admin"
+                                else "branch.dashboard"))
+    return render_template("login.html")
+
+
+# POST-only, not GET. A GET route with a side effect (clearing the
+# session) can be triggered by any other site the signed-in user's
+# browser visits — e.g. <img src="https://this-app/logout"> — since the
+# browser will happily follow that request with the user's session
+# cookie attached, no interaction required. CSRFProtect(app) in app.py
+# already exempts GET/HEAD/OPTIONS by design (that's normal — GET isn't
+# supposed to have side effects), so GET was the actual hole here, not
+# a missing CSRF token; switching to POST is what puts this behind
+# CSRFProtect's real protection, and the hidden csrf_token field on the
+# sign-out form in base.html is what satisfies it.
+@bp.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("You've been signed out.", "success")
+    return redirect(url_for("auth.login"))
+
+
+@bp.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        user = query("SELECT password_hash FROM users WHERE user_id = %s",
+                     (session["user_id"],), fetchone=True)
+
+        if not user or not check_password_hash(user["password_hash"], current_password):
+            flash("Current password is incorrect.", "error")
+        elif len(new_password) < 8:
+            flash("New password must be at least 8 characters.", "error")
+        elif new_password != confirm_password:
+            flash("New password and confirmation don't match.", "error")
+        elif check_password_hash(user["password_hash"], new_password):
+            flash("Choose a password different from your current one.", "error")
+        else:
+            new_hash = generate_password_hash(new_password)
+            execute(
+                "UPDATE users SET password_hash = %s, must_change_password = FALSE WHERE user_id = %s",
+                (new_hash, session["user_id"]),
+            )
+            session["must_change_password"] = False
+            # Keep this session signed in; any other session for the account
+            # now fails the fingerprint check in decorators.py.
+            session["pwv"] = password_fingerprint(new_hash)
+            flash("Password updated.", "success")
+            return redirect(url_for("admin.dashboard"
+                                    if session["role"] == "Admin"
+                                    else "branch.dashboard"))
+
+    return render_template("change_password.html")

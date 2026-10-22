@@ -83,14 +83,17 @@
   }
 
   .chat-avatar.assistant-avatar {
-    background: var(--accent-soft);
-    color: var(--accent-ink);
+    background: var(--avatar-bg);
+    color: var(--avatar-ink);
+    box-shadow: inset 0 0 0 1px var(--avatar-ring);
   }
 
   .chat-avatar.user-avatar {
-    background: var(--surface-2);
+    background: color-mix(in srgb, var(--ink) 10%, var(--bg));
     color: var(--ink);
-    border: var(--border-width-strong) solid var(--border-strong);
+    box-shadow: inset 0 0 0 1px var(--thumb-ring);
+    line-height: 1;
+    overflow: hidden;
     font-size: 12px;
     font-weight: 700;
     font-family: var(--font);

@@ -2,7 +2,7 @@
 # Nightly-cron-friendly backup of the MySQL database and the uploaded
 # product photos under static/uploads/ (the only other persistent state
 # this app owns that isn't in the database — see schema.sql's comment
-# on products.image_path). See ../BACKUP.md for the full strategy this
+# on products.image_path). See ../docs/BACKUP.md for the full strategy this
 # script is one half of: schedule, retention, copying off this server,
 # and how to actually test a restore.
 #
@@ -78,4 +78,4 @@ find "$BACKUP_DIR" -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) -mtime "+$
 echo
 echo "Done. Latest backup: $DB_DUMP"
 echo "Reminder: $BACKUP_DIR only protects you if this server's disk fails to survive —"
-echo "copy new backups off this machine too (see BACKUP.md's 'Off-site copy' section)."
+echo "copy new backups off this machine too (see docs/BACKUP.md's 'Off-site copy' section)."

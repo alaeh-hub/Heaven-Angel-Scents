@@ -676,25 +676,90 @@ function initSettings() {
         styleBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.styleOption === style)));
     }
 
+    // ---- Tabs (General / Appearance / Backup) ----
+    const tabs = Array.from(overlay.querySelectorAll('.settings-tab'));
+    const panels = Array.from(overlay.querySelectorAll('.settings-panel'));
+    function showTab(name, focus) {
+        if (!tabs.some((t) => t.dataset.tab === name)) name = 'general';
+        tabs.forEach((t) => {
+            const on = t.dataset.tab === name;
+            t.setAttribute('aria-selected', String(on));
+            t.tabIndex = on ? 0 : -1;
+            if (on && focus) t.focus();
+        });
+        panels.forEach((p) => { p.hidden = p.dataset.panel !== name; });
+        const body = overlay.querySelector('.settings-body');
+        if (body) body.scrollTop = 0;
+        store('settingsTab', name);
+    }
+    tabs.forEach((t, i) => {
+        t.addEventListener('click', () => showTab(t.dataset.tab));
+        t.addEventListener('keydown', (e) => {
+            const horizontal = window.matchMedia('(max-width: 640px)').matches;
+            const next = horizontal ? 'ArrowRight' : 'ArrowDown';
+            const prev = horizontal ? 'ArrowLeft' : 'ArrowUp';
+            let to = null;
+            if (e.key === next) to = tabs[(i + 1) % tabs.length];
+            else if (e.key === prev) to = tabs[(i - 1 + tabs.length) % tabs.length];
+            else if (e.key === 'Home') to = tabs[0];
+            else if (e.key === 'End') to = tabs[tabs.length - 1];
+            if (to) { e.preventDefault(); showTab(to.dataset.tab, true); }
+        });
+    });
+
+    // Re-measure anything sized from the old style's fonts/padding (the
+    // sidebar's active-link indicator, charts) once the new style is live.
+    function relayout() {
+        requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    }
+
     function setStyle(style) {
         if (!STYLES.includes(style)) return;
-        root.setAttribute('data-style', style);
+        if ((root.getAttribute('data-style') || 'classic') === style) { sync(); return; }
         store('uiStyle', style);
-        sync();
+        const apply = () => {
+            root.setAttribute('data-style', style);
+            sync();
+        };
+        // One snapshot cross-fade on the compositor instead of every
+        // element restyling in view at once (these styles swap fonts,
+        // borders, radii and shadows, which CSS transitions can't tween).
+        if (typeof document.startViewTransition === 'function' && !PREFERS_REDUCED_MOTION.matches) {
+            root.classList.add('vt-style');
+            const t = document.startViewTransition(apply);
+            t.finished.finally(() => { root.classList.remove('vt-style'); relayout(); });
+        } else {
+            apply();
+            relayout();
+        }
     }
 
     function setMode(mode) {
-        root.setAttribute('data-theme', mode);
+        if (root.getAttribute('data-theme') === mode) { sync(); return; }
         store('theme', mode);
-        sync();
+        if (typeof document.startViewTransition === 'function' && !PREFERS_REDUCED_MOTION.matches) {
+            root.classList.add('vt-style');
+            const t = document.startViewTransition(() => { root.setAttribute('data-theme', mode); sync(); });
+            t.finished.finally(() => root.classList.remove('vt-style'));
+        } else {
+            root.setAttribute('data-theme', mode);
+            sync();
+        }
     }
 
-    function open() {
+    function open(tab) {
         lastFocus = document.activeElement;
         sync();
+        let want = typeof tab === 'string' ? tab : null;
+        if (!want) {
+            // A due backup (the dot on Settings) lands on the Backup tab.
+            if (opener.hasAttribute('data-alert') && tabs.some((t) => t.dataset.tab === 'backup')) want = 'backup';
+            else { try { want = localStorage.getItem('settingsTab'); } catch (e) { } }
+        }
+        showTab(want || 'general');
         overlay.hidden = false;
-        const active = overlay.querySelector('.style-option[aria-pressed="true"]');
-        (active || overlay.querySelector('.settings-close')).focus();
+        const selected = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+        (selected || overlay.querySelector('.settings-close')).focus();
     }
 
     function close() {
@@ -702,7 +767,7 @@ function initSettings() {
         if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
     }
 
-    opener.addEventListener('click', open);
+    opener.addEventListener('click', () => open());
     // The account link may be handled by soft nav, which would leave the
     // dialog open over the new page.
     overlay.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { overlay.hidden = true; }));

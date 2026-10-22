@@ -6,7 +6,7 @@ RUN cd public-site && npm ci
 COPY public-site public-site
 RUN cd public-site && npm run build
 
-# Stage 2: Flask app under gunicorn + gevent-websocket (single worker, see DEPLOY.md)
+# Stage 2: Flask app under gunicorn + gevent-websocket (single worker, see docs/DEPLOY.md)
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app

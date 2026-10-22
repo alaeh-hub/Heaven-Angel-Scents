@@ -21,5 +21,5 @@ simple-websocket` there gets you real WebSocket upgrades instead of
 long-polling.
 """
 
-from app import app  # noqa: F401 -- re-exported for gunicorn's `wsgi:app` target
+from heaven_angel.app import app  # noqa: F401 -- re-exported for gunicorn's `wsgi:app` target
 

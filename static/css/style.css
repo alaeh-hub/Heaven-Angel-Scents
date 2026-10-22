@@ -81,6 +81,16 @@
   --radius-sm: 0.625rem;
   --radius: 1.125rem;
   --radius-lg: 1.5rem;
+  /* Avatars & thumbnails (product-thumb*, .pi-avatar, .chat-avatar,
+     .halo-avatar). Derived from the active accent over the solid page
+     background (not the translucent --surface/--accent-soft some styles
+     use), so the chip, its initials and its ring stay readable in every
+     interface style and in light and dark mode. */
+  --thumb-radius: var(--radius-sm);
+  --avatar-bg: color-mix(in srgb, var(--accent) 22%, var(--bg));
+  --avatar-ink: color-mix(in srgb, var(--accent-ink) 88%, var(--ink));
+  --avatar-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --thumb-ring: color-mix(in srgb, var(--ink) 16%, transparent);
   --shadow-sm: 0 1px 2px rgb(20 17 10 / 0.05);
   --shadow: 0 1px 2px rgb(20 17 10 / 0.04), 0 10px 30px -14px rgb(20 17 10 / 0.14);
   --shadow-md: 0 2px 6px rgb(20 17 10 / 0.05), 0 20px 44px -20px rgb(20 17 10 / 0.24);
@@ -92,7 +102,8 @@
      that column, plus the scrollbar gutter reserved on each side
      (--sidebar-gutter, measured by main.js's initSidebarGutter()) and
      .sidebar's 1px right border. */
-  --sidebar-w-collapsed: calc(4.5rem + 2 * var(--sidebar-gutter, 0.5rem) + 1px);
+  --sidebar-bw: 1px; /* .sidebar's right border; interface styles change it (themes.css) */
+  --sidebar-w-collapsed: calc(4.5rem + 2 * var(--sidebar-gutter, 0.5rem) + var(--sidebar-bw));
   /* Shared expand/collapse timing for the rail's width. Text on the rail
      only ever fades (never resizes): out fast with no delay, back in
      after a short delay once the rail has mostly widened. */
@@ -262,9 +273,17 @@ body {
   width: 2.5rem;
   height: 2.5rem;
   object-fit: cover;
-  border-radius: 0.75rem;
+  /* Follows the interface style's corner radius (square in Pixel/Terminal/
+     Bauhaus, soft in Clay/Neumorphism) so thumbs match the cards around
+     them. overflow clips real photos to the same shape. */
+  border-radius: var(--thumb-radius, 0.75rem);
+  overflow: hidden;
   border: 0;
-  box-shadow: 0 0 0 1px var(--border), 0 4px 10px -4px rgb(0 0 0 / 0.22);
+  /* A fixed ink-tinted ring rather than --border: some styles make
+     --border transparent (Neumorphism/Claymorphism), which left light
+     photos and chips with no visible edge on a same-color page. */
+  box-shadow: 0 0 0 1px var(--thumb-ring), 0 4px 10px -4px rgb(0 0 0 / 0.22);
+  background: var(--surface-2);
   display: block;
   flex-shrink: 0;
 }
@@ -280,15 +299,22 @@ body {
 /* Generated initials avatar shown in place of a photo — one flat,
    on-brand accent tone for every product (not a color hashed per product
    name), the same treatment .pi-avatar uses on the partner inquiries
-   page. No border, unlike a real photo's .product-thumb frame — a solid
-   accent chip reads as a finished fallback on its own. */
+   page. The ring replaces the photo frame so the chip keeps a crisp edge
+   in every style/mode. Sized inline by the macro (font-size = 40% of the
+   box); line-height 1 + no wrapping + overflow clip keep the two letters
+   centred and uncut even in the wide fonts (Pixel, Paper, Clay). */
 .product-thumb-avatar {
   border: none;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--avatar-bg);
+  color: var(--avatar-ink);
+  box-shadow: inset 0 0 0 1px var(--avatar-ring);
   font-weight: 700;
   font-family: var(--font);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
   user-select: none;
 }
 
@@ -1147,7 +1173,21 @@ th.num {
      other icon on the rail never getting an extra card around it. */
   html:not(.sidebar-pinned) .sidebar:not(.is-peeking):not(:has(:focus-visible)) .nav-link.active {
     background: transparent;
+    /* Interface styles (themes.css) give the active row its own border,
+       inset ring, hard shadow or glow; on the rail that would box in the
+       whole row around the icon. The icon chip below is the only marker. */
+    border-color: transparent;
+    box-shadow: none;
     transition: background 0.1s ease;
+  }
+
+  /* Some styles make the active icon's chip transparent (their row
+     highlight carries the signal when expanded). With the row highlight
+     gone on the rail, restore the filled chip in every style so the
+     current page is always marked. */
+  html:not(.sidebar-pinned) .sidebar:not(.is-peeking):not(:has(:focus-visible)) .nav-link.active svg {
+    background: var(--accent);
+    color: var(--gold-contrast);
   }
 
   html:not(.sidebar-pinned) .sidebar:not(.is-peeking):not(:has(:focus-visible)) .nav-link.active::before {
@@ -1192,8 +1232,10 @@ th.num {
      half its 2.125rem width = 2.25rem. */
   padding: 0.5625rem 0.625rem 0.5625rem 0.25rem;
   border-radius: 0.875rem;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  /* Flat row: no box. The border stays (transparent) so the avatar keeps
+     its position on the rail's icon column (see padding comment above). */
+  border: 1px solid transparent;
+  background: transparent;
   /* padding's reveal-direction transition for the collapsed-rail
      override further down — slow + delayed, same choreography as
      .brand/.nav-link/.footer-action; that rule overrides it with the
@@ -1203,8 +1245,7 @@ th.num {
 }
 
 .user-chip:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
 .avatar {
@@ -1224,16 +1265,49 @@ th.num {
   box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 calc(2px + var(--border-width-strong)) var(--border-strong);
 }
 
-.user-name {
-  font-size: 0.8438rem;
-  font-weight: 600;
-  line-height: 1.3;
+/* Online dot on the avatar (position:relative so it anchors to it). */
+.user-chip .avatar {
+  position: relative;
 }
 
+.user-chip .avatar::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 0.5625rem;
+  height: 0.5625rem;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface) 55%, var(--bg));
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Role as a small tinted pill under the name instead of faint grey text. */
 .user-role {
-  font-size: 0.6875rem;
-  color: var(--ink-faint);
-  margin-top: 1px;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+  color: var(--accent-ink);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The name/role column next to the avatar — collapses smoothly rather
@@ -1548,6 +1622,9 @@ th.num {
   font-size: 0.8125rem;
   -webkit-appearance: none;
   appearance: none;
+  /* Eases the style-specific borders/shadows in and out as the rail
+     expands and collapses instead of snapping. */
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .nav-search .nav-search-input::-webkit-search-cancel-button {
@@ -1622,6 +1699,18 @@ th.num {
     background: transparent;
     border-color: transparent;
     cursor: pointer;
+    /* Interface styles (themes.css) add their own inset/hard shadows,
+       gradients and glows to every search input; on the narrow rail they
+       would draw a box around just the icon. Strip them so the rail shows
+       only the icon, whatever the style. */
+    background-image: none;
+    box-shadow: none;
+    outline: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    filter: none;
+    text-shadow: none;
+    caret-color: transparent;
   }
 
   html:not(.sidebar-pinned) .sidebar:not(.is-peeking):not(:has(:focus-visible)) .nav-search-input::placeholder {
@@ -2909,8 +2998,7 @@ th.num {
 
 /* Highlighted stat tiles — opt-in per grid (admin and branch
    dashboards), since .stat-tile is used on many other pages. Each tile
-   gets a tinted outline plus a highlight bar along its top edge, both
-   in --tile-tone: gold by default, red/green when the tile's value is
+   gets a tinted outline in --tile-tone (no bar along the top edge): gold by default, red/green when the tile's value is
    flagged .danger/.success (low stock, loss, profit). */
 .stat-grid-highlight .stat-tile {
   --tile-tone: var(--accent);
@@ -2927,15 +3015,6 @@ th.num {
 
 .stat-grid-highlight .stat-tile:has(.stat-value.success) {
   --tile-tone: var(--success);
-}
-
-.stat-grid-highlight .stat-tile::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--tile-tone), color-mix(in srgb, var(--tile-tone) 25%, transparent));
-  pointer-events: none;
 }
 
 .stat-grid-highlight .stat-tile:hover {
@@ -5369,7 +5448,7 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: radial-gradient(90% 55% at 50% 100%, rgba(217, 181, 74, 0.5), transparent 72%);
+  background: radial-gradient(90% 55% at 50% 100%, color-mix(in srgb, var(--brand-gold) 50%, transparent), transparent 72%);
   mix-blend-mode: screen;
   opacity: calc(0.2 + var(--fill) * 0.8);
   translate: 0 calc((1 - var(--fill)) * 26%);
@@ -5665,7 +5744,7 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
     position: relative;
     border-radius: 50% 50% 1.5rem 1.5rem / 70% 70% 1.5rem 1.5rem;
     background:
-      radial-gradient(80% 90% at 50% 110%, rgba(217, 181, 74, 0.38), transparent 70%),
+      radial-gradient(80% 90% at 50% 110%, color-mix(in srgb, var(--brand-gold) 38%, transparent), transparent 70%),
       var(--brand-black);
   }
 
@@ -6496,4 +6575,140 @@ div[id$="Overlay"]:not(.rs-dialog)>.card {
   font-size: 0.8125rem;
   color: var(--ink-faint);
   text-align: center;
+}
+
+/* ================================================================
+   Laptop & desktop sizing (14" / 15" / 16" and larger)
+   Layered on the fluid root scale near the top of this file (14px at
+   761px -> 16px at 1600px), which every rem-based size follows.
+   1. Above 1600px the root keeps growing (17px at 1920, 19px cap at
+      2560+) so a 16" QHD+ or external monitor isn't a tiny design on
+      a big canvas.
+   2. .content's 73.75rem cap used to leave wide screens mostly empty;
+      it now widens in steps (the root is bigger there too).
+   3. Short panels (1366x768, 1280x800, HiDPI 16" at 200%) get a
+      height-driven root so the sidebar and a full page of content fit
+      without constant scrolling.
+   Placed last so these win over the earlier equal-specificity rules.
+   ================================================================ */
+@media (min-width: 1600px) {
+  html {
+    font-size: clamp(1rem, calc(1rem + (100vw - 1600px) * 0.003), 1.1875rem);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .content {
+    padding: 1.5rem 1.5rem 3rem;
+  }
+
+  .topbar {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .content {
+    max-width: 82rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  .content {
+    max-width: 96rem;
+  }
+}
+
+@media (min-width: 2560px) {
+  .content {
+    max-width: 110rem;
+  }
+}
+
+@media (min-width: 761px) and (max-height: 820px) {
+  html {
+    font-size: clamp(13px, calc(13px + (100vh - 640px) * 0.012), 15px);
+  }
+
+  .content {
+    padding-top: 1.25rem;
+    padding-bottom: 2.5rem;
+  }
+
+  .content>*+* {
+    margin-top: 1.125rem;
+  }
+
+  .topbar {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+/* ================================================================
+   Custom scrollbars — page + every scrollable area
+   One look everywhere (page, dialogs, panels, lists, tables), coloured
+   from theme variables so it follows light/dark and every interface
+   style (pixel/terminal square it off via --btn-radius). Elements that
+   hide their bar on purpose (.subnav, .tabs, .cs-panel, ...) set
+   scrollbar-width: none / their own ::-webkit-scrollbar and are
+   unaffected: those rules are more specific than the `*` here.
+   Chromium/Safari use the pseudo-elements; Firefox the standard
+   properties, kept in @supports so Chrome 121+ doesn't let them
+   override the pseudo-elements.
+   ================================================================ */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  border-left: 1px solid var(--border);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ink) 26%, transparent);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: var(--btn-radius, 999px);
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  transition: background-color 0.15s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--ink) 44%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--accent-ink);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ink) 30%, transparent) transparent;
+  }
+}
+
+/* .sidebar and .table-wrap asked for a thin bar via the standard
+   properties above, which makes Chrome 121+ skip their ::-webkit-
+   scrollbar styling. Reset those so they get the same look as the rest. */
+@supports selector(::-webkit-scrollbar) {
+
+  .sidebar,
+  .table-wrap {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
 }

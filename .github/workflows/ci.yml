@@ -149,19 +149,19 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements.txt -r requirements-dev.txt
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
 
       - name: Compile Python files
-        run: python -m compileall app.py config.py db.py decorators.py extensions.py routes seed.py utils.py wsgi.py
+        run: python -m compileall heaven_angel scripts app.py wsgi.py
 
       - name: Validate app factory
-        run: python -c "from app import app; assert {'admin', 'ai', 'auth', 'branch'} <= set(app.blueprints)"
+        run: python -c "from heaven_angel.app import app; assert {'admin', 'ai', 'auth', 'branch'} <= set(app.blueprints)"
 
       - name: Load database schema
         run: mysql -h 127.0.0.1 -P 3306 -u root < schema.sql
 
       - name: Smoke test database connection
-        run: python -c "from app import app; import db; ctx = app.app_context(); ctx.push(); row = db.query('SELECT COUNT(*) AS c FROM branches', fetchone=True); assert row['c'] >= 1; ctx.pop()"
+        run: python -c "from heaven_angel.app import app; from heaven_angel import db; ctx = app.app_context(); ctx.push(); row = db.query('SELECT COUNT(*) AS c FROM branches', fetchone=True); assert row['c'] >= 1; ctx.pop()"
 
       - name: Run test suite
         run: python -m pytest -v

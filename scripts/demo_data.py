@@ -20,9 +20,9 @@ from datetime import timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app  # noqa: E402
-from db import get_db, query  # noqa: E402
-from utils import business_now  # noqa: E402
+from heaven_angel.app import create_app  # noqa: E402
+from heaven_angel.db import get_db, query  # noqa: E402
+from heaven_angel.utils import business_now  # noqa: E402
 
 TAG = "demo-seed"
 DAYS = 150

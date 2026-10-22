@@ -29,9 +29,16 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          # Prefer a pinned host key (secret DEPLOY_KNOWN_HOSTS = output of
+          # `ssh-keyscan -p PORT HOST` taken once from a trusted network);
+          # fall back to trust-on-first-use scanning if it isn't set.
+          if [ -n "${{ secrets.DEPLOY_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          fi
 
-      # Docker deploy, see DOCKER_DEPLOY.md section 4: pull, take a pre-deploy
+      # Docker deploy, see docs/DOCKER_DEPLOY.md section 4: pull, take a pre-deploy
       # database dump, rebuild and restart the stack (the migrate job applies
       # schema.sql), then fail the run unless web reports healthy.
       - name: Deploy over SSH

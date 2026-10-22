@@ -187,7 +187,7 @@ def test_admin_low_stock_includes_hq_warehouse(client, sql):
 
 
 def test_ai_low_stock_tool_includes_hq_warehouse(app, sql):
-    from routes.ai_tools import _get_low_stock
+    from heaven_angel.routes.ai_tools import _get_low_stock
 
     bottle = make_product(sql, unit="50ML")
     bulk = make_product(sql, unit="BULK")

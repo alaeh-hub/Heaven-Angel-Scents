@@ -1,7 +1,7 @@
 # Production stack: Caddy (HTTPS) -> web (gunicorn) -> db (MySQL), plus a
 # one-shot schema migration and a daily backup job.
 # Required in .env (see .env.example): DOMAIN, DB_ROOT_PASSWORD, DB_APP_PASSWORD,
-# SECRET_KEY. Full steps in DOCKER_DEPLOY.md.
+# SECRET_KEY. Full steps in docs/DOCKER_DEPLOY.md.
 
 x-logging: &default-logging
   driver: json-file
@@ -38,7 +38,7 @@ services:
 
   # Applies schema.sql on every `up`. It is idempotent (CREATE ... IF NOT EXISTS
   # plus guarded migration blocks), so this covers both the first run and later
-  # schema changes. Back up before deploying schema changes (see BACKUP.md).
+  # schema changes. Back up before deploying schema changes (see docs/BACKUP.md).
   migrate:
     image: mysql:8.4
     restart: "no"
@@ -97,6 +97,8 @@ services:
       # "same-origin" accepts whichever host the browser used (domain or LAN IP),
       # unlike a fixed https://DOMAIN which silently kills realtime on other hosts.
       SOCKETIO_CORS_ALLOWED_ORIGINS: ${SOCKETIO_CORS_ALLOWED_ORIGINS:-same-origin}
+      # Required: the shared partner-portal link must survive restarts.
+      PARTNER_PORTAL_SLUG: ${PARTNER_PORTAL_SLUG:?set PARTNER_PORTAL_SLUG in .env}
       TRUST_PROXY: "1"
       FORWARDED_ALLOW_IPS: "*"
     depends_on:
@@ -127,7 +129,7 @@ services:
       - caddy_config:/config
 
   # Daily database dump + uploads archive into ./backups on the host. Copy that
-  # folder off the server too (see BACKUP.md "Off-site copy").
+  # folder off the server too (see docs/BACKUP.md "Off-site copy").
   backup:
     image: mysql:8.4
     restart: unless-stopped

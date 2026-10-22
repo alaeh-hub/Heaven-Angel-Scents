@@ -3,7 +3,7 @@
 mL apart from bottle counts rather than adding the two together.
 """
 from factories import login, make_branch, make_product, make_user, unique_suffix
-from reports import get_report, parse_report_filters, render_report_excel, render_report_pdf
+from heaven_angel.services.reports import get_report, parse_report_filters, render_report_excel, render_report_pdf
 
 
 def _add_sale(sql, branch_id, sku, qty, unit_price, customer_name=None):

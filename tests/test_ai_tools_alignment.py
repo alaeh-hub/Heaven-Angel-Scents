@@ -2,7 +2,7 @@
 runs cleanly for both roles, and the bottle / bulk-mL split, HQ naming,
 bulk-request guard and COGS maths match the rest of the system.
 """
-import routes.ai_tools as ai_tools
+from heaven_angel.routes import ai_tools
 from factories import make_branch, make_inventory, make_product, unique_suffix
 
 

@@ -4,7 +4,7 @@ time mode, and the page rules (low stock, Closed-only package sales,
 bulk mL kept apart, branch-only filters) hold in the generated data.
 """
 from factories import make_branch, make_inventory, make_product
-from reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
+from heaven_angel.services.reports import REPORT_TYPES, get_report, parse_report_filters, render_report_excel, render_report_pdf
 
 
 def test_every_report_builds_and_renders(app, sql):

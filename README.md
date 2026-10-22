@@ -57,33 +57,33 @@ The app is a single Flask application with several route blueprints, a shared da
 
 | File | Responsibility |
 | --- | --- |
-| `app.py` | Builds the Flask app, configures security headers (Talisman), CSP, logging, and registers all blueprints |
-| `config.py` | Environment-based configuration: database, security, mail, AI, rate limits, partner portal slug |
-| `extensions.py` | Shared extension instances (Flask-Limiter, Flask-SocketIO) — single-process/single-worker by design |
-| `db.py` | MySQL connection pooling and a `transaction()` helper for atomic, all-or-nothing multi-table writes |
-| `decorators.py` | Shared route decorators for login/role/branch access control |
-| `utils.py` | Form-parsing helpers, constants (payment methods, sale types), validation, receipt-code signing |
-| `sale_stock.py` | Shared stock logic for recording and voiding a sale — used by both manual entry and Excel import, so every path moves stock identically |
-| `sales_import.py` | Builds/parses the Excel bulk sales import template and inserts an entire file as one atomic transaction |
-| `audit.py` | Admin action audit log (`admin_actions` table) |
-| `login_activity.py` | Login/logout activity tracking (`login_activity` table) |
-| `mailer.py` | Outbound SMTP notifications (currently: new partner-inquiry alerts to HQ) |
-| `appsettings.py` | Small database-backed store for admin-managed settings such as the backup schedule |
-| `backup.py` | Consistent database snapshots, backup archives, and validated in-app restore |
-| `backup_jobs.py` | Backup reminders, schedule tracking, and optional automatic email backups |
-| `receipts.py` | PDF sale receipt generation, including the signed QR verification code |
-| `brand_assets.py` | Shared reportlab-drawn brand mark used in generated PDFs (reports, receipts) |
-| `reports.py` | Financial/operational report building (branch, HQ, partner) and Excel export |
-| `sockets.py` | Socket.IO room membership and role/branch-scoped realtime event broadcasting |
-| `seed.py` | Initial/demo data seeding |
+| `heaven_angel/app.py` | Builds the Flask app, configures security headers (Talisman), CSP, logging, and registers all blueprints |
+| `heaven_angel/config.py` | Environment-based configuration: database, security, mail, AI, rate limits, partner portal slug |
+| `heaven_angel/extensions.py` | Shared extension instances (Flask-Limiter, Flask-SocketIO) — single-process/single-worker by design |
+| `heaven_angel/db.py` | MySQL connection pooling and a `transaction()` helper for atomic, all-or-nothing multi-table writes |
+| `heaven_angel/decorators.py` | Shared route decorators for login/role/branch access control |
+| `heaven_angel/utils.py` | Form-parsing helpers, constants (payment methods, sale types), validation, receipt-code signing |
+| `heaven_angel/services/sale_stock.py` | Shared stock logic for recording and voiding a sale — used by both manual entry and Excel import, so every path moves stock identically |
+| `heaven_angel/services/sales_import.py` | Builds/parses the Excel bulk sales import template and inserts an entire file as one atomic transaction |
+| `heaven_angel/services/audit.py` | Admin action audit log (`admin_actions` table) |
+| `heaven_angel/services/login_activity.py` | Login/logout activity tracking (`login_activity` table) |
+| `heaven_angel/services/mailer.py` | Outbound SMTP notifications (currently: new partner-inquiry alerts to HQ) |
+| `heaven_angel/services/appsettings.py` | Small database-backed store for admin-managed settings such as the backup schedule |
+| `heaven_angel/services/backup.py` | Consistent database snapshots, backup archives, and validated in-app restore |
+| `heaven_angel/services/backup_jobs.py` | Backup reminders, schedule tracking, and optional automatic email backups |
+| `heaven_angel/services/receipts.py` | PDF sale receipt generation, including the signed QR verification code |
+| `heaven_angel/services/brand_assets.py` | Shared reportlab-drawn brand mark used in generated PDFs (reports, receipts) |
+| `heaven_angel/services/reports.py` | Financial/operational report building (branch, HQ, partner) and Excel export |
+| `heaven_angel/sockets.py` | Socket.IO room membership and role/branch-scoped realtime event broadcasting |
+| `scripts/seed.py` | Initial/demo data seeding |
 | `schema.sql` | Full operational database schema, including guarded migrations for existing installs |
-| `routes/auth.py` | Login, logout, and forced password-change flows |
-| `routes/admin.py` | HQ operations screens and logic (largest blueprint — catalog, production, partners, users, reports) |
-| `routes/branch.py` | Branch-side inventory, sales, requests, receiving, and customer workflows |
-| `routes/portal.py` | Public partner portal API, slug-gated, serves the built `public-site/` app |
-| `routes/ai.py` | Chat endpoint and session handling for the read-only AI assistant |
-| `routes/ai_tools.py` | The data-fetching "tools" the AI assistant is allowed to call, scoped by role/branch |
-| `routes/scan.py` | QR receipt verification — decodes and checks a signed receipt code against the database |
+| `heaven_angel/routes/auth.py` | Login, logout, and forced password-change flows |
+| `heaven_angel/routes/admin.py` | HQ operations screens and logic (largest blueprint — catalog, production, partners, users, reports) |
+| `heaven_angel/routes/branch.py` | Branch-side inventory, sales, requests, receiving, and customer workflows |
+| `heaven_angel/routes/portal.py` | Public partner portal API, slug-gated, serves the built `public-site/` app |
+| `heaven_angel/routes/ai.py` | Chat endpoint and session handling for the read-only AI assistant |
+| `heaven_angel/routes/ai_tools.py` | The data-fetching "tools" the AI assistant is allowed to call, scoped by role/branch |
+| `heaven_angel/routes/scan.py` | QR receipt verification — decodes and checks a signed receipt code against the database |
 
 The platform uses:
 
@@ -132,12 +132,12 @@ HQ logs production batches that convert raw materials into finished (bottled) an
 
 ### 4. Sales, refills, and voids
 
-Branches (and HQ) record sales through `sale_stock.py`'s shared logic, so manual entry and Excel bulk import both move stock identically:
+Branches (and HQ) record sales through `heaven_angel/services/sale_stock.py`'s shared logic, so manual entry and Excel bulk import both move stock identically:
 
 - **Sale / Freebie** — the product's own stock at that location decreases.
 - **Refill** — the customer brings their own bottle; no bottled unit leaves stock, but the scent's *bulk* product is drawn down instead (HQ-only, since branches don't stock bulk).
 - Payment methods include cash and credit entries.
-- Every sale produces a PDF receipt with a signed, scannable QR code (see `receipts.py` / `routes/scan.py`).
+- Every sale produces a PDF receipt with a signed, scannable QR code (see `heaven_angel/services/receipts.py` / `heaven_angel/routes/scan.py`).
 - A sale can be **voided**: stock is restored, a permanent snapshot is kept in `sale_voids` (who voided it and why), and the sale row is removed so revenue/units/customer/credit totals self-correct without every query having to filter voids out.
 
 ### 5. Bulk sales import
@@ -148,7 +148,7 @@ HQ or a branch can download an Excel template, fill in a batch of sales offline,
 
 The public partner portal gives distributors and resellers access to package offerings without requiring an authenticated account. It's protected by a deployment-specific slug instead of a login — the link is only ever shared directly by HQ, never linked from the signed-in app.
 
-Its pages are a separate React app in `public-site/` (Vite + React Router + Motion, Geist type, Phosphor icons), with its own design tokens in `public-site/src/styles/tokens.css` (light and dark, following the visitor's system setting). Flask checks the slug, serves the built app at `/partner-portal/<slug>/packages[/<id>]`, and exposes the JSON API it uses under `/partner-portal/<slug>/api/` (see `routes/portal.py`). Product photos, bottle renders, and video are still served from Flask's `static/`.
+Its pages are a separate React app in `public-site/` (Vite + React Router + Motion, Geist type, Phosphor icons), with its own design tokens in `public-site/src/styles/tokens.css` (light and dark, following the visitor's system setting). Flask checks the slug, serves the built app at `/partner-portal/<slug>/packages[/<id>]`, and exposes the JSON API it uses under `/partner-portal/<slug>/api/` (see `heaven_angel/routes/portal.py`). Product photos, bottle renders, and video are still served from Flask's `static/`.
 
 The flow includes:
 
@@ -164,7 +164,7 @@ Every sale receipt PDF carries a short, HMAC-signed code (not the sale's actual 
 
 ### 8. AI assistant
 
-The AI assistant is intentionally read-only and scoped to the signed-in user's role and branch. It builds a server-side snapshot of live business data (via `routes/ai_tools.py`) and sends it to Gemini with strict rules:
+The AI assistant is intentionally read-only and scoped to the signed-in user's role and branch. It builds a server-side snapshot of live business data (via `heaven_angel/routes/ai_tools.py`) and sends it to Gemini with strict rules:
 
 - use only the data it was given
 - never invent inventory, prices, or history
@@ -194,7 +194,7 @@ opt-in scheduled email backups. These archives contain customer data and passwor
 hashes; they are not encrypted, so handle the destination mailbox carefully.
 
 For off-server scheduled backups, retention, secrets, and restore drills, see
-[BACKUP.md](./BACKUP.md). In-app email backups complement rather than replace an
+[BACKUP.md](./docs/BACKUP.md). In-app email backups complement rather than replace an
 independent off-server copy.
 
 ---
@@ -206,6 +206,9 @@ The application is built with a production-minded security posture:
 - HTTPS enforcement and hardened security headers in production via Flask-Talisman, including a locked-down Content-Security-Policy
 - CSRF protection on all state-changing forms (Flask-WTF)
 - Session cookies set with security-friendly defaults (`HttpOnly`, `SameSite=Lax`, `Secure` in production)
+- Signed-in sessions expire after an idle timeout (8 hours by default), and password changes invalidate other sessions for that account
+- Socket.IO connections are authorized against the live account and password state before joining a role/branch room
+- Inline scripts are nonce-authorized by the Content-Security-Policy; inline event handlers are not allowed
 - Role-based access control enforced through shared route decorators, re-checked against the database on every request
 - Rate limiting on high-risk endpoints such as login and AI chat usage
 - A hard cap on request body size (`MAX_CONTENT_LENGTH`) so no endpoint can be forced to buffer unbounded uploads
@@ -224,6 +227,8 @@ The app reads configuration from environment variables and a local `.env` file w
 - `APP_ENV` = `development` or `production`
 - `FLASK_DEBUG` = enables debug mode locally
 - `SECRET_KEY` = application secret, required to be set explicitly for any non-debug run
+- `SESSION_IDLE_HOURS` = signed-in session idle timeout in hours (defaults to `8`)
+- `LOG_FORMAT` = `json` for structured JSON logs or `text`; defaults to JSON in production and text otherwise
 - `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`, `MYSQL_POOL_SIZE`
 - `BUSINESS_TIMEZONE_OFFSET` = the UTC offset used for "business day" boundaries in reporting (defaults to `+08:00`, Philippines)
 - `PARTNER_PORTAL_SLUG` = stable public portal slug for partner access (auto-generated and logged if unset in dev — unsuitable for production, since it changes every restart)
@@ -232,7 +237,8 @@ The app reads configuration from environment variables and a local `.env` file w
 - `BACKUP_NOTIFY_EMAIL` (defaults to the partner-inquiry notification address), `BACKUP_EMAIL_MAX_MB` (attachment limit), and `BACKUP_SCHEDULER` (disable scheduled backup checks in a process)
 - `PORTAL_CONTACT_PHONE`, `PORTAL_CONTACT_EMAIL`, `PORTAL_CONTACT_VIBER`, `PORTAL_CONTACT_MESSENGER_URL`, `PORTAL_REPLY_TIME` — optional contact details shown on the public portal
 - `RATELIMIT_ENABLED` and `MAX_CONTENT_LENGTH`
-- `SOCKETIO_CORS_ALLOWED_ORIGINS` = origins allowed to connect over Socket.IO (defaults to any origin; should be locked down in production)
+- `SOCKETIO_CORS_ALLOWED_ORIGINS` = origins allowed to connect over Socket.IO (defaults to any origin when unset; the Docker Compose deployment uses `same-origin`)
+- `TRUST_PROXY` = set to `1` only when the app is reachable exclusively through a trusted reverse proxy; enables one-hop forwarded host/protocol/IP handling
 - `ALLOW_DATA_RESET` = enables the dev-only "clear all data" admin action; hard-disabled in production regardless of this setting
 
 The app is intentionally strict in production mode and will warn, or fail to start, if required configuration is missing or insecure.
@@ -268,10 +274,19 @@ For production-style WSGI serving, the repo also includes `wsgi.py` and the requ
 
 ### Running tests
 
-The test suite (`tests/`) covers RBAC, sales/voids, stock requests, bulk batches, formulas, reports, partner portal API, dashboard trends, and more, using `pytest` against disposable fixtures/factories:
+The test suite (`tests/`) covers RBAC, branch isolation, session and Socket.IO authorization, CSP nonce enforcement, sales/voids, stock requests, bulk batches, formulas, reports, partner portal API, dashboard trends, and more. Integration tests use a disposable MySQL database:
 
 ```bash
+pip install -r requirements-dev.txt   # pytest + ruff (not in the production image)
 pytest
+```
+
+On Windows, the optional Docker helper runs the suite against a temporary
+MySQL 8.4 container without using the local database:
+
+```powershell
+powershell -File scripts\run_tests_docker.ps1
+powershell -File scripts\run_tests_docker.ps1 tests\test_csp.py
 ```
 
 ---
@@ -280,32 +295,16 @@ pytest
 
 ```text
 .
-├── app.py
-├── wsgi.py
-├── config.py
-├── extensions.py
-├── db.py
-├── decorators.py
-├── utils.py
-├── audit.py
-├── login_activity.py
-├── mailer.py
-├── appsettings.py
-├── backup.py
-├── backup_jobs.py
-├── BACKUP.md
-├── receipts.py
-├── brand_assets.py
-├── reports.py
-├── sale_stock.py
-├── sales_import.py
-├── sockets.py
-├── seed.py
+├── app.py                # local dev entry point
+├── wsgi.py               # production entry point (gunicorn)
+├── heaven_angel/         # the Flask application package
+│   ├── app.py, config.py, extensions.py, db.py, decorators.py, utils.py, sockets.py
+│   ├── routes/           # blueprints (admin, auth, branch, portal, ai, ai_tools, scan)
+│   └── services/         # business logic: reports, receipts, backup, mailer, ...
 ├── schema.sql
 ├── requirements.txt
-├── requirements-dev.txt
 ├── README.md
-├── DEPLOY.md
+├── docs/                 # BACKUP, DEPLOY, DOCKER_DEPLOY, HOSTINGER_DEPLOY, QA pack
 ├── public-site/          # partner portal front end (React + Vite)
 │   └── src/
 │       ├── components/
@@ -313,14 +312,6 @@ pytest
 │       ├── hooks/
 │       ├── pages/
 │       └── styles/
-├── routes/
-│   ├── admin.py
-│   ├── auth.py
-│   ├── branch.py
-│   ├── portal.py
-│   ├── ai.py
-│   ├── ai_tools.py
-│   └── scan.py
 ├── static/
 │   ├── css/
 │   ├── js/

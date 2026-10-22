@@ -3,7 +3,7 @@
 branch, and only today's sales count.
 """
 from factories import login, make_branch, make_product, make_user
-from utils import compact_peso
+from heaven_angel.utils import compact_peso
 
 
 def _insert_sale(sql, branch_id, sku, qty, unit_price, days_ago=0):

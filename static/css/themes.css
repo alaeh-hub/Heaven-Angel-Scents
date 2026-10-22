@@ -739,7 +739,7 @@ html[data-style="bauhaus"] .stat-tile:hover, html[data-style="bauhaus"] .chart-c
 }
 .settings-overlay[hidden] { display: none; }
 .settings-dialog {
-  width: min(100%, 46rem); max-height: min(92vh, 44rem);
+  width: min(100%, 54rem); max-height: min(92vh, 44rem);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); color: var(--ink);
   border: var(--card-bw, 1px) solid var(--card-bc, var(--border));
@@ -755,7 +755,58 @@ html[data-style="glassmorphism"] .settings-dialog { background: color-mix(in srg
 }
 .settings-close:hover { color: var(--ink); }
 .settings-close svg { width: 1rem; height: 1rem; }
-.settings-body { padding: 1.125rem 1.375rem 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.25rem; }
+/* Fixed height so switching tabs never resizes (jumps) the dialog. */
+.settings-dialog { height: min(92vh, 38rem); }
+.settings-layout { flex: 1; min-height: 0; display: flex; }
+.settings-tabs {
+  flex: 0 0 11rem; display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.875rem 0.75rem; border-right: 1px solid var(--border); overflow-y: auto;
+}
+.settings-tab {
+  position: relative; text-align: left; padding: 0.55rem 0.8rem; border: 0; border-radius: var(--btn-radius, 0.6rem);
+  background: none; color: var(--ink-soft); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.settings-tab:hover { background: var(--field); color: var(--ink); }
+.settings-tab[aria-selected="true"] { background: var(--field); color: var(--accent-ink); }
+.settings-tab:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+.settings-body { flex: 1; min-width: 0; padding: 1.125rem 1.375rem 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
+/* Custom scrollbars (follow the active style via theme variables).
+   Chromium/Safari use the pseudo-elements; Firefox the standard properties
+   (kept in @supports so Chrome 121+ doesn't let them override the pseudos). */
+.settings-body::-webkit-scrollbar, .settings-tabs::-webkit-scrollbar { width: 10px; height: 10px; }
+.settings-body::-webkit-scrollbar-track, .settings-tabs::-webkit-scrollbar-track { background: transparent; margin: 0.5rem 0; }
+.settings-body::-webkit-scrollbar-thumb, .settings-tabs::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: var(--btn-radius, 999px);
+  border: 3px solid transparent; background-clip: content-box;
+  transition: background-color 0.15s ease;
+}
+.settings-body::-webkit-scrollbar-thumb:hover, .settings-tabs::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
+.settings-body::-webkit-scrollbar-thumb:active, .settings-tabs::-webkit-scrollbar-thumb:active { background: var(--accent-ink); background-clip: content-box; }
+@supports not selector(::-webkit-scrollbar) {
+  .settings-body, .settings-tabs { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+}
+.settings-panel { display: flex; flex-direction: column; gap: 1.25rem; animation: settings-panel-in 0.18s ease-out; }
+.settings-panel[hidden] { display: none; }
+@keyframes settings-panel-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (max-width: 640px) {
+  .settings-layout { flex-direction: column; }
+  .settings-tabs {
+    flex: 0 0 auto; flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    padding: 0.5rem 0.75rem; border-right: 0; border-bottom: 1px solid var(--border);
+  }
+  .settings-tab { white-space: nowrap; }
+}
+
+/* Interface style / mode change (main.js initSettings): quick snapshot
+   cross-fade, so the swap reads as one smooth change, not a flash. */
+html.vt-style::view-transition-old(root),
+html.vt-style::view-transition-new(root) { animation-duration: 0.28s; animation-timing-function: ease; mix-blend-mode: normal; }
+html.vt-style::view-transition-old(root) { animation-name: vt-style-out; }
+html.vt-style::view-transition-new(root) { animation-name: vt-style-in; }
+@keyframes vt-style-out { to { opacity: 0; } }
+@keyframes vt-style-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .settings-panel { animation: none; } }
 .settings-label { margin: 0 0 0.5rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
 .settings-account-link {
   display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.9rem;
@@ -971,3 +1022,24 @@ html[data-style="glassmorphism"] .settings-dialog { background: color-mix(in srg
 .settings-reset { border: 0; background: none; color: var(--accent-ink); font: inherit; font-weight: 600; cursor: pointer; }
 .settings-reset:hover { text-decoration: underline; }
 @media (max-width: 480px) { .settings-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Sidebar edge width per style, so the collapsed rail's width math
+   (--sidebar-w-collapsed in style.css) matches the border each style
+   actually draws on .sidebar and the icons stay centred on the rail. */
+html[data-style="neobrutalism"] { --sidebar-bw: 3px; }
+html[data-style="pixel"] { --sidebar-bw: 4px; }
+html[data-style="bauhaus"] { --sidebar-bw: 2px; }
+html[data-style="neumorphism"],
+html[data-style="claymorphism"] { --sidebar-bw: 0px; }
+
+/* The "gold" the app used for fixed brand fills (sidebar avatar, stock
+   fill bars, filled buttons) is no longer gold under every style: it
+   follows each style's own accent (and light/dark variant), so Cyberpunk
+   is cyan, Terminal green, Paper oxblood and so on. Classic has no
+   data-style accent override, so it keeps the original gold. */
+html[data-style]:not([data-style="classic"]) { --brand-gold: var(--accent); }
+
+/* Pixel (light) sits on a saturated blue page, so mixing the accent into
+   --bg turned avatar chips purple with weak initials; use its solid soft
+   accent instead. */
+html[data-style="pixel"]:not([data-theme="dark"]) { --avatar-bg: var(--accent-soft); }

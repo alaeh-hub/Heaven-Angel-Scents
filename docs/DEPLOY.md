@@ -1,0 +1,310 @@
+# Production Deployment
+
+`README.md` covers architecture and application flow only, by design. This
+document covers the other half: how to actually get this app running in
+production — the real WSGI stack, every environment variable that changes
+behavior once you're live, and the steps that are easy to get wrong on a
+first deploy. See `BACKUP.md` separately for backups/restore.
+
+Target platform below is a single Linux host (systemd + nginx). The app
+itself is plain Flask/MySQL and doesn't require any of that specifically —
+adapt the process-manager and reverse-proxy sections to whatever your
+platform uses, the rest applies regardless.
+
+## 1. Prerequisites
+
+- Python 3.12+
+- MySQL 8.x — the only version this is actually tested against (CI runs
+  schema.sql and the test suite against the `mysql:8.4` image; older MySQL
+  or MariaDB may well work too, just untested)
+- A reverse proxy able to terminate TLS and proxy WebSocket upgrades (nginx
+  used below)
+- `mysql`/`mysqldump` client binaries on the host (also needed by
+  `scripts/backup_db.sh`, see `BACKUP.md`)
+
+## 2. Get the code and install dependencies
+
+```bash
+git clone <your-repo-url> /opt/heaven-and-angel
+cd /opt/heaven-and-angel
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt
+```
+
+`requirements.txt` includes the production WSGI stack (`gunicorn`, `gevent`,
+`gevent-websocket`) already — nothing extra to install for that.
+
+The public partner portal is a React app in `public-site/` that has to be
+built before Flask can serve it (needs Node.js 20+ on the build host):
+
+```bash
+cd public-site
+npm ci
+npm run build        # writes static/public-site/, which Flask serves
+cd ..
+```
+
+Until it's built, the portal URLs answer 503 with a message saying so.
+
+Videos in `static/video/` are gitignored, except the two web-sized clips
+the portal plays (`behind-the-scent.mp4`, `black_background_web.mp4`).
+Copy the rest (`logo_reveal.mp4`, `login_background.mp4`) to the server
+by hand, or the admin intro and login screen play nothing:
+
+```bash
+scp static/video/logo_reveal.mp4 static/video/login_background.mp4     <user>@<server>:/opt/heaven-and-angel/static/video/
+```
+
+## 3. Database
+
+```bash
+mysql -u root -p < schema.sql
+```
+
+This creates the `heaven_and_angel_scents` database and every table.
+`schema.sql` is safe to re-run — every `CREATE TABLE` is `IF NOT EXISTS` and
+every schema change since is its own guarded migration block — but there's
+no real migration tool (Alembic/Flyway) behind it. **Before running it
+against a database that already has real data in it** (i.e. every deploy
+after the first), read through what's changed since your last deploy and
+back up first (see `BACKUP.md`) — there's no automatic rollback if a
+migration block does something unexpected.
+
+Create a dedicated MySQL user for the app rather than using `root` in
+production:
+
+```sql
+CREATE USER 'heaven_app'@'localhost' IDENTIFIED BY '<a long random password>';
+GRANT ALL PRIVILEGES ON heaven_and_angel_scents.* TO 'heaven_app'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+## 4. Configuration (`.env`)
+
+Copy `.env.example` to `.env` and fill it in. Every variable below has a
+real, non-obvious production consequence — this table exists because none of
+this is otherwise written down in one place:
+
+| Variable | Required? | What happens if you get it wrong |
+|---|---|---|
+| `APP_ENV` | **Yes** — set to `production` | Anything else (including unset) uses `Config` instead of `ProductionConfig`: `SESSION_COOKIE_SECURE` stays `False` (cookies sent over plain HTTP) and Talisman won't force HTTPS/HSTS. |
+| `FLASK_DEBUG` | Set to `0` (or leave unset) | `1` enables Flask's debugger — never expose that publicly, it allows arbitrary code execution from a browser. Also gates the `SECRET_KEY` startup check below. |
+| `SECRET_KEY` | **Yes** | App refuses to boot (`RuntimeError` in `heaven_angel/app.py`) with the placeholder default unless `FLASK_DEBUG=1`. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` and never reuse it across environments. |
+| `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_DB` | **Yes** | Point these at the dedicated app user from step 3, not `root`. |
+| `SOCKETIO_CORS_ALLOWED_ORIGINS` | Set to your real domain(s) | Left unset, Socket.IO accepts connections from any origin — signed-in data is still session-gated (see `heaven_angel/sockets.py`), but this is real defense-in-depth you're skipping. The Docker Compose deployment defaults to `same-origin`. |
+| `PARTNER_PORTAL_SLUG` | **Yes**, if you use the partner portal | Unset: a random slug is generated per process and changes on every restart — the link you hand a distributor breaks the moment the app restarts. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(16))"`. |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | No | Blank key just disables the AI assistant (it tells users it isn't configured) — not a boot failure. |
+| `AI_CHAT_RATE_LIMIT` | No | Defaults are sane; only matters if you want to change Gemini cost exposure per user. |
+| `MAIL_*` / `PARTNER_INQUIRY_NOTIFY_EMAIL` | No | Blank disables email entirely — partner inquiries are still saved and visible in-app either way, nothing is lost, you just won't get notified by email. |
+| `RATELIMIT_ENABLED` | No — leave unset (defaults on) | Only ever set to `0` by the test suite. Setting this in a real deployment's `.env` would disable rate limiting app-wide. |
+
+By default the app does not trust `X-Forwarded-*` headers. If it is reachable
+exclusively through a trusted reverse proxy, set `TRUST_PROXY=1` to enable
+Werkzeug's one-hop `ProxyFix`; IP-based rate limits can then distinguish
+visitors and HTTPS detection works behind the proxy. Never enable this when
+clients can reach the app directly, since they could forge forwarded headers.
+
+This app is deployed **single-worker only** (`gunicorn -w 1`, see below) —
+rate limiting and realtime Socket.IO pushes both rely on in-process state
+that only stays correct with exactly one worker. Don't raise `-w` without
+first adding a shared store (e.g. Redis) for both; that isn't wired up here
+since it isn't needed at this app's scale.
+
+## 5. Bootstrapping the first admin account
+
+`scripts/seed.py` refuses to run at all when `APP_ENV=production` (see its own
+docstring) — it exists for local dev, not for planting known accounts on a
+real database. Its own suggested alternative is "create them through the
+app's own Accounts page instead" — but that page is `admin_required`, which
+means it needs an existing Admin account to sign in as, which is exactly
+what you don't have yet on a brand-new production database.
+
+Insert the very first admin account directly, once, with a real password
+you set yourself (not a temp one to remember to change):
+
+```bash
+.venv/bin/python -c "
+from heaven_angel.app import create_app
+from heaven_angel.db import execute
+from werkzeug.security import generate_password_hash
+import getpass
+
+password = getpass.getpass('New admin password: ')
+with create_app().app_context():
+    execute(
+        'INSERT INTO users (username, password_hash, role, branch_id, must_change_password) '
+        'VALUES (%s, %s, %s, %s, %s)',
+        ('admin', generate_password_hash(password), 'Admin', None, False),
+    )
+print('admin account created')
+"
+```
+
+Log in as `admin`, then create every other account (branch staff, additional
+admins) through **Accounts** in the UI from here on — this direct-SQL path
+is only ever needed once, for the account that creates the rest.
+
+## 6. Running the app
+
+Local dev (`py app.py`) uses Flask-SocketIO's built-in threading mode and
+doesn't apply here. Production needs an async worker because Socket.IO holds
+long-lived connections:
+
+```bash
+.venv/bin/gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app --bind 127.0.0.1:8000
+```
+
+**`-w 1` is not a placeholder — it's a real, current constraint.** Rate
+limiting and Socket.IO both rely on per-process state; running more than one
+worker as-is silently multiplies rate limits and breaks realtime sync across
+tabs on different workers. Adding a shared store (e.g. Redis) for both is a
+prerequisite for raising `-w` — not implemented here, since a single worker
+comfortably covers this app's scale.
+
+### systemd unit (`/etc/systemd/system/heaven-and-angel.service`)
+
+```ini
+[Unit]
+Description=Heaven & Angel Scents
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/heaven-and-angel
+EnvironmentFile=/opt/heaven-and-angel/.env
+ExecStart=/opt/heaven-and-angel/.venv/bin/gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 wsgi:app --bind 127.0.0.1:8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now heaven-and-angel
+sudo journalctl -u heaven-and-angel -f   # logs — see "Logging" below
+```
+
+`EnvironmentFile=` reads `.env` directly as `KEY=value` pairs. Unlike
+`scripts/backup_db.sh`/`restore_db.sh` (which parse `.env` by hand
+specifically to avoid this), systemd's own parser takes the rest of each
+line as the value rather than word-splitting on spaces, so the unquoted
+`AI_CHAT_RATE_LIMIT=15 per minute;150 per day` style `.env.example` already
+uses works fine here too — no reformatting needed.
+
+## 7. Reverse proxy (nginx)
+
+Terminates TLS and proxies Socket.IO's WebSocket upgrade. The
+`X-Forwarded-*` headers below are harmless to send but the app doesn't
+currently read them (see the note in step 4) — they're kept here only
+because most WSGI deployments expect them regardless:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:8000/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+## 8. Persistent files outside the database
+
+`static/uploads/` (product photos, written by `heaven_angel/routes/admin.py`'s
+`_save_product_image()`) lives on local disk and is **not** part of the git
+repo or the database — a redeploy that recreates the filesystem (a fresh
+container, a new host) loses every uploaded product photo unless this
+directory is on persistent storage (a mounted volume, or excluded from
+whatever "clean checkout" step your deploy process does) and included in
+your backup routine (`scripts/backup_db.sh` already archives it — see
+`BACKUP.md`).
+
+## 9. Backups
+
+Set up `scripts/backup_db.sh` on a nightly cron job and copy backups
+off-host — see `BACKUP.md` for the full strategy, retention policy, and how
+to actually test a restore (not optional — do this before you need it for
+real).
+
+## 10. Logging
+
+Everything currently goes to stdout/stderr with color formatting (see
+`app.py`'s `_ColorFormatter`) — there's no file handler, log rotation, or
+external error tracking (Sentry or similar) configured. Under systemd,
+`journalctl -u heaven-and-angel` is your log store; set
+`journalctl`'s own retention (`SystemMaxUse=` in `/etc/systemd/journald.conf`
+or a per-unit override) so logs don't grow unbounded, and consider adding
+external error tracking before you rely on this for anything beyond casual
+tailing.
+
+## 11. Redeploying / updating
+
+```bash
+cd /opt/heaven-and-angel
+git pull
+.venv/bin/pip install -r requirements.txt   # in case dependencies changed
+(cd public-site && npm ci && npm run build)  # rebuild the partner portal front end
+mysql -u root -p heaven_and_angel_scents < schema.sql   # back up first — see step 3
+sudo systemctl restart heaven-and-angel
+```
+
+### Automating this (GitHub Actions)
+
+`.github/workflows/deploy.yml` runs the same steps over SSH, manually
+triggered from the Actions tab ("Run workflow") rather than on every push
+— there's no migration tool or automated rollback behind `schema.sql`, so
+a human still decides when it's safe to redeploy. It needs:
+
+- A dedicated SSH keypair whose public half is in the deploy user's
+  `~/.ssh/authorized_keys` on the server.
+- These repository secrets (Settings → Secrets and variables → Actions),
+  ideally scoped to a `production` environment with required reviewers:
+  - `DEPLOY_HOST` — the server's hostname/IP
+  - `DEPLOY_USER` — the SSH user (not `root`; needs write access to
+    `/opt/heaven-and-angel` and passwordless `sudo systemctl restart
+    heaven-and-angel`, e.g. via a `/etc/sudoers.d/` entry scoped to that
+    one command)
+  - `DEPLOY_SSH_KEY` — the private half of the keypair above
+  - `DEPLOY_PORT` — optional, only if SSH isn't on port 22
+- The deploy user's own checkout at `/opt/heaven-and-angel` must already
+  have `origin` set to a URL it can `git pull --ff-only` from
+  non-interactively (a deploy key or an HTTPS URL with a credential
+  helper), and `.env` present with working `MYSQL_*` credentials — the
+  workflow sources that file rather than assuming `root`.
+
+## 12. Post-deploy smoke test
+
+- Load the site over HTTPS — confirm no mixed-content warnings and that
+  `Strict-Transport-Security` is present in the response headers (Talisman).
+- Log in as the admin account created in step 5; confirm the dashboard
+  loads and Socket.IO connects (no realtime-badge errors in the browser
+  console).
+- Submit a test partner inquiry through
+  `/partner-portal/<slug>/packages` and confirm it appears on **Partner
+  Inquiries**.

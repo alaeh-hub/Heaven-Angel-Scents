@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restores a database dump produced by backup_db.sh. See ../BACKUP.md's
+# Restores a database dump produced by backup_db.sh. See ../docs/BACKUP.md's
 # "Testing a restore" section — the whole point of a backup strategy is
 # a restore that's actually been tried, not just a pile of .sql.gz files
 # nobody has opened. Always restore into --target-db pointed at a

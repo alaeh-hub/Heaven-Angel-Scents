@@ -394,8 +394,9 @@
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: var(--accent-soft);
-            color: var(--accent-ink);
+            background: var(--avatar-bg);
+            color: var(--avatar-ink);
+            box-shadow: inset 0 0 0 1px var(--avatar-ring);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1194,9 +1195,8 @@
                 <div class="user-chip">
                     <div class="avatar">{{ session.username[0]|upper if session.username else '?' }}</div>
                     <div>
-                        <div class="user-name">{{ session.username }}</div>
-                        <div class="user-role">{{ session.branch_name if session.role == 'Branch' else 'Main Branch
-                            Administrator' }}</div>
+                        <div class="user-name" title="{{ session.username }}">{{ session.username }}</div>
+                        <div class="user-role">{{ session.branch_name if session.role == 'Branch' else 'Administrator' }}</div>
                     </div>
                 </div>
                 <div class="footer-actions">
@@ -1424,7 +1424,7 @@
             <div class="settings-head">
                 <div>
                     <h2 id="settingsTitle">Settings</h2>
-                    <p>Choose how the system looks. Saved on this device.</p>
+                    <p>Account, sidebar, appearance and backups. Look &amp; sidebar choices are saved on this device.</p>
                 </div>
                 <button type="button" class="settings-close" id="settingsClose" aria-label="Close settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -1432,7 +1432,16 @@
                     </svg>
                 </button>
             </div>
+            <div class="settings-layout">
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+                <button type="button" class="settings-tab" role="tab" id="settingsTab-general" data-tab="general" aria-controls="settingsPanel-general" aria-selected="true">General</button>
+                <button type="button" class="settings-tab" role="tab" id="settingsTab-appearance" data-tab="appearance" aria-controls="settingsPanel-appearance" aria-selected="false" tabindex="-1">Appearance</button>
+                {% if session.role == 'Admin' %}
+                <button type="button" class="settings-tab" role="tab" id="settingsTab-backup" data-tab="backup" aria-controls="settingsPanel-backup" aria-selected="false" tabindex="-1">Backup &amp; restore</button>
+                {% endif %}
+            </div>
             <div class="settings-body">
+              <section class="settings-panel" role="tabpanel" id="settingsPanel-general" data-panel="general" aria-labelledby="settingsTab-general">
                 <div>
                     <p class="settings-label">Account</p>
                     <a class="settings-account-link" href="{{ url_for('auth.change_password') }}">
@@ -1457,7 +1466,9 @@
                         </span>
                     </div>
                 </div>
+              </section>
                 {% if session.role == 'Admin' %}
+              <section class="settings-panel" role="tabpanel" id="settingsPanel-backup" data-panel="backup" aria-labelledby="settingsTab-backup" hidden>
                 <div>
                     <p class="settings-label">Backup</p>
                     <div class="settings-schedule" id="backupSchedule">
@@ -1519,7 +1530,9 @@
                         <div class="settings-progress" id="restoreBar" hidden><span></span></div>
                     </details>
                 </div>
+              </section>
                 {% endif %}
+              <section class="settings-panel" role="tabpanel" id="settingsPanel-appearance" data-panel="appearance" aria-labelledby="settingsTab-appearance" hidden>
                 <div>
                     <p class="settings-label">Mode</p>
                     <div class="settings-modes" role="group" aria-label="Color mode">
@@ -1561,6 +1574,8 @@
                         {% endfor %}
                     </div>
                 </div>
+              </section>
+            </div>
             </div>
             <div class="settings-foot">
                 <span>Applies instantly to every page.</span>

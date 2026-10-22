@@ -10,7 +10,7 @@ import decimal
 import pytest
 from flask import request
 
-from utils import (ValidationError, consume_form_token, issue_form_token,
+from heaven_angel.utils import (ValidationError, consume_form_token, issue_form_token,
                     parse_non_negative_decimal, parse_non_negative_int,
                     parse_past_date, parse_positive_decimal,
                     parse_positive_int, percent_change,

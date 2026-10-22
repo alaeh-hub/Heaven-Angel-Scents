@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from werkzeug.security import generate_password_hash
 
-from app import create_app  # noqa: E402
-from db import execute, query  # noqa: E402
+from heaven_angel.app import create_app  # noqa: E402
+from heaven_angel.db import execute, query  # noqa: E402
 
 
 def main():

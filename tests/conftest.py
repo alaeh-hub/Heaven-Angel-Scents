@@ -108,7 +108,7 @@ def _test_database():
         pytest.skip(
             "mysql-connector-python isn't installed in this Python environment "
             f"({sys.executable}) — these tests need the project's own dependencies "
-            "(requirements.txt + requirements-dev.txt). This usually means pytest "
+            "(requirements.txt). This usually means pytest "
             "was run outside the project's virtual environment: use "
             "`.venv\\Scripts\\python.exe -m pytest` (Windows) or "
             "`.venv/bin/python -m pytest` rather than a bare `pytest` command, "
@@ -162,7 +162,7 @@ def _test_database():
 
 @pytest.fixture(scope="session")
 def app():
-    from app import create_app
+    from heaven_angel.app import create_app
     application = create_app()
     application.config.update(
         TESTING=True,
