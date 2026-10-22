@@ -65,7 +65,11 @@ function isSamePageNoOpLink(link) {
 (function initSidebarGutter() {
     const sidebar = document.getElementById('sidebar');
     const brand = sidebar && sidebar.querySelector('.brand');
-    if (!brand) return;
+    // base.html's head script adds html.sidebar-booting (transitions frozen);
+    // lift it two frames after the first measurement has been applied.
+    const settle = () => requestAnimationFrame(() => requestAnimationFrame(
+        () => document.documentElement.classList.remove('sidebar-booting')));
+    if (!brand) { settle(); return; }
 
     function measure() {
         const cs = getComputedStyle(sidebar);
@@ -75,10 +79,12 @@ function isSamePageNoOpLink(link) {
             - brand.getBoundingClientRect().width) / 2;
         if (gutter >= 0) {
             document.documentElement.style.setProperty('--sidebar-gutter', gutter + 'px');
+            try { localStorage.setItem('sidebarGutter', String(gutter)); } catch (e) { }
         }
     }
 
     measure();
+    settle();
     window.addEventListener('resize', measure);
 })();
 
@@ -1072,7 +1078,21 @@ function initSettings() {
         const finished = (text) => {
             ui.bar(100);
             ui.say(text, 'ok');
-            window.setTimeout(() => { window.location.href = '/'; }, 3000);
+            // Restored accounts/passwords may be identical, which keeps this session
+            // valid, so sign out for real (POST /logout) instead of only redirecting.
+            const signout = document.createElement('div');
+            signout.className = 'signout-overlay';
+            signout.setAttribute('role', 'alertdialog');
+            signout.setAttribute('aria-live', 'assertive');
+            signout.setAttribute('aria-label', 'Signing you out');
+            signout.innerHTML = '<div class="signout-dialog"><div class="signout-spinner" aria-hidden="true"></div>'
+                + '<strong>Signing you out…</strong>'
+                + '<span>The restore is complete. Please sign in again.</span></div>';
+            document.body.appendChild(signout);
+            const minShown = new Promise((resolve) => window.setTimeout(resolve, 1800));
+            const loggedOut = fetch('/logout', { method: 'POST', headers: { 'X-CSRFToken': csrfToken }, credentials: 'same-origin' })
+                .catch(() => {});
+            Promise.all([minShown, loggedOut]).then(() => { window.location.href = '/login'; });
         };
 
         const follow = () => {

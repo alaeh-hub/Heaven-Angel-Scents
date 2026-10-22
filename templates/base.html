@@ -57,6 +57,17 @@
                 if (pinned) {
                     document.documentElement.classList.add('sidebar-pinned');
                 }
+
+                // Rail width depends on a scrollbar-gutter measurement that main.js
+                // can only take after the DOM exists. Re-using last visit's value
+                // here, and freezing sidebar transitions until main.js has measured
+                // (it removes .sidebar-booting), stops the rail visibly shrinking a
+                // few pixels (and the page shifting with it) on every refresh.
+                var gutter = parseFloat(localStorage.getItem('sidebarGutter'));
+                if (gutter >= 0) {
+                    document.documentElement.style.setProperty('--sidebar-gutter', gutter + 'px');
+                }
+                document.documentElement.classList.add('sidebar-booting');
             } catch (e) { }
         })();
     </script>
@@ -745,7 +756,7 @@
                         <rect x="14" y="12" width="7" height="9" rx="1.5" />
                         <rect x="3" y="16" width="7" height="5" rx="1.5" />
                     </svg>
-                    Dashboard
+                    <span class="nav-text">Dashboard</span>
                 </a>
             </nav>
             <nav class="nav-group">
@@ -755,7 +766,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
-                    Products
+                    <span class="nav-text">Products</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.production', 'admin.bulk_batches', 'admin.formulas') }}"
                     href="{{ url_for('admin.production') }}">
@@ -763,7 +774,7 @@
                         <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
                         <path d="M9 21h6" />
                     </svg>
-                    Production
+                    <span class="nav-text">Production</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.production' }}"
                     href="{{ url_for('admin.production') }}">
@@ -771,7 +782,7 @@
                         <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
                         <path d="M9 21h6" />
                     </svg>
-                    Production Log
+                    <span class="nav-text">Production Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.bulk_batches' }}"
                     href="{{ url_for('admin.bulk_batches') }}">
@@ -779,7 +790,7 @@
                         <path d="M7 3h10M9 3v5.5L4.5 17a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.5V3" />
                         <path d="M6.5 14h11" />
                     </svg>
-                    Bulk Batches
+                    <span class="nav-text">Bulk Batches</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.formulas' }}"
                     href="{{ url_for('admin.formulas') }}">
@@ -787,7 +798,7 @@
                         <path d="M9 3v4M15 3v4M5 7h14l-1.5 13.5a1 1 0 0 1-1 .5H7.5a1 1 0 0 1-1-.9L5 7z" />
                         <path d="M8.5 12h7M8.5 16h4" />
                     </svg>
-                    Formulas
+                    <span class="nav-text">Formulas</span>
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
                     href="{{ url_for('admin.materials') }}">
@@ -796,7 +807,7 @@
                         <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
                         <path d="M9 13h6" />
                     </svg>
-                    Materials &amp; Suppliers
+                    <span class="nav-text">Materials &amp; Suppliers</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.low_stock', 'admin.movement_logs', 'admin.discrepancies') }}"
                     href="{{ url_for('admin.low_stock') }}">
@@ -804,7 +815,7 @@
                         <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z" />
                         <path d="m3 12 9 4.5 9-4.5M3 16.5 12 21l9-4.5" />
                     </svg>
-                    Inventory
+                    <span class="nav-text">Inventory</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.low_stock' }}"
                     href="{{ url_for('admin.low_stock') }}">
@@ -812,14 +823,14 @@
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
-                    Low Stock
+                    <span class="nav-text">Low Stock</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.movement_logs' }}"
                     href="{{ url_for('admin.movement_logs') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 6h16M4 12h16M4 18h10" />
                     </svg>
-                    Inventory Log
+                    <span class="nav-text">Inventory Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.discrepancies' }}"
                     href="{{ url_for('admin.discrepancies') }}">
@@ -827,14 +838,14 @@
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
-                    Discrepancies
+                    <span class="nav-text">Discrepancies</span>
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.requests_list' }}"
                     href="{{ url_for('admin.requests_list') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
                     </svg>
-                    Stock Requests
+                    <span class="nav-text">Stock Requests</span>
                     {% if pending_requests_count %}
                     <span class="nav-badge">{{ pending_requests_count }}</span>
                     {% endif %}
@@ -848,7 +859,7 @@
                         <rect x="3" y="6" width="18" height="14" rx="2" />
                         <path d="M3 10h18M8 15h3" />
                     </svg>
-                    Record Sale
+                    <span class="nav-text">Record Sale</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.sales_history', 'admin.customers', 'admin.credit_purchases') }}"
                     href="{{ url_for('admin.sales_history') }}">
@@ -856,14 +867,14 @@
                         <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
                         <path d="M9 8h6M9 12h6M9 16h3" />
                     </svg>
-                    Sales
+                    <span class="nav-text">Sales</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.sales_history' }}"
                     href="{{ url_for('admin.sales_history') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
-                    Sales History
+                    <span class="nav-text">Sales History</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.customers' }}"
                     href="{{ url_for('admin.customers') }}">
@@ -872,7 +883,7 @@
                         <circle cx="10" cy="7" r="4" />
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
-                    Customers
+                    <span class="nav-text">Customers</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.credit_purchases' }}"
                     href="{{ url_for('admin.credit_purchases') }}">
@@ -880,7 +891,7 @@
                         <rect x="2" y="6" width="20" height="13" rx="2" />
                         <path d="M2 10h20M6 15h4" />
                     </svg>
-                    Credit Purchases
+                    <span class="nav-text">Credit Purchases</span>
                 </a>
             </nav>
             <nav class="nav-group">
@@ -890,14 +901,14 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
                     </svg>
-                    Locations &amp; Users
+                    <span class="nav-text">Locations &amp; Users</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.branches' }}"
                     href="{{ url_for('admin.branches') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
                     </svg>
-                    Branches
+                    <span class="nav-text">Branches</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.users' }}"
                     href="{{ url_for('admin.users') }}">
@@ -905,7 +916,7 @@
                         <circle cx="12" cy="8" r="3.2" />
                         <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
                     </svg>
-                    Accounts
+                    <span class="nav-text">Accounts</span>
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.announcements' }}"
                     href="{{ url_for('admin.announcements') }}">
@@ -913,21 +924,21 @@
                         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                     </svg>
-                    Announcements
+                    <span class="nav-text">Announcements</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.reports', 'admin.branch_performance') }}"
                     href="{{ url_for('admin.reports') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
-                    Reports
+                    <span class="nav-text">Reports</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.reports' }}"
                     href="{{ url_for('admin.reports') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
-                    Reports
+                    <span class="nav-text">Reports</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.branch_performance' }}"
                     href="{{ url_for('admin.branch_performance') }}">
@@ -935,7 +946,7 @@
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                         <path d="M3 21h18" />
                     </svg>
-                    Branch Performance
+                    <span class="nav-text">Branch Performance</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.audit_log', 'admin.login_activity_log') }}"
                     href="{{ url_for('admin.audit_log') }}">
@@ -943,7 +954,7 @@
                         <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
                         <path d="m9 12 2 2 4-4" />
                     </svg>
-                    Audit &amp; Access
+                    <span class="nav-text">Audit &amp; Access</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.audit_log' }}"
                     href="{{ url_for('admin.audit_log') }}">
@@ -951,7 +962,7 @@
                         <path
                             d="M9 4h6M9 4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 10h6M9 14h4" />
                     </svg>
-                    Admin Log
+                    <span class="nav-text">Admin Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.login_activity_log' }}"
                     href="{{ url_for('admin.login_activity_log') }}">
@@ -960,7 +971,7 @@
                         <path d="M10 17l5-5-5-5" />
                         <path d="M15 12H3" />
                     </svg>
-                    Login Activity
+                    <span class="nav-text">Login Activity</span>
                 </a>
                 {% if config.ALLOW_DATA_RESET %}
                 <!-- Development only — see config.py's ALLOW_DATA_RESET. -->
@@ -969,7 +980,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
                     </svg>
-                    Clear Data
+                    <span class="nav-text">Clear Data</span>
                 </a>
                 {% endif %}
             </nav>
@@ -983,7 +994,7 @@
                         <path d="M16.5 12a3 3 0 1 0 0-6" />
                         <path d="M15 14.2c2.7.4 4.5 2.6 4.5 5.8" />
                     </svg>
-                    Partners
+                    <span class="nav-text">Partners</span>
                     {% if new_inquiries_count %}
                     <span class="nav-badge">{{ new_inquiries_count }}</span>
                     {% endif %}
@@ -996,7 +1007,7 @@
                         <path d="M16.5 12a3 3 0 1 0 0-6" />
                         <path d="M15 14.2c2.7.4 4.5 2.6 4.5 5.8" />
                     </svg>
-                    Partners
+                    <span class="nav-text">Partners</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint in ('admin.packages', 'admin.package_detail') }}"
                     href="{{ url_for('admin.packages') }}">
@@ -1005,7 +1016,7 @@
                         <path d="M3 8v8l9 5 9-5V8" />
                         <path d="M12 13v8" />
                     </svg>
-                    Packages
+                    <span class="nav-text">Packages</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.partner_inquiries' }}"
                     href="{{ url_for('admin.partner_inquiries') }}">
@@ -1013,7 +1024,7 @@
                         <path d="M4 4h16v13H7l-3 3V4z" />
                         <path d="M8 9h8M8 12.5h5" />
                     </svg>
-                    Partner Inquiries
+                    <span class="nav-text">Partner Inquiries</span>
                     {% if new_inquiries_count %}
                     <span class="nav-badge">{{ new_inquiries_count }}</span>
                     {% endif %}
@@ -1030,28 +1041,28 @@
                         <rect x="14" y="12" width="7" height="9" rx="1.5" />
                         <rect x="3" y="16" width="7" height="5" rx="1.5" />
                     </svg>
-                    Dashboard
+                    <span class="nav-text">Dashboard</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('branch.inventory', 'branch.movement_logs', 'branch.discrepancies') }}"
                     href="{{ url_for('branch.inventory') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
-                    My Inventory
+                    <span class="nav-text">My Inventory</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.inventory' }}"
                     href="{{ url_for('branch.inventory') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
-                    My Inventory
+                    <span class="nav-text">My Inventory</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.movement_logs' }}"
                     href="{{ url_for('branch.movement_logs') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 6h16M4 12h16M4 18h10" />
                     </svg>
-                    Inventory Log
+                    <span class="nav-text">Inventory Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.discrepancies' }}"
                     href="{{ url_for('branch.discrepancies') }}">
@@ -1059,7 +1070,7 @@
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
-                    Discrepancies
+                    <span class="nav-text">Discrepancies</span>
                 </a>
             </nav>
             <nav class="nav-group">
@@ -1070,14 +1081,14 @@
                         <rect x="3" y="4" width="18" height="18" rx="2" />
                         <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
-                    Stock Requests
+                    <span class="nav-text">Stock Requests</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.request_stock' }}"
                     href="{{ url_for('branch.request_stock') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
                     </svg>
-                    Request Stock
+                    <span class="nav-text">Request Stock</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.requests_list' }}"
                     href="{{ url_for('branch.requests_list') }}">
@@ -1085,14 +1096,14 @@
                         <rect x="3" y="4" width="18" height="18" rx="2" />
                         <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
-                    Stock Requests
+                    <span class="nav-text">Stock Requests</span>
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'branch.receive_stock' }}"
                     href="{{ url_for('branch.receive_stock') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
                     </svg>
-                    Receive Shipment
+                    <span class="nav-text">Receive Shipment</span>
                     {% if in_transit_count %}
                     <span class="nav-badge nav-badge-transit">{{ in_transit_count }}</span>
                     {% endif %}
@@ -1106,7 +1117,7 @@
                         <rect x="3" y="6" width="18" height="14" rx="2" />
                         <path d="M3 10h18M8 15h3" />
                     </svg>
-                    Record Sale
+                    <span class="nav-text">Record Sale</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('branch.sales_history', 'branch.customers', 'branch.credit_purchases') }}"
                     href="{{ url_for('branch.sales_history') }}">
@@ -1114,14 +1125,14 @@
                         <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
                         <path d="M9 8h6M9 12h6M9 16h3" />
                     </svg>
-                    Sales Records
+                    <span class="nav-text">Sales Records</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.sales_history' }}"
                     href="{{ url_for('branch.sales_history') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
-                    Sales History
+                    <span class="nav-text">Sales History</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.customers' }}"
                     href="{{ url_for('branch.customers') }}">
@@ -1130,7 +1141,7 @@
                         <circle cx="9" cy="7" r="4" />
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                     </svg>
-                    Customers
+                    <span class="nav-text">Customers</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.credit_purchases' }}"
                     href="{{ url_for('branch.credit_purchases') }}">
@@ -1138,7 +1149,7 @@
                         <rect x="2" y="6" width="20" height="13" rx="2" />
                         <path d="M2 10h20M6 15h4" />
                     </svg>
-                    Credit Purchases
+                    <span class="nav-text">Credit Purchases</span>
                 </a>
             </nav>
             <nav class="nav-group">
@@ -1148,7 +1159,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
-                    Reports
+                    <span class="nav-text">Reports</span>
                 </a>
             </nav>
             {% endif %}
@@ -1162,7 +1173,7 @@
                             d="M3 7V4a1 1 0 0 1 1-1h3M17 3h3a1 1 0 0 1 1 1v3M21 17v3a1 1 0 0 1-1 1h-3M7 21H4a1 1 0 0 1-1-1v-3" />
                         <path d="M3 12h18" />
                     </svg>
-                    Scan Receipt
+                    <span class="nav-text">Scan Receipt</span>
                 </a>
                 <!-- Halo itself (the chat) moved to the floating widget in
                      the bottom-right corner (see #haloWidget below) — no
@@ -1175,7 +1186,7 @@
                         <path d="M9 3h6l3 3v15H6V6l3-3z" />
                         <path d="M9 12h6M9 16h4" />
                     </svg>
-                    AI Drafts
+                    <span class="nav-text">AI Drafts</span>
                     {% if pending_ai_drafts_count %}
                     <span class="nav-badge">{{ pending_ai_drafts_count }}</span>
                     {% endif %}

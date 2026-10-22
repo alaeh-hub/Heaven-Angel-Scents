@@ -20,7 +20,9 @@ COPY --chown=app:app . .
 COPY --from=portal --chown=app:app /build/static/public-site static/public-site
 # Pre-create (and own) the uploads dir so the named volume mounted here inherits
 # the right owner on first use.
-RUN mkdir -p static/uploads && chown app:app static/uploads
+# Same for backups/, where Settings -> Backup -> Restore writes its "before-restore"
+# safety copy (the unprivileged user can't create /app/backups itself).
+RUN mkdir -p static/uploads backups && chown app:app static/uploads backups
 USER app
 
 EXPOSE 8000

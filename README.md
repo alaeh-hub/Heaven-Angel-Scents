@@ -192,6 +192,9 @@ archive before replacing database tables, keeps a safety copy of the current dat
 and records the attempt in the Admin Log. Admins can also enable reminders and
 opt-in scheduled email backups. These archives contain customer data and password
 hashes; they are not encrypted, so handle the destination mailbox carefully.
+In Docker Compose deployments, the pre-restore safety copy is stored in the
+persistent `appbackups` volume so it survives container rebuilds. This volume is
+not a substitute for the separate, off-server backup routine.
 
 For off-server scheduled backups, retention, secrets, and restore drills, see
 [BACKUP.md](./docs/BACKUP.md). In-app email backups complement rather than replace an

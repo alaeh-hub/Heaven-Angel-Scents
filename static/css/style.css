@@ -464,6 +464,110 @@ th.num {
     box-shadow var(--sidebar-dur) var(--sidebar-ease);
 }
 
+/* Before main.js's initNavAccordion() has run, each group is still a bare
+   label followed by its links. Giving that markup the same box the upgraded
+   one gets (flex label with its chevron, plus the 0.5rem spacer that
+   .nav-items-inner::before adds) means nothing moves when the script
+   upgrades it a moment after first paint. */
+.nav-group:not(:has(> .nav-items))>.nav-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0 -0.125rem 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.nav-group:not(:has(> .nav-items))>.nav-label::after {
+  content: "";
+  order: 2;
+  flex-shrink: 0;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin: 0 0.125rem 0 auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+/* Pinned open, groups are about to be folded to the saved/active state by
+   main.js; hide the list until then rather than show it unfolding. The
+   animation is a failsafe that reveals it if the script never runs. */
+html.sidebar-booting.sidebar-pinned .sidebar .nav-group {
+  opacity: 0;
+  animation: sidebar-boot-failsafe 0s linear 1.2s forwards;
+}
+
+@keyframes sidebar-boot-failsafe {
+  to {
+    opacity: 1;
+  }
+}
+
+/* First paint only: main.js removes html.sidebar-booting once the rail's
+   gutter has been measured, so the width correction never animates. */
+html.sidebar-booting .sidebar,
+html.sidebar-booting .sidebar * {
+  transition: none !important;
+}
+
+/* Full-screen "Signing you out" dialog shown after a restore completes. */
+.signout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(10 8 4 / 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.signout-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 22rem;
+  padding: 1.75rem 2rem;
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 1rem;
+  box-shadow: 0 1.5rem 3rem -1rem rgb(0 0 0 / 0.5);
+}
+
+.signout-dialog strong {
+  font-size: 1.05rem;
+}
+
+.signout-dialog span {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.signout-spinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--brand-gold);
+  animation: signout-spin 0.8s linear infinite;
+}
+
+@keyframes signout-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signout-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 /* Icon-only rail at rest, expanding to full width on hover-intent
    (.is-peeking, set by main.js's initSidebarHoverIntent() after a short
    dwell so a cursor merely crossing the rail doesn't fling it open) or

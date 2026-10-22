@@ -110,6 +110,8 @@ services:
       - "8000"
     volumes:
       - uploads:/app/static/uploads
+      # Safety copies written by Settings -> Backup -> Restore; kept across rebuilds.
+      - appbackups:/app/backups
 
   caddy:
     image: caddy:2-alpine
@@ -184,5 +186,6 @@ services:
 volumes:
   dbdata:
   uploads:
+  appbackups:
   caddy_data:
   caddy_config:

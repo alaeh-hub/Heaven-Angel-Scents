@@ -118,7 +118,8 @@ def _test_database():
     try:
         admin_conn = _mysql_admin_connection()
     except Exception as exc:
-        pytest.skip(f"Couldn't reach a MySQL server to run these tests against: {exc}")
+        pytest.skip(
+            f"Couldn't reach a MySQL server to run these tests against: {exc}")
 
     cur = admin_conn.cursor()
     cur.execute(f"DROP DATABASE IF EXISTS `{TEST_DB_NAME}`")
@@ -127,7 +128,8 @@ def _test_database():
     admin_conn.close()
 
     schema_sql = SCHEMA_SQL.read_text(encoding="utf-8")
-    test_schema_sql = schema_sql.replace("heaven_and_angel_scents", TEST_DB_NAME)
+    test_schema_sql = schema_sql.replace(
+        "heaven_and_angel_scents", TEST_DB_NAME)
     tmp_path = REPO_ROOT / f"_test_schema_{uuid.uuid4().hex}.sql"
     tmp_path.write_text(test_schema_sql, encoding="utf-8")
     try:

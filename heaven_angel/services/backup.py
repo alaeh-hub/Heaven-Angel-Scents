@@ -335,6 +335,17 @@ def _is_preserved(stmt):
 
 def run_restore(statements):
     """Execute pre-validated statements on one connection."""
+    # Drop every table before creating any. Dumps are alphabetical, so a child
+    # table (e.g. ai_stock_draft_items) used to be re-created while the LIVE
+    # parent (products) still existed; if the backup was taken from a database
+    # whose column collation differs, MySQL refused the foreign key (error 3780)
+    # and the restore died part-way with tables already dropped. With the
+    # parents gone first, the foreign keys are simply re-created in the dump.
+    drops = [s for s in statements if re.match(r"DROP\s+TABLE", s, re.IGNORECASE)]
+    statements = [s for s in statements if s not in drops]
+    first_non_set = next((i for i, s in enumerate(statements) if not s.upper().startswith("SET")), 0)
+    statements = statements[:first_non_set] + drops + statements[first_non_set:]
+
     conn = get_db()
     cur = conn.cursor()
     try:
