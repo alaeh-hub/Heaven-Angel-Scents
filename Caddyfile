@@ -4,6 +4,13 @@
 	# Clients connecting by IP address (LAN testing) send no hostname, so serve
 	# the $DOMAIN certificate by default. Harmless when DOMAIN is a real hostname.
 	default_sni {$DOMAIN}
+
+	# If another proxy/load balancer sits in front of Caddy on a private
+	# network, trust its X-Forwarded-For so the app (rate limits, login
+	# lockout) sees real client IPs. Public addresses are never trusted.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 {$DOMAIN} {

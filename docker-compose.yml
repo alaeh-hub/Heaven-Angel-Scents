@@ -183,6 +183,35 @@ services:
           sleep 86400
         done
 
+  # Optional off-host copy of ./backups (enable with: docker compose --profile offsite up -d).
+  # Configure the remote purely through .env, e.g. S3-compatible storage:
+  #   RCLONE_CONFIG_OFFSITE_TYPE=s3  RCLONE_CONFIG_OFFSITE_PROVIDER=Cloudflare
+  #   RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID=...  RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY=...
+  #   RCLONE_CONFIG_OFFSITE_ENDPOINT=...  OFFSITE_DEST=offsite:my-bucket/heaven-angel
+  # Uses `copy` (never `sync`), so deleting local files never deletes the off-host copy.
+  offsite:
+    image: rclone/rclone:1.68
+    profiles: ["offsite"]
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    volumes:
+      - ./backups:/backups:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if rclone copy /backups "$$OFFSITE_DEST" --include "*.sql.gz" --include "*.tar.gz" --include "*.zip"; then
+            echo "offsite copy ok: $$(date +%Y%m%d_%H%M%S)"
+            if [ -n "$${OFFSITE_HEARTBEAT_URL:-}" ]; then
+              wget -q -T 10 -O /dev/null "$$OFFSITE_HEARTBEAT_URL" || echo "offsite heartbeat FAILED" >&2
+            fi
+          else
+            echo "offsite copy FAILED: $$(date +%Y%m%d_%H%M%S)" >&2
+          fi
+          sleep 21600
+        done
+
 volumes:
   dbdata:
   uploads:

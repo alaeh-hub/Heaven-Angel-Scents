@@ -1,6 +1,8 @@
 import contextlib
+import time
 
 import mysql.connector
+import mysql.connector.errors
 import mysql.connector.pooling
 from flask import current_app, g
 
@@ -32,10 +34,31 @@ def _get_pool():
     return _pool
 
 
+def _checkout_connection():
+    """Take a pooled connection, waiting briefly if the pool is empty.
+
+    mysql-connector's pool raises PoolError immediately when every
+    connection is checked out (it never blocks), and under gevent far more
+    than pool_size requests can be in flight at once. Waiting up to
+    MYSQL_POOL_WAIT_SECONDS turns a short burst into slightly slower
+    responses instead of 500s; if the pool is still empty after that the
+    PoolError propagates and app.py answers 503.
+    """
+    pool = _get_pool()
+    deadline = time.monotonic() + current_app.config.get("MYSQL_POOL_WAIT_SECONDS", 5)
+    while True:
+        try:
+            return pool.get_connection()
+        except mysql.connector.errors.PoolError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)  # gevent-patched in production, so other requests run
+
+
 def get_db():
     """Return a request-scoped MySQL connection, opening one if needed."""
     if "db" not in g:
-        g.db = _get_pool().get_connection()
+        g.db = _checkout_connection()
         cur = g.db.cursor()
         cur.execute(
             "SET time_zone = %s",

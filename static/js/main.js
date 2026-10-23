@@ -781,7 +781,46 @@ function initSettings() {
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
     modeBtns.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
     styleBtns.forEach((b) => b.addEventListener('click', () => setStyle(b.dataset.styleOption)));
-    overlay.querySelector('#settingsReset').addEventListener('click', () => setStyle('classic'));
+    overlay.querySelector('#settingsReset').addEventListener('click', () => {
+        setStyle('classic');
+        setAccent('');
+    });
+
+    // ---- Accent color (window.applyAccent lives in base.html's head) ----
+    const accentBtns = overlay.querySelectorAll('[data-accent]');
+    const accentCustom = overlay.querySelector('#accentCustom');
+    function syncAccent() {
+        let cur = '';
+        try { cur = (localStorage.getItem('accent') || '').toLowerCase(); } catch (e) { }
+        let preset = false;
+        accentBtns.forEach((b) => {
+            const on = b.dataset.accent.toLowerCase() === cur;
+            preset = preset || (on && cur !== '');
+            b.setAttribute('aria-pressed', String(on));
+        });
+        accentCustom.parentElement.classList.toggle('is-active', cur !== '' && !preset);
+        if (cur) accentCustom.value = cur;
+    }
+    function setAccent(hex) {
+        try {
+            if (hex) localStorage.setItem('accent', hex);
+            else localStorage.removeItem('accent');
+        } catch (e) { }
+        if (typeof window.applyAccent === 'function') window.applyAccent(hex);
+        syncAccent();
+    }
+    accentBtns.forEach((b) => b.addEventListener('click', () => setAccent(b.dataset.accent)));
+    accentCustom.addEventListener('input', () => setAccent(accentCustom.value));
+    syncAccent();
+
+    // ---- Clear data (dev only): button stays disabled until the phrase matches ----
+    const clearPhrase = overlay.querySelector('#clearDataPhrase');
+    if (clearPhrase) {
+        const clearBtn = overlay.querySelector('#clearDataBtn');
+        clearPhrase.addEventListener('input', () => {
+            clearBtn.disabled = clearPhrase.value.trim() !== 'CLEAR ALL DATA';
+        });
+    }
 
     // Sidebar group behaviour (handled by initNavAccordion via events).
     const exclusiveBtn = overlay.querySelector('#navExclusive');

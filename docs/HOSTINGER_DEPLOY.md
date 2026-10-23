@@ -331,6 +331,7 @@ from the Actions tab. It needs:
    | `DEPLOY_USER` | `deploy` |
    | `DEPLOY_SSH_KEY` | contents of `ha_deploy_key` (private key, full PEM) |
    | `DEPLOY_PORT` | only if you changed SSH off port 22 |
+   | `DEPLOY_KNOWN_HOSTS` | pinned `known_hosts` entry from `ssh-keyscan -p PORT -H HOST`; verify its fingerprint with Hostinger before saving |
 
    Turn on **required reviewers** on the `production` environment so a
    deploy needs a manual approval click.

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+rclone.conf
 
 # Python environments and caches
 .venv/

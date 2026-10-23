@@ -15,7 +15,8 @@ This repository is an active operational application. The system currently inclu
 - Audit trail and movement logging for operational accountability
 - Receipt generation and QR-code scan verification for branch sales
 - Bulk sales import/export via Excel, with the same stock and validation rules as manual entry
-- In-app database backup, restore, reminders, and optional scheduled email delivery
+- In-app database backup, restore, reminders, and optional scheduled email
+  delivery, with an optional scheduled off-host copy
 
 ---
 
@@ -198,7 +199,11 @@ not a substitute for the separate, off-server backup routine.
 
 For off-server scheduled backups, retention, secrets, and restore drills, see
 [BACKUP.md](./docs/BACKUP.md). In-app email backups complement rather than replace an
-independent off-server copy.
+independent off-server copy. Docker Compose deployments can also enable the
+optional `offsite` profile to copy local backup archives to an rclone remote
+every six hours; set `OFFSITE_DEST` and the relevant `RCLONE_CONFIG_OFFSITE_*`
+variables in `.env` before starting it with
+`docker compose --profile offsite up -d`.
 
 ---
 
@@ -232,7 +237,8 @@ The app reads configuration from environment variables and a local `.env` file w
 - `SECRET_KEY` = application secret, required to be set explicitly for any non-debug run
 - `SESSION_IDLE_HOURS` = signed-in session idle timeout in hours (defaults to `8`)
 - `LOG_FORMAT` = `json` for structured JSON logs or `text`; defaults to JSON in production and text otherwise
-- `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`, `MYSQL_POOL_SIZE`
+- `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`, `MYSQL_POOL_SIZE` (defaults to `20`, capped at `32`)
+- `MYSQL_POOL_WAIT_SECONDS` = how long a request waits for a free pooled database connection before receiving a `503` (defaults to `5`)
 - `BUSINESS_TIMEZONE_OFFSET` = the UTC offset used for "business day" boundaries in reporting (defaults to `+08:00`, Philippines)
 - `PARTNER_PORTAL_SLUG` = stable public portal slug for partner access (auto-generated and logged if unset in dev — unsuitable for production, since it changes every restart)
 - `GEMINI_API_KEY` and `GEMINI_MODEL` for the AI assistant, plus `AI_CHAT_RATE_LIMIT`

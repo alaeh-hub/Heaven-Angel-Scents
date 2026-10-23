@@ -8,6 +8,7 @@ import uuid
 
 from flask import Flask, g, has_request_context, render_template, request, session
 from flask_talisman import Talisman
+from mysql.connector.errors import PoolError
 from flask_wtf import CSRFProtect
 
 from heaven_angel import db
@@ -254,6 +255,14 @@ def create_app():
             "errors/error.html", code=429,
             message="Too many requests — please slow down and try again shortly.",
         ), 429
+
+    @app.errorhandler(PoolError)
+    def pool_exhausted(e):
+        app.logger.error("Database connection pool exhausted: %s", e)
+        return render_template(
+            "errors/error.html", code=503,
+            message="The system is busy right now. Please try again in a moment.",
+        ), 503, {"Retry-After": "5"}
 
     @app.errorhandler(500)
     def server_error(e):

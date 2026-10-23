@@ -43,7 +43,12 @@ class Config:
     # request. Must comfortably cover this worker's peak concurrent
     # request count — raise it if requests start blocking waiting for a
     # free pooled connection under real traffic.
-    MYSQL_POOL_SIZE = int(os.environ.get("MYSQL_POOL_SIZE", 10))
+    # mysql-connector caps this at 32. Keep it below MySQL's max_connections
+    # (151 by default) minus what the backup/migrate jobs use.
+    MYSQL_POOL_SIZE = min(int(os.environ.get("MYSQL_POOL_SIZE", 20)), 32)
+    # How long a request waits for a free pooled connection before the app
+    # gives up and answers 503 (see db._checkout_connection).
+    MYSQL_POOL_WAIT_SECONDS = float(os.environ.get("MYSQL_POOL_WAIT_SECONDS", 5))
 
     # Use mysql-connector's pure-Python driver instead of its C extension.
     # Production runs gunicorn's gevent worker, which can only switch between

@@ -14,7 +14,7 @@ mkdir -p /work
 rsync -a --exclude node_modules --exclude .git --exclude .venv --exclude backups \
   --exclude .env --exclude '.env.*' --exclude static/uploads /src/ /work/
 cd /work
-pip install -q -r requirements.txt
+pip install -q -r requirements-dev.txt
 
 # Give up after ~2 minutes instead of waiting forever if MySQL never answers.
 for _ in $(seq 1 60); do

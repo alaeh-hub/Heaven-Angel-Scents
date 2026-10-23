@@ -2094,6 +2094,11 @@ def clear_data():
         ])
         flash(f"Cleared {total_rows} rows from {len(tables)} tables and {removed_images} product "
               "photos. User accounts, branches and pricing settings were kept.", "success")
+        # The Settings dialog posts from whatever page it was opened on;
+        # only same-site paths are honoured.
+        back = request.form.get("next", "")
+        if back.startswith("/") and not back.startswith(("//", "/\\")):
+            return redirect(back)
         return redirect(url_for("admin.clear_data"))
 
     tables = _clearable_tables()

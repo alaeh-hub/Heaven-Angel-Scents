@@ -292,6 +292,11 @@ a human still decides when it's safe to redeploy. It needs:
     one command)
   - `DEPLOY_SSH_KEY` — the private half of the keypair above
   - `DEPLOY_PORT` — optional, only if SSH isn't on port 22
+  - `DEPLOY_KNOWN_HOSTS` — required pinned `known_hosts` entry for the
+    server (for example, output of `ssh-keyscan -p PORT -H HOST`, after
+    verifying the host-key fingerprint through a trusted channel). The
+    workflow intentionally refuses to deploy without this secret rather
+    than trusting a key scanned on the first connection.
 - The deploy user's own checkout at `/opt/heaven-and-angel` must already
   have `origin` set to a URL it can `git pull --ff-only` from
   non-interactively (a deploy key or an HTTPS URL with a credential

@@ -71,6 +71,17 @@ job (right after the `backup_db.sh` line):
   is hosted on one (RDS, Cloud SQL, etc.) — often the easier option if
   you're already on one.
 
+### Automated off-host copy (compose `offsite` service)
+
+`docker compose --profile offsite up -d` starts an `rclone` container that
+copies `./backups` to a remote every 6 hours (`copy`, never `sync`, so local
+deletions never remove the off-host copy). Configure the remote in `.env`
+(see `.env.example`): `OFFSITE_DEST` plus `RCLONE_CONFIG_OFFSITE_*`
+variables for any rclone backend (S3/R2/B2, SFTP, ...). Set
+`OFFSITE_HEARTBEAT_URL` to a dead-man's-switch monitor so you are alerted if
+copies stop. The remote credentials should have write-only/append rights
+where the provider allows it, and the bucket should be encrypted at rest.
+
 ## Secrets
 
 `.env` is **not** included in `backup_db.sh` on purpose — bundling live
@@ -112,7 +123,7 @@ better to find out on a Tuesday afternoon than during an actual outage.
 
 | Date | Backup tested | Result | Notes |
 |---|---|---|---|
-| _(none yet)_ | | | |
+| 2026-10-23 | `heaven_and_angel_scents_20261023_031542.sql.gz` | OK: 33 tables, 4 branches, 2 users, 3862 sales; restored in ~2s into a throwaway mysql:8.4 container | Database only (technical drill). Still to do: point a throwaway app instance at a restored DB, and restore from the *off-host* copy. |
 
 ## Emailed backup (Settings -> Backup)
 
