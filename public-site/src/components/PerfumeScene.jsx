@@ -142,7 +142,9 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   const camera = new THREE.PerspectiveCamera(22, 1, 1.2, 120);
 
   /* ---------------- studio environments ---------------- */
-  function buildEnv(strips) {
+  // `size` is the PMREM cube face size: the scent/stage/gold envs only tint soft
+  // reflections, so they are built small (each full-size build stalls the first frame).
+  function buildEnv(strips, size = 128) {
     const env = new THREE.Scene();
     env.background = new THREE.Color(0);
     for (const [w, h, pos, rgb] of strips) {
@@ -155,7 +157,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
       env.add(m);
     }
     const pm = new THREE.PMREMGenerator(renderer);
-    const tex = pm.fromScene(env, 0.02).texture;
+    const tex = pm.fromScene(env, 0.02, 0.1, 100, { size }).texture;
     pm.dispose();
     env.traverse((o) => {
       if (o.isMesh) {
@@ -181,7 +183,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     [0.3, 9, [-5, 0.6, -2.2], [1.2, 1.2, 1.2]],
     [0.4, 9, [5.2, 0.6, -1.0], [1.6, 1.0, 0.3]],
     TOP, STREAK,
-  ]);
+  ], 256);
 
   /* ---------------- product specs (measured from reference photos) ---------------- */
   const loader = new THREE.TextureLoader();
