@@ -3457,6 +3457,14 @@ html.sidebar-booting .sidebar * {
     white-space: normal;
     overflow-wrap: normal;
   }
+
+  /* Thumbnail cells: the clip above would slice off the thumb's hover
+     zoom (scale + shadow) at the cell/row edge. The cell and its flex row
+     stay unclipped; the name/SKU text inside still truncates on its own. */
+  table.table-fixed>tbody>tr>td:has(.item-thumb-row),
+  table.table-fixed>tbody>tr>td:has(.item-thumb-row) div.item-thumb-row {
+    overflow: visible;
+  }
 }
 
 table {

@@ -16,7 +16,10 @@ limiter = Limiter(
     # which otherwise prints unconditionally even though in-memory
     # storage is the deliberate, correct choice for this single-worker
     # deployment (see the comment above).
-    storage_uri="memory://",
+    # Counters live in memory (reset on restart, per process). To keep them
+    # across restarts or share them between workers, set RATELIMIT_STORAGE_URI
+    # (e.g. redis://redis:6379/0; needs `pip install redis`).
+    storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
     default_limits=[],
 )
 

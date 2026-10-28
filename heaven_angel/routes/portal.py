@@ -35,7 +35,7 @@ root). This blueprint only does two things for it:
           Inquiries page.
        b. Matches an existing partners row by email/phone, or creates a
           new one, and links it to the inquiry — see
-          _find_or_create_partner().
+          _match_or_create_partner().
        c. Emails HQ a notification, off the request thread (best-effort —
           see mailer.py and _send_inquiry_notification_async() below). A
           failed or unconfigured mailer never loses the inquiry itself,
@@ -53,16 +53,18 @@ means this blueprint is reachable by anyone who has (or guesses) the
 slug, with no login to throttle via the usual account-lockout path —
 see the rate limit on inquire() below.
 """
+import contextlib
 import decimal
 import hashlib
 import os
 import secrets
 import threading
+import time
 
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, url_for
 from flask_wtf.csrf import generate_csrf
 
-from heaven_angel.db import execute, query, transaction
+from heaven_angel.db import execute, get_db, query, transaction
 from heaven_angel.extensions import limiter
 from heaven_angel.services.mailer import send_partner_inquiry_email
 from heaven_angel.sockets import notify_admin, notify_bell
@@ -72,6 +74,24 @@ from heaven_angel.utils import (
 )
 
 bp = Blueprint("portal", __name__, url_prefix="/partner-portal")
+
+# The read endpoints run several grouped queries per hit and need nothing
+# but the slug, so anyone holding the link could hammer them or scrape the
+# whole price list. Generous enough that a visitor clicking through filters
+# and pages (or a whole office behind one IP) never notices it. One shared
+# bucket per client for all four reads.
+_read_limit = limiter.shared_limit("120 per minute", scope="portal-read")
+
+# Package and catalog lists change only when HQ edits them, so the browser
+# may reuse one for half a minute (back/forward, quick filter toggles).
+# "private": never stored by a shared proxy. Not used for the responses
+# that carry a CSRF token.
+_LIST_CACHE_SECONDS = 30
+
+
+def _cacheable(response):
+    response.headers["Cache-Control"] = f"private, max-age={_LIST_CACHE_SECONDS}"
+    return response
 
 
 def _verify_slug(slug):
@@ -111,78 +131,92 @@ def _partner_lock_name(kind, identity):
     return f"partner:{kind}:{digest[:54]}"
 
 
-def _find_or_create_partner(partner_type, company_name, contact_person, phone, email, address,
-                            source="package inquiry"):
-    """Match an inquiry to an existing partner by email, then phone, so
-    the same distributor/reseller inquiring more than once doesn't pile
-    up duplicate partner rows. No match -> create a new partner from
-    what they entered, same shape as admin.py's "Add a partner" form.
+@contextlib.contextmanager
+def _identity_locks(email, phone, package_id):
+    """Hold MySQL named locks (GET_LOCK/RELEASE_LOCK) for everything that
+    must not race while one inquiry is saved: the submitter's email and
+    phone (so two near-simultaneous inquiries from the same brand-new
+    person don't each create a partner row, a check-then-act race) and
+    their email + package (so a double-tap can't save the inquiry twice).
 
-    On a match, the existing partner's name/type/contact/address are
-    now left ALONE — the first submission is what "wins" the partner
-    record on the Partners page, permanently. Every inquiry's own
-    submitted details (which may differ — a different name, a typo
-    fixed, a new contact person) still live forever, unedited, in
-    partner_inquiries; see admin.partner_detail for that full history
-    per partner. Only last_inquiry_at/inquiry_count on the matched
-    partner move on every inquiry, since those are just a rollup of
-    that same history (see schema.sql's partners table comment).
-
-    Returns the partner_id either way.
-
-    Two inquiries from the same brand-new email/phone submitted at
-    nearly the same instant (e.g. a double-tap, or two browser tabs)
-    would otherwise both miss the SELECT below and each create their own
-    partner row — a classic check-then-act race. A MySQL named lock
-    (GET_LOCK/RELEASE_LOCK), keyed separately on email and phone,
-    serializes that window across connections/processes without needing
-    a schema change. Both supplied identities are locked in a stable
-    order because matching can fall back from email to phone.
+    The locks are held for the whole block, which includes the commit:
+    releasing them any earlier would let a second request run its
+    SELECT before the first one's rows are visible. Taken in a stable
+    order so two requests with overlapping identities can't deadlock.
     """
     lock_keys = sorted({
         _partner_lock_name(kind, value)
-        for kind, value in (("e", email), ("p", phone))
+        for kind, value in (
+            ("e", email),
+            ("p", phone),
+            ("d", f"{email}|{package_id or ''}"),
+        )
         if value
     })
-    acquired_locks = []
+    acquired = []
     try:
         for lock_key in lock_keys:
             row = query("SELECT GET_LOCK(%s, 5) AS ok", (lock_key,), fetchone=True)
             if not row or not row["ok"]:
                 raise _PartnerLockUnavailable(
                     "Couldn't safely match this inquiry to a partner yet.")
-            acquired_locks.append(lock_key)
-
-        partner = None
-        if email:
-            partner = query("SELECT partner_id FROM partners WHERE email = %s",
-                            (email,), fetchone=True)
-        if not partner and phone:
-            partner = query("SELECT partner_id FROM partners WHERE phone = %s",
-                            (phone,), fetchone=True)
-
-        if partner:
-            execute(
-                """UPDATE partners
-                       SET last_inquiry_at = CURRENT_TIMESTAMP, inquiry_count = inquiry_count + 1
-                   WHERE partner_id = %s""",
-                (partner["partner_id"],),
-            )
-            partner_id = partner["partner_id"]
-        else:
-            partner_id, _ = execute(
-                """INSERT INTO partners
-                       (partner_type, partner_name, contact_person, phone, email, address, notes,
-                        last_inquiry_at, inquiry_count)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
-                (partner_type, company_name, contact_person, phone, email, address,
-                 f"Added automatically from a partner portal {source}."),
-            )
+            acquired.append(lock_key)
+        yield
     finally:
-        for lock_key in reversed(acquired_locks):
+        for lock_key in reversed(acquired):
             query("SELECT RELEASE_LOCK(%s)", (lock_key,), fetchone=True)
 
-    notify_admin(["partners"])
+
+def _match_or_create_partner(partner_type, company_name, contact_person, phone, email, address,
+                             source="package inquiry"):
+    """Match an inquiry to an existing partner by email, then phone, so
+    the same distributor/reseller inquiring more than once doesn't pile
+    up duplicate partner rows. No match -> create a new partner from
+    what they entered, same shape as admin.py's "Add a partner" form.
+
+    On a match, the existing partner's name/type/contact/address are
+    left ALONE: the first submission is what "wins" the partner record
+    on the Partners page, permanently. Every inquiry's own submitted
+    details (which may differ) still live forever, unedited, in
+    partner_inquiries; see admin.partner_detail for that history. Only
+    last_inquiry_at/inquiry_count on the matched partner move on every
+    inquiry, since those are just a rollup of that same history (see
+    schema.sql's partners table comment).
+
+    Writes with commit=False: the caller runs this inside the same
+    transaction as the inquiry insert (see _record_inquiry()), so a
+    failed insert can never leave behind a partner whose inquiry_count
+    was bumped for an inquiry that doesn't exist. The caller also holds
+    _identity_locks() around it.
+
+    Returns the partner_id either way.
+    """
+    partner = None
+    if email:
+        partner = query("SELECT partner_id FROM partners WHERE email = %s",
+                        (email,), fetchone=True)
+    if not partner and phone:
+        partner = query("SELECT partner_id FROM partners WHERE phone = %s",
+                        (phone,), fetchone=True)
+
+    if partner:
+        execute(
+            """UPDATE partners
+                   SET last_inquiry_at = CURRENT_TIMESTAMP, inquiry_count = inquiry_count + 1
+               WHERE partner_id = %s""",
+            (partner["partner_id"],), commit=False,
+        )
+        return partner["partner_id"]
+
+    partner_id, _ = execute(
+        """INSERT INTO partners
+               (partner_type, partner_name, contact_person, phone, email, address, notes,
+                last_inquiry_at, inquiry_count)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 1)""",
+        (partner_type, company_name, contact_person, phone, email, address,
+         f"Added automatically from a partner portal {source}."),
+        commit=False,
+    )
     return partner_id
 
 
@@ -343,6 +377,7 @@ _UNIT_ORDER = "FIELD(unit, '3ML', '10ML', '50ML', '85ML', 'BULK')"
 
 
 @bp.route("/<slug>/api/products")
+@_read_limit
 def api_products(slug):
     """Every scent in the catalog, one entry per product name + gender
     (the SKU table has a row per size, so sizes are folded into a list),
@@ -390,7 +425,7 @@ def api_products(slug):
         params + (PRODUCTS_PER_PAGE, (page - 1) * PRODUCTS_PER_PAGE),
     )
 
-    return jsonify(
+    return _cacheable(jsonify(
         products=[
             {
                 "item_name": r["item_name"],
@@ -406,10 +441,11 @@ def api_products(slug):
         pages=pages,
         per_page=PRODUCTS_PER_PAGE,
         total=total,
-    )
+    ))
 
 
 @bp.route("/<slug>/api/packages")
+@_read_limit
 def api_packages(slug):
     """Active packages, optionally filtered to just Distributor- or
     Reseller-scoped ones (packages scoped 'Both' always show either
@@ -439,15 +475,16 @@ def api_packages(slug):
     )
 
     previews = _package_previews([row["package_id"] for row in package_rows])
-    return jsonify(
+    return _cacheable(jsonify(
         packages=[_package_summary(row, previews=previews.get(row["package_id"]))
                   for row in package_rows],
         scope=scope_filter,
         partner_types=list(PARTNER_TYPES),
-    )
+    ))
 
 
 @bp.route("/<slug>/api/packages/<int:package_id>")
+@_read_limit
 def api_package_detail(slug, package_id):
     """One package's full detail: every product in it (photo, variant,
     unit, qty per set), pricing, a few other packages, and the CSRF
@@ -579,45 +616,98 @@ def _parse_inquiry(data):
     return fields
 
 
+DUPLICATE_WINDOW_SECONDS = 120
+
+
+def _recent_duplicate(fields, package_id):
+    """An inquiry from the same email, about the same package (or both
+    general), with the same message, saved in the last couple of minutes:
+    a double-tap, a retry after a slow response, or two tabs. Must run
+    under _identity_locks() so a racing twin is either already visible
+    here or still waiting for the lock."""
+    return query(
+        """SELECT inquiry_id FROM partner_inquiries
+           WHERE email = %s AND package_id <=> %s AND message <=> %s
+             AND created_at >= (CURRENT_TIMESTAMP - INTERVAL %s SECOND)
+           ORDER BY inquiry_id DESC LIMIT 1""",
+        (fields["email"], package_id, fields["message"], DUPLICATE_WINDOW_SECONDS),
+        fetchone=True,
+    )
+
+
+def _inquiry_response(inquiry_id):
+    """The visitor's 201 for a saved inquiry (or for the already-saved
+    twin of a duplicate submission, so a retry looks like success)."""
+    reply_time = current_app.config.get("PORTAL_REPLY_TIME", "").strip()
+    follow_up = f"Our team will reach out {reply_time}." if reply_time else "Our team will reach out shortly."
+    return jsonify(
+        message=f"Thanks! Your inquiry has been sent. {follow_up}",
+        reference=_inquiry_reference(inquiry_id),
+    ), 201
+
+
+def _honeypot_tripped(data):
+    """The form carries a hidden "website" field that people never see or
+    fill. Bots that fill every input trip it; the server answers as if it
+    worked (so the bot learns nothing) and saves nothing."""
+    return bool(str(data.get("website") or "").strip())
+
+
+def _fake_success():
+    return jsonify(message="Thanks! Your inquiry has been sent.", reference=None), 201
+
+
 def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order_amount, items=()):
     """Steps (a)-(d) from the module docstring, shared by both inquiry
     endpoints: save the inquiry, link it to a partner, email HQ off the
     request thread, and ping every open admin tab. Returns the visitor's
     201 response, carrying the inquiry's reference."""
     try:
-        partner_id = _find_or_create_partner(
-            fields["partner_type"], fields["company_name"], fields["contact_person"],
-            fields["phone"], fields["email"], fields["address"],
-            source="package inquiry" if package_id else "general inquiry",
-        )
+        with _identity_locks(fields["email"], fields["phone"], package_id):
+            # End the snapshot this request's earlier SELECTs opened
+            # (REPEATABLE READ): after taking the locks, the duplicate
+            # and partner lookups below must see whatever a racing
+            # request has just committed.
+            get_db().commit()
+
+            duplicate = _recent_duplicate(fields, package_id)
+            if duplicate:
+                return _inquiry_response(duplicate["inquiry_id"])
+
+            # The partner link, the inquiry and its package-contents
+            # snapshot (partner_inquiry_items, what Fulfill later takes
+            # out of HQ stock) are saved together: an inquiry can never
+            # exist without its items, and a failed insert can't leave a
+            # partner behind with an inquiry_count it never earned.
+            with transaction() as conn:
+                partner_id = _match_or_create_partner(
+                    fields["partner_type"], fields["company_name"], fields["contact_person"],
+                    fields["phone"], fields["email"], fields["address"],
+                    source="package inquiry" if package_id else "general inquiry",
+                )
+                cur = conn.cursor()
+                cur.execute(
+                    """INSERT INTO partner_inquiries
+                           (package_id, partner_id, partner_type, company_name, contact_person,
+                            phone, email, address, message, preferred_contact,
+                            package_name_snapshot, order_amount)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (package_id, partner_id, fields["partner_type"], fields["company_name"],
+                     fields["contact_person"], fields["phone"], fields["email"], fields["address"],
+                     fields["message"], fields["preferred_contact"], package_snapshot, order_amount),
+                )
+                inquiry_id = cur.lastrowid
+                if items:
+                    cur.executemany(
+                        """INSERT INTO partner_inquiry_items (inquiry_id, sku, item_name, unit, qty, unit_price)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        [(inquiry_id, i["sku"], i["item_name"], i["unit"], i["qty"], i["price"]) for i in items],
+                    )
+                cur.close()
     except _PartnerLockUnavailable:
         return jsonify(
             error="Your inquiry couldn't be matched safely right now. Please try again shortly."
         ), 503
-
-    # The inquiry and its package-contents snapshot (partner_inquiry_items,
-    # what Fulfill later takes out of HQ stock) are saved together, so an
-    # inquiry can never exist without the items it was quoted for.
-    with transaction() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO partner_inquiries
-                   (package_id, partner_id, partner_type, company_name, contact_person,
-                    phone, email, address, message, preferred_contact,
-                    package_name_snapshot, order_amount)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (package_id, partner_id, fields["partner_type"], fields["company_name"],
-             fields["contact_person"], fields["phone"], fields["email"], fields["address"],
-             fields["message"], fields["preferred_contact"], package_snapshot, order_amount),
-        )
-        inquiry_id = cur.lastrowid
-        if items:
-            cur.executemany(
-                """INSERT INTO partner_inquiry_items (inquiry_id, sku, item_name, unit, qty, unit_price)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                [(inquiry_id, i["sku"], i["item_name"], i["unit"], i["qty"], i["price"]) for i in items],
-            )
-        cur.close()
 
     # Off the request thread — see _send_inquiry_notification_async()'s
     # docstring above. The inquiry row is already committed at this
@@ -644,15 +734,11 @@ def _record_inquiry(fields, *, package_id, package_name, package_snapshot, order
         room="admin", level="success",
     )
 
-    reply_time = current_app.config.get("PORTAL_REPLY_TIME", "").strip()
-    follow_up = f"Our team will reach out {reply_time}." if reply_time else "Our team will reach out shortly."
-    return jsonify(
-        message=f"Thanks! Your inquiry has been sent. {follow_up}",
-        reference=_inquiry_reference(inquiry_id),
-    ), 201
+    return _inquiry_response(inquiry_id)
 
 
 @bp.route("/<slug>/api/site")
+@_read_limit
 def api_site(slug):
     """Portal-wide facts for the landing page: the direct contact details
     configured in config.py (blank ones are left out, never shown as
@@ -708,6 +794,8 @@ def inquire(slug, package_id):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify(error="Something went wrong sending your inquiry. Please try again."), 400
+    if _honeypot_tripped(data):
+        return _fake_success()
     try:
         fields = _parse_inquiry(data)
     except ValidationError as err:
@@ -753,6 +841,8 @@ def inquire_general(slug):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify(error="Something went wrong sending your inquiry. Please try again."), 400
+    if _honeypot_tripped(data):
+        return _fake_success()
     try:
         fields = _parse_inquiry(data)
     except ValidationError as err:
@@ -765,3 +855,76 @@ def inquire_general(slug):
         package_snapshot=GENERAL_INQUIRY_LABEL,
         order_amount=None,
     )
+
+
+# ------------------------------------------------- unsent-email retry sweep
+
+_EMAIL_SWEEP_EVERY_SECONDS = 600
+_EMAIL_SWEEP_MIN_AGE_SECONDS = 180      # the first attempt gets a few minutes to finish
+_EMAIL_SWEEP_MAX_AGE_HOURS = 24         # stop chasing something that has failed all day
+_EMAIL_SWEEP_BATCH = 20
+
+
+def resend_unsent_inquiry_emails(app):
+    """Try again for inquiries whose HQ notification never went out (the
+    app restarted mid-send, or the mail server was down for longer than
+    mailer.py's quick retries cover). The inquiry itself is always safe in
+    partner_inquiries; this only closes the loop on the email, using the
+    email_sent flag the first attempt already maintains. A MySQL advisory
+    lock keeps two workers from sending the same one twice. Returns how
+    many were sent."""
+    with app.app_context():
+        cfg = app.config
+        if not (cfg.get("MAIL_SERVER") and cfg.get("MAIL_DEFAULT_SENDER")
+                and cfg.get("PARTNER_INQUIRY_NOTIFY_EMAIL")):
+            return 0
+        got = query("SELECT GET_LOCK('ha_inquiry_mail_retry', 0) AS ok", fetchone=True)
+        if not got or not got["ok"]:
+            return 0
+        sent = 0
+        try:
+            rows = query(
+                """SELECT * FROM partner_inquiries
+                   WHERE email_sent = FALSE
+                     AND created_at <= (CURRENT_TIMESTAMP - INTERVAL %s SECOND)
+                     AND created_at >= (CURRENT_TIMESTAMP - INTERVAL %s HOUR)
+                   ORDER BY inquiry_id LIMIT %s""",
+                (_EMAIL_SWEEP_MIN_AGE_SECONDS, _EMAIL_SWEEP_MAX_AGE_HOURS, _EMAIL_SWEEP_BATCH),
+            )
+            for row in rows:
+                if send_partner_inquiry_email(
+                    package_name=row["package_name_snapshot"],
+                    partner_type=row["partner_type"],
+                    company_name=row["company_name"],
+                    contact_person=row["contact_person"],
+                    phone=row["phone"],
+                    email=row["email"],
+                    address=row["address"],
+                    message=row["message"],
+                    preferred_contact=row["preferred_contact"],
+                    reference=_inquiry_reference(row["inquiry_id"]),
+                    order_amount=row["order_amount"],
+                ):
+                    execute("UPDATE partner_inquiries SET email_sent = TRUE WHERE inquiry_id = %s",
+                            (row["inquiry_id"],))
+                    sent += 1
+        finally:
+            query("SELECT RELEASE_LOCK('ha_inquiry_mail_retry')", fetchone=True)
+        return sent
+
+
+def start_inquiry_email_retry(app):
+    """Background thread that runs resend_unsent_inquiry_emails() every
+    few minutes (one per process, same style as backup_jobs.start_scheduler)."""
+    def loop():
+        time.sleep(90)                      # let the app finish starting
+        while True:
+            try:
+                n = resend_unsent_inquiry_emails(app)
+                if n:
+                    app.logger.info("Resent %s unsent partner-inquiry notification(s)", n)
+            except Exception:
+                app.logger.exception("Partner-inquiry email retry sweep failed")
+            time.sleep(_EMAIL_SWEEP_EVERY_SECONDS)
+
+    threading.Thread(target=loop, name="inquiry-email-retry", daemon=True).start()

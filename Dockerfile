@@ -29,4 +29,4 @@ EXPOSE 8000
 # /healthz checks the app and the database. The X-Forwarded-Proto header keeps
 # Talisman's HTTPS redirect from answering the plain-HTTP probe with a 301.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3   CMD python -c "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:8000/healthz', headers={'X-Forwarded-Proto': 'https'}), timeout=4)" || exit 1
-CMD ["gunicorn", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "-w", "1", "wsgi:app", "--bind", "0.0.0.0:8000", "--timeout", "60", "--graceful-timeout", "30", "--access-logfile", "-"]
+CMD ["gunicorn", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "-w", "1", "wsgi:app", "--bind", "0.0.0.0:8000", "--timeout", "60", "--graceful-timeout", "30", "--access-logfile", "-", "--access-logformat", "%({x-forwarded-for}i)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\""]

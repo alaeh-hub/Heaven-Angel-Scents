@@ -3,3 +3,7 @@
 pytest==9.1.1
 # Linter (config in ruff.toml): python -m ruff check .
 ruff==0.17.0
+# Product-render cut-outs: python scripts/build_scent_images.py
+opencv-python-headless
+numpy
+pillow

@@ -594,16 +594,6 @@
   gap: 12px;
 }
 
-.pkg-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--r-inner);
-  background: var(--gold-soft);
-  color: var(--gold-ink);
-}
-
 .pkg-card h3 {
   font-size: 24px;
   letter-spacing: -0.03em;
@@ -798,6 +788,10 @@
   --gap: 20px;
   display: flex;
   overflow: hidden;
+  /* Room for a hovered tile's glow, which the overflow would otherwise
+     cut off in a hard line; the negative margin keeps the layout as was. */
+  padding-block: 40px;
+  margin-block: -40px;
   mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
 
@@ -806,7 +800,8 @@
   gap: var(--gap);
   padding-right: var(--gap);
   flex-shrink: 0;
-  animation: marquee 48s linear infinite;
+  /* ~6 s per tile keeps the pace the same however long the shelf is. */
+  animation: marquee calc(var(--tiles, 8) * 6s) linear infinite;
 }
 
 .marquee:hover .marquee-track,
@@ -842,8 +837,7 @@
     animation: none;
   }
 
-  .marquee-track[aria-hidden="true"],
-  .bottle-tile[data-repeat] {
+  .marquee-track[aria-hidden="true"] {
     display: none;
   }
 
@@ -852,87 +846,221 @@
   }
 }
 
+/* One scent: its bottle on its own, the gift box tucked behind it.
+   --scent-aspect / --scent-centre come from the generated manifest: the
+   shared frame's width/height, and where the bottle's centre line sits
+   across it. The two layers (.scent-box, .scent-bottle) fill that frame,
+   so stacked they are the original studio shot. At rest the frame is
+   parked so the bottle alone sits mid-tile; on hover it slides back to
+   centre the whole shot and the box eases out from behind the bottle. */
 .bottle-tile {
+  --aura: #d9b64b;
+  --lift: cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
   flex: 0 0 auto;
-  width: clamp(200px, 22vw, 280px);
-  aspect-ratio: 3 / 4;
+  width: clamp(230px, 24vw, 310px);
+  aspect-ratio: 4 / 5;
   border-radius: var(--r-surface);
   background: linear-gradient(180deg, var(--surface), var(--bg-alt));
   border: 1px solid var(--hairline);
   overflow: hidden;
-  transition: border-color 0.4s ease, box-shadow 0.4s var(--ease-out);
+  outline: none;
+  transition: border-color 0.4s ease, box-shadow 0.5s var(--ease-out);
 }
 
-.bottle-tile:hover {
+.bottle-tile[data-variant="Female"] {
+  --aura: #ff2f7a;
+}
+
+.bottle-tile[data-variant="Male"] {
+  --aura: #2f86ff;
+}
+
+.bottle-tile:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  outline-offset: 3px;
+}
+
+.bottle-tile[data-open] {
   border-color: color-mix(in srgb, var(--gold) 35%, transparent);
-  box-shadow: 0 20px 44px -26px color-mix(in srgb, var(--gold) 60%, transparent);
+  box-shadow:
+    0 26px 52px -28px color-mix(in srgb, var(--aura) 70%, transparent),
+    0 18px 40px -26px color-mix(in srgb, var(--gold) 55%, transparent);
 }
 
-/* Absolutely placed so the photo's own height can never stretch the tile
-   past its 3:4 shape. */
-.bottle-tile img {
+/* A pool of the label's own colour behind the bottle: faint at rest,
+   lit when the box comes out. */
+.bottle-tile-aura {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(70% 55% at 50% 46%, color-mix(in srgb, var(--aura) 34%, transparent), transparent 72%),
+    radial-gradient(60% 30% at 50% 88%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 75%);
+  opacity: 0.38;
+  transform: scale(0.92);
+  transition: opacity 0.6s ease, transform 0.9s var(--lift);
+}
+
+.bottle-tile[data-open] .bottle-tile-aura {
+  opacity: 1;
+  transform: none;
+}
+
+.scent-frame {
   position: absolute;
   top: 5%;
-  left: 6%;
-  width: 88%;
-  height: 90%;
-  object-fit: contain;
-  transition: transform 0.6s var(--ease-out);
+  left: 50%;
+  height: 76%;
+  aspect-ratio: var(--scent-aspect);
+  transform: translate3d(calc(var(--scent-centre) * -1), 0, 0);
+  transition: transform 0.85s var(--lift);
 }
 
-.bottle-tile:hover img {
-  transform: translateY(-6%) scale(1.04);
+.bottle-tile[data-open] .scent-frame {
+  transform: translate3d(-50%, -1.5%, 0);
 }
 
-/* The scent's name, revealed under the lifted bottle on hover. */
-.bottle-tile-name {
+.scent-bottle,
+.scent-box {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The bottle shifts a touch on hover (no scale: resampling the image
+   mid-hover is what made it go soft); the box rides in from behind it,
+   from the bottle's side, so it reads as sliding out. */
+.scent-bottle {
+  z-index: 1;
+  transition: transform 0.85s var(--lift);
+}
+
+.bottle-tile[data-open] .scent-bottle {
+  transform: translate3d(2.5%, 0, 0);
+}
+
+.scent-box {
+  z-index: 0;
+  opacity: 0;
+  transform: translate3d(34%, 2%, 0);
+  transition: opacity 0.4s ease 0.05s, transform 0.85s var(--lift);
+}
+
+.bottle-tile[data-open] .scent-box {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.08s, 0.05s;
+}
+
+/* Shadow on the floor under the bottle; stretches to take in the box. */
+.scent-floor {
+  position: absolute;
+  z-index: 0;
+  left: var(--scent-centre);
+  bottom: -1%;
+  width: 52%;
+  height: 5%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.65), transparent);
+  filter: blur(4px);
+  transform: translateX(-50%);
+  transition: left 0.85s var(--lift), width 0.85s var(--lift), opacity 0.4s ease;
+}
+
+.bottle-tile[data-open] .scent-floor {
+  left: 53%;
+  width: 118%;
+}
+
+/* The scent's code and name, revealed under the shot on hover. */
+.bottle-tile-meta {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 14px;
   padding: 0 16px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
   text-align: center;
-  font-size: 15px;
-  font-weight: 550;
-  letter-spacing: -0.015em;
-  color: var(--ink);
   opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.35s ease, transform 0.45s var(--ease-out);
+  transform: translateY(10px);
+  transition: opacity 0.35s ease, transform 0.55s var(--lift);
 }
 
-.bottle-tile:hover .bottle-tile-name {
+.bottle-tile[data-open] .bottle-tile-meta {
   opacity: 1;
   transform: none;
+  transition-delay: 0.12s;
 }
 
-/* No hover: the name is always shown, so the bottle sits a little
-   higher to leave it a clear strip below the lit platform, and a long
-   name wraps to two lines at most. Tiles are narrower on phones so the
-   next one peeks in, which says "swipe" without a label. */
+.bottle-tile-code {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  color: var(--gold-ink);
+}
+
+.bottle-tile-name {
+  font-size: 17px;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.bottle-tile-sub {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Reduced motion: no sliding, the box just fades in beside the bottle. */
+@media (prefers-reduced-motion: reduce) {
+  .scent-frame,
+  .scent-bottle,
+  .scent-floor,
+  .bottle-tile-aura,
+  .bottle-tile-meta {
+    transition-duration: 0.01s;
+  }
+
+  .scent-box {
+    transform: none;
+    transition: opacity 0.3s ease;
+  }
+}
+
+/* No hover: a tap flips the box in and out, so every tile says what it
+   is up front, and the bottle sits a little higher to leave the label a
+   clear strip. Tiles are narrower on phones so the next one peeks in,
+   which says "swipe" without a label. */
 @media (hover: none) {
   .bottle-tile {
-    width: min(62vw, 240px);
+    width: min(62vw, 250px);
   }
 
-  .bottle-tile img {
-    top: 3%;
-    height: 78%;
+  .scent-frame {
+    top: 4%;
+    height: 70%;
   }
 
-  .bottle-tile-name {
+  .bottle-tile-aura {
+    opacity: 0.6;
+  }
+
+  .bottle-tile-meta {
     bottom: 12px;
     opacity: 1;
     transform: none;
-    font-size: 14px;
-    line-height: 1.3;
-    color: var(--ink-2);
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
+    gap: 1px;
+  }
+
+  .bottle-tile-name {
+    font-size: 15px;
+    line-height: 1.25;
   }
 }
 
@@ -1525,9 +1653,6 @@
 }
 
 .about-point {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 18px;
   padding: 26px 0;
   border-top: 1px solid var(--hairline-strong);
 }
@@ -1535,16 +1660,6 @@
 .about-point:first-child {
   border-top: 0;
   padding-top: 6px;
-}
-
-.about-point-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--r-inner);
-  background: var(--gold-soft);
-  color: var(--gold-ink);
 }
 
 .about-point h3 {
@@ -2210,4 +2325,15 @@
   .closing-panel {
     grid-template-columns: 1fr;
   }
+}
+
+/* Reading progress along the top edge, above the nav (z 40). */
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 41;
+  transform-origin: 0 50%;
+  background: var(--gold);
+  pointer-events: none;
 }

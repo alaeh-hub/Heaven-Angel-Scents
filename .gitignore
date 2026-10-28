@@ -63,6 +63,11 @@ public-site/prototype/
 # from here with the page-mascot skill's scripts/mascot.py.
 characters/
 
+# Full-size product renders (~7 MB each: box + bottle on a backdrop). The web
+# layers in static/img/scents/ are cut from these with
+# scripts/build_scent_images.py; only those are needed to run the app.
+assets/scent-renders/
+
 # Local database backup archives and restore safety copies (never commit)
 backups/
 

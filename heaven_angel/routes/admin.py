@@ -4084,7 +4084,7 @@ def partner_detail(partner_id):
     """One partner's full inquiry history — every package inquiry they've
     ever submitted through the public portal, in the exact form they
     submitted it in. This is the permanent record referenced in
-    portal.py's _find_or_create_partner(): a repeat inquiry from a
+    portal.py's _match_or_create_partner(): a repeat inquiry from a
     known email/phone no longer overwrites the partner's name/contact/
     address above (see partners.html), so this page is where the full
     story — including whatever changed between visits — actually lives.

@@ -1,6 +1,7 @@
 import { Route, Routes, useLocation } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import BackToTop from './components/BackToTop.jsx';
+import ScrollProgress from './components/ScrollProgress.jsx';
 import { InquiryProvider } from './components/InquiryProvider.jsx';
 import { ToastProvider } from './components/Toasts.jsx';
 import { useGlowPointer } from './hooks/useGlowPointer.js';
@@ -54,6 +55,7 @@ export default function App() {
             </Routes>
           </motion.div>
         </AnimatePresence>
+        <ScrollProgress />
         <BackToTop />
         {background && (
           <Routes>

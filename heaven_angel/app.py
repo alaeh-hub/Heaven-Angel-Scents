@@ -416,6 +416,13 @@ def create_app():
         from heaven_angel.services import backup_jobs
         backup_jobs.start_scheduler(app)
 
+    # Resends HQ inquiry emails that never went out (see routes/portal.py).
+    # Same guards as the backup scheduler above.
+    if (os.environ.get("INQUIRY_EMAIL_RETRY", "1") != "0" and not app.testing
+            and not (app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true")):
+        from heaven_angel.routes.portal import start_inquiry_email_retry
+        start_inquiry_email_retry(app)
+
     return app
 
 

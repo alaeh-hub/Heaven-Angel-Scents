@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { SCENE_LABEL } from '../content/scents.js';
 
 // Uriel H1 & Raphael A3. variant="story" (the hero) is
-// prototype/wings/index.html: golden angel wings unfurl in the dark under
-// a halo and beat once. The halo splits into two rings that fly down to
+// prototype/wings/index.html: a gate of heaven opens in the dark: an oculus ringed in gold, thin beams of light, stars, under
+// a halo. The halo splits into two rings that fly down to
 // become the platforms' LED rings, each landing with a flash and a
-// shockwave across the floor, while the feathers dissolve, wingtips
+// shockwave across the floor, while the beams and stars dissolve, outermost
 // first, into streams of light that build each bottle from its base
 // upward behind a glowing gold edge. A glossy black floor reflects it
 // all; bloom, a horizontal anamorphic streak, a shallow depth of field
@@ -14,13 +15,14 @@ import * as THREE from 'three';
 // The prototypes looped on three r149 and faded to black between loops;
 // here the timeline is driven from outside (the hero scrubs it with the
 // scroll) and there is no fade, since the hero fades the canvas in. The
-// two labels they embedded as base64 live in static/img/scene-label-*.jpg.
+// bottles are the 85 ml white-bottle product: their labels are cut from the
+// product renders into static/img/scene/ by scripts/build_scent_images.py.
 //
 // variant="turntable" is the finished pair from
 // prototype/turntable/*.html (one bottle each there, both here): each
 // bottle turns on its lit platform, one full turn every 10 s after a
 // 1.8 s ease-in, while the studio lights come up, caustics drift through
-// the liquid and a shallow depth of field softens the floor.
+// the bottles and a shallow depth of field softens the floor.
 //
 // variant="spray" is prototype/spray/index.html: the same studio, but only
 // Raphael A3, overcap off, held at a three-quarter angle on its platform.
@@ -33,7 +35,7 @@ THREE.ColorManagement.enabled = false;
 
 /** Scene time (seconds) of the final frame: both bottles on their platforms. */
 export const SCENE_END = 10;
-/** Scene time when the wings have unfurled under the halo, just before they beat. */
+/** Scene time when the clouds and light shafts have opened under the halo. */
 export const SCENE_INTRO = 2.2;
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -125,7 +127,7 @@ const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(pos
  * is called when something arrives late (the label images) and the
  * current frame needs drawing again. `variant` is 'story', 'turntable'
  * or 'spray' (all share the studio: caustics, depth of field; the story
- * adds the wings and its lens effects); `tones` (CSS colours) tint the turntable's backdrop glow along
+ * adds the heaven backdrop and its lens effects); `tones` (CSS colours) tint the turntable's backdrop glow along
  * render()'s `tone` argument.
  */
 function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}) {
@@ -171,6 +173,15 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   const envCyan = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [0.25, 2.0, 4.2]], [0.4, 9, [-4, 0.2, 3.5], [0.1, 0.9, 2.8]], [0.5, 9, [0.5, 0.5, -6], [0.1, 1.0, 2.6]], GOLD_R, GOLD_F, TOP, STREAK]);
   const envStage = buildEnv([[0.7, 9, [-5.5, 0.5, -1.5], [2.4, 0.3, 1.2]], [0.7, 9, [5.5, 0.5, -1.5], [0.2, 1.4, 2.8]], TOP, STREAK]);
   scene.environment = envStage;
+  // The white plastic reflects neutral softboxes (the coloured studio
+  // reflections would tint it); the scent's colour comes in as a rim light.
+  const envWhite = buildEnv([
+    [4, 3, [-3.5, 2.2, 4.5], [1.7, 1.7, 1.7]],
+    [0.5, 8, [3.6, 0.8, 3.6], [2.0, 2.0, 2.0]],
+    [0.3, 9, [-5, 0.6, -2.2], [1.2, 1.2, 1.2]],
+    [0.4, 9, [5.2, 0.6, -1.0], [1.6, 1.0, 0.3]],
+    TOP, STREAK,
+  ]);
 
   /* ---------------- product specs (measured from reference photos) ---------------- */
   const loader = new THREE.TextureLoader();
@@ -181,38 +192,34 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     return keep(t);
   };
   const S_RED = 0.25 / 74.5;
-  // Raphael's bottle scaled uniformly so its overall height matches Uriel's original (proportions unchanged)
+  // Overall height kept from the original two-bottle layout, so the camera
+  // and the platforms need no retuning.
   const S_BLUE = (S_RED * (374 + 76 + 92)) / (317 + 67 + 82);
-  // Both scents use this one bottle (glass, collar and cap dimensions).
-  const BOTTLE = { R: 71.5 * S_BLUE, H: 317 * S_BLUE, collarR: 41 * S_BLUE, collarH: 67 * S_BLUE, capR: 29.5 * S_BLUE, capH: 82 * S_BLUE };
-  // ...and one label size and placement: Uriel's label at the same relative
-  // height it has on its original bottle, keeping that label's aspect ratio.
+  // The 85 ml bottle (measured from the product render): a glossy white
+  // body, a wide collar and a taller, narrower cap. Both scents share it.
+  const TALL = 1.12; // body stretched up from the render's proportions
+  const BOTTLE = { R: 71.5 * S_BLUE, H: 317 * S_BLUE * TALL, collarR: 47 * S_BLUE, collarH: 70 * S_BLUE, capR: 35 * S_BLUE, capH: 88 * S_BLUE };
+  // ...and one label placement, cut from the product render by
+  // scripts/build_scent_images.py (which writes SCENE_LABEL too).
   const LABEL = {
-    l0: (BOTTLE.H * 14) / 374,
-    l1: (BOTTLE.H * 349) / 374,
-    arc: (BOTTLE.H * 335) / 374 / (335 / (74.5 * 2.5133)) / BOTTLE.R,
+    l0: BOTTLE.H * SCENE_LABEL.l0,
+    l1: BOTTLE.H * SCENE_LABEL.l1,
+    // wraps further round as the bottle grows, so the print isn't stretched
+    arc: SCENE_LABEL.arc * TALL,
   };
   const PINK = new THREE.Color(1.0, 0.1, 0.5);
   const CYAN = new THREE.Color(0.05, 0.8, 1.0);
   const SPEC = {
-    red: {
-      ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene-label-uriel.jpg'),
-      liquid: 0xd8384f, liqEm: 0x5e0414, collar: 'clear', tint: new THREE.Color(1.0, 0.16, 0.3), rim: PINK, env: envPink,
-    },
-    blue: {
-      ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene-label-raphael.jpg'),
-      liquid: 0x1fb4c9, liqEm: 0x034a55, collar: 'gold', tint: new THREE.Color(0.1, 0.75, 1.0), rim: CYAN, env: envCyan,
-    },
+    red: { ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene/label-h1-uriel.webp'), rim: PINK, env: envPink },
+    blue: { ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene/label-a3-raphael.webp'), rim: CYAN, env: envCyan },
   };
 
-  /* ---------------- glass ---------------- */
-  // Two slow light sweeps (view-space directions) that travel across all the glass.
+  /* ---------------- bottle surfaces ---------------- */
+  // Two slow light sweeps (view-space directions) that travel across all the glossy surfaces.
   // `i` is their strength (the turntable fades them in with its lights).
   const SWEEP = { a: { value: new THREE.Vector3(0, 0, 1) }, b: { value: new THREE.Vector3(0, 0, 1) }, i: { value: 1 } };
-  // Time driving the caustics in the liquid.
-  const LIQT = { value: 0 };
 
-  /** Rim glow + sweep highlights: the shared look of droplets, liquid forms and bottle glass. */
+  /** Rim glow + sweep highlights: the shared look of droplets, light forms and the bottle. */
   function rimify(mat, col) {
     const u = { uRim: { value: 1 }, uRimCol: { value: col.clone() }, uCore: { value: 0.05 }, uSwA: SWEEP.a, uSwB: SWEEP.b, uSwI: SWEEP.i };
     mat.userData.u = u;
@@ -226,23 +233,33 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     return mat;
   }
 
-  /** k = 1: coloured liquid-glass, k = 0: clear bottle glass. */
-  function tintGlass(mat, sp, k) {
-    mat.attenuationColor.setRGB(lerp(1, sp.tint.r, k), lerp(1, sp.tint.g, k), lerp(1, sp.tint.b, k));
-    mat.attenuationDistance = lerp(4.0, 0.32, k);
-    mat.userData.u.uRim.value = lerp(0.22, 1.0, k);
-    mat.userData.u.uCore.value = lerp(0.0, 0.12, k);
-  }
-
-  function makeGlassMat(sp) {
-    return rimify(new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, roughness: 0.015, transmission: 1, thickness: 0.4, ior: 1.47,
-      clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, envMap: sp.env, envMapIntensity: 1.7,
-      attenuationColor: new THREE.Color(1, 1, 1), attenuationDistance: 4, emissive: 0x000000,
+  /** Glossy white bottle plastic, with a rim light in the scent's colour. */
+  function makeBodyMat(sp) {
+    const mat = rimify(new THREE.MeshPhysicalMaterial({
+      color: 0xf4f4f6, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05,
+      emissive: 0x3c3c42, envMap: envWhite, envMapIntensity: 1.75,
     }), sp.rim);
+    mat.userData.u.uCore.value = 0;
+    return mat;
   }
 
-  /** Lathe profile of the bottle glass: rounded base and shoulder, short neck. */
+  /** Lathe profile of a short cylinder with softly rounded top and bottom edges. */
+  function roundedCylinder(r, h, rr) {
+    const pts = [new THREE.Vector2(0.001, 0), new THREE.Vector2(r - rr, 0)];
+    for (let i = 1; i <= 8; i += 1) {
+      const a = -Math.PI / 2 + ((Math.PI / 2) * i) / 8;
+      pts.push(new THREE.Vector2(r - rr + rr * Math.cos(a), rr + rr * Math.sin(a)));
+    }
+    pts.push(new THREE.Vector2(r, h - rr));
+    for (let i = 1; i <= 8; i += 1) {
+      const a = ((Math.PI / 2) * i) / 8;
+      pts.push(new THREE.Vector2(r - rr + rr * Math.cos(a), h - rr + rr * Math.sin(a)));
+    }
+    pts.push(new THREE.Vector2(0.001, h));
+    return new THREE.LatheGeometry(pts, 96);
+  }
+
+  /** Lathe profile of the bottle body: rounded base and shoulder, short neck. */
   function bottleProfile(sp) {
     const R = sp.R;
     const H = sp.H;
@@ -269,39 +286,20 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   /* ---------------- bottle ---------------- */
   function makeBottle(sp) {
     const root = new THREE.Group();
-    const glassMat = makeGlassMat(sp);
-    const glass = new THREE.Mesh(new THREE.LatheGeometry(bottleProfile(sp), 96), glassMat);
-    root.add(glass);
+    const bodyMat = makeBodyMat(sp);
+    const body = new THREE.Mesh(new THREE.LatheGeometry(bottleProfile(sp), 96), bodyMat);
+    root.add(body);
 
-    // perfume liquid (fills from the thick glass base)
     const R = sp.R;
     const H = sp.H;
-    const liqH = H - 0.12;
-    const lg = new THREE.CylinderGeometry(R - 0.02, R - 0.02, liqH, 96);
-    lg.translate(0, liqH / 2, 0);
-    const liqMat = new THREE.MeshPhysicalMaterial({
-      color: sp.liquid, emissive: sp.liqEm, emissiveIntensity: 1.1, roughness: 0.06,
-      clearcoat: 1, clearcoatRoughness: 0.04, envMap: sp.env, envMapIntensity: 1.1,
-    });
-    liqMat.onBeforeCompile = (sh) => { // plus slow caustics drifting through the liquid
-      sh.uniforms.uTime = LIQT;
-      sh.vertexShader = 'varying vec3 vLoc;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLoc = position;');
-      sh.fragmentShader = 'uniform float uTime; varying vec3 vLoc;\n' + sh.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\n float fz = abs(dot(normalize(normal), normalize(vViewPosition)));\n totalEmissiveRadiance *= 0.2 + 1.1*pow(fz, 1.4);\n diffuseColor.rgb *= 0.55 + 0.45*fz;\n float ca = sin(vLoc.y*15.0 + uTime*1.3 + sin(vLoc.x*22.0 + uTime*0.8)*1.6) * sin(vLoc.z*19.0 - uTime*1.1 + vLoc.y*6.0);\n totalEmissiveRadiance *= 0.8 + 0.5*pow(abs(ca), 2.4);',
-      );
-    };
-    const liquid = new THREE.Mesh(lg, liqMat);
-    liquid.position.y = 0.05;
-    root.add(liquid);
 
-    // parts that materialise after the glass forms
+    // parts that materialise after the body forms
     const partMats = [];
     const reg = (m) => { partMats.push(m); return m; };
     const lh = sp.l1 - sp.l0;
     const labelMat = new THREE.MeshPhysicalMaterial({
-      map: sp.tex, emissiveMap: sp.tex, emissive: 0xffffff, emissiveIntensity: 0.34,
-      roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.12, envMap: sp.env, envMapIntensity: 0.45,
+      map: sp.tex, emissiveMap: sp.tex, emissive: 0xffffff, emissiveIntensity: 0.62,
+      roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.08, envMap: sp.env, envMapIntensity: 0.3,
     });
     const label = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.004, R + 0.004, lh, 160, 1, true, -sp.arc / 2, sp.arc), labelMat);
     label.position.y = sp.l0 + lh / 2;
@@ -309,51 +307,19 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
 
     const top = new THREE.Group();
     root.add(top);
-    const collarMat = reg(sp.collar === 'gold'
-      ? new THREE.MeshPhysicalMaterial({
-        color: 0xd6a64f, metalness: 1, roughness: 0.2, clearcoat: 0.5, envMap: sp.env, envMapIntensity: 1.7,
-      })
-      : new THREE.MeshPhysicalMaterial({
-        color: 0xf3a7b6, emissive: 0x3a0812, emissiveIntensity: 0.8, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.03,
-        sheen: 0.5, sheenColor: new THREE.Color(0xffd0da), envMap: envStage, envMapIntensity: 1.1,
-      }));
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(sp.collarR, sp.collarR, sp.collarH, 96), collarMat);
-    collar.position.y = sp.collarH / 2;
+    const whiteMat = () => new THREE.MeshPhysicalMaterial({
+      color: 0xf4f4f6, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.04,
+      emissive: 0x3c3c42, envMap: envWhite, envMapIntensity: 1.75,
+    });
+    const collar = new THREE.Mesh(roundedCylinder(sp.collarR, sp.collarH, 0.02), reg(whiteMat()));
     top.add(collar);
-    for (const y of [0.012, sp.collarH - 0.012]) {
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(sp.collarR, 0.008, 12, 96), collarMat);
-      rim.rotation.x = Math.PI / 2;
-      rim.position.y = y;
-      top.add(rim);
-    }
 
-    // clear overcap: back faces drawn first, then the front, so the pump shows through
+    // solid overcap, over the pump
     const capG = new THREE.Group();
     capG.position.y = sp.collarH;
     top.add(capG);
-    const capMat = reg(new THREE.MeshPhysicalMaterial({
-      color: 0xf4f7fa, roughness: 0.05, transparent: true, opacity: 0.3, clearcoat: 1, clearcoatRoughness: 0.02,
-      envMap: sp.env, envMapIntensity: 2.2, side: THREE.FrontSide, depthWrite: false,
-    }));
-    capMat.userData.max = 0.3;
-    const capBackMat = reg(capMat.clone());
-    capBackMat.side = THREE.BackSide;
-    capBackMat.userData.max = 0.18;
-    capBackMat.envMapIntensity = 1.2;
-    const capGeo = new THREE.CylinderGeometry(sp.capR, sp.capR, sp.capH, 96);
-    const capBack = new THREE.Mesh(capGeo, capBackMat);
-    capBack.position.y = sp.capH / 2;
-    capBack.renderOrder = 4;
-    capG.add(capBack);
-    const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.y = sp.capH / 2;
-    cap.renderOrder = 6;
+    const cap = new THREE.Mesh(roundedCylinder(sp.capR, sp.capH, 0.03), reg(whiteMat()));
     capG.add(cap);
-    const capRim = new THREE.Mesh(new THREE.TorusGeometry(sp.capR - 0.006, 0.006, 10, 96), capMat);
-    capRim.rotation.x = Math.PI / 2;
-    capRim.position.y = sp.capH;
-    capRim.renderOrder = 6;
-    capG.add(capRim);
 
     // pump: domed actuator with a nozzle, on a stem
     const pumpMat = reg(new THREE.MeshPhysicalMaterial({
@@ -380,7 +346,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     // what the spray variant moves: the actuator and nozzle (pressed down),
     // the overcap (taken off), and where the nozzle sits in bottle space
     const pump = {
-      act, nozzle, actY: act.position.y, nozY: nozzle.position.y, cap: [capBack, cap, capRim],
+      act, nozzle, actY: act.position.y, nozY: nozzle.position.y, cap: [cap],
       nozzleLocal: new THREE.Vector3(0, H + sp.collarH + sp.capH * 0.42 + ah * 0.55, ar + 0.004),
     };
 
@@ -414,10 +380,9 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
         m.envMapIntensity = m.userData.baseEnv * (0.06 + 0.94 * light);
         if (m.emissiveIntensity !== undefined) m.emissiveIntensity = m.userData.baseEm * (0.05 + 0.95 * light);
       }
-      glassMat.envMapIntensity = glassMat.userData.baseEnv * (0.2 + 0.8 * light);
-      glassMat.userData.u.uRim.value = rim;
-      labelMat.emissiveIntensity = 0.34 * light;
-      liqMat.emissiveIntensity = 1.1 * (0.2 + 0.8 * light);
+      bodyMat.envMapIntensity = bodyMat.userData.baseEnv * (0.2 + 0.8 * light);
+      bodyMat.userData.u.uRim.value = rim;
+      labelMat.emissiveIntensity = 0.62 * light;
     }
 
     return {
@@ -428,12 +393,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
         for (const m of partMats) fade(m, 0.5);
         fade(labelMat, 0.5);
       },
-      update(s) { // s: show, tint, fill, parts, label, rotY (+ light, rim)
+      update(s) { // s: show, parts, label, rotY (+ light, rim)
         root.visible = s.show;
-        tintGlass(glassMat, sp, s.tint);
-        liquid.visible = s.fill > 0.002;
-        liquid.scale.y = Math.max(s.fill, 0.001);
-        liqMat.emissiveIntensity = 1.1 * Math.min(1, s.fill * 3);
         top.visible = s.parts > 0.002;
         for (const m of partMats) fade(m, s.parts);
         top.position.y = H + Math.pow(1 - s.parts, 3) * 0.22;
@@ -664,153 +625,15 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     );
   }
 
-  /* ---------------- story: golden wings → streams of light → perfumes ---------------- */
+  /* ---------------- story: a gate of heaven → streams of light → perfumes ---------------- */
   /**
-   * Builds the wings, halo, light streams and bottle reveal, and returns
+   * Builds the heaven backdrop (oculus, light beams, halo), light streams and bottle reveal, and returns
    * `update(t)` to pose them (bottles, platforms and camera are posed in
    * poseStory). Everything is a pure function of `t`, so the scroll can
    * scrub it either way.
    */
   function makeWings() {
     const GOLD_ENV = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [3.6, 1.2, 1.4]], [0.8, 9, [5.5, 0.6, -1.5], [0.6, 1.8, 3.4]], [0.5, 8, [0, 0.8, 6], [3.2, 2.5, 1.6]], TOP, STREAK, GOLD_R, GOLD_F]);
-
-    // one feather, drawn once: vane, barbs and rachis (alpha = its shape)
-    function featherTexture() {
-      const W = 512;
-      const H = 128;
-      const c = document.createElement('canvas');
-      c.width = W;
-      c.height = H;
-      const g = c.getContext('2d');
-      const half = (u) => {
-        const q = Math.min(1, u * 1.12);
-        let w = Math.pow(Math.sin(Math.PI * q * 0.5), 0.55);
-        w *= 1 - 0.3 * u;
-        if (u > 0.82) w *= Math.sqrt(Math.max(0, 1 - (u - 0.82) / 0.18));
-        if (u < 0.07) w *= 0.18 + ((0.82 * u) / 0.07) * 0.2;
-        return 0.48 * w;
-      };
-      g.beginPath();
-      g.moveTo(0, H / 2);
-      for (let i = 0; i <= 100; i += 1) { const u = i / 100; g.lineTo(u * W, H / 2 - half(u) * H * (1 + 0.04 * Math.sin(u * 90))); }
-      for (let i = 100; i >= 0; i -= 1) { const u = i / 100; g.lineTo(u * W, H / 2 + half(u) * H * 0.86 * (1 + 0.05 * Math.sin(u * 70 + 1))); }
-      g.closePath();
-      const gr = g.createLinearGradient(0, 0, W, 0);
-      gr.addColorStop(0, '#b8b8b8');
-      gr.addColorStop(0.5, '#ffffff');
-      gr.addColorStop(1, '#e8e8e8');
-      g.fillStyle = gr;
-      g.fill();
-      g.save();
-      g.clip();
-      for (let i = 0; i < 260; i += 1) { // barbs
-        const x = (i / 260) * W;
-        g.strokeStyle = `rgba(90,90,90,${0.12 + 0.12 * Math.random()})`;
-        g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(x, H / 2);
-        g.lineTo(x + 26, i % 2 === 0 ? 0 : H);
-        g.stroke();
-      }
-      g.restore();
-      g.strokeStyle = 'rgba(120,120,120,0.9)'; // rachis
-      g.lineWidth = 3;
-      g.beginPath();
-      g.moveTo(0, H / 2);
-      g.lineTo(W * 0.93, H / 2);
-      g.stroke();
-      const tx = new THREE.CanvasTexture(c);
-      tx.anisotropy = 8;
-      return keep(tx);
-    }
-    const fTex = featherTexture();
-    // a gently cupped, curved plane, pivoting at its base
-    const fGeo = new THREE.PlaneGeometry(1, 1, 18, 2);
-    fGeo.translate(0.5, 0, 0);
-    const fp = fGeo.attributes.position;
-    for (let i = 0; i < fp.count; i += 1) {
-      const x = fp.getX(i);
-      const y = fp.getY(i);
-      fp.setZ(i, 0.06 * Math.sin(Math.PI * x) - 0.05 * y * y);
-      fp.setY(i, y - 0.04 * x * x);
-    }
-    fGeo.computeVertexNormals();
-    const wingMat = (col) => rimify(new THREE.MeshPhysicalMaterial({
-      color: 0xe6b563, metalness: 0.9, roughness: 0.3, map: fTex, alphaMap: fTex, alphaTest: 0.35, side: THREE.DoubleSide,
-      clearcoat: 0.4, clearcoatRoughness: 0.2, envMap: GOLD_ENV, envMapIntensity: 1.6, emissive: 0x3a2208, emissiveIntensity: 0.5,
-    }), col);
-
-    // feather rows: count, arm range, angle range (deg), length range, width, depth offset
-    const ROWS = [
-      [10, 0.55, 1.00, -28, 62, 0.62, 0.74, 0.15, 0.000],
-      [12, 0.04, 0.55, -95, -36, 0.62, 0.66, 0.17, 0.004],
-      [14, 0.04, 0.96, -88, 46, 0.40, 0.36, 0.16, 0.016],
-      [14, 0.04, 0.94, -82, 40, 0.26, 0.24, 0.15, 0.028],
-      [12, 0.03, 0.86, -70, 30, 0.15, 0.14, 0.13, 0.040],
-    ];
-    const FEATHERS = [];
-    ROWS.forEach((r, row) => {
-      for (let i = 0; i < r[0]; i += 1) {
-        const k = r[0] > 1 ? i / (r[0] - 1) : 0;
-        FEATHERS.push({
-          row, a: lerp(r[1], r[2], k), th: (lerp(r[3], r[4], k) * Math.PI) / 180, len: lerp(r[5], r[6], k), wid: r[7], z: r[8],
-        });
-      }
-    });
-    // wingtips dissolve first: each feather's dissolve time `td`
-    for (const f of FEATHERS) f.order = 1 - f.a + f.row * 0.06;
-    const oMax = Math.max(...FEATHERS.map((f) => f.order));
-    const oMin = Math.min(...FEATHERS.map((f) => f.order));
-    for (const f of FEATHERS) f.td = 3.45 + (0.95 * (f.order - oMin)) / (oMax - oMin);
-    const WING_Y = 1.08;
-    const _q = new THREE.Quaternion();
-    const _e = new THREE.Euler();
-    const _p = new THREE.Vector3();
-    const _s = new THREE.Vector3();
-    /** Feather `f`'s matrix (into `out`) at wing `spread` and `flap`, time `t`. */
-    function featherMatrix(f, spread, flap, t, out) {
-      const { a } = f;
-      const ox = lerp(0.07 + 0.34 * a, 0.1 + 1.0 * a, spread);
-      const oy = lerp(0.1 * a, 0.3 * a + 0.36 * a * a, spread);
-      const oz = lerp(-0.04 * a, -0.15 * a * a, spread);
-      const fl = flap * Math.pow(a, 0.6);
-      const c = Math.cos(fl);
-      const s = Math.sin(fl);
-      _p.set(ox * c - oy * s, ox * s + oy * c, oz + f.z);
-      const th = lerp(-1.45 + 0.25 * a, f.th, spread) + fl;
-      const twist = 0.4 * (1 - a) + f.row * 0.05 + 0.04 * Math.sin(t * 1.3 + a * 5);
-      _e.set(twist, 0, th, 'ZYX');
-      _q.setFromEuler(_e);
-      const k = t < f.td ? 1 : 1 - ss(f.td, f.td + 0.32, t);
-      _s.set(f.len * lerp(0.75, 1, spread) * Math.max(k, 0.0001), f.wid * Math.max(k, 0.0001), 1);
-      return out.compose(_p, _q, _s);
-    }
-    function makeWing(side, col) {
-      const g = new THREE.Group();
-      g.position.set(0, WING_Y, 0);
-      g.scale.x = side;
-      scene.add(g);
-      const mat = wingMat(col);
-      const im = new THREE.InstancedMesh(fGeo, mat, FEATHERS.length);
-      im.frustumCulled = false;
-      g.add(im);
-      const mg = new THREE.Group();
-      mg.position.copy(g.position);
-      mg.scale.x = side;
-      mirror.add(mg);
-      const imM = new THREE.InstancedMesh(fGeo, mat, FEATHERS.length);
-      imM.instanceMatrix = im.instanceMatrix;
-      imM.frustumCulled = false;
-      mg.add(imM);
-      return { g, mg, im, mat, side };
-    }
-    const wingL = makeWing(-1, PINK);
-    const wingR = makeWing(1, CYAN);
-    /** Wings unfurl over 0.35-2.3 s, then beat once (2.2-3.4 s). */
-    const wingPose = (t) => ({
-      spread: eIO(lin(0.35, 2.3, t)),
-      flap: t < 3.4 ? -0.2 * Math.sin(Math.PI * lin(2.2, 3.4, t)) + 0.1 * (1 - eIO(lin(0.35, 2.3, t))) : 0,
-    });
 
     // the halo, and the two rings it splits into (they become the platform LED rings)
     const haloMat = new THREE.MeshPhysicalMaterial({
@@ -831,15 +654,139 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
       mirror.add(rm);
       return { r, rm, m, x, col, tl };
     });
-    // warm glow behind the wings
-    const core = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: softTex, color: new THREE.Color(1.0, 0.72, 0.35), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+    // golden motes rising through the light
+    const MOTES = 220;
+    const mp = new Float32Array(MOTES * 3);
+    const ms = new Float32Array(MOTES);
+    for (let i = 0; i < MOTES; i += 1) {
+      mp.set([(Math.random() - 0.5) * 3.2, Math.random() * 2.6, (Math.random() - 0.5) * 1.6], i * 3);
+      ms[i] = Math.random();
+    }
+    const mg = new THREE.BufferGeometry();
+    mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
+    mg.setAttribute('aS', new THREE.BufferAttribute(ms, 1));
+    const motes = new THREE.Points(mg, new THREE.ShaderMaterial({
+      uniforms: { uT: { value: 0 }, uA: { value: 0 }, uScale: { value: 600 } },
+      vertexShader: `
+        attribute float aS; uniform float uT, uA, uScale; varying float vA;
+        void main(){
+          vec3 p = position;
+          p.y = mod(p.y + uT*(0.08 + 0.14*aS), 2.8);
+          p.x += 0.08*sin(uT*0.9 + aS*40.0); p.z += 0.08*cos(uT*0.7 + aS*25.0);
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+          vA = uA * (0.4 + 0.6*sin(uT*3.0 + aS*50.0)*sin(uT*3.0 + aS*50.0)) * smoothstep(0.0, 0.35, p.y) * (1.0 - smoothstep(2.2, 2.8, p.y));
+          gl_PointSize = (0.014 + 0.02*aS) * uScale / -mv.z;
+        }`,
+      fragmentShader: `
+        varying float vA;
+        void main(){ vec2 c = gl_PointCoord - 0.5; float a = exp(-dot(c,c)*16.0) * vA; if (a < 0.003) discard; gl_FragColor = vec4(vec3(1.7, 1.3, 0.7)*a, a); }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
-    core.position.set(0, WING_Y + 0.25, -0.3);
-    core.scale.set(2.4, 2.4, 1);
-    core.renderOrder = 4;
-    scene.add(core);
-    noDepth.push(core);
+    motes.frustumCulled = false;
+    motes.renderOrder = 8;
+    scene.add(motes);
+    noDepth.push(motes);
+
+    // tall shafts of light descending from the halo
+    const shaftCanvas = document.createElement('canvas');
+    shaftCanvas.width = 64;
+    shaftCanvas.height = 256;
+    {
+      const g = shaftCanvas.getContext('2d');
+      const gx = g.createLinearGradient(0, 0, 64, 0);
+      gx.addColorStop(0, 'rgba(255,255,255,0)');
+      gx.addColorStop(0.5, 'rgba(255,255,255,1)');
+      gx.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gx;
+      g.fillRect(0, 0, 64, 256);
+      g.globalCompositeOperation = 'destination-in';
+      const gy = g.createLinearGradient(0, 0, 0, 256);
+      gy.addColorStop(0, 'rgba(0,0,0,1)');
+      gy.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+      gy.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gy;
+      g.fillRect(0, 0, 64, 256);
+    }
+    const shaftTex = keep(new THREE.CanvasTexture(shaftCanvas));
+    // they pour from the oculus down onto the floor, fanning out as they fall
+    const PORTAL = { y: 1.6, z: -2.6, r: 1.4 };
+    const SHAFTS = [-1.8, -1.2, -0.7, -0.25, 0.25, 0.7, 1.2, 1.8].map((x1, i) => {
+      const m = new THREE.MeshBasicMaterial({
+        map: shaftTex, color: new THREE.Color(1.0, 0.84, 0.55), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const x0 = x1 * 0.28;
+      const y0 = PORTAL.y - 0.2;
+      const len = Math.hypot(x1 - x0, y0);
+      const w = 0.05 + 0.07 * ((i * 5) % 3) / 2;
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, len), m);
+      p.position.set((x0 + x1) / 2, y0 / 2, -1.4 - 0.15 * (i % 3));
+      p.rotation.z = Math.atan2(x1 - x0, y0);
+      p.renderOrder = 3;
+      scene.add(p);
+      noDepth.push(p);
+      return { p, m, ph: i * 1.3 };
+    });
+
+    // the oculus: a round opening in the dark, blazing with light
+    const portalMat = new THREE.ShaderMaterial({
+      uniforms: { uT: { value: 0 }, uA: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `
+        uniform float uT, uA; varying vec2 vUv;
+        void main(){
+          vec2 p = (vUv - 0.5) * 2.0; float r = length(p); float a = atan(p.y, p.x);
+          // crisp concentric gold rings and fine radial ticks around a clear, bright centre
+          float ring = max(smoothstep(0.014, 0.0, abs(r - 0.97)), smoothstep(0.008, 0.0, abs(r - 0.78)) * 0.7 + smoothstep(0.008, 0.0, abs(r - 0.56)) * 0.5);
+          float ticks = smoothstep(0.35, 0.5, abs(sin(a*36.0 + uT*0.25))) * step(0.84, r) * step(r, 0.93) * 0.8;
+          float disc = smoothstep(0.35, 0.0, r) * 1.3 + 0.12;
+          float I = (disc + ring + ticks) * step(r, 1.0) * uA;
+          vec3 col = mix(vec3(1.5, 1.05, 0.5), vec3(2.0, 1.85, 1.6), smoothstep(0.5, 0.0, r));
+          gl_FragColor = vec4(col*I, I);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const portal = new THREE.Mesh(new THREE.CircleGeometry(1, 96), portalMat);
+    portal.position.set(0, PORTAL.y, PORTAL.z);
+    portal.renderOrder = 3;
+    scene.add(portal);
+    noDepth.push(portal);
+    const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.7, 0.8), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.012, 12, 160), rimMat);
+    rim.position.copy(portal.position);
+    rim.renderOrder = 3;
+    scene.add(rim);
+    noDepth.push(rim);
+
+    // four-point stars that twinkle around the halo
+    const starCanvas = document.createElement('canvas');
+    starCanvas.width = 64;
+    starCanvas.height = 64;
+    {
+      const g = starCanvas.getContext('2d');
+      g.translate(32, 32);
+      for (const [rx, ry] of [[30, 3], [3, 30]]) {
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, 30);
+        gr.addColorStop(0, 'rgba(255,255,255,1)');
+        gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr;
+        g.beginPath();
+        g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    const starTex = keep(new THREE.CanvasTexture(starCanvas));
+    const STARS = Array.from({ length: 16 }, () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.5 + Math.random() * 1.7;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: starTex, color: new THREE.Color(1.6, 1.3, 0.8), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      sp.position.set(Math.cos(a) * r * 1.2, HALO_Y - 0.4 + Math.sin(a) * r * 0.7, -0.5 + Math.random() * 0.8);
+      sp.renderOrder = 8;
+      scene.add(sp);
+      noDepth.push(sp);
+      return { sp, ph: Math.random() * 6.28, sz: 0.1 + 0.18 * Math.random(), f: 1.5 + 2 * Math.random() };
+    });
 
     // LED shockwave rings that ripple across the floor as each halo ring lands
     const ringTex = radialTex([[0, 'rgba(255,255,255,0)'], [0.78, 'rgba(255,255,255,0)'], [0.9, 'rgba(255,255,255,1)'], [0.95, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
@@ -859,7 +806,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
       }
     }
 
-    // feathers → streams of light → bottles. Each bottle is revealed from
+    // light from the heavens → streams of light → bottles. Each bottle is revealed from
     // its base upward over `dur` seconds from `t0`, and each particle
     // arrives at the height being revealed as it lands.
     const REVEAL = [
@@ -867,39 +814,31 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
       { t0: 4.65, dur: 1.5, x: PX, u: { value: -1 } },
     ];
     const HTOT = BOTTLE.H + BOTTLE.collarH + BOTTLE.capH;
-    function makeStream(wing, rv, tint) {
-      const PER = 95;
-      const N = FEATHERS.length * PER;
-      const S = new Float32Array(N * 3); // start: on the feather
+    function makeStream(side, rv, tint) {
+      const N = 5200;
+      const S = new Float32Array(N * 3); // start: in the clouds and shafts of light
       const E = new Float32Array(N * 3); // end: on the bottle's surface
       const C = new Float32Array(N * 3); // control point of the arc between
       const T = new Float32Array(N * 3); // birth, arrival, seed
-      const pose = wingPose(3.45);
-      const wm = new THREE.Matrix4().compose(new THREE.Vector3(0, WING_Y, 0), new THREE.Quaternion(), new THREE.Vector3(wing.side, 1, 1));
-      const fm = new THREE.Matrix4();
-      const v = new THREE.Vector3();
-      let n = 0;
-      for (const f of FEATHERS) {
-        featherMatrix(f, pose.spread, pose.flap, 3.44, fm);
-        fm.premultiply(wm);
-        for (let k = 0; k < PER; k += 1, n += 1) {
-          const u = 0.08 + 0.87 * Math.random();
-          const w = (Math.random() - 0.5) * 0.75 * Math.sin(Math.PI * Math.min(1, u * 1.1));
-          v.set(u, w, 0).applyMatrix4(fm);
-          S.set([v.x, v.y, v.z], n * 3);
-          const h = Math.pow(Math.random(), 0.9) * HTOT;
-          const rr = h < BOTTLE.H ? BOTTLE.R : h < BOTTLE.H + BOTTLE.collarH ? BOTTLE.collarR : BOTTLE.capR;
-          const ph = (Math.random() - 0.5) * Math.PI * 1.6;
-          E.set([rv.x + rr * Math.sin(ph), PPH + h, rr * Math.cos(ph)], n * 3);
-          C.set([
-            (v.x + rv.x) / 2 + wing.side * (0.35 + 0.5 * Math.random()),
-            Math.max(v.y, PPH + h) + 0.25 + 0.6 * Math.random(),
-            0.5 + 0.9 * (Math.random() - 0.3),
-          ], n * 3);
-          const birth = f.td + 0.28 * Math.random();
-          const arrive = Math.max(rv.t0 + rv.dur * (h / HTOT) + 0.05, birth + 0.7);
-          T.set([birth, arrive, Math.random()], n * 3);
-        }
+      for (let n = 0; n < N; n += 1) {
+        const inCloud = Math.random() < 0.45;
+        const sx = side * Math.pow(Math.random(), 0.8) * 1.9;
+        const sy = inCloud ? 0.05 + 0.6 * Math.random() : 0.4 + 2.0 * Math.random();
+        const sz = (Math.random() - 0.6) * (inCloud ? 1.8 : 0.7);
+        S.set([sx, sy, sz], n * 3);
+        const h = Math.pow(Math.random(), 0.9) * HTOT;
+        const rr = h < BOTTLE.H ? BOTTLE.R : h < BOTTLE.H + BOTTLE.collarH ? BOTTLE.collarR : BOTTLE.capR;
+        const ph = (Math.random() - 0.5) * Math.PI * 1.6;
+        E.set([rv.x + rr * Math.sin(ph), PPH + h, rr * Math.cos(ph)], n * 3);
+        C.set([
+          (sx + rv.x) / 2 + side * (0.2 + 0.5 * Math.random()),
+          Math.max(sy, PPH + h) + 0.25 + 0.6 * Math.random(),
+          0.5 + 0.9 * (Math.random() - 0.3),
+        ], n * 3);
+        // the outermost light leaves first, then it gathers inward
+        const birth = 3.45 + 0.95 * (Math.abs(sx) / 1.9) + 0.28 * Math.random();
+        const arrive = Math.max(rv.t0 + rv.dur * (h / HTOT) + 0.05, birth + 1.15);
+        T.set([birth, arrive, Math.random()], n * 3);
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(S, 3));
@@ -912,12 +851,12 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
           attribute vec3 aEnd, aCtl, aT; uniform float uT, uScale; varying float vA; varying float vK; varying float vR;
           void main(){
             float p = clamp((uT - aT.x)/(aT.y - aT.x), 0.0, 1.0);
-            float e = p*p*(3.0 - 2.0*p);
+            float e = p*p*p*(p*(p*6.0 - 15.0) + 10.0); // smootherstep: no kick at either end
             vec3 q = mix(mix(position, aCtl, e), mix(aCtl, aEnd, e), e);
-            float sw = (1.0 - e)*e*0.35; q.x += sw*sin(e*18.0 + aT.z*30.0); q.z += sw*cos(e*18.0 + aT.z*30.0);
+            float sw = sin(3.14159*e)*(1.0 - e)*0.42; float ang = e*9.0 + aT.z*6.2832; q.x += sw*sin(ang); q.z += sw*cos(ang); // wide, slow turns that wind down as the light lands
             vec4 mv = modelViewMatrix * vec4(q, 1.0); gl_Position = projectionMatrix * mv;
             float on = step(aT.x, uT) * (1.0 - step(aT.y, uT));
-            vA = on * smoothstep(0.0, 0.08, p) * (1.0 - smoothstep(0.9, 1.0, p)) * (0.55 + 0.45*sin(uT*22.0 + aT.z*60.0));
+            vA = on * smoothstep(0.0, 0.18, p) * (1.0 - smoothstep(0.82, 1.0, p)) * (0.82 + 0.18*sin(uT*5.0 + aT.z*60.0));
             vK = e; vR = aT.z;
             gl_PointSize = (0.026 + 0.024*aT.z) * (1.3 - 0.6*e) * uScale / -mv.z;
           }`,
@@ -941,7 +880,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
       noDepth.push(pts, reflected);
       return m;
     }
-    const streams = [makeStream(wingL, REVEAL[0], PINK), makeStream(wingR, REVEAL[1], CYAN)];
+    const streams = [makeStream(-1, REVEAL[0], PINK), makeStream(1, REVEAL[1], CYAN)];
 
     // Bottles build upward behind a glowing gold edge: every fragment above
     // the reveal height (|y|, so the reflection builds too) is discarded.
@@ -975,21 +914,36 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     const bufTmp = new THREE.Vector2();
     return {
       update(t) {
-        const pose = wingPose(t);
-        const wingsOn = t < 4.9;
         const glow = ss(0.1, 1.2, t);
-        for (const w of [wingL, wingR]) {
-          w.g.visible = wingsOn;
-          w.mg.visible = wingsOn;
-          if (wingsOn) {
-            FEATHERS.forEach((f, i) => { w.im.setMatrixAt(i, featherMatrix(f, pose.spread, pose.flap, t, fmTmp)); });
-            w.im.instanceMatrix.needsUpdate = true;
-          }
-          w.mat.envMapIntensity = 1.6 * glow;
-          w.mat.userData.u.uRim.value = 0.9 * glow;
-          w.mat.emissiveIntensity = 0.5 * glow;
+        const mote = ss(0.6, 1.6, t) * (1 - ss(4.6, 5.6, t));
+        motes.visible = mote > 0.002;
+        motes.material.uniforms.uT.value = t;
+        motes.material.uniforms.uA.value = mote;
+        motes.material.uniforms.uScale.value = renderer.getDrawingBufferSize(bufTmp).y * 0.62;
+        // the shafts shimmer and the stars twinkle; all of it gives way to the streams
+        const fade = ss(0.2, 1.4, t) * (1 - ss(3.5, 4.7, t));
+        // the oculus irises open with a little overshoot, then eases down to a backlight behind the bottles
+        const open = ss(0.2, 1.9, t);
+        const iris = open * (1 + 0.05 * Math.sin(Math.PI * lin(0.2, 1.9, t))) * (1 + 0.015 * Math.sin(t * 1.8));
+        const keepGlow = 0.16 + 0.84 * (1 - ss(3.6, 5.0, t));
+        portal.scale.setScalar(Math.max(iris * PORTAL.r, 0.001));
+        portal.visible = open > 0.002;
+        portalMat.uniforms.uT.value = t;
+        portalMat.uniforms.uA.value = keepGlow * open;
+        rim.scale.copy(portal.scale);
+        rim.visible = portal.visible;
+        rimMat.opacity = 0.9 * keepGlow * open;
+        for (const sh of SHAFTS) {
+          sh.p.visible = fade > 0.002;
+          sh.m.opacity = (0.55 + 0.25 * Math.sin(t * 1.6 + sh.ph)) * ss(0.4, 2.0, t) * (1 - ss(3.5, 4.7, t));
         }
-        core.material.opacity = 0.35 * ss(0.3, 1.6, t) * (1 - ss(3.6, 4.6, t));
+        for (const st of STARS) {
+          const tw = Math.max(0, Math.sin(t * st.f + st.ph));
+          st.sp.visible = fade > 0.002;
+          st.sp.material.opacity = tw * tw * fade;
+          st.sp.scale.setScalar(st.sz * (0.6 + 0.6 * tw));
+          st.sp.material.rotation = t * 0.3;
+        }
 
         halo.visible = t < 3.62;
         haloMat.emissiveIntensity = 1.8 * ss(0.9, 1.7, t);
@@ -1185,13 +1139,12 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   /* ---------------- timeline ---------------- */
   /** Story: pose everything for scene time `t` (0 to SCENE_END). */
   function poseStory(t) {
-    LIQT.value = t;
     SWEEP.i.value = 1;
     wings.update(t);
 
     // the bottles, revealed standing on their platforms as the lights come up
     const light = ss(4.4, 6.4, t);
-    const base = { show: t > 4.4, tint: 0, fill: 1, parts: 1, label: 1, light: 0.35 + 0.65 * light, rim: 0.45 - 0.2 * light };
+    const base = { show: t > 4.4, parts: 1, label: 1, light: 0.35 + 0.65 * light, rim: 0.45 - 0.2 * light };
     const turn = eIOS(lin(4.4, 10, t));
     const rs = { ...base, rotY: lerp(-0.35, 0.08, turn) };
     const bs = { ...base, rotY: lerp(0.35, -0.08, turn) };
@@ -1253,8 +1206,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     const rim = 0.95 * ss(0.2, 1.0, t) * (1 - 0.72 * ss(1.2, 2.4, t)); // rim glow flares, then settles
     const led = ss(0.0, 0.9, t);
     SWEEP.i.value = ss(0.4, 1.4, t);
-    LIQT.value = t;
-    const s = { show: true, tint: 0, fill: 1, parts: 1, label: 1, light, rim, rotY: -0.9 + spinAngle(t) };
+    const s = { show: true, parts: 1, label: 1, light, rim, rotY: -0.9 + spinAngle(t) };
     red.root.position.set(-PX, PPH, 0);
     blue.root.position.set(PX, PPH, 0);
     redM.root.position.copy(red.root.position);
@@ -1313,12 +1265,11 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     const rim = 0.95 * ss(0.1, 0.8, t) * (1 - 0.72 * ss(1.0, 2.0, t));
     const led = ss(0.0, 0.8, t);
     SWEEP.i.value = ss(0.3, 1.2, t);
-    LIQT.value = t;
 
     // the spray cycle: a quick press, a held beat, then the actuator springs back
     const c = t < SPRAY_FIRST ? -1 : (t - SPRAY_FIRST) % SPRAY_CYCLE;
     const press = c < 0 ? 0 : (c < 0.1 ? sstep(c / 0.1) : 1 - ss(0.32, 0.62, c));
-    const s = { show: true, tint: 0, fill: 1, parts: 1, label: 1, light, rim, rotY: ROT + 0.03 * Math.sin(t * 0.4) };
+    const s = { show: true, parts: 1, label: 1, light, rim, rotY: ROT + 0.03 * Math.sin(t * 0.4) };
     blue.root.position.set(SPRAY_X, PPH, 0);
     blueM.root.position.copy(blue.root.position);
     for (const b of [blue, blueM]) {
@@ -1499,7 +1450,7 @@ export default function PerfumeScene({
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    view.warm().then(() => { dirty = true; }, () => {});
+    view.warm().then(() => { dirty = true; }, () => { });
 
     const resize = () => {
       view.setSize(Math.max(1, Math.floor(mount.clientWidth)));

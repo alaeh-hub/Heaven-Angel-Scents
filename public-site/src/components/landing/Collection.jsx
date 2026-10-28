@@ -2,60 +2,111 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowRightIcon } from '@phosphor-icons/react';
-import { fetchProducts } from '../../api.js';
 import { productsPath } from '../../utils.js';
-import { productImage } from '../ProductVisual.jsx';
+import { SCENTS, SCENT_ASPECT, SCENT_BOTTLE_CENTRE } from '../../content/scents.js';
 import Reveal from '../Reveal.jsx';
 import DotField from './DotField.jsx';
 
-const FALLBACK = [
-  ['/static/img/hero-perfume-male.webp', "Men's fragrance"],
-  ['/static/img/hero-perfume-female.webp', "Women's fragrance"],
-];
-/** Enough tiles that one track is wider than the widest screen. */
-const MIN_TILES = 8;
-
-/** Repeat `items` until there are at least MIN_TILES of them. */
-function fill(items) {
-  return Array.from({ length: Math.max(MIN_TILES, items.length) }, (_, i) => items[i % items.length]);
+/** Women's and men's scents alternate along the shelf, so the red and
+    blue labels trade places; whichever side has more fills the tail. */
+function interleave(scents) {
+  const her = scents.filter((s) => s.variant === 'Female');
+  const him = scents.filter((s) => s.variant === 'Male');
+  const out = [];
+  for (let i = 0; i < Math.max(her.length, him.length); i += 1) {
+    if (her[i]) out.push(her[i]);
+    if (him[i]) out.push(him[i]);
+  }
+  return out;
 }
 
-/** The shelf's tiles, plus how many of them are distinct scents (the
-    rest are repeats that only exist to keep the marquee seamless). */
-const shelf = (items) => ({ tiles: fill(items), unique: items.length });
+const SHELF = interleave(SCENTS);
+
+/** The shelf's frame is sized from the render's own proportions, and the
+    bottle's centre line, so the CSS can park the bottle in the middle of
+    the tile at rest and slide the whole shot back on hover. */
+const SHELF_VARS = {
+  '--scent-aspect': SCENT_ASPECT,
+  '--scent-centre': `${(SCENT_BOTTLE_CENTRE * 100).toFixed(2)}%`,
+  '--tiles': SHELF.length,
+};
 
 /**
- * The shelf shows the real catalog (first page), each scent with its own
- * photo once one is uploaded (see ProductVisual). Until the request
- * lands, or if it fails, it shows the two signature renders.
+ * One scent: its bottle on its own, with the gift box tucked behind it.
+ * Hovering (or focusing, or tapping on a touch screen, which has no hover)
+ * slides the box out beside the bottle and shows the scent's name. The
+ * two layers are cut from the same studio render on one canvas (see
+ * scripts/build_scent_images.py), so together they rebuild the original
+ * shot exactly.
  */
-function useShelf(slug) {
-  const [tiles, setTiles] = useState(() => shelf(FALLBACK));
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchProducts(slug, { page: 1 }, controller.signal)
-      .then((data) => {
-        const items = (data?.products || []).map((p) => [productImage(p), p.item_name]);
-        if (items.length) setTiles(shelf(items));
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [slug]);
-  return tiles;
+function ScentTile({ scent, hidden }) {
+  const [open, setOpen] = useState(false);
+  const forHim = scent.variant === 'Male';
+
+  const toggleOnTouch = (e) => {
+    // Mouse users get the box from hover alone; a click shouldn't
+    // fight it. Touch (and pen) has no hover, so a tap flips it.
+    if (e.pointerType === 'mouse') return;
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div
+      className="bottle-tile glow-card"
+      data-variant={scent.variant}
+      data-open={open || undefined}
+      tabIndex={hidden ? undefined : 0}
+      role={hidden ? undefined : 'group'}
+      aria-label={hidden ? undefined : `${scent.name} ${scent.code}, ${forHim ? 'for him' : 'for her'}`}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setOpen(true)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && setOpen(false)}
+      onPointerUp={toggleOnTouch}
+      onFocus={(e) => e.currentTarget.matches(':focus-visible') && setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <span className="bottle-tile-aura" aria-hidden="true" />
+      <div className="scent-frame">
+        <span className="scent-floor" aria-hidden="true" />
+        <img
+          className="scent-box"
+          src={scent.box}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+        />
+        <img
+          className="scent-bottle"
+          src={scent.bottle}
+          alt={hidden ? '' : `${scent.name} ${scent.code}, 85 ml eau de parfum`}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+        />
+      </div>
+      {/* Revealed with the box on hover, so the shelf can be browsed by
+          name; always shown where there's no hover. */}
+      <span className="bottle-tile-meta" aria-hidden="true">
+        <span className="bottle-tile-code">{scent.code}</span>
+        <span className="bottle-tile-name">{scent.name}</span>
+        <span className="bottle-tile-sub">{forHim ? 'For him' : 'For her'} · 85 ml</span>
+      </span>
+    </div>
+  );
 }
 
 /**
  * The one marquee on the page: a slow, continuous shelf of the
- * catalog's scents. Pauses on hover, where the bottle under the pointer
- * lifts and shows its name. On touch screens (nothing to hover, so no
- * way to pause it or pick a bottle) and under reduced motion it becomes
- * a still row the visitor swipes through instead, each scent shown once
- * (see the CSS). Sits over its own interactive dot
- * grid (DotField), lit by the cursor only within this section.
+ * collection's scents, each shown as its bottle alone. Pauses on hover,
+ * where the bottle under the pointer slides over and its box appears
+ * beside it. On touch screens (nothing to hover, so no way to pause it
+ * or pick a bottle) and under reduced motion it becomes a still row the
+ * visitor swipes through instead, tapping a bottle to see its box (see
+ * the CSS). Sits over its own interactive dot grid (DotField), lit by
+ * the cursor only within this section.
  */
 export default function Collection() {
   const { slug } = useParams();
-  const { tiles, unique } = useShelf(slug);
   const sectionRef = useRef(null);
 
   // The track's own animation is compositor-only (transform) and cheap,
@@ -98,16 +149,11 @@ export default function Collection() {
           </div>
         </Reveal>
       </div>
-      <Reveal className="marquee" y={0}>
+      <Reveal className="marquee" y={0} style={SHELF_VARS}>
         {[0, 1].map((copy) => (
           <div key={copy} className="marquee-track" aria-hidden={copy === 1 ? 'true' : undefined}>
-            {tiles.map(([src, alt], i) => (
-              <div className="bottle-tile glow-card" key={i} data-repeat={i >= unique || undefined}>
-                <img src={src} alt={copy === 1 ? '' : alt} loading="lazy" />
-                {/* Revealed under the lifted bottle on hover (the strip
-                    pauses), so the shelf can be browsed by name. */}
-                <span className="bottle-tile-name" aria-hidden="true">{alt}</span>
-              </div>
+            {SHELF.map((scent) => (
+              <ScentTile key={scent.code} scent={scent} hidden={copy === 1} />
             ))}
           </div>
         ))}

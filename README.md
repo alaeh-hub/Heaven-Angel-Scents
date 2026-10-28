@@ -279,7 +279,7 @@ npm run build    # or build once and use Flask's own :5000 URL
 
 (The npm scripts call Vite through `node` directly because npm's Windows shims break on the `&` in this folder's name.)
 
-For production-style WSGI serving, the repo also includes `wsgi.py` and the required Gunicorn + gevent stack in `requirements.txt`. The app is designed to run as a **single worker process** — rate limiting and Socket.IO both use in-memory state rather than a shared store like Redis.
+For production-style WSGI serving, the repo also includes `wsgi.py` and the required Gunicorn + gevent stack in `requirements.txt`. The app is designed as a **single worker process** by default. Rate-limit counters use in-memory state unless `RATELIMIT_STORAGE_URI` is set to a shared backend such as Redis (install the `redis` package when using Redis); Socket.IO still uses process-local state.
 
 ### Running tests
 
@@ -297,6 +297,23 @@ MySQL 8.4 container without using the local database:
 powershell -File scripts\run_tests_docker.ps1
 powershell -File scripts\run_tests_docker.ps1 tests\test_csp.py
 ```
+
+The public site's product imagery is checked in as optimized WebP layers
+under `static/img/scents/`, with the H1 and A3 hero label textures under
+`static/img/scene/`. To rebuild those assets after changing the product
+renders, install the image-processing dependencies from
+`requirements-dev.txt` and place the full-size source PNGs in
+`assets/scent-renders/{female,male}/` using `<code>_<name>.png` filenames
+(for example, `H1_Uriel.png`). Then run:
+
+```bash
+python scripts/build_scent_images.py
+```
+
+The script regenerates the WebP layers and
+`public-site/src/content/scents.js`. The full-size source renders are
+intentionally excluded by `.gitignore`; the generated WebP assets and
+manifest are committed and are all the running site needs.
 
 ---
 

@@ -1333,6 +1333,41 @@ function initStatCountUp() {
     });
 }
 
+// Stat tiles spring up one after another and table rows slide in down the
+// page, so a freshly loaded screen builds top to bottom instead of
+// appearing all at once (state transition: new data just landed).
+// Inline transform/opacity are cleared when each finishes so the tiles'
+// and rows' own CSS hover lift keeps working. Capped at the first 14 rows
+// (anything below the fold is never seen animating) and, like
+// initStatCountUp(), skipped under reduced motion and on tab-style soft
+// navs (refreshDynamicContent's skipReveal).
+function initEntranceStagger() {
+    if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const { animate, stagger } = window.anime;
+
+    const run = (els, from, base) => {
+        if (!els.length) return;
+        animate(els, {
+            opacity: [0, 1],
+            translateY: [from, 0],
+            duration: 520,
+            delay: stagger(40, { start: base }),
+            ease: 'outExpo',
+            onComplete: () => els.forEach((el) => { el.style.opacity = ''; el.style.transform = ''; }),
+        });
+    };
+
+    const tiles = [...document.querySelectorAll('.stat-tile')].filter((el) => !el.dataset.enterDone);
+    tiles.forEach((el) => { el.dataset.enterDone = '1'; });
+    run(tiles, 14, 0);
+
+    const rows = [...document.querySelectorAll('.smart-table tbody tr')]
+        .filter((el) => !el.dataset.enterDone)
+        .slice(0, 14);
+    rows.forEach((el) => { el.dataset.enterDone = '1'; });
+    run(rows, 8, tiles.length ? 160 : 60);
+}
+
 function revealContent() {
     if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
@@ -1458,6 +1493,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initTodaySalesChip, 'todaySalesChip');
     safeInit(revealContent, 'revealContent');
     safeInit(initStatCountUp, 'statCountUp');
+    safeInit(initEntranceStagger, 'entranceStagger');
     safeInit(initFillBars, 'fillBars');
     safeInit(initMascots, 'mascots');
 
@@ -1870,6 +1906,7 @@ function refreshDynamicContent(skipReveal) {
     if (!skipReveal) {
         safeInit(revealContent, 'revealContent');
         safeInit(initStatCountUp, 'statCountUp');
+        safeInit(initEntranceStagger, 'entranceStagger');
     }
 }
 

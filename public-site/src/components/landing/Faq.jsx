@@ -22,10 +22,16 @@ const FAQS = [
     "It's the difference between the partner price you pay and our own regular list price for the same products. If you sell at a different price, your margin changes with it."],
 ];
 
-function FaqItem({ question, answer, open, onToggle }) {
+function FaqItem({ question, answer, open, onToggle, index }) {
   const id = useId();
   return (
-    <div className="faq-item">
+    <motion.div
+      className="faq-item"
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.6 }}
+      transition={{ duration: 0.6, ease: EASE_OUT, delay: index * 0.05 }}
+    >
       <button type="button" className="faq-q" aria-expanded={open} aria-controls={id} onClick={onToggle}>
         <span>{question}</span>
         <motion.span animate={{ rotate: open ? 45 : 0 }} transition={SPRING} style={{ display: 'inline-flex' }}>
@@ -46,7 +52,7 @@ function FaqItem({ question, answer, open, onToggle }) {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
@@ -57,7 +63,6 @@ export default function Faq() {
     <section className="section section-alt" id="faq">
       <div className="container faq-inner">
         <Reveal className="section-head">
-          <div className="eyebrow">FAQ</div>
           <h2 className="title-xl">Questions, answered.</h2>
           <p className="lede">The questions partners ask most, before that first inquiry.</p>
         </Reveal>
@@ -65,6 +70,7 @@ export default function Faq() {
           {FAQS.map(([question, answer], i) => (
             <FaqItem
               key={question}
+              index={i}
               question={question}
               answer={answer}
               open={open === i}

@@ -6,7 +6,7 @@ import { ARRIVE, EASE_OUT, SPRING } from '../motion.js';
 import { packagePath, peso, percent, plural } from '../utils.js';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import ProductVisual from './ProductVisual.jsx';
-import ScopeIcon, { scopeLabel } from './ScopeIcon.jsx';
+import { scopeLabel } from './ScopeIcon.jsx';
 
 /**
  * One package in the grid. The whole card is the link (the CTA stretches
@@ -53,7 +53,7 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
       transition={SPRING}
     >
       <div className="pkg-card-top">
-        {pkg.previews?.length ? (
+        {pkg.previews?.length > 0 && (
           <span className="pkg-bottles" aria-hidden="true">
             {pkg.previews.map((item, i) => (
               <span className="pkg-bottle" key={`${item.item_name}-${i}`} style={{ zIndex: pkg.previews.length - i }}>
@@ -61,8 +61,6 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
               </span>
             ))}
           </span>
-        ) : (
-          <span className="pkg-icon"><ScopeIcon scope={pkg.partner_scope} /></span>
         )}
         {featured ? (
           <span className="chip chip-gold"><SparkleIcon size={14} weight="fill" /> Best value</span>

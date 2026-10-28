@@ -356,3 +356,76 @@ def test_catalog_page_url_serves_the_app(client, slug, built_site):
     resp = client.get(f"/partner-portal/{slug}/products")
     assert resp.status_code == 200
     assert "test build" in resp.get_data(as_text=True)
+
+
+# ------------------------------------------- hardening: duplicates, bots, retries
+
+def _count_inquiries(sql, email):
+    cur = sql.cursor()
+    cur.execute("SELECT COUNT(*) FROM partner_inquiries WHERE email = %s", (email,))
+    n = cur.fetchone()[0]
+    cur.close()
+    return n
+
+
+def test_double_submit_saves_one_inquiry_and_returns_the_same_reference(client, sql, slug):
+    package_id = make_filled_package(sql)
+    payload = inquiry_payload()
+    url = f"/partner-portal/{slug}/api/packages/{package_id}/inquire"
+
+    first = client.post(url, json=payload)
+    second = client.post(url, json=payload)
+
+    assert first.status_code == second.status_code == 201
+    assert first.get_json()["reference"] == second.get_json()["reference"]
+    assert _count_inquiries(sql, payload["email"]) == 1
+
+
+def test_same_email_with_a_different_message_is_a_new_inquiry(client, sql, slug):
+    payload = inquiry_payload()
+
+    client.post(f"/partner-portal/{slug}/api/inquire", json=payload)
+    client.post(f"/partner-portal/{slug}/api/inquire", json={**payload, "message": "A different question"})
+
+    assert _count_inquiries(sql, payload["email"]) == 2
+
+
+def test_filled_honeypot_looks_like_success_but_saves_nothing(client, sql, slug):
+    payload = inquiry_payload(website="http://spam.example")
+
+    resp = client.post(f"/partner-portal/{slug}/api/inquire", json=payload)
+
+    assert resp.status_code == 201
+    assert _count_inquiries(sql, payload["email"]) == 0
+
+
+def test_package_and_catalog_lists_are_briefly_cacheable_but_site_is_not(client, slug):
+    for path in ("/api/packages", "/api/products"):
+        cc = client.get(f"/partner-portal/{slug}{path}").headers["Cache-Control"]
+        assert cc.startswith("private") and "max-age=30" in cc
+    assert "max-age" not in client.get(f"/partner-portal/{slug}/api/site").headers.get("Cache-Control", "")
+
+
+def test_unsent_inquiry_emails_are_retried(client, sql, app, slug, monkeypatch):
+    import heaven_angel.routes.portal as portal
+    payload = inquiry_payload()
+    client.post(f"/partner-portal/{slug}/api/inquire", json=payload)
+    cur = sql.cursor()
+    cur.execute("UPDATE partner_inquiries SET created_at = created_at - INTERVAL 1 HOUR WHERE email = %s",
+                (payload["email"],))
+    sql.commit()
+    cur.close()
+    for key, value in (("MAIL_SERVER", "smtp.test"), ("MAIL_DEFAULT_SENDER", "a@test"),
+                       ("PARTNER_INQUIRY_NOTIFY_EMAIL", "hq@test")):
+        monkeypatch.setitem(app.config, key, value)
+    sent = []
+    monkeypatch.setattr(portal, "send_partner_inquiry_email", lambda **kw: sent.append(kw) or True)
+
+    portal.resend_unsent_inquiry_emails(app)
+
+    mine = [kw for kw in sent if kw["email"] == payload["email"]]
+    assert len(mine) == 1
+    cur = sql.cursor()
+    cur.execute("SELECT email_sent FROM partner_inquiries WHERE email = %s", (payload["email"],))
+    assert cur.fetchone()[0] == 1
+    cur.close()

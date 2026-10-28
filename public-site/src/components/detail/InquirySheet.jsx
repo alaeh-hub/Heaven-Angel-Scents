@@ -4,7 +4,7 @@ import { CheckIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock.js';
 import { EASE_OUT, SPRING, SPRING_SHEET } from '../../motion.js';
 
-const EMPTY = { company_name: '', contact_person: '', phone: '', email: '', address: '', message: '' };
+const EMPTY = { company_name: '', contact_person: '', phone: '', email: '', address: '', message: '', website: '' };
 const ANY = '';
 /** How each contact method reads in "We reach you by ___." */
 const VIA = { Call: 'phone call', SMS: 'SMS', Viber: 'Viber', Email: 'email' };
@@ -335,6 +335,26 @@ export default function InquirySheet({
                         onChange={set('message')}
                       />
                     </div>
+
+                    {/* Bot trap: invisible and unreachable for people (off-screen,
+                        skipped by Tab and screen readers); the server drops any
+                        inquiry that arrives with it filled in. */}
+                    <div aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }}>
+                      <label htmlFor="website">Leave this field empty</label>
+                      <input
+                        id="website"
+                        type="text"
+                        name="website"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={fields.website}
+                        onChange={set('website')}
+                      />
+                    </div>
+
+                    <p className="help inquiry-privacy">
+                      This form uses one essential cookie to keep it secure. No tracking, no ads.
+                    </p>
 
                     <AnimatePresence initial={false}>
                       {error && (

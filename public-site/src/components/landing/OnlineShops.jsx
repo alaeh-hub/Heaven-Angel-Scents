@@ -36,7 +36,6 @@ export default function OnlineShops() {
     <section className="section shop-online" id="shop-online">
       <div className="container">
         <Reveal className="section-head center">
-          <div className="eyebrow">Buy direct</div>
           <h2 className="title-xl">Already know what you want?</h2>
           <p className="lede">Skip the inquiry and order straight from our official stores.</p>
         </Reveal>
