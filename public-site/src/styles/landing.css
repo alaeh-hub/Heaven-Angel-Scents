@@ -222,17 +222,18 @@
 .hero-pin {
   position: relative;
   z-index: 1;
-  height: 160vh;
+  height: 160svh;
   margin-top: calc(var(--nav-h) * -1);
-  background: #000;
+  background: var(--stage);
 }
 
 .hero-stage {
   position: sticky;
-  top: 0;
+  /* A full-screen pin under the nav, not a second bar stacked on it. */
+  inset-block-start: 0;
   height: 100dvh;
   overflow: clip;
-  background: #000;
+  background: var(--stage);
 }
 
 /* The black stage eases into the packages section right below it. */
@@ -243,7 +244,7 @@
   right: 0;
   bottom: 0;
   height: 120px;
-  background: linear-gradient(#000, var(--bg-alt));
+  background: linear-gradient(var(--stage), var(--bg-alt));
 }
 
 .hero-caps {
@@ -253,11 +254,9 @@
   right: 0;
   z-index: 3;
   text-align: center;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: rgb(255 255 255 / 0.48);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 /* The glass scene: a square canvas as tall as the screen allows. Its
@@ -279,14 +278,14 @@
 
 .hero-scene {
   position: relative;
-  width: min(100vw, calc(100dvh - var(--nav-h) - 32px));
+  width: min(100%, calc(100dvh - var(--nav-h) - 32px));
   aspect-ratio: 1;
   /* Soft fade on all four edges: both gradients on one element, where
      they intersect, rather than a mask here and another nested on the
      canvas (each mask costs its own compositing pass every frame). */
   mask-image:
-    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
-    linear-gradient(transparent, #000 10%, #000 90%, transparent);
+    linear-gradient(90deg, transparent, var(--stage) 12%, var(--stage) 88%, transparent),
+    linear-gradient(transparent, var(--stage) 10%, var(--stage) 90%, transparent);
   mask-composite: intersect;
 }
 
@@ -294,7 +293,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 50%, transparent 52%, #000 100%);
+  background: radial-gradient(circle at 50% 50%, transparent 52%, var(--stage) 100%);
   pointer-events: none;
 }
 
@@ -359,8 +358,8 @@
   inset: 0;
   z-index: 2;
   background:
-    radial-gradient(ellipse 90% 60% at 50% 108%, rgb(217 182 75 / 0.26), transparent 70%),
-    radial-gradient(ellipse 50% 40% at 22% 70%, rgb(217 182 75 / 0.08), transparent 70%);
+    radial-gradient(ellipse 90% 60% at 50% 108%, color-mix(in srgb, var(--gold) 26%, transparent), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 22% 70%, color-mix(in srgb, var(--gold) 8%, transparent), transparent 70%);
   mix-blend-mode: plus-lighter;
   pointer-events: none;
 }
@@ -396,7 +395,7 @@
   }
 
   .hero-scene {
-    width: min(100vw, calc(100svh - var(--nav-h) - 32px));
+    width: min(100%, calc(100svh - var(--nav-h) - 32px));
   }
 
   /* The wrap is in flow here, so the eyebrow sits at the scene's top. */
@@ -415,6 +414,12 @@
   .hero-copy {
     margin-left: 0;
     gap: 16px;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .hero-ctas {
+    justify-content: center;
   }
 
   .hero-title {
@@ -469,7 +474,7 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--r-surface);
-  background: radial-gradient(120% 90% at 30% 20%, #2a2418, #0d0d0f 70%);
+  background: radial-gradient(120% 90% at 30% 20%, var(--gold-deep), var(--bg-alt) 70%);
   aspect-ratio: 16 / 9;
   box-shadow: var(--shadow-lg);
   transform-origin: 50% 0;
@@ -491,11 +496,11 @@
   width: 44px;
   height: 44px;
   border-radius: 999px;
-  color: #f5f5f2;
+  color: var(--ink);
   /* Solid tint, not backdrop-filter: a blur over a playing video has to
      be recomputed every frame and makes the film stutter. */
-  background: rgb(20 20 22 / 0.62);
-  border: 1px solid rgb(255 255 255 / 0.16);
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  border: 1px solid var(--hairline-strong);
 }
 
 .craft-toggle-sound {
@@ -779,20 +784,21 @@
 .collection-dots {
   z-index: -1;
   mask-image:
-    linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent),
-    linear-gradient(transparent, #000 12%, #000 88%, transparent);
+    linear-gradient(90deg, transparent, var(--stage) 10%, var(--stage) 90%, transparent),
+    linear-gradient(transparent, var(--stage) 12%, var(--stage) 88%, transparent);
   mask-composite: intersect;
 }
 
 .marquee {
   --gap: 20px;
+  --tile-w: clamp(230px, 24vw, 310px);
   display: flex;
   overflow: hidden;
   /* Room for a hovered tile's glow, which the overflow would otherwise
      cut off in a hard line; the negative margin keeps the layout as was. */
   padding-block: 40px;
   margin-block: -40px;
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, var(--stage) 8%, var(--stage) 92%, transparent);
 }
 
 .marquee-track {
@@ -823,8 +829,7 @@
     overflow-x: auto;
     mask-image: none;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: var(--gutter);
-    padding-inline: var(--gutter);
+    padding-inline: max(var(--gutter), calc((100% - var(--tile-w)) / 2));
     scrollbar-width: none;
     overscroll-behavior-x: contain;
   }
@@ -842,7 +847,8 @@
   }
 
   .bottle-tile {
-    scroll-snap-align: start;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
   }
 }
 
@@ -854,11 +860,11 @@
    parked so the bottle alone sits mid-tile; on hover it slides back to
    centre the whole shot and the box eases out from behind the bottle. */
 .bottle-tile {
-  --aura: #d9b64b;
+  --aura: var(--gold);
   --lift: cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
   flex: 0 0 auto;
-  width: clamp(230px, 24vw, 310px);
+  width: var(--tile-w);
   aspect-ratio: 4 / 5;
   border-radius: var(--r-surface);
   background: linear-gradient(180deg, var(--surface), var(--bg-alt));
@@ -869,11 +875,11 @@
 }
 
 .bottle-tile[data-variant="Female"] {
-  --aura: #ff2f7a;
+  --aura: var(--aura-female);
 }
 
 .bottle-tile[data-variant="Male"] {
-  --aura: #2f86ff;
+  --aura: var(--aura-male);
 }
 
 .bottle-tile:focus-visible {
@@ -943,14 +949,14 @@
   transform: translate3d(2.5%, 0, 0);
 }
 
-.scent-box {
+.js .scent-box {
   z-index: 0;
   opacity: 0;
   transform: translate3d(34%, 2%, 0);
   transition: opacity 0.4s ease 0.05s, transform 0.85s var(--lift);
 }
 
-.bottle-tile[data-open] .scent-box {
+.js .bottle-tile[data-open] .scent-box {
   opacity: 1;
   transform: none;
   transition-delay: 0.08s, 0.05s;
@@ -960,20 +966,21 @@
 .scent-floor {
   position: absolute;
   z-index: 0;
-  left: var(--scent-centre);
+  left: 0;
   bottom: -1%;
-  width: 52%;
+  /* Full width, scaled down at rest: left/width would animate layout. The
+     shift puts the shadow's centre under the bottle (--scent-centre). */
+  width: 118%;
   height: 5%;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgb(0 0 0 / 0.65), transparent);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--stage) 65%, transparent), transparent);
   filter: blur(4px);
-  transform: translateX(-50%);
-  transition: left 0.85s var(--lift), width 0.85s var(--lift), opacity 0.4s ease;
+  transform: translateX(calc((var(--scent-centre) - 59%) / 1.18)) scaleX(0.44);
+  transition: transform 0.85s var(--lift), opacity 0.4s ease;
 }
 
 .bottle-tile[data-open] .scent-floor {
-  left: 53%;
-  width: 118%;
+  transform: translateX(calc((53% - 59%) / 1.18)) scaleX(1);
 }
 
 /* The scent's code and name, revealed under the shot on hover. */
@@ -987,21 +994,23 @@
   justify-items: center;
   gap: 2px;
   text-align: center;
+}
+
+.js .bottle-tile-meta {
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.35s ease, transform 0.55s var(--lift);
 }
 
-.bottle-tile[data-open] .bottle-tile-meta {
+.js .bottle-tile[data-open] .bottle-tile-meta {
   opacity: 1;
   transform: none;
   transition-delay: 0.12s;
 }
 
 .bottle-tile-code {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.14em;
   color: var(--gold-ink);
 }
 
@@ -1038,20 +1047,20 @@
    clear strip. Tiles are narrower on phones so the next one peeks in,
    which says "swipe" without a label. */
 @media (hover: none) {
-  .bottle-tile {
-    width: min(62vw, 250px);
+  .marquee {
+    --tile-w: min(62vw, 250px);
   }
 
   .scent-frame {
-    top: 4%;
-    height: 70%;
+    top: 3%;
+    height: 74%;
   }
 
   .bottle-tile-aura {
     opacity: 0.6;
   }
 
-  .bottle-tile-meta {
+  .js .bottle-tile-meta {
     bottom: 12px;
     opacity: 1;
     transform: none;
@@ -1120,7 +1129,7 @@
 
 .shop-card:hover .shop-card-icon {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   transform: scale(1.08) rotate(-6deg);
 }
 
@@ -1161,7 +1170,7 @@
 
 .shop-card:hover .shop-card-arrow {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   transform: translate(2px, -2px);
 }
 
@@ -1369,7 +1378,7 @@
   position: absolute;
   inset: auto 0 0;
   height: 70%;
-  background: radial-gradient(ellipse 60% 80% at 50% 120%, rgb(217 182 75 / 0.12), transparent 70%);
+  background: radial-gradient(ellipse 60% 80% at 50% 120%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 70%);
   pointer-events: none;
 }
 
@@ -1484,7 +1493,7 @@
 
 .marketplace-pill:hover .marketplace-icon {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--brand) 65%, transparent);
 }
 
@@ -1813,8 +1822,8 @@
   position: absolute;
   inset: 0;
   mask-image:
-    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
-    linear-gradient(transparent, #000 8%, #000 86%, transparent);
+    linear-gradient(90deg, transparent, var(--stage) 12%, var(--stage) 88%, transparent),
+    linear-gradient(transparent, var(--stage) 8%, var(--stage) 86%, transparent);
   mask-composite: intersect;
 }
 
@@ -1852,7 +1861,7 @@
   /* Bottles on top, story below. */
   .journey-visual {
     order: -1;
-    width: min(100%, 48dvh);
+    width: min(100%, 54dvh);
   }
 
   .journey-copy {
@@ -2120,8 +2129,9 @@
 }
 
 .earn-qty .icon-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+  background: var(--surface-sunk);
+  color: var(--ink-3);
+  cursor: not-allowed;
 }
 
 .earn-sets {
@@ -2195,7 +2205,7 @@
   border-radius: var(--r-surface);
   border: 1px solid var(--hairline);
   background:
-    radial-gradient(ellipse 80% 70% at 100% 110%, rgb(217 182 75 / 0.16), transparent 70%),
+    radial-gradient(ellipse 80% 70% at 100% 110%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 70%),
     var(--surface);
   box-shadow: var(--shadow-md);
 }
@@ -2265,8 +2275,8 @@
   border-radius: 32px;
   border: 1px solid color-mix(in srgb, var(--gold) 22%, transparent);
   background:
-    radial-gradient(ellipse 70% 90% at 0% 100%, rgb(217 182 75 / 0.18), transparent 65%),
-    radial-gradient(ellipse 50% 60% at 100% 0%, rgb(217 182 75 / 0.07), transparent 70%),
+    radial-gradient(ellipse 70% 90% at 0% 100%, color-mix(in srgb, var(--gold) 18%, transparent), transparent 65%),
+    radial-gradient(ellipse 50% 60% at 100% 0%, color-mix(in srgb, var(--gold) 7%, transparent), transparent 70%),
     var(--bg-alt);
 }
 

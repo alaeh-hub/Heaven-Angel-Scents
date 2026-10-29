@@ -1,27 +1,38 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Login Activity{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Login Activity{% endblock %}
 
 {% block head %}
 <style>
-  /* Fixed column widths (see .table-fixed in style.css) so a long User
-     Agent value can't stretch this column — and therefore the whole
-     table — wider than the others. Same pattern as Admin Log's al-table.
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .la-ledger {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border-strong);
+    margin-bottom: var(--space-lg);
+  }
+  .la-ledger > div {
+    padding: var(--space-md) var(--space-lg) 0;
+    border-left: 1px solid var(--border);
+    min-width: 0;
+  }
+  .la-ledger > div:first-child { border-left: 0; padding-left: 0; }
+  .la-ledger .stat-value { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+  .pg-note { margin: 0; padding: 0 var(--space-lg) var(--space-sm); font-size: 0.8125rem; color: var(--ink-faint); max-width: 60rem; }
+  .pg-stack { margin-bottom: var(--space-lg); }
+  .la-small { font-size: 0.8125rem; }
+  .la-pager { display: flex; justify-content: space-between; padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border); }
 
-     Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.la-table td:nth-child(n))
-     out-specificity style.css's generic mobile rule .table-wrap td
-     { width: 100% } (one class + one tag), so below the 680px
-     breakpoint a cell like "When" stayed pinned to a hardcoded 14% of
-     the row instead of taking the full-width mobile layout — and
-     combined with overflow-wrap:anywhere from .table-fixed, that
-     narrow box wrapped every character onto its own line. Same
-     pattern/fix as Admin Log's .al-table. */
+  @media (max-width: 680px) {
+    .la-ledger { grid-template-columns: minmax(0, 1fr); }
+    .la-ledger > div { border-left: 0; padding-left: 0; padding-right: 0; }
+    .la-ledger > div + div { margin-top: var(--space-md); border-top: 1px solid var(--border); }
+  }
+
+  /* Fixed column widths, desktop table layout only: below 680px the
+     generic .table-wrap td rule stacks cells full width. */
   @media (min-width: 681px) {
-    /* "When" bumped up from 14% to 18% — it was still tight enough to
-       wrap "Sep 04, 2026" at ordinary desktop widths. */
     .la-table th:nth-child(1), .la-table td:nth-child(1) { width: 18%; }
     .la-table th:nth-child(2), .la-table td:nth-child(2) { width: 14%; }
     .la-table th:nth-child(3), .la-table td:nth-child(3) { width: 13%; }
@@ -37,31 +48,25 @@
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
-
-    /* "Username attempted" also carries an .item-sub ("now: <current
-       username>") when the account's since been renamed — stacking
-       that under the name instead of flinging it to the far right is
-       now handled once, globally, by style.css's
-       .table-wrap td:has(>.item-sub) rule. */
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
+<div class="la-ledger">
+  <div>
     <div class="stat-label">Total attempts logged</div>
     <div class="stat-value">{{ totals.total_attempts }}</div>
     <div class="stat-foot">300 per page below, newest first</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Failed attempts</div>
     <div class="stat-value {{ 'danger' if totals.failed_attempts else '' }}">{{ totals.failed_attempts }}</div>
     <div class="stat-foot">all-time</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Distinct IPs behind failures</div>
     <div class="stat-value">{{ totals.failed_ip_count }}</div>
     <div class="stat-foot">all-time</div>
@@ -69,9 +74,9 @@
 </div>
 
 {% if recent_failures %}
-<div class="card">
+<div class="card pg-stack">
   <div class="card-header">
-    <h2>Worth a closer look</h2>
+    <h2>Usernames with repeated failures</h2>
     <span class="hint">3+ failed attempts, same username, last 24 hours</span>
   </div>
   <div class="table-wrap">
@@ -91,9 +96,7 @@
       </tbody>
     </table>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Could be a real user mistyping their password repeatedly, or someone guessing at an account's credentials — either way, worth checking in with that branch/account if it keeps happening.</p>
-  </div>
+  <p class="pg-note">Could be a real user mistyping their password repeatedly, or someone guessing at an account’s credentials. Either way, worth checking in with that branch/account if it keeps happening.</p>
 </div>
 {% endif %}
 
@@ -108,18 +111,16 @@
     <h2>Sign-in attempts</h2>
     <span class="hint">300 per page{{ " (page %d)" % page if page > 1 else "" }}</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      One row per submission of the login form, whether it succeeded or not — separate from the
-      <a href="{{ url_for('admin.audit_log') }}">Admin Log</a>, which only covers changes an already-signed-in
-      admin makes. "Username attempted" is exactly what was typed, even if it never matched a real account.
-    </p>
-  </div>
+  <p class="pg-note">
+    One row per submission of the login form, whether it succeeded or not, separate from the
+    <a href="{{ url_for('admin.audit_log') }}">Admin Log</a>, which only covers changes an already-signed-in
+    admin makes. “Username attempted” is exactly what was typed, even if it never matched a real account.
+  </p>
   {% if logs %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by username, IP, or reason…" autocomplete="off">
       </div>
     </div>
@@ -167,36 +168,35 @@
               <span class="badge badge-inactive">Failed</span>
               {% endif %}
             </td>
-            <td class="text-soft" style="font-size:12.5px;" data-label="Reason">{{ failure_reasons.get(l.failure_reason, '—') if not l.success else '—' }}</td>
-            <td class="mono text-soft" data-label="IP address">{{ l.ip_address or '—' }}</td>
-            <td class="text-soft la-col-agent" style="font-size:11.5px;" data-label="User agent">{{ l.user_agent or '—' }}</td>
+            <td class="text-soft la-small" data-label="Reason">{{ failure_reasons.get(l.failure_reason, '-') if not l.success else '-' }}</td>
+            <td class="mono text-soft" data-label="IP address">{{ l.ip_address or '-' }}</td>
+            <td class="text-soft la-col-agent la-small" data-label="User agent">{{ l.user_agent or '-' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No attempts match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% if page > 1 or has_next %}
-  <div style="display:flex; justify-content:space-between; padding:14px 22px 4px;">
+  <div class="la-pager">
     {% if page > 1 %}
-    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page - 1) }}">← Newer</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page - 1) }}">Newer</a>
     {% else %}<span></span>{% endif %}
     {% if has_next %}
-    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page + 1) }}">Older →</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin.login_activity_log', outcome=outcome_filter if outcome_filter != 'all' else none, page=page + 1) }}">Older</a>
     {% endif %}
   </div>
   {% endif %}
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No login attempts in this view.</p></div>
+  <div class="empty-state"><p>No login attempts in this view. Attempts appear here as people submit the login form.</p></div>
   {% endif %}
 </div>
 {% endblock %}

@@ -7,30 +7,36 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="csp-nonce" content="{{ csp_nonce() }}">
     <title>{% block title %}Dashboard{% endblock %} · Heaven &amp; Angel Scents</title>
-    <!-- The tab icon is icon.svg alone now — the PNG/.ico rel="icon"
+    <!-- The tab icon is icon.svg alone now, the PNG/.ico rel="icon"
          links that used to sit after it here were what actually won in
          most Chromium browsers (with several same-priority rel="icon"
          links and no disambiguating media query, the browser tends to
          use the last one in document order, not the first/best match),
          so the tab kept showing the old raster favicon instead of this
          one despite it being declared first. apple-touch-icon is
-         unrelated to the browser tab — only iOS's "Add to Home Screen"
-         icon — so it stays. -->
+         unrelated to the browser tab, only iOS's "Add to Home Screen"
+         icon, so it stays. -->
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#14110A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="H&amp;A Scents">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
     <script nonce="{{ csp_nonce() }}">
         // Set the theme attribute before the stylesheet even loads, so
         // there's no flash of the light theme on a person who's chosen
         // dark. Kept intentionally tiny and inline (not in main.js, which
-        // loads at the end of body) — this has to run before first paint.
+        // loads at the end of body), this has to run before first paint.
         // Dark (black & gold) is the system's default theme regardless of
-        // the OS preference — only an explicit choice via the theme
+        // the OS preference, only an explicit choice via the theme
         // toggle (stored below) switches someone to light.
         (function () {
             try {
                 var stored = localStorage.getItem('theme');
                 var theme = stored || 'dark';
                 document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.classList.add('js');
 
                 // UI style chosen in Settings (see initSettings() in
                 // main.js and static/css/themes.css). Stamped here for
@@ -90,7 +96,7 @@
                 root.style.setProperty('--accent', hex);
                 root.style.setProperty('--accent-ink', 'rgb(' + ink.join(' ') + ')');
                 root.style.setProperty('--accent-soft', 'rgb(' + c.join(' ') + ' / ' + (dark ? 0.2 : 0.16) + ')');
-                root.style.setProperty('--gold-contrast', lum > 150 ? '#111' : '#fff');
+                root.style.setProperty('--gold-contrast', lum > 150 ? 'oklch(19% 0.025 85)' : 'oklch(98% 0.01 90)');
             };
             try {
                 window.applyAccent(localStorage.getItem('accent'));
@@ -103,6 +109,17 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Nunito:wght@500;700;800&family=Pixelify+Sans:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <style>
+        /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+        html,
+        body {
+            overflow-x: clip;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--color-focus);
+            outline-offset: 2px;
+        }
+
         .notif-wrap {
             position: relative;
         }
@@ -139,10 +156,10 @@
             right: -4px;
             min-width: 16px;
             height: 16px;
-            padding: 0 4px;
+            padding: 0 var(--space-2xs);
             background: var(--danger);
-            color: #fff;
-            border-radius: 999px;
+            color: var(--color-on-error);
+            border-radius: var(--radius-sm);
             font-size: 10px;
             font-weight: 700;
             line-height: 1;
@@ -166,10 +183,10 @@
             background: var(--surface);
             border: var(--border-width-strong) solid var(--border-strong);
             border-radius: var(--radius-sm, 10px);
-            box-shadow: 0 8px 24px rgba(28, 27, 25, 0.14);
+            box-shadow: var(--shadow-md);
             z-index: 60;
             transform-origin: top right;
-            /* No opacity transition — this panel opens directly over
+            /* No opacity transition, this panel opens directly over
                whatever page content sits under the topbar, and a fade
                briefly lets that show through mid-transition, reading as
                a stacking bug even though z-index is fine (see
@@ -214,7 +231,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 14px;
+            padding: var(--space-sm) var(--space-md);
             border-bottom: 1px solid var(--border);
             font-size: 12.5px;
             font-weight: 700;
@@ -234,11 +251,11 @@
         }
 
         .notif-list {
-            padding: 6px;
+            padding: var(--space-xs);
         }
 
         .notif-empty {
-            padding: 22px 12px;
+            padding: var(--space-lg) var(--space-sm);
             text-align: center;
             font-size: 12.5px;
             color: var(--ink-faint);
@@ -246,22 +263,22 @@
 
         .notif-item {
             display: flex;
-            gap: 8px;
-            padding: 9px 8px;
+            gap: var(--space-xs);
+            padding: var(--space-xs) var(--space-xs);
             border-radius: 8px;
             font-size: 12.5px;
             color: var(--ink);
         }
 
         .notif-item.unread {
-            background: var(--accent-soft, rgba(161, 122, 58, 0.08));
+            background: var(--accent-soft);
         }
 
         .notif-dot {
             flex-shrink: 0;
             width: 7px;
             height: 7px;
-            margin-top: 5px;
+            margin-top: var(--space-2xs);
             border-radius: 999px;
             background: var(--ink-faint);
         }
@@ -282,13 +299,13 @@
             display: block;
             font-size: 10.5px;
             color: var(--ink-faint);
-            margin-top: 2px;
+            margin-top: var(--space-3xs);
         }
 
         /* ---- Halo (floating AI assistant widget) ----
            Lives here (base.html's own shared <style>, like .notif-* above)
            rather than in ai/chat.html's own page-head block, since it's
-           now global chrome rendered on every signed-in page — not tied to
+           now global chrome rendered on every signed-in page, not tied to
            a page a soft nav ever swaps out. Its DOM node is never
            destroyed/recreated by swapContent() (see main.js), only
            .content is, so the panel's open/closed state and message log
@@ -332,12 +349,12 @@
             transition: opacity 0.15s ease, transform 0.15s ease;
         }
 
-        .halo-fab-icon-close {
+        .js .halo-fab-icon-close {
             opacity: 0;
             transform: rotate(-45deg) scale(0.6);
         }
 
-        .halo-widget.open .halo-fab-icon-chat {
+        .js .halo-widget.open .halo-fab-icon-chat {
             opacity: 0;
             transform: rotate(45deg) scale(0.6);
         }
@@ -349,7 +366,7 @@
 
         /* A small unread-style dot, reusing .notif-badge's own look,
            shown on the closed bubble the first time Halo has something
-           to say that the user hasn't opened the panel to see yet — same
+           to say that the user hasn't opened the panel to see yet, same
            idea as the notification bell's badge, scoped to this widget's
            own open/closed state rather than a server-computed count. */
         .halo-fab-badge {
@@ -369,11 +386,11 @@
         }
 
         .halo-panel {
-            position: absolute;
-            right: 0;
-            bottom: calc(100% + 14px);
-            width: min(23.75rem, calc(100vw - 2.5rem));
-            height: min(35rem, calc(100vh - 7.5rem));
+            position: fixed;
+            right: 20px;
+            bottom: 90px;
+            width: min(23.75rem, calc(100% - var(--space-xl)));
+            height: min(35rem, calc(100dvh - 7.5rem));
             background: var(--surface);
             border: var(--border-width-strong) solid var(--border-strong);
             border-radius: var(--radius, 14px);
@@ -414,8 +431,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
-            padding: 12px 14px;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
             border-bottom: 1px solid var(--border);
             background: var(--surface-2);
             flex-shrink: 0;
@@ -424,7 +441,7 @@
         .halo-panel-title {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: var(--space-sm);
             min-width: 0;
         }
 
@@ -456,7 +473,7 @@
            the mascot and .halo-log scrolls, so without room reserved
            here the bubble would be clipped by the log's own overflow. */
         .halo-empty-mascot {
-            margin: 2.75rem auto 0.5rem;
+            margin: var(--space-xl) auto var(--space-xs);
         }
 
         .halo-panel-name {
@@ -498,30 +515,30 @@
         .halo-log {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 14px;
+            padding: var(--space-md) var(--space-md);
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: var(--space-sm);
             scroll-behavior: smooth;
         }
 
         .halo-empty {
             margin: auto;
             text-align: center;
-            padding: 6px;
+            padding: var(--space-xs);
         }
 
         .halo-empty p {
             font-size: 12.5px;
             color: var(--ink-faint);
             line-height: 1.55;
-            margin: 0 0 14px;
+            margin: 0 0 var(--space-md);
         }
 
         .halo-suggestions {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: var(--space-xs);
         }
 
         .halo-suggestion {
@@ -532,7 +549,7 @@
             background: var(--surface-2);
             border: var(--border-width-strong) solid var(--border-strong);
             border-radius: 999px;
-            padding: 7px 13px;
+            padding: var(--space-xs) var(--space-sm);
             cursor: pointer;
             text-align: left;
             transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
@@ -559,7 +576,7 @@
         }
 
         .halo-msg {
-            padding: 9px 12px;
+            padding: var(--space-xs) var(--space-sm);
             border-radius: 12px;
             font-size: 12.8px;
             line-height: 1.5;
@@ -588,8 +605,8 @@
 
         .halo-typing-dots {
             display: inline-flex;
-            gap: 4px;
-            padding: 2px;
+            gap: var(--space-2xs);
+            padding: var(--space-3xs);
         }
 
         .halo-typing-dots span {
@@ -625,8 +642,8 @@
 
         .halo-form {
             display: flex;
-            gap: 8px;
-            padding: 10px 12px;
+            gap: var(--space-xs);
+            padding: var(--space-sm) var(--space-sm);
             border-top: 1px solid var(--border);
             background: var(--surface-2);
             flex-shrink: 0;
@@ -640,7 +657,7 @@
             max-height: 100px;
             font-family: inherit;
             font-size: 12.8px;
-            padding: 9px 13px;
+            padding: var(--space-xs) var(--space-sm);
             border-radius: 19px;
             background: var(--field);
         }
@@ -666,7 +683,7 @@
         }
 
         .halo-send:hover:not(:disabled) {
-            background: color-mix(in srgb, var(--accent) 88%, #fff);
+            background: color-mix(in srgb, var(--accent) 88%, var(--color-paper));
         }
 
         .halo-send:active:not(:disabled) {
@@ -680,7 +697,7 @@
 
         /* Below the app's shared 680px mobile breakpoint, anchoring the
            panel to a fixed size above the bubble (like desktop) would
-           either overflow the screen or leave it cramped — sized to the
+           either overflow the screen or leave it cramped, sized to the
            viewport instead, same bottom-right anchor. */
         @media (max-width: 680px) {
             .halo-widget {
@@ -689,8 +706,10 @@
             }
 
             .halo-panel {
-                width: calc(100vw - 1.75rem);
-                height: calc(100vh - 6.5rem);
+                right: 14px;
+                bottom: 84px;
+                width: calc(100% - var(--space-xl));
+                height: calc(100dvh - 6.5rem);
             }
         }
     </style>
@@ -704,22 +723,17 @@
 
     {% if show_login_splash %}
     <!-- One-shot, shown only on the page a fresh login redirects to
-         (see app.py's inject_login_splash() and auth.py's login()) —
+         (see app.py's inject_login_splash() and auth.py's login()) ,
          a brief centered-logo moment before the app itself appears,
          same idea as the splash Facebook/Instagram show right after
          signing in. main.js's initLoginSplash() plays the logo-reveal
-         video (static/video/logo_reveal.mp4 — static/video/heaven-angel-
+         video (static/video/logo_reveal.mp4, static/video/heaven-angel-
          scents-reveal.mp4 re-encoded at 2x speed), then fades this out and
          removes it from the DOM. The static wordmark is the fallback
          for reduced-motion users or if the video can't play. -->
-    <div class="login-splash login-splash--video" id="loginSplash" role="status" aria-live="polite"
-        aria-label="Signing you in">
-        <video class="login-splash-video" id="loginSplashVideo" muted playsinline autoplay preload="auto"
-            disablepictureinpicture disableremoteplayback aria-hidden="true">
-            <source src="{{ url_for('static', filename='video/logo_reveal.mp4') }}" type="video/mp4">
-        </video>
+    <div class="login-splash" id="loginSplash" role="status" aria-live="polite" aria-label="Signing you in">
         <img class="login-splash-logo" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
-            alt="Heaven &amp; Angel Scents">
+            alt="Heaven &amp; Angel Scents" width="1280" height="719" decoding="async" fetchpriority="high">
     </div>
     {% endif %}
 
@@ -728,13 +742,13 @@
         <aside class="sidebar" id="sidebar">
             <div class="brand">
                 <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Close menu">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
                 </button>
                 <div class="brand-top">
                     <!-- Icon-only mark, shown only on the collapsed rail
-                         (see .brand-logo's own comment in style.css) —
+                         (see .brand-logo's own comment in style.css) ,
                          cross-fades with .brand-wordmark below rather
                          than the two ever showing together. -->
                     <div class="brand-logo" aria-hidden="true">
@@ -743,13 +757,13 @@
                     <img class="brand-wordmark" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
                         alt="Heaven &amp; Angel Scents">
                 </div>
-                <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
+                <div class="brand-sub"><span class="brand-sub-text">Inventory System</span></div>
                 <!-- Keeps the sidebar expanded instead of resting as the
                      icon-only rail; see initSidebarPinToggle() in main.js
                      (also bound to Ctrl/⌘+B). -->
                 <button type="button" class="sidebar-pin" id="sidebarPinToggle" aria-pressed="false"
                     aria-label="Keep sidebar open">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="16" rx="3" />
                         <path d="M9 4v16" />
@@ -778,7 +792,7 @@
                 <div class="nav-label">Overview</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.dashboard' }}"
                     href="{{ url_for('admin.dashboard') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="3" width="7" height="9" rx="1.5" />
                         <rect x="14" y="3" width="7" height="5" rx="1.5" />
                         <rect x="14" y="12" width="7" height="9" rx="1.5" />
@@ -791,14 +805,14 @@
                 <div class="nav-label">Catalog &amp; Supply</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.products' }}"
                     href="{{ url_for('admin.products') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
                     <span class="nav-text">Products</span>
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.production', 'admin.bulk_batches', 'admin.formulas') }}"
                     href="{{ url_for('admin.production') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
                         <path d="M9 21h6" />
                     </svg>
@@ -806,7 +820,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.production' }}"
                     href="{{ url_for('admin.production') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M12 3v6l-4 5v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-6l-4-5" />
                         <path d="M9 21h6" />
                     </svg>
@@ -814,7 +828,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.bulk_batches' }}"
                     href="{{ url_for('admin.bulk_batches') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M7 3h10M9 3v5.5L4.5 17a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L15 8.5V3" />
                         <path d="M6.5 14h11" />
                     </svg>
@@ -822,7 +836,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.formulas' }}"
                     href="{{ url_for('admin.formulas') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M9 3v4M15 3v4M5 7h14l-1.5 13.5a1 1 0 0 1-1 .5H7.5a1 1 0 0 1-1-.9L5 7z" />
                         <path d="M8.5 12h7M8.5 16h4" />
                     </svg>
@@ -830,7 +844,7 @@
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.materials' }}"
                     href="{{ url_for('admin.materials') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M9 3h6l1 4H8l1-4z" />
                         <path d="M8 7l-2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2L16 7" />
                         <path d="M9 13h6" />
@@ -839,7 +853,7 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.low_stock', 'admin.movement_logs', 'admin.discrepancies') }}"
                     href="{{ url_for('admin.low_stock') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z" />
                         <path d="m3 12 9 4.5 9-4.5M3 16.5 12 21l9-4.5" />
                     </svg>
@@ -847,7 +861,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.low_stock' }}"
                     href="{{ url_for('admin.low_stock') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
@@ -855,14 +869,14 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.movement_logs' }}"
                     href="{{ url_for('admin.movement_logs') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 6h16M4 12h16M4 18h10" />
                     </svg>
                     <span class="nav-text">Inventory Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.discrepancies' }}"
                     href="{{ url_for('admin.discrepancies') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
@@ -870,7 +884,7 @@
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.requests_list' }}"
                     href="{{ url_for('admin.requests_list') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
                     </svg>
                     <span class="nav-text">Stock Requests</span>
@@ -883,7 +897,7 @@
                 <div class="nav-label">Point of Sale</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.record_sale' }}"
                     href="{{ url_for('admin.record_sale') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="6" width="18" height="14" rx="2" />
                         <path d="M3 10h18M8 15h3" />
                     </svg>
@@ -891,7 +905,7 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.sales_history', 'admin.customers', 'admin.credit_purchases') }}"
                     href="{{ url_for('admin.sales_history') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
                         <path d="M9 8h6M9 12h6M9 16h3" />
                     </svg>
@@ -899,14 +913,14 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.sales_history' }}"
                     href="{{ url_for('admin.sales_history') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
                     <span class="nav-text">Sales History</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.customers' }}"
                     href="{{ url_for('admin.customers') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
                         <circle cx="10" cy="7" r="4" />
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
@@ -915,7 +929,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.credit_purchases' }}"
                     href="{{ url_for('admin.credit_purchases') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="2" y="6" width="20" height="13" rx="2" />
                         <path d="M2 10h20M6 15h4" />
                     </svg>
@@ -926,21 +940,21 @@
                 <div class="nav-label">Organization</div>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.branches', 'admin.users') }}"
                     href="{{ url_for('admin.branches') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
                     </svg>
                     <span class="nav-text">Locations &amp; Users</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.branches' }}"
                     href="{{ url_for('admin.branches') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
                     </svg>
                     <span class="nav-text">Branches</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.users' }}"
                     href="{{ url_for('admin.users') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <circle cx="12" cy="8" r="3.2" />
                         <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
                     </svg>
@@ -948,7 +962,7 @@
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'admin.announcements' }}"
                     href="{{ url_for('admin.announcements') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                     </svg>
@@ -956,21 +970,21 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.reports', 'admin.branch_performance') }}"
                     href="{{ url_for('admin.reports') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
                     <span class="nav-text">Reports</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.reports' }}"
                     href="{{ url_for('admin.reports') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
                     <span class="nav-text">Reports</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.branch_performance' }}"
                     href="{{ url_for('admin.branch_performance') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                         <path d="M3 21h18" />
                     </svg>
@@ -978,7 +992,7 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.audit_log', 'admin.login_activity_log') }}"
                     href="{{ url_for('admin.audit_log') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
                         <path d="m9 12 2 2 4-4" />
                     </svg>
@@ -986,7 +1000,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.audit_log' }}"
                     href="{{ url_for('admin.audit_log') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path
                             d="M9 4h6M9 4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2M9 10h6M9 14h4" />
                     </svg>
@@ -994,7 +1008,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.login_activity_log' }}"
                     href="{{ url_for('admin.login_activity_log') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
                         <path d="M10 17l5-5-5-5" />
                         <path d="M15 12H3" />
@@ -1006,7 +1020,7 @@
                 <div class="nav-label">Partners &amp; Distribution</div>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('admin.partners', 'admin.packages', 'admin.package_detail', 'admin.partner_inquiries') }}"
                     href="{{ url_for('admin.partners') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M8.5 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
                         <path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6" />
                         <path d="M16.5 12a3 3 0 1 0 0-6" />
@@ -1019,7 +1033,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.partners' }}"
                     href="{{ url_for('admin.partners') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M8.5 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
                         <path d="M2.5 20c0-3.5 2.7-6 6-6s6 2.5 6 6" />
                         <path d="M16.5 12a3 3 0 1 0 0-6" />
@@ -1029,7 +1043,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint in ('admin.packages', 'admin.package_detail') }}"
                     href="{{ url_for('admin.packages') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M21 8 12 3 3 8l9 5 9-5z" />
                         <path d="M3 8v8l9 5 9-5V8" />
                         <path d="M12 13v8" />
@@ -1038,7 +1052,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'admin.partner_inquiries' }}"
                     href="{{ url_for('admin.partner_inquiries') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 4h16v13H7l-3 3V4z" />
                         <path d="M8 9h8M8 12.5h5" />
                     </svg>
@@ -1053,7 +1067,7 @@
                 <div class="nav-label">Overview</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'branch.dashboard' }}"
                     href="{{ url_for('branch.dashboard') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="3" width="7" height="9" rx="1.5" />
                         <rect x="14" y="3" width="7" height="5" rx="1.5" />
                         <rect x="14" y="12" width="7" height="9" rx="1.5" />
@@ -1063,28 +1077,28 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('branch.inventory', 'branch.movement_logs', 'branch.discrepancies') }}"
                     href="{{ url_for('branch.inventory') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
                     <span class="nav-text">My Inventory</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.inventory' }}"
                     href="{{ url_for('branch.inventory') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
                     </svg>
                     <span class="nav-text">My Inventory</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.movement_logs' }}"
                     href="{{ url_for('branch.movement_logs') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 6h16M4 12h16M4 18h10" />
                     </svg>
                     <span class="nav-text">Inventory Log</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.discrepancies' }}"
                     href="{{ url_for('branch.discrepancies') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path
                             d="M12 9v4M12 17h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
                     </svg>
@@ -1095,7 +1109,7 @@
                 <div class="nav-label">Supply Chain</div>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('branch.request_stock', 'branch.requests_list') }}"
                     href="{{ url_for('branch.request_stock') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" />
                         <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
@@ -1103,14 +1117,14 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.request_stock' }}"
                     href="{{ url_for('branch.request_stock') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5" />
                     </svg>
                     <span class="nav-text">Request Stock</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.requests_list' }}"
                     href="{{ url_for('branch.requests_list') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" />
                         <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
@@ -1118,7 +1132,7 @@
                 </a>
                 <a class="nav-link {{ 'active' if request.endpoint == 'branch.receive_stock' }}"
                     href="{{ url_for('branch.receive_stock') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 9.5 12 4l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
                     </svg>
                     <span class="nav-text">Receive Shipment</span>
@@ -1131,7 +1145,7 @@
                 <div class="nav-label">Point of Sale</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'branch.record_sale' }}"
                     href="{{ url_for('branch.record_sale') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="6" width="18" height="14" rx="2" />
                         <path d="M3 10h18M8 15h3" />
                     </svg>
@@ -1139,7 +1153,7 @@
                 </a>
                 <a class="nav-link has-subs {{ 'active' if request.endpoint in ('branch.sales_history', 'branch.customers', 'branch.credit_purchases') }}"
                     href="{{ url_for('branch.sales_history') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
                         <path d="M9 8h6M9 12h6M9 16h3" />
                     </svg>
@@ -1147,14 +1161,14 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.sales_history' }}"
                     href="{{ url_for('branch.sales_history') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
                     <span class="nav-text">Sales History</span>
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.customers' }}"
                     href="{{ url_for('branch.customers') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                         <circle cx="9" cy="7" r="4" />
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
@@ -1163,7 +1177,7 @@
                 </a>
                 <a class="nav-link nav-sub {{ 'active' if request.endpoint == 'branch.credit_purchases' }}"
                     href="{{ url_for('branch.credit_purchases') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="2" y="6" width="20" height="13" rx="2" />
                         <path d="M2 10h20M6 15h4" />
                     </svg>
@@ -1174,7 +1188,7 @@
                 <div class="nav-label">Organization</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'branch.reports' }}"
                     href="{{ url_for('branch.reports') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M4 19V9M11 19V4M18 19v-7" />
                     </svg>
                     <span class="nav-text">Reports</span>
@@ -1186,7 +1200,7 @@
                 <div class="nav-label">Tools</div>
                 <a class="nav-link {{ 'active' if request.endpoint == 'scan.scan_page' }}"
                     href="{{ url_for('scan.scan_page') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path
                             d="M3 7V4a1 1 0 0 1 1-1h3M17 3h3a1 1 0 0 1 1 1v3M21 17v3a1 1 0 0 1-1 1h-3M7 21H4a1 1 0 0 1-1-1v-3" />
                         <path d="M3 12h18" />
@@ -1194,13 +1208,13 @@
                     <span class="nav-text">Scan Receipt</span>
                 </a>
                 <!-- Halo itself (the chat) moved to the floating widget in
-                     the bottom-right corner (see #haloWidget below) — no
+                     the bottom-right corner (see #haloWidget below), no
                      longer a sidebar page of its own. Its Drafts review
                      page stays a real page, since approving/rejecting a
                      draft needs a proper table, not a chat bubble. -->
                 <a class="nav-link {{ 'active' if request.endpoint == 'ai.list_drafts' }}"
                     href="{{ url_for('ai.list_drafts') }}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M9 3h6l3 3v15H6V6l3-3z" />
                         <path d="M9 12h6M9 16h4" />
                     </svg>
@@ -1231,7 +1245,7 @@
                 <div class="footer-actions">
                     <button type="button" class="footer-action footer-action-btn" id="settingsOpen"
                         aria-haspopup="dialog" aria-controls="settingsOverlay"{% if backup_reminder %} data-alert title="A backup is due"{% endif %}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                             stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="3" />
                             <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
@@ -1239,7 +1253,7 @@
                         <span>Settings</span>
                     </button>
                     <!-- POST, not a plain <a href>, so this goes through CSRFProtect
-               like every other state-changing form in the app — see
+               like every other state-changing form in the app, see
                auth.py's logout() for why a GET here was the actual
                hole. Reset to look identical to the .footer-action <a>
                it replaces (buttons carry their own browser chrome by
@@ -1248,10 +1262,10 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- footer-action-btn (style.css) resets button chrome
                  without the `font: inherit` bug that used to make this
-                 render much bigger than "Change password" above it —
+                 render much bigger than "Change password" above it ,
                  see style.css's comment on .footer-action-btn. -->
                         <button type="submit" class="footer-action footer-action-danger footer-action-btn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
                             </svg>
                             <span>Sign out</span>
@@ -1271,15 +1285,31 @@
                 <div class="topbar-left">
                     <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open menu"
                         aria-expanded="false" aria-controls="sidebar">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <path d="M4 7h16M4 12h16M4 17h16" />
                         </svg>
                     </button>
                     {# Shown only on phones (where the sidebar is hidden); on
                        desktop it stays in the DOM for screen readers. #}
                     <div class="topbar-title">
-                        <div class="eyebrow">{% block eyebrow %}{% endblock %}</div>
                         <h1>{% block heading %}{% endblock %}</h1>
+                    </div>
+                    <div class="topbar-search" id="topbarSearch" role="search">
+                        <label class="topbar-search-field">
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.8" stroke-linecap="round">
+                                <circle cx="11" cy="11" r="6.5" />
+                                <path d="m20 20-4.2-4.2" />
+                            </svg>
+                            <input type="search" id="topbarSearchInput" placeholder="Search pages…" autocomplete="off"
+                                spellcheck="false" role="combobox" aria-label="Search pages" aria-expanded="false"
+                                aria-controls="topbarSearchList" aria-autocomplete="list">
+                            <kbd id="topbarSearchKbd" aria-hidden="true">Ctrl K</kbd>
+                        </label>
+                        <div class="topbar-search-panel" id="topbarSearchPanel" hidden>
+                            <ul class="topbar-search-list" id="topbarSearchList" role="listbox" aria-label="Pages"></ul>
+                            <p class="topbar-search-empty" id="topbarSearchEmpty" hidden>No pages match “<span></span>”</p>
+                        </div>
                     </div>
                     {% if today_sales_chip %}
                     {% set t = today_sales_chip %}
@@ -1289,7 +1319,7 @@
                         data-summary='{{ t|tojson }}'
                         aria-label="Today's sales for {{ t.scope }}: {{ t.revenue_display }} from {{ t.count }} sale{{ 's' if t.count != 1 }}">
                         <span class="today-chip-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path class="today-chip-line" pathLength="1" d="M3 17l6-6 4 4 8-8" />
                                 <path class="today-chip-arrow" pathLength="1" d="M15 7h6v6" />
@@ -1312,7 +1342,7 @@
                 </div>
                 <div class="topbar-right">
                     <div class="clock-chip">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <circle cx="12" cy="12" r="9" />
                             <path d="M12 7.5v4.7l3 1.8" />
                         </svg>
@@ -1323,7 +1353,7 @@
                     <div class="notif-wrap" id="notifWrap" data-user="{{ session.username or '' }}">
                         <button type="button" class="notif-toggle" id="notifToggle" aria-label="Notifications"
                             aria-haspopup="true" aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                                 <path
                                     d="M12 3a6 6 0 0 0-6 6c0 2.5-1 4-1.8 5.1a1 1 0 0 0 .8 1.9h14a1 1 0 0 0 .8-1.9C18 13 17 11.5 17 9a6 6 0 0 0-6-6z" />
                                 <path d="M9.5 19a2.5 2.5 0 0 0 5 0" />
@@ -1353,12 +1383,12 @@
                     </button>
                     <button type="button" class="theme-toggle" id="themeToggle"
                         aria-label="Switch between light and dark theme">
-                        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <svg aria-hidden="true" class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <circle cx="12" cy="12" r="4.2" />
                             <path
                                 d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" />
                         </svg>
-                        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <svg aria-hidden="true" class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" />
                         </svg>
                     </button>
@@ -1368,20 +1398,20 @@
             {% if backup_reminder %}
             <div class="backup-reminder{{ ' is-failed' if backup_reminder.failed }}" id="backupReminder" role="status">
                 <span class="backup-reminder-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z" />
                         <path d="M12 8.5v4M12 15.5h.01" />
                     </svg>
                 </span>
                 <div class="backup-reminder-text">
                     <strong>{% if backup_reminder.failed %}Your automatic backup is failing{% elif backup_reminder.days_since is none %}You haven't made a backup yet{% else %}Time for a backup{% endif %}</strong>
-                    <span>{% if backup_reminder.failed %}{{ backup_reminder.failed }}{% elif backup_reminder.days_since is none %}Right now your records only exist on this server.{% else %}Your last backup was {{ backup_reminder.days_since }} day{{ 's' if backup_reminder.days_since != 1 }} ago &mdash; you asked to be reminded every {{ backup_reminder.days }} days.{% endif %}</span>
+                    <span>{% if backup_reminder.failed %}{{ backup_reminder.failed }}{% elif backup_reminder.days_since is none %}Right now your records only exist on this server.{% else %}Your last backup was {{ backup_reminder.days_since }} day{{ 's' if backup_reminder.days_since != 1 }} ago. You asked to be reminded every {{ backup_reminder.days }} days.{% endif %}</span>
                 </div>
                 <div class="backup-reminder-actions">
                     <button type="button" class="btn btn-accent btn-sm" data-reminder="now">Back up now</button>
                     {% if not backup_reminder.auto %}<button type="button" class="btn btn-ghost btn-sm" data-reminder="auto">Make it automatic</button>{% endif %}
                     <button type="button" class="backup-reminder-close" data-reminder="snooze" aria-label="Remind me tomorrow" title="Remind me tomorrow">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                     </button>
                 </div>
             </div>
@@ -1456,7 +1486,7 @@
                     <p>Account, sidebar, appearance and backups. Look &amp; sidebar choices are saved on this device.</p>
                 </div>
                 <button type="button" class="settings-close" id="settingsClose" aria-label="Close settings">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                         <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
                 </button>
@@ -1527,7 +1557,7 @@
                         <p class="settings-note" id="scheduleNote"></p>
                         <p class="settings-status" id="scheduleStatus" role="status" aria-live="polite"></p>
                     </div>
-                    <p class="settings-note">Emails a full copy of the system &mdash; database (restorable), one spreadsheet per table and product photos &mdash; <span id="backupTo">to your HQ inbox</span>.</p>
+                    <p class="settings-note">Emails a full copy of the system: the database (restorable), one spreadsheet per table and the product photos, <span id="backupTo">to your HQ inbox</span>.</p>
                     <div class="settings-row">
                         <button type="button" class="settings-chip settings-chip-accent" id="backupNow"
                             data-status-url="{{ url_for('admin.backup_status') }}"
@@ -1541,7 +1571,7 @@
                     <details class="settings-restore" id="restoreBox">
                         <summary>Restore from a backup</summary>
                         <p class="settings-note settings-warn"><strong>This replaces the current data</strong> with the backup's
-                            (sales, stock, accounts &mdash; everything). A safety copy of what is there now is saved first in the
+                            (sales, stock, accounts, everything). A safety copy of what is there now is saved first in the
                             server's backups folder. You will be signed out when it finishes.</p>
                         <label class="settings-field">Backup file <span>(the .zip from Email backup)</span>
                             <input type="file" id="restoreFile" accept=".zip,.sql">
@@ -1564,7 +1594,7 @@
                 </div>
               </section>
                 {% if config.ALLOW_DATA_RESET %}
-              <!-- Development only — see config.py's ALLOW_DATA_RESET. -->
+              <!-- Development only, see config.py's ALLOW_DATA_RESET. -->
               <section class="settings-panel" role="tabpanel" id="settingsPanel-data" data-panel="data" aria-labelledby="settingsTab-data" hidden>
                 <div>
                     <p class="settings-label">Clear data</p>
@@ -1572,7 +1602,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ request.path }}">
                         <p class="settings-note settings-warn"><strong>Permanently deletes</strong> every product, inventory, sales,
-                            delivery, material, partner and log record, plus all uploaded product photos. There is no undo &mdash;
+                            delivery, material, partner and log record, plus all uploaded product photos. There is no undo, so
                             email a backup first. User accounts, branches and pricing settings are kept.</p>
                         <label class="settings-field">Type <strong>CLEAR ALL DATA</strong> to confirm
                             <input type="text" name="confirm" id="clearDataPhrase" autocomplete="off" spellcheck="false" placeholder="CLEAR ALL DATA">
@@ -1590,11 +1620,11 @@
                     <p class="settings-label">Mode</p>
                     <div class="settings-modes" role="group" aria-label="Color mode">
                         <button type="button" class="settings-mode" data-mode="light" aria-pressed="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></svg>
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></svg>
                             Light
                         </button>
                         <button type="button" class="settings-mode" data-mode="dark" aria-pressed="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" /></svg>
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z" /></svg>
                             Dark
                         </button>
                     </div>
@@ -1654,20 +1684,20 @@
     </div>
 
     {% if session.user_id %}
-    <!-- Halo, the floating AI assistant widget — global chrome, outside
+    <!-- Halo, the floating AI assistant widget, global chrome, outside
          .app-shell/.content so a soft nav (see main.js's swapContent())
          never touches it: it's initialized once in main.js's
          DOMContentLoaded handler, the same as the notification bell, and
          its open/closed state + message log persist across every page you
          navigate to in the same session. The full chat page (ai.chat_page)
-         is still there too — the panel's expand icon opens it — for
+         is still there too, the panel's expand icon opens it, for
          anyone who wants Halo in a full-size window. -->
     <div class="halo-widget" id="haloWidget">
         <div class="halo-panel" id="haloPanel" hidden role="dialog" aria-label="Halo, the AI assistant" aria-modal="false">
             <div class="halo-panel-header">
                 <div class="halo-panel-title">
                     <div class="halo-avatar" data-mascot data-mascot-replace>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                             <path
                                 d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
                             <path d="M10 21h4" />
@@ -1680,7 +1710,7 @@
                 </div>
                 <a href="{{ url_for('ai.chat_page') }}" class="halo-panel-expand" title="Open in full page"
                     aria-label="Open Halo in full page">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
                     </svg>
@@ -1691,8 +1721,8 @@
                     <div class="halo-empty-mascot" data-mascot data-mascot-size="88" data-mascot-say="auto"
                         data-mascot-say-name="{{ session.username }}"></div>
                     <p>Hi, I'm Halo. Ask about {{ 'company-wide' if session.role == 'Admin' else 'your branch' }}
-                        stock, requests, sales, customers or credit{{ ', materials, production costs or partner inquiries' if session.role == 'Admin' }}
-                        — I can also draft a reorder for you to review.</p>
+                        stock, requests, sales, customers or credit{{ ', materials, production costs or partner inquiries' if session.role == 'Admin' }}.
+                        I can also draft a reorder for you to review.</p>
                     <div class="halo-suggestions">
                         {% if session.role == 'Admin' %}
                         <button type="button" class="halo-suggestion"
@@ -1719,7 +1749,7 @@
             <form class="halo-form" id="haloForm">
                 <textarea id="haloInput" aria-label="Message Halo" placeholder="Ask Halo…" rows="1" required></textarea>
                 <button type="submit" class="halo-send" id="haloSend" aria-label="Send message">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M5 12h14M13 6l6 6-6 6" />
                     </svg>
@@ -1729,13 +1759,13 @@
         <button type="button" class="halo-fab" id="haloFabBtn" aria-haspopup="dialog" aria-expanded="false"
             aria-controls="haloPanel" aria-label="Ask Halo, the AI assistant" title="Ask Halo">
             <span class="halo-fab-badge" aria-hidden="true"></span>
-            <svg class="halo-fab-icon halo-fab-icon-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg aria-hidden="true" class="halo-fab-icon halo-fab-icon-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.8">
                 <path
                     d="M12 3a6 6 0 0 0-6 6c0 2.5 1.3 4 2 5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2c.7-1 2-2.5 2-5a6 6 0 0 0-6-6z" />
                 <path d="M10 21h4" />
             </svg>
-            <svg class="halo-fab-icon halo-fab-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg aria-hidden="true" class="halo-fab-icon halo-fab-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2">
                 <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1750,13 +1780,13 @@
     <script src="{{ url_for('static', filename='js/mascot.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <!-- Wrapped in an id'd container, deliberately kept outside
-         <main class="content"> — a page's own {% raw %}{% block scripts
+         <main class="content">, a page's own {% raw %}{% block scripts
          %}{% endraw %} is what wires up its Chart.js instances (Branch
          Performance, Reports), its segmented toggles (Record Sale's
          Type/Payment switches), or a modal's button listeners (Partner
          Inquiries' remarks dialog); see main.js's runPageScripts(), which
          re-executes this container's contents every time a soft nav swaps
-         in a new .content — without that id, there'd be nothing for it to
+         in a new .content, without that id, there'd be nothing for it to
          find and re-run, and every one of those would stay inert until a
          real page load. -->
     <div id="page-scripts">{% block scripts %}{% endblock %}</div>

@@ -1,30 +1,37 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Discrepancies{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Discrepancies{% endblock %}
 
 {% block head %}
 <style>
-  /* Fixed column widths (see .table-fixed in style.css) so a long
-     Notes value can't stretch this column — and therefore the whole
-     table — wider than the others; it wraps in place instead. Same
-     pattern as movement_logs.html's .ml-table.
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .dc-ledger {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border-strong);
+    margin-bottom: var(--space-lg);
+  }
+  .dc-ledger > div {
+    padding: var(--space-md) var(--space-lg) 0;
+    border-left: 1px solid var(--border);
+    min-width: 0;
+  }
+  .dc-ledger > div:first-child { border-left: 0; padding-left: 0; }
+  .dc-ledger .stat-value { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+  .pg-note { margin: 0; padding: 0 var(--space-lg) var(--space-sm); font-size: 0.8125rem; color: var(--ink-faint); max-width: 60rem; }
+  .pg-stack { margin-bottom: var(--space-lg); }
+  .dc-notes { font-size: 0.8125rem; }
 
-     Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.dc-table td:nth-child(n))
-     out-specificity style.css's generic mobile rule .table-wrap td
-     { width: 100% } (one class + one tag), so below the 680px
-     breakpoint the When cell stayed pinned to a hardcoded 12% of the
-     row instead of taking the full-width mobile layout — and combined
-     with overflow-wrap:anywhere from .table-fixed, that narrow box
-     wrapped every character onto its own line. Same pattern/fix as
-     branch's Shipment Discrepancies (.dc-table there is already
-     scoped this way). */
+  @media (max-width: 680px) {
+    .dc-ledger { grid-template-columns: minmax(0, 1fr); }
+    .dc-ledger > div { border-left: 0; padding-left: 0; padding-right: 0; }
+    .dc-ledger > div + div { margin-top: var(--space-md); border-top: 1px solid var(--border); }
+  }
+
+  /* Fixed column widths, desktop table layout only: below 680px the
+     generic .table-wrap td rule stacks cells full width. */
   @media (min-width: 681px) {
-    /* "When" bumped up from 12% to 16% (branch's own Shipment
-       Discrepancies already uses 16% for the same column) — 12% was
-       tight enough to wrap "Sep 04, 2026" at ordinary desktop widths. */
     .dc-table th:nth-child(1), .dc-table td:nth-child(1) { width: 16%; }
     .dc-table th:nth-child(2), .dc-table td:nth-child(2) { width: 14%; }
     .dc-table th:nth-child(3), .dc-table td:nth-child(3) { width: 12%; }
@@ -35,50 +42,45 @@
   }
 
   @media (max-width: 680px) {
-    /* Same reasoning as Admin Log / Inventory Log's Notes/Details
-       column: a long paragraph reads better stacked (label above
-       value) than squeezed into the generic right-aligned mobile row. */
     .dc-table td.dc-col-notes {
       max-width: none;
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
+<div class="dc-ledger">
+  <div>
     <div class="stat-label">Total discrepancies</div>
     <div class="stat-value {{ 'danger' if totals.total_units else '' }}">{{ totals.total_units }}</div>
     <div class="stat-foot">units damaged + short, every branch, all-time</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Damaged units</div>
     <div class="stat-value danger">{{ totals.damaged_units }}</div>
     <div class="stat-foot">reported damaged at receipt</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Shortfall units</div>
     <div class="stat-value">{{ totals.shortfall_units }}</div>
     <div class="stat-foot">dispatched but never received</div>
   </div>
 </div>
 
-<div class="card">
+<div class="card pg-stack">
   <div class="card-header">
-    <h2>By branch</h2>
+    <h2>Units lost by branch</h2>
     <span class="hint">sorted by most units lost</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      A branch high on this list — especially with damage spread across several deliveries rather than one bad
-      shipment — is worth a closer look: a courier problem on that route, or a handling issue at the branch itself.
-    </p>
-  </div>
+  <p class="pg-note">
+    A branch high on this list, especially with damage spread across several deliveries rather than one bad
+    shipment, is worth a closer look: a courier problem on that route, or a handling issue at the branch itself.
+  </p>
   {% if summary %}
   <div class="table-wrap">
     <table class="table-fixed">
@@ -109,7 +111,7 @@
     </table>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No branches yet.</p></div>
+  <div class="empty-state"><p>No branches yet. Add a branch and any damage or shortfall on its deliveries shows up here.</p></div>
   {% endif %}
 </div>
 
@@ -124,20 +126,18 @@
 <div class="card">
   <div class="card-header">
     <h2>Discrepancy log</h2>
-    <span class="hint">damage &amp; shortfall &middot; last 300</span>
+    <span class="hint">damage &amp; shortfall, last 300</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Every DAMAGE and ADJUSTMENT entry tied to a delivery, across every branch. This is the fleet-wide rollup of
-      what each branch's own <em>Discrepancies</em> page shows scoped to itself — open a delivery number below,
-      or its receipt once Fulfilled, for the full per-item breakdown.
-    </p>
-  </div>
+  <p class="pg-note">
+    Every DAMAGE and ADJUSTMENT entry tied to a delivery, across every branch. This is the fleet-wide rollup of
+    what each branch’s own <em>Discrepancies</em> page shows scoped to itself. Open a delivery number below,
+    or its receipt once Fulfilled, for the full per-item breakdown.
+  </p>
   {% if logs %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by branch, delivery #, item, or notes…" autocomplete="off">
       </div>
     </div>
@@ -167,7 +167,7 @@
               {% if l.reference_id %}
               <a href="{{ url_for('admin.review_request', request_id=l.reference_id) }}" class="mono item-name">{{ l.delivery_number or ('#' ~ l.reference_id) }}</a>
               {% else %}
-              <span class="text-faint">—</span>
+              <span class="text-faint">-</span>
               {% endif %}
               <div class="item-sub item-sub-badge">
                 {{ m.movement_badge(l.movement_type) }}
@@ -177,24 +177,23 @@
             <td data-label="Item">{{ l.item_name }}</td>
             <td class="mobile-fold" data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
             <td class="num mono {{ 'qty-down' if l.units_lost else 'qty-flat' }}" data-label="Units">{{ l.units_lost|int }}</td>
-            <td class="text-soft dc-col-notes" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
+            <td class="text-soft dc-col-notes dc-notes" data-label="Notes">{{ l.notes or '-' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No discrepancies match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">✓</div><p>No damage or shortfall reported on any delivery{{ '' if branch_filter == 'all' else ' for this branch' }}.</p></div>
+  <div class="empty-state"><p>No damage or shortfall reported on any delivery{{ '' if branch_filter == 'all' else ' for this branch' }}.</p></div>
   {% endif %}
 </div>
 {% endblock %}

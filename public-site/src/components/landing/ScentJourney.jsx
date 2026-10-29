@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { animate, AnimatePresence, motion, useMotionValue, useReducedMotion } from 'motion/react';
 import { LAYERS, SCENTS } from '../../content/notes.js';
 import { SPRING } from '../../motion.js';
@@ -39,6 +39,10 @@ export default function ScentJourney() {
   const reduce = useReducedMotion();
   const [stage, setStage] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
+  // The scene (and its shader compile) only starts once the section is
+  // close to the screen, so it never competes with the hero on load.
+  const [near, setNear] = useState(false);
+  const visualRef = useRef(null);
   const tone = useMotionValue(0);
   const panelId = useId();
 
@@ -46,6 +50,16 @@ export default function ScentJourney() {
     const run = animate(tone, stage / (LAYERS.length - 1), { duration: 0.9, ease: 'easeInOut' });
     return () => run.stop();
   }, [stage, tone]);
+
+  useEffect(() => {
+    const el = visualRef.current;
+    if (!el || reduce) return undefined;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setNear(true); io.disconnect(); }
+    }, { rootMargin: '900px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reduce]);
 
   if (reduce) {
     return (
@@ -117,16 +131,18 @@ export default function ScentJourney() {
           </div>
         </div>
 
-        <div className="journey-visual" aria-hidden="true">
+        <div className="journey-visual" aria-hidden="true" ref={visualRef}>
           <motion.div
             className="journey-scene"
             initial={{ opacity: 0 }}
             animate={{ opacity: sceneReady ? 1 : 0 }}
             transition={{ duration: 0.8 }}
           >
-            <Suspense fallback={null}>
-              <PerfumeScene variant="turntable" tone={tone} tones={TONES} onReady={() => setSceneReady(true)} />
-            </Suspense>
+            {near && (
+              <Suspense fallback={null}>
+                <PerfumeScene variant="turntable" tone={tone} tones={TONES} onReady={() => setSceneReady(true)} />
+              </Suspense>
+            )}
           </motion.div>
           {/* One pill over each bottle: its lead note for this layer. */}
           <AnimatePresence mode="popLayout">

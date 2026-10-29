@@ -39,7 +39,7 @@ const SHELF_VARS = {
  * scripts/build_scent_images.py), so together they rebuild the original
  * shot exactly.
  */
-function ScentTile({ scent, hidden }) {
+function ScentTile({ scent, hidden, active, auto, eager, nearby }) {
   const [open, setOpen] = useState(false);
   const forHim = scent.variant === 'Male';
 
@@ -47,6 +47,12 @@ function ScentTile({ scent, hidden }) {
     // Mouse users get the box from hover alone; a click shouldn't
     // fight it. Touch (and pen) has no hover, so a tap flips it.
     if (e.pointerType === 'mouse') return;
+    // The swipe row opens whichever tile is centred; a tap just brings
+    // the tapped one to the centre.
+    if (auto) {
+      e.currentTarget.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     setOpen((v) => !v);
   };
 
@@ -54,7 +60,8 @@ function ScentTile({ scent, hidden }) {
     <div
       className="bottle-tile glow-card"
       data-variant={scent.variant}
-      data-open={open || undefined}
+      data-code={scent.code}
+      data-open={open || active || undefined}
       tabIndex={hidden ? undefined : 0}
       role={hidden ? undefined : 'group'}
       aria-label={hidden ? undefined : `${scent.name} ${scent.code}, ${forHim ? 'for him' : 'for her'}`}
@@ -71,7 +78,7 @@ function ScentTile({ scent, hidden }) {
           className="scent-box"
           src={scent.box}
           alt=""
-          loading="lazy"
+          loading={nearby ? 'eager' : 'lazy'}
           decoding="async"
           draggable={false}
         />
@@ -79,7 +86,7 @@ function ScentTile({ scent, hidden }) {
           className="scent-bottle"
           src={scent.bottle}
           alt={hidden ? '' : `${scent.name} ${scent.code}, 85 ml eau de parfum`}
-          loading="lazy"
+          loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           draggable={false}
         />
@@ -108,6 +115,8 @@ function ScentTile({ scent, hidden }) {
 export default function Collection() {
   const { slug } = useParams();
   const sectionRef = useRef(null);
+  // Code of the tile centred in the swipe row (touch screens only).
+  const [centred, setCentred] = useState(null);
 
   // The track's own animation is compositor-only (transform) and cheap,
   // but left running it's a layer the compositor keeps ticking forever;
@@ -123,13 +132,52 @@ export default function Collection() {
     return () => io.disconnect();
   }, []);
 
+  // On a touch screen there is no hover, so the shelf is a swipe row and
+  // the tile nearest its centre is the one that opens its box.
+  useEffect(() => {
+    const marquee = sectionRef.current?.querySelector('.marquee');
+    const track = marquee?.querySelector('.marquee-track');
+    if (!track) return undefined;
+    const touch = window.matchMedia('(hover: none)');
+    let raf = 0;
+    const pick = () => {
+      raf = 0;
+      if (!touch.matches) { setCentred(null); return; }
+      const box = marquee.getBoundingClientRect();
+      const mid = box.left + box.width / 2;
+      let best = null;
+      let bestGap = Infinity;
+      for (const tile of track.children) {
+        const r = tile.getBoundingClientRect();
+        const gap = Math.abs(r.left + r.width / 2 - mid);
+        if (gap < bestGap) { bestGap = gap; best = tile.dataset.code; }
+      }
+      setCentred(best);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(pick); };
+    marquee.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    touch.addEventListener('change', schedule);
+    pick();
+    return () => {
+      cancelAnimationFrame(raf);
+      marquee.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      touch.removeEventListener('change', schedule);
+    };
+  }, []);
+
+  // The boxes of the centred tile and its neighbours are fetched ahead of
+  // the swipe, so a box is already there when its tile opens.
+  const centredAt = SHELF.findIndex((s) => s.code === centred);
+
   return (
     <section className="section collection" id="collection" ref={sectionRef}>
       <DotField className="collection-dots" />
       <div className="container">
         <Reveal className="section-head">
           <h2 className="title-xl">The collection.</h2>
-          <p className="lede">Men's and women's signatures, each bottled at 85 ml.</p>
+          <p className="lede">Men’s and women’s signatures, each bottled at 85 ml.</p>
           <div className="collection-ctas">
             <motion.div whileTap={{ scale: 0.97 }}>
               <Link to={productsPath(slug)} className="btn btn-secondary">
@@ -152,8 +200,16 @@ export default function Collection() {
       <Reveal className="marquee" y={0} style={SHELF_VARS}>
         {[0, 1].map((copy) => (
           <div key={copy} className="marquee-track" aria-hidden={copy === 1 ? 'true' : undefined}>
-            {SHELF.map((scent) => (
-              <ScentTile key={scent.code} scent={scent} hidden={copy === 1} />
+            {SHELF.map((scent, i) => (
+              <ScentTile
+                key={scent.code}
+                scent={scent}
+                hidden={copy === 1}
+                auto={copy === 0}
+                active={copy === 0 && centred === scent.code}
+                eager={copy === 0 && i < 4}
+                nearby={copy === 0 && centredAt >= 0 && Math.abs(i - centredAt) <= 2}
+              />
             ))}
           </div>
         ))}

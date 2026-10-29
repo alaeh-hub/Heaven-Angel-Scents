@@ -1,205 +1,94 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}{{ req.delivery_number }}{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}{{ req.delivery_number }}{% endblock %}
 
 {% block head %}
 <style>
-  /* ---- meta strip ---- */
-  .rd-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 16px 22px;
-    border-bottom: 1px solid var(--border);
-  }
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .rd-back { display: inline-flex; align-items: center; gap: var(--space-2xs); margin-bottom: var(--space-md); font-size: 0.875rem; }
+  .rd-back svg { width: 14px; height: 14px; }
 
-  .rd-meta-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 14px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface-2);
-    flex: 1 1 180px;
-    min-width: 0;
-  }
+  /* ---- lead: status, next step, timeline ---- */
+  .rd-lead { margin-bottom: var(--space-lg); }
+  .rd-lead-top { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-xs); }
+  .rd-lead-top .badge { font-size: 0.875rem; }
+  .rd-next { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); max-width: 70ch; line-height: 1.5; }
+  .rd-track { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-xs); list-style: none; margin: 0; padding: 0; }
+  .rd-step { border-top: 2px solid var(--border-strong); padding-top: var(--space-xs); font-size: 0.875rem; color: var(--ink-faint); }
+  .rd-step.done { border-top-color: var(--accent); color: var(--ink-soft); }
+  .rd-step.current { border-top-color: var(--accent); color: var(--ink); font-weight: 600; }
+  .rd-step.rejected { border-top-color: var(--red); color: var(--red-ink); font-weight: 600; }
+  .rd-step-sub { display: block; font-size: 0.75rem; font-weight: 400; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 
-  .rd-meta-icon {
-    flex-shrink: 0;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    background: var(--accent-soft);
-    color: var(--accent-ink);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+  /* ---- facts ---- */
+  .rd-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-lg); margin-bottom: var(--space-lg); }
+  .rd-meta-item { border-top: 1px solid var(--border-strong); padding-top: var(--space-sm); min-width: 0; }
+  .rd-meta-item .label { font-size: 0.875rem; color: var(--ink-soft); font-weight: 500; margin-bottom: var(--space-2xs); }
+  .rd-meta-item .value { font-size: 1.125rem; font-weight: 600; color: var(--ink); line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
-  .rd-meta-icon svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .rd-meta-item .label {
-    font-size: 12px;
-    letter-spacing: 0;
-    color: var(--ink-faint);
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
-
-  .rd-meta-item .value {
-    font-size: 13.5px;
-    font-weight: 700;
-    color: var(--ink);
-    line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .rd-meta-item .value:has(.badge) {
-    white-space: normal;
-  }
-
-  /* ---- items table ---- */
-  .rd-items-table input[type="number"] {
-    width: 88px;
-    text-align: right;
-    padding: 8px 10px;
-  }
-
-  .rd-total-row td {
-    font-weight: 700;
-    background: var(--field);
-  }
-
-  .rd-total-row .rd-total-label {
-    text-align: right;
-  }
-
-  .rd-total-row .rd-total-empty {
-    display: none;
-  }
+  /* ---- items ledger ---- */
+  .rd-items-table input[type="number"] { width: 5.5rem; text-align: right; }
+  .rd-total-row td { font-weight: 600; border-top: 1px solid var(--border-strong); }
+  .rd-total-row .rd-total-label { text-align: right; }
+  .rd-total-row .rd-total-empty { display: none; }
 
   /* ---- actions ---- */
-  .rd-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 22px 20px;
-    flex-wrap: wrap;
-  }
-
-  .rd-actions-note {
-    color: var(--ink-faint);
-    font-size: 12px;
-    line-height: 1.5;
-    flex: 1 1 260px;
-  }
-
-  .rd-actions-buttons {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-  }
+  .rd-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg); flex-wrap: wrap; }
+  .rd-actions-buttons { display: flex; gap: var(--space-xs); flex-shrink: 0; }
+  .rd-history { margin-top: var(--space-lg); }
 
   /* ---- mobile ---- */
   @media (max-width: 680px) {
-    .rd-meta {
-      padding: 14px;
-      gap: 8px;
-    }
-
-    .rd-meta-item {
-      flex: 1 1 calc(50% - 8px);
-    }
-
-    .rd-items-table input[type="number"] {
-      width: 100%;
-      max-width: 120px;
-    }
-
-    .rd-actions {
-      flex-direction: column;
-      align-items: stretch;
-      padding: 14px;
-    }
-
-    .rd-actions-note {
-      order: 2;
-      text-align: center;
-    }
-
-    .rd-actions-buttons {
-      order: 1;
-      flex-direction: column-reverse;
-    }
-
-    .rd-actions-buttons .btn,
-    .rd-actions > .btn {
-      width: 100%;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .rd-meta-item {
-      flex: 1 1 100%;
-    }
+    .rd-meta { grid-template-columns: 1fr; gap: var(--space-md); }
+    .rd-items-table input[type="number"] { width: 100%; max-width: 7.5rem; }
+    .rd-actions { flex-direction: column; align-items: stretch; padding: var(--space-md); }
+    .rd-actions-buttons { flex-direction: column-reverse; }
+    .rd-actions-buttons .btn, .rd-actions > .btn { width: 100%; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="padding: 0 0 4px;">
-  <a href="{{ url_for('admin.requests_list') }}" class="hint">← back to Stock Requests</a>
+<a href="{{ url_for('admin.requests_list') }}" class="hint rd-back">
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+  Back to Stock Requests
+</a>
+
+<div class="rd-lead">
+  <div class="rd-lead-top">{{ m.status_badge(req.status) }}</div>
+  <p class="rd-next">
+    {% if req.status in ('Pending', 'Partially Fulfilled') %}Dispatch up to each remaining quantity. A partial dispatch leaves the balance open; the branch can receive this shipment before another dispatch is created.{% elif req.status == 'In Transit' %}Dispatched, awaiting the branch to confirm receipt.{% elif req.status == 'Rejected' %}This delivery was rejected.{% endif %}
+  </p>
+  <ol class="rd-track" aria-label="Delivery progress">
+    {% if req.status == 'Rejected' %}
+    <li class="rd-step done">Requested<span class="rd-step-sub">{{ req.requested_at.strftime('%b %d, %Y %I:%M %p') }}</span></li>
+    <li class="rd-step rejected">Rejected</li>
+    <li class="rd-step">Received</li>
+    {% else %}
+    <li class="rd-step {{ 'current' if req.status == 'Pending' else 'done' }}">Requested<span class="rd-step-sub">{{ req.requested_at.strftime('%b %d, %Y %I:%M %p') }}</span></li>
+    <li class="rd-step {{ 'current' if req.status in ('In Transit', 'Partially Fulfilled') else ('done' if req.status == 'Fulfilled' else '') }}">Dispatched</li>
+    <li class="rd-step {{ 'current' if req.status == 'Fulfilled' else '' }}">Received</li>
+    {% endif %}
+  </ol>
+</div>
+
+<div class="rd-meta">
+  <div class="rd-meta-item">
+    <div class="label">Branch</div>
+    <div class="value">{{ req.branch_name }}</div>
+  </div>
+  <div class="rd-meta-item">
+    <div class="label">Requested</div>
+    <div class="value">{{ req.requested_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+  </div>
+  <div class="rd-meta-item">
+    <div class="label">Total value</div>
+    <div class="value">{{ total_value|peso }}</div>
+  </div>
 </div>
 
 <div class="card">
-  <div class="rd-meta">
-    <div class="rd-meta-item">
-      <div class="rd-meta-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
-      </div>
-      <div>
-        <div class="label">Branch</div>
-        <div class="value">{{ req.branch_name }}</div>
-      </div>
-    </div>
-    <div class="rd-meta-item">
-      <div class="rd-meta-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-      </div>
-      <div>
-        <div class="label">Requested</div>
-        <div class="value">{{ req.requested_at.strftime('%b %d, %Y %I:%M %p') }}</div>
-      </div>
-    </div>
-    <div class="rd-meta-item">
-      <div class="rd-meta-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3.5-7.1M21 3v5h-5"/></svg>
-      </div>
-      <div>
-        <div class="label">Status</div>
-        <div class="value">{{ m.status_badge(req.status) }}</div>
-      </div>
-    </div>
-    <div class="rd-meta-item">
-      <div class="rd-meta-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
-      </div>
-      <div>
-        <div class="label">Total value</div>
-        <div class="value">{{ total_value|peso }}</div>
-      </div>
-    </div>
-  </div>
-
   {% if req.status in ('Pending', 'Partially Fulfilled') %}
   <form method="POST" action="{{ url_for('admin.dispatch_request', request_id=req.request_id) }}" id="dispatchForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -225,7 +114,7 @@
           {% for item in items %}
           <tr>
             <td class="item-name" data-label="Item">{{ item.item_name }}
-              <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit"> · {{ item.unit }}</span></div>
+              <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit">{{ item.unit }}</span></div>
               <div class="item-sub item-sub-badge">
                 {{ m.variant_badge(item.variant) }}
               </div>
@@ -254,7 +143,6 @@
       </table>
     </div>
     <div class="rd-actions">
-      <span class="rd-actions-note">Dispatch up to each remaining quantity. A partial dispatch leaves the balance open; the branch can receive this shipment before another dispatch is created.</span>
       <div class="rd-actions-buttons">
         <!-- Reject delivery submits rejectForm (below, outside this
              <form>) via the button's `form` attribute — no custom JS
@@ -298,7 +186,7 @@
         {% for item in items %}
         <tr>
           <td class="item-name" data-label="Item">{{ item.item_name }}
-            <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit"> · {{ item.unit }}</span></div>
+            <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit">{{ item.unit }}</span></div>
             <div class="item-sub item-sub-badge">
               {{ m.variant_badge(item.variant) }}
             </div>
@@ -306,8 +194,8 @@
           <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(item.variant) }}</td>
           <td class="mono text-soft mobile-fold" data-label="Unit">{{ item.unit }}</td>
           <td class="num mono" data-label="Requested">{{ item.requested_qty }}</td>
-          <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty if item.dispatched_qty is not none else '—' }}</td>
-          <td class="num mono" data-label="Received">{{ item.received_qty if item.received_qty is not none else '—' }}</td>
+          <td class="num mono" data-label="Dispatched">{{ item.dispatched_qty if item.dispatched_qty is not none else 'n/a' }}</td>
+          <td class="num mono" data-label="Received">{{ item.received_qty if item.received_qty is not none else 'n/a' }}</td>
           <td class="num mono" data-label="Remaining">{{ item.remaining_qty }}</td>
           <td class="num mono" data-label="Damaged">{{ item.damaged_qty }}</td>
           <td class="num mono" data-label="Unit price">{{ item.unit_price|peso }}</td>
@@ -323,38 +211,32 @@
       </tfoot>
     </table>
   </div>
+  {% if req.status == 'Fulfilled' %}
   <div class="rd-actions">
-    {% if req.status == 'In Transit' %}
-    <span class="rd-actions-note">Dispatched — awaiting the branch to confirm receipt.</span>
-    {% elif req.status == 'Fulfilled' %}
     <a href="{{ url_for('admin.request_receipt', request_id=req.request_id) }}" class="btn btn-accent" target="_blank" data-generate-file>Download receipt</a>
-    {% elif req.status == 'Partially Fulfilled' %}
-    <span class="rd-actions-note">Some quantities have been received. The remaining quantity can be dispatched above.</span>
-    {% else %}
-    <span class="rd-actions-note">This delivery was rejected.</span>
-    {% endif %}
   </div>
   {% endif %}
-  {% if shipments %}
-  <div style="padding:0 22px 18px;">
-    <h3 style="font-size:14px; margin:0 0 10px;">Shipment history</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Shipment</th><th>Dispatched</th><th class="num">Units</th><th>Status</th><th>Received</th></tr></thead>
-        <tbody>
-          {% for shipment in shipments %}
-          <tr>
-            <td class="mono">#{{ shipment.shipment_id }}</td>
-            <td>{{ shipment.dispatched_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-            <td class="num mono">{{ shipment.total_dispatched }}</td>
-            <td>{{ m.status_badge('In Transit' if shipment.status == 'In Transit' else 'Fulfilled') }}</td>
-            <td>{{ shipment.received_at.strftime('%b %d, %Y %I:%M %p') if shipment.received_at else 'Awaiting branch confirmation' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
   {% endif %}
 </div>
+{% if shipments %}
+<div class="card rd-history">
+  <div class="card-header"><h2>Shipment history</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Shipment</th><th>Dispatched</th><th class="num">Units</th><th>Status</th><th>Received</th></tr></thead>
+      <tbody>
+        {% for shipment in shipments %}
+        <tr>
+          <td class="mono">#{{ shipment.shipment_id }}</td>
+          <td>{{ shipment.dispatched_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td class="num mono">{{ shipment.total_dispatched }}</td>
+          <td>{{ m.status_badge('In Transit' if shipment.status == 'In Transit' else 'Fulfilled') }}</td>
+          <td>{{ shipment.received_at.strftime('%b %d, %Y %I:%M %p') if shipment.received_at else 'Awaiting branch confirmation' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

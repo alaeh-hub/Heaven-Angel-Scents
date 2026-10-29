@@ -1,54 +1,51 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}{{ pkg.package_name }}{% endblock %}
-{% block eyebrow %}Partners &amp; Distribution{% endblock %}
 {% block heading %}{{ pkg.package_name }}{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: var(--space-md);
+    align-items: start;
+  }
+  .pg-split > * { min-width: 0; }
+  .pg-aside { display: grid; gap: var(--space-md); }
+  .pg-aside .form-row { display: grid; grid-template-columns: 1fr; }
+  .pg-aside .form-row > * { flex: none; }
+  .pg-aside .btn { width: 100%; }
+  .pg-aside h2 { font-size: 1.125rem; margin: 0 0 var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); }
+  .pd-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding-bottom: var(--space-sm);
+    font-size: 0.875rem;
+  }
+  .pd-total-label { text-align: right; font-weight: 600; background: var(--bg); }
+  .pd-total-val { font-weight: 600; background: var(--bg); }
+  .pd-check { display: flex; align-items: center; gap: var(--space-xs); font-weight: 500; }
+  .pd-check input { width: auto; }
+  .pd-item-unit { margin-inline-start: var(--space-xs); }
+  @media (max-width: 64rem) {
+    .pg-split { grid-template-columns: minmax(0, 1fr); }
+  }
+  .ac-match-skus .pd-opt-price { margin-inline-start: var(--space-xs); }
+</style>
+{% endblock %}
+
 {% block content %}
-<div style="padding: 0 0 4px;">
-  <a href="{{ url_for('admin.packages') }}" class="hint">← back to Packages</a>
-</div>
+<a href="{{ url_for('admin.packages') }}" class="hint pd-back">
+  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6" /></svg>
+  Back to Packages
+</a>
 
-<!-- Add-a-product form now sits full width, on top of the table — same
-     fix already applied to Packages, Products, and Partners: a
-     side-by-side 1.6fr/1fr grid next to a table squishes/clips once
-     the table has real rows (see packages.html's comment on this).
-     This page was the one left over still using that two-column
-     pattern. -->
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
-  {% if available_products %}
-  <form method="POST" action="{{ url_for('admin.add_package_item', package_id=pkg.package_id) }}" data-preserve-scroll>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row">
-      <div class="field">
-        <label for="productSearch">Product</label>
-        {# Type to filter by name or SKU, or open the list and pick. Each
-           option is one exact size (bottled only, see package_detail()),
-           so choosing it fills in the SKU below; the form won't submit
-           until the text matches a real option. #}
-        <div class="ac-combo" id="packageProductCombo" data-products='{{ available_products | tojson }}'>
-          <input type="text" id="productSearch" required autocomplete="off"
-            placeholder="Search by name or SKU, or pick from the list…"
-            role="combobox" aria-expanded="false" aria-controls="packageProductMenu" aria-autocomplete="list">
-          <input type="hidden" id="sku" name="sku">
-          <div class="ac-combo-menu" id="packageProductMenu" role="listbox"></div>
-        </div>
-        <div class="help">Bottled products only. Bulk/Refill can't be added to a package.</div>
-      </div>
-      <div class="field">
-        <label for="qty">Qty per set</label>
-        <input type="number" id="qty" name="qty" min="1" value="1" required>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-accent btn-cta">Add to package</button>
-  </form>
-  {% else %}
-  <p class="text-faint" style="font-size:12.5px;">Every bottled product in the catalog is already in this package.</p>
-  {% endif %}
-</div>
-
-<div class="card mt-24">
+<div class="pg-split">
+<div class="card">
   <div class="card-header">
     <h2>Products in this package</h2>
     <span class="hint">{{ items|length }} item{{ 's' if items|length != 1 }}</span>
@@ -76,7 +73,7 @@
         <tr>
           <td data-label="Item" class="mobile-inline-anchor">
             <div class="item-name">{{ item.item_name }}</div>
-            <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit"> · {{ item.unit }}</span></div>
+            <div class="item-sub mono">{{ item.sku }}<span class="item-sub-unit pd-item-unit">{{ item.unit }}</span></div>
             <div class="item-sub item-sub-badge">
               {{ m.variant_badge(item.variant) }}
             </div>
@@ -97,7 +94,7 @@
                  |tojson'd JS string inside an onsubmit handler. -->
             <form method="POST" action="{{ url_for('admin.remove_package_item', package_id=pkg.package_id) }}"
               data-preserve-scroll
-              data-confirm="{{ ('This is the last product in \"' ~ pkg.package_name ~ '\" — removing it will delete the whole package. Are you sure?') if items|length == 1 else ('Remove ' ~ item.item_name ~ ' from this package?') }}">
+              data-confirm="{{ ('This is the last product in \"' ~ pkg.package_name ~ '\". Removing it will delete the whole package. Are you sure?') if items|length == 1 else ('Remove ' ~ item.item_name ~ ' from this package?') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="package_item_id" value="{{ item.package_item_id }}">
               <button type="submit" class="btn btn-ghost btn-sm">Remove</button>
@@ -108,29 +105,62 @@
       </tbody>
       <tfoot>
         <tr class="rd-total-row">
-          <td colspan="5" style="text-align:right; font-weight:700; background:var(--bg);" data-label="">Reference total</td>
-          <td class="num mono" style="font-weight:700; background:var(--bg);" data-label="Total">{{ reference_total|peso }}</td>
-          <td style="background:var(--bg);" data-label=""></td>
+          <td colspan="5" class="pd-total-label" data-label="">Reference total</td>
+          <td class="num mono pd-total-val" data-label="Total">{{ reference_total|peso }}</td>
+          <td class="pd-total-val" data-label=""></td>
         </tr>
         <tr class="rd-total-row">
-          <td colspan="5" style="text-align:right; font-weight:700; background:var(--bg);" data-label="">Order price ({{ pkg.discount_percent|round(2) }}% off)</td>
-          <td class="num mono qty-up" style="font-weight:700; background:var(--bg);" data-label="Total">{{ discounted_total|peso }}</td>
-          <td style="background:var(--bg);" data-label=""></td>
+          <td colspan="5" class="pd-total-label" data-label="">Order price ({{ pkg.discount_percent|round(2) }}% off)</td>
+          <td class="num mono qty-up pd-total-val" data-label="Total">{{ discounted_total|peso }}</td>
+          <td class="pd-total-val" data-label=""></td>
         </tr>
       </tfoot>
     </table>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No products in this package yet — add one above.</p>
+    <p>No products in this package yet. Add one with the form beside this list.</p>
   </div>
   {% endif %}
 </div>
 
-<div class="card card-pad mt-24" style="max-width:640px;">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Package details</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Name, discount, and availability — editable any time.</p>
+<div class="pg-aside">
+<div class="card card-pad">
+  <h2>Add a product</h2>
+  {% if available_products %}
+  <form method="POST" action="{{ url_for('admin.add_package_item', package_id=pkg.package_id) }}" data-preserve-scroll>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="productSearch">Product</label>
+        {# Type to filter by name or SKU, or open the list and pick. Each
+           option is one exact size (bottled only, see package_detail()),
+           so choosing it fills in the SKU below; the form won't submit
+           until the text matches a real option. #}
+        <div class="ac-combo" id="packageProductCombo" data-products='{{ available_products | tojson }}'>
+          <input type="text" id="productSearch" required autocomplete="off"
+            placeholder="Search by name or SKU, or pick from the list…"
+            role="combobox" aria-expanded="false" aria-controls="packageProductMenu" aria-autocomplete="list">
+          <input type="hidden" id="sku" name="sku">
+          <div class="ac-combo-menu" id="packageProductMenu" role="listbox"></div>
+        </div>
+        <div class="help">Bottled products only. Bulk/Refill can’t be added to a package.</div>
+      </div>
+      <div class="field">
+        <label for="qty">Qty per set</label>
+        <input type="number" id="qty" name="qty" min="1" value="1" required>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-accent btn-cta">Add to package</button>
+  </form>
+  {% else %}
+  <p class="pg-note">Every bottled product in the catalog is already in this package.</p>
+  {% endif %}
+</div>
+
+<div class="card card-pad">
+  <h2>Package details</h2>
+  <p class="pg-note">Name, discount, and availability, editable any time.</p>
   <form method="POST" action="{{ url_for('admin.edit_package', package_id=pkg.package_id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
@@ -157,14 +187,16 @@
       </div>
     </div>
     <div class="field">
-      <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
-        <input type="checkbox" name="is_active" value="1" style="width:auto;" {{ 'checked' if pkg.is_active }}>
-        Active — visible for partners to order
+      <label class="pd-check">
+        <input type="checkbox" name="is_active" value="1" {{ 'checked' if pkg.is_active }}>
+        Active: visible for partners to order
       </label>
       <div class="help">Uncheck to retire this package without deleting its history.</div>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%;">Save changes</button>
+    <button type="submit" class="btn btn-accent">Save changes</button>
   </form>
+</div>
+</div>
 </div>
 {% endblock %}
 
@@ -289,7 +321,7 @@
           return '<div class="ac-combo-option" role="option" id="pkgOpt' + i + '" data-index="' + i + '">' +
             '<div class="ac-match-name">' + highlight(p.item_name, q) + ', ' + escapeHtml(p.unit) +
             ' <span class="text-faint">(' + escapeHtml(p.variant) + ')</span></div>' +
-            '<div class="ac-match-skus">' + highlight(p.sku, q) + ' · ' + peso(p.price) + '</div></div>';
+            '<div class="ac-match-skus"><span>' + highlight(p.sku, q) + '</span><span class="pd-opt-price">' + peso(p.price) + '</span></div></div>';
         }).join('') + (all.length > MAX_RESULTS
           ? '<div class="ac-combo-empty">' + (all.length - MAX_RESULTS) + ' more. Keep typing to narrow it down.</div>'
           : '');

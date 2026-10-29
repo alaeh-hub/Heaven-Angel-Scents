@@ -1,180 +1,183 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Record Sale{% endblock %}
-{% block eyebrow %}Main Branch{% endblock %}
 {% block heading %}Record Sale{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Recent sales: never scroll sideways. Long names already truncate with
      a hover title; badges and the Receipt button get sized columns. */
   .table-wrap.rs-recent-wrap { overflow-x: hidden; }
   @media (min-width: 681px) {
-    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: 0.5rem; padding-right: 0.75rem; text-align: right; }
+    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: var(--space-xs); padding-right: var(--space-sm); text-align: right; }
   }
+
+  /* ---- Segmented choices (Sale/Refill, Bottle/Bulk, Cash/Credit): one
+     well, one selected segment. .choice-opt and .rb-mode-opt stay the
+     hooks the script below queries. ---- */
+  .choice-grid,
   .rb-mode {
-    display: inline-flex;
-    gap: 2px;
-    background: var(--field);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: 99px;
-    padding: 3px;
-    width: 100%;
-  }
-
-  .rb-mode-opt {
-    flex: 1;
-    padding: 8px 13px;
-    border: none;
-    background: transparent;
-    border-radius: 99px;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink-faint);
-    cursor: pointer;
-    transition: color 0.12s ease;
-  }
-
-  .rb-mode-opt.active {
-    background: var(--surface);
-    border: var(--border-width-strong) solid var(--border-strong);
-    color: var(--accent-ink);
-  }
-
-  .price-hint {
-    font-size: 11.5px;
-    color: var(--ink-faint);
-    margin-top: 5px;
-  }
-
-  /* ---- Choice cards: the two top-level decisions (Sale vs Refill,
-     Bottle vs Bulk/Refill) get more visual weight than an in-form pill
-     toggle like Cash/Credit — each option carries its own always-visible
-     one-line explanation, so there's no separate hint text to toggle. ---- */
-  .choice-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: var(--space-2xs);
+    padding: var(--space-2xs);
+    background: var(--surface-2);
+    border-radius: var(--radius);
   }
 
-  .choice-card {
+  .choice-opt,
+  .rb-mode-opt {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 3px;
-    text-align: left;
-    padding: 10px 12px;
-    border: var(--border-width-strong) solid var(--border-strong);
+    gap: var(--space-3xs);
+    min-height: 2.25rem;
+    padding: var(--space-xs) var(--space-sm);
+    border: 0;
     border-radius: var(--radius-sm);
-    background: var(--surface);
+    background: transparent;
+    font-family: var(--font);
+    text-align: left;
+    color: var(--ink-soft);
     cursor: pointer;
-    transition: border-color 0.16s ease, background 0.16s ease,
-      box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
   }
 
-  .choice-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+  .rb-mode-opt {
+    justify-content: center;
+    align-items: center;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: center;
   }
 
-  .choice-card:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  .choice-card.active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-    box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 40%, transparent);
-  }
-
-  .choice-card-title {
-    font-size: 13.5px;
-    font-weight: 700;
+  .choice-opt:hover,
+  .rb-mode-opt:hover {
     color: var(--ink);
-    transition: color 0.16s ease;
   }
 
-  .choice-card.active .choice-card-title {
-    color: var(--accent-ink);
+  .choice-opt.active,
+  .rb-mode-opt.active {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
-  .choice-card-desc {
-    font-size: 11px;
+  .choice-opt-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: inherit;
+  }
+
+  .choice-opt-desc {
+    font-size: var(--text-xs);
     color: var(--ink-faint);
     line-height: 1.35;
   }
 
-  @media (max-width: 420px) {
-    .choice-card {
-      padding: 8px 10px;
-    }
+  /* ---- Totals, set as a ledger: the figure sits on a hairline, right
+     aligned, tabular. #priceHint is written by the script; empty it
+     takes no room. ---- */
+  .price-hint {
+    margin: calc(var(--space-sm) * -1) 0 var(--space-md);
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--border);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    text-align: right;
+  }
+  .price-hint:empty { display: none; }
+
+  .rs-note {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
   }
 
-  /* ---- Bottle/Bulk/Refill section swap: a quick fade + rise instead of an
-     instant display toggle. .kind-panel-enter starts the incoming panel
-     transparent/offset; removing it (on the next frame, after display is
-     already set) lets the transition animate it in. See setKind() in
-     the script block below. ---- */
+  .rs-ledger-total {
+    text-align: right;
+    font-size: var(--text-xl);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background: transparent;
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+
+  .rs-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-bottom: 0;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .rs-check input[type="checkbox"] { width: auto; margin: 0; }
+
+  .rs-submit { width: 100%; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---- Bottle/Bulk/Refill section swap: a quick fade + rise. The script
+     adds .kind-panel-enter for one frame, then removes it so the
+     transition runs. ---- */
   .kind-panel {
-    transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
   }
 
-  .kind-panel-enter {
+  .js .kind-panel-enter {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(var(--space-2xs));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kind-panel,
+    .choice-opt,
+    .rb-mode-opt { transition: none; }
+    .js .kind-panel-enter { transform: none; }
   }
 
   /* ---- New sale / Import from Excel dialogs. display is still toggled
-     inline by openOverlay()/closeOverlay() in main.js; everything else
-     lives here so the phone layout below can override it. ---- */
+     inline by openOverlay()/closeOverlay() in main.js. ---- */
   .rs-dialog {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(28, 27, 25, 0.45);
+    background: var(--scrim);
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: var(--space-lg);
   }
 
   .rs-dialog-panel {
     width: 100%;
-    max-height: calc(100vh - 40px);
-    max-height: calc(100dvh - 40px);
+    max-height: calc(100vh - 2.5rem);
+    max-height: calc(100dvh - 2.5rem);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
 
-  .rs-dialog-panel.is-wide {
-    max-width: 880px;
-  }
+  .rs-dialog-panel.is-wide { max-width: 55rem; }
+  .rs-dialog-panel.is-narrow { max-width: 27.5rem; }
 
-  .rs-dialog-panel.is-narrow {
-    max-width: 440px;
-  }
-
-  /* Title + close stay pinned while the form scrolls underneath. The
-     negative margins pull it out to the panel's edges (matching
-     .card-pad's padding) so its background covers the full width, and
-     the negative top pins it flush with the panel's top edge rather
-     than one padding-width below it, where content would peek out. */
+  /* Title + close stay pinned while the form scrolls underneath. */
   .rs-dialog-head {
     position: sticky;
-    top: -1.375rem;
+    top: calc(var(--space-lg) * -1);
     z-index: 2;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin: -1.375rem -1.5rem 4px;
-    padding: 1.375rem 1.5rem 8px;
+    gap: var(--space-sm);
+    margin: calc(var(--space-lg) * -1) calc(var(--space-lg) * -1) var(--space-2xs);
+    padding: var(--space-lg) var(--space-lg) var(--space-xs);
     background: var(--surface);
   }
 
   .rs-dialog-head h2 {
-    font-size: 16.5px;
+    text-wrap: balance;
+    font-size: var(--text-lg);
     margin: 0;
   }
 
@@ -188,12 +191,13 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px 14px;
+    gap: var(--space-sm) var(--space-md);
   }
 
+  .rs-full { width: 100%; margin-bottom: var(--space-sm); }
+
   @media (max-width: 600px) {
-    /* Phones: the dialogs become bottom sheets — full width, rising
-       from the bottom edge, with room for the home-indicator inset. */
+    /* Phones: the dialogs become bottom sheets. */
     .rs-dialog {
       padding: 0;
       align-items: flex-end;
@@ -205,15 +209,15 @@
       max-width: none;
       max-height: 92vh;
       max-height: 92dvh;
-      border-radius: 18px 18px 0 0;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       border-bottom: none;
-      padding: 1rem 1rem calc(1.25rem + env(safe-area-inset-bottom));
+      padding: var(--space-md) var(--space-md) calc(1.25rem + env(safe-area-inset-bottom));
     }
 
     .rs-dialog-head {
-      top: -1rem;
-      margin: -1rem -1rem 4px;
-      padding: 1rem 1rem 8px;
+      top: calc(var(--space-md) * -1);
+      margin: calc(var(--space-md) * -1) calc(var(--space-md) * -1) var(--space-2xs);
+      padding: var(--space-md) var(--space-md) var(--space-xs);
     }
 
     /* Name + address are too cramped side by side at phone width. */
@@ -221,19 +225,11 @@
       flex-basis: 100%;
     }
 
-    /* Recent sales header: count on its own line, the two buttons
-       sharing the row below it at a comfortable tap size. */
-    .rs-header-actions {
-      width: 100%;
-    }
-
-    .rs-header-actions .hint {
-      flex-basis: 100%;
-    }
-
+    .rs-header-actions { width: 100%; }
+    .rs-header-actions .hint { flex-basis: 100%; }
     .rs-header-actions .btn {
       flex: 1;
-      min-height: 40px;
+      min-height: 2.5rem;
     }
   }
 </style>
@@ -241,14 +237,16 @@
 
 {% block content %}
 <!-- New sale / Import from Excel live in dialogs, opened from the
-     buttons in the Recent sales header — see wireOverlay() in main.js. -->
+     buttons in the Recent sales header; see wireOverlay() in main.js. -->
 <div id="newSaleOverlay" class="rs-dialog" role="dialog" aria-modal="true" aria-labelledby="newSaleOverlayTitle" style="display:none;">
 <div class="card card-pad rs-dialog-panel is-wide">
   <div class="rs-dialog-head">
     <h2 id="newSaleOverlayTitle">New sale</h2>
-    <button type="button" class="btn btn-ghost btn-sm" id="newSaleCloseBtn" aria-label="Close">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="newSaleCloseBtn" aria-label="Close">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
   </div>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 14px;">
+  <p class="rs-note">
     Deducts from warehouse stock immediately. Use Production to add stock.
   </p>
 
@@ -262,13 +260,13 @@
     <div class="field">
       <label>Transaction</label>
       <div class="choice-grid" id="topTypeSwitch">
-        <button type="button" class="choice-card active" data-value="Sale">
-          <span class="choice-card-title">Sale</span>
-          <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
+        <button type="button" class="choice-opt active" data-value="Sale">
+          <span class="choice-opt-title">Sale</span>
+          <span class="choice-opt-desc">Normal charge: customer pays for what they take.</span>
         </button>
-        <button type="button" class="choice-card" data-value="Refill">
-          <span class="choice-card-title">Refill</span>
-          <span class="choice-card-desc">Customer's own bottle — pours from the scent's bulk stock.</span>
+        <button type="button" class="choice-opt" data-value="Refill">
+          <span class="choice-opt-title">Refill</span>
+          <span class="choice-opt-desc">Customer’s own bottle: pours from the scent’s bulk stock.</span>
         </button>
       </div>
     </div>
@@ -276,13 +274,13 @@
     <div class="field">
       <label>Sale kind</label>
       <div class="choice-grid" id="kindSwitch">
-        <button type="button" class="choice-card active" data-value="bottle">
-          <span class="choice-card-title">Bottle</span>
-          <span class="choice-card-desc">Fixed size, picked from your product list.</span>
+        <button type="button" class="choice-opt active" data-value="bottle">
+          <span class="choice-opt-title">Bottle</span>
+          <span class="choice-opt-desc">Fixed size, picked from your product list.</span>
         </button>
-        <button type="button" class="choice-card" data-value="loose">
-          <span class="choice-card-title">Bulk/Refill</span>
-          <span class="choice-card-desc">Custom mL amount, priced at the shared rate per mL.</span>
+        <button type="button" class="choice-opt" data-value="loose">
+          <span class="choice-opt-title">Bulk/Refill</span>
+          <span class="choice-opt-desc">Custom mL amount, priced at the shared rate per mL.</span>
         </button>
       </div>
     </div>
@@ -313,18 +311,18 @@
           <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
         </div>
       </div>
-      <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+      <div class="price-hint" id="priceHint"></div>
 
       <div class="field kind-panel" id="freebieField">
-        <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin-bottom:0;">
-          <input type="checkbox" id="freebieCheckbox" style="width:auto; margin:0;">
+        <label class="rs-check">
+          <input type="checkbox" id="freebieCheckbox">
           This is a freebie / giveaway (₱0, no charge)
         </label>
-        <div class="help">Still deducts stock like a normal sale — just charges nothing, and hides payment method below.</div>
+        <div class="help">Still deducts stock like a normal sale, just charges nothing, and hides payment method below.</div>
       </div>
     </div>
 
-    <!-- ---- Bulk/Refill: sold by volume, not a fixed bottle — qty (mL)
+    <!-- ---- Bulk/Refill: sold by volume, not a fixed bottle. Qty (mL)
          is freely typed, price per mL is always the one shared rate on
          file (see the Formulas page / bulk_rate_settings in schema.sql),
          never retyped by hand. Only products in the Bulk/Refill category
@@ -346,14 +344,14 @@
           <label for="unit_price_loose">Price per mL (₱)</label>
           <input type="number" id="unit_price_loose" name="unit_price" step="0.01" min="0" readonly disabled required
             data-bulk-rate="{{ bulk_rate }}">
-          <div class="help">Set on the Formulas page — not editable here.</div>
+          <div class="help">Set on the Formulas page, not editable here.</div>
         </div>
       </div>
 
       <div class="field">
         <label for="looseTotalDisplay">Total price</label>
-        <input type="text" id="looseTotalDisplay" readonly placeholder="₱0.00">
-        <div class="help">Quantity (mL) × price per mL — filled in automatically as you type the quantity.</div>
+        <input type="text" id="looseTotalDisplay" class="rs-ledger-total" readonly placeholder="₱0.00">
+        <div class="help">Quantity (mL) × price per mL, filled in automatically as you type the quantity.</div>
       </div>
     </div>
 
@@ -361,9 +359,9 @@
 
     <div>
     <div class="field">
-      <label for="sold_at">Sale date <span class="text-faint">(optional — logging a past sale)</span></label>
+      <label for="sold_at">Sale date <span class="text-faint">(optional, for logging a past sale)</span></label>
       <input type="date" id="sold_at" name="sold_at" max="{{ today }}">
-      <div class="help">Leave blank to use today's date.</div>
+      <div class="help">Leave blank to use today’s date.</div>
     </div>
 
     <div class="field" id="paymentMethodField">
@@ -376,23 +374,22 @@
     </div>
 
     <div class="form-row" id="buyerField" style="display:none;">
-      <div class="field" style="flex:1;">
+      <div class="field">
         <label for="buyer_name">Name (Credit)</label>
-        <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee's or customer's name…" autocomplete="off"
+        <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee’s or customer’s name…" autocomplete="off"
           maxlength="120">
-        <div class="help">Free text — type whoever this credit sale is owed by, employee or customer. Not tied to a login account.
+        <div class="help">Free text: type whoever this credit sale is owed by, employee or customer. Not tied to a login account.
         </div>
       </div>
     </div>
 
     <!-- Customer name/address only apply to a normal cash sale to an
-           outside customer. A Credit sale is one person — employee or
-           customer — taking product now against a balance owed later —
+           outside customer. A Credit sale is one person (employee or
+           customer) taking product now against a balance owed later;
            pairing that with a separate "customer name" field invited
-           mixing up two different people on the same sale (whose name is
-           this, the credit buyer's or the customer's?). This whole block
-           is hidden and cleared whenever Credit is selected — see the
-           paymentSwitch wiring below. -->
+           mixing up two different people on the same sale. This whole
+           block is hidden and cleared whenever Credit is selected; see
+           the paymentSwitch wiring below. -->
     <div id="customerFieldsWrap">
       <div class="form-row">
         <div class="field">
@@ -411,11 +408,11 @@
             placeholder="Fills in automatically for a repeat customer">
         </div>
       </div>
-      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Picking a name already on file fills in
-        their address from the first sale it was recorded on — edit it if it's changed.</div>
+      <div class="help">Picking a name already on file fills in
+        their address from the first sale it was recorded on. Edit it if it’s changed.</div>
     </div>
 
-    <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
+    <button type="submit" class="btn btn-accent rs-submit">Record sale</button>
     </div>
     </div>
   </form>
@@ -426,13 +423,15 @@
 <div class="card card-pad rs-dialog-panel is-narrow">
   <div class="rs-dialog-head">
     <h2 id="importSalesOverlayTitle">Upload from Excel</h2>
-    <button type="button" class="btn btn-ghost btn-sm" id="importSalesCloseBtn" aria-label="Close">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="importSalesCloseBtn" aria-label="Close">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
   </div>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 16px;">
-    Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here —
-    every row is inserted at once instead of typing each one in by hand.
+  <p class="rs-note">
+    Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here.
+    Every row is inserted at once instead of typing each one in by hand.
   </p>
-  <a href="{{ url_for('admin.sales_import_template') }}" class="btn btn-ghost" style="width:100%; margin-bottom:12px;" data-generate-file>
+  <a href="{{ url_for('admin.sales_import_template') }}" class="btn btn-ghost rs-full" data-generate-file>
     Download import template (.xlsx)
   </a>
   <form method="POST" action="{{ url_for('admin.import_sales') }}" enctype="multipart/form-data">
@@ -441,9 +440,9 @@
     <div class="field">
       <label for="import_file">Filled-in template</label>
       <input type="file" id="import_file" name="import_file" accept=".xlsx" required>
-      <div class="help">Only SKUs already stocked at the HQ warehouse can be imported — see the "Products (reference)" sheet in the template.</div>
+      <div class="help">Only SKUs already stocked at the HQ warehouse can be imported. See the “Products (reference)” sheet in the template.</div>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%;">Upload sales</button>
+    <button type="submit" class="btn btn-accent rs-submit">Upload sales</button>
   </form>
 </div>
 </div>
@@ -453,7 +452,7 @@
     <h2>Recent sales</h2>
     <div class="rs-header-actions">
       <span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if
-      recent_sales|length != 1 }} · at Main Branch</span>
+      recent_sales|length != 1 }}, at Main Branch</span>
       <button type="button" class="btn btn-ghost btn-sm" id="openImportSalesBtn">Upload from Excel</button>
       <button type="button" class="btn btn-accent btn-sm" id="openNewSaleBtn">New sale</button>
     </div>
@@ -462,7 +461,7 @@
   <div data-smart-table data-page-size="10" data-count-target="recentSalesCount" data-count-label="sale">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -496,30 +495,30 @@
         <tbody>
           {% for s in recent_sales %}
           <tr data-search="{{ (s.item_name ~ ' ' ~ s.sku)|lower }}">
-            <td class="mono text-soft mobile-fold" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
+            <td class="tnum text-soft mobile-fold" data-label="When">{{ s.sold_at.strftime('%b %d') }}</td>
             <td data-label="Item" class="mobile-inline-anchor">
               <div class="item-name">{{ s.item_name }}</div>
               <div class="item-sub mono">{{ s.sku }}</div>
               <div class="item-sub item-sub-badge">
                 {{ m.sale_type_badge(s.sale_type) }}
-                <span class="mono">{{ s.sold_at.strftime('%b %d') }}</span>
+                <span class="tnum">{{ s.sold_at.strftime('%b %d') }}</span>
               </div>
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.sale_type_badge(s.sale_type) }}</td>
-            <td class="num mono mobile-detail" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
-            <td class="num mono mobile-detail" data-label="Price">{{ s.unit_price|peso }}</td>
-            <td class="num mono mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
+            <td class="num mobile-detail" data-label="Qty">{{ s.qty_sold }}{{ ' mL' if s.unit == 'BULK' }}</td>
+            <td class="num mobile-detail" data-label="Price">{{ s.unit_price|peso }}</td>
+            <td class="num mobile-detail" data-label="Total">{{ (s.qty_sold * s.unit_price)|peso }}</td>
             <td class="mobile-detail" data-label="Payment">{{ m.payment_method_badge(s.payment_method, s.buyer_username) }}</td>
             <td data-label="" class="mobile-inline-action">
               <a href="{{ url_for('admin.sale_receipt', sale_id=s.sale_id) }}" class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
             </td>
-            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+            <!-- Mobile-only; see .mobile-toggle-row/.row-toggle-btn in
                  style.css. Hidden on desktop, where every cell above is
                  already visible in the real table row. -->
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -529,20 +528,18 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No sales match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No sales recorded yet.</p>
+    <p>No sales recorded yet. Use New sale to log the first one.</p>
   </div>
   {% endif %}
 </div>
@@ -570,7 +567,7 @@
     // ---- Fade+rise a panel in/out instead of an instant display toggle
     // (see .kind-panel/.kind-panel-enter in this page's <style>). Setting
     // display first, forcing a reflow, then removing the "entering" class
-    // on the next frame is what makes the CSS transition actually run —
+    // on the next frame is what makes the CSS transition actually run,
     // toggling straight to the end state would just snap. ----
     function revealPanel(el) {
       el.style.display = '';
@@ -598,11 +595,11 @@
     var looseSection = document.getElementById('looseSection');
 
     // ---- Top-level Sale/Refill, independent of Bottle/Bulk/Refill below.
-    // Freebie isn't a third option here — it's a checkbox nested inside
+    // Freebie isn't a third option here, it's a checkbox nested inside
     // the Bottle section (see updateFreebieVisibility below), since a
     // giveaway is always a real, whole, countable bottle here, never a
     // loose ML pour. The single hidden `sale_type` field submitted to
-    // the server is always exactly one of Sale/Refill/Freebie — combined
+    // the server is always exactly one of Sale/Refill/Freebie, combined
     // from topType + freebieCheckbox by recomputeSaleType(). ----
     var topType = 'Sale';
     var kind = 'bottle';
@@ -650,9 +647,9 @@
     }
 
     document.getElementById('topTypeSwitch').addEventListener('click', function (e) {
-      var btn = e.target.closest('.choice-card');
+      var btn = e.target.closest('.choice-opt');
       if (!btn || btn.classList.contains('active')) return;
-      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      this.querySelectorAll('.choice-opt').forEach(function (b) { b.classList.toggle('active', b === btn); });
       topType = btn.dataset.value;
       buildProducts();
       updateFreebieVisibility();
@@ -660,9 +657,9 @@
     });
 
     document.getElementById('kindSwitch').addEventListener('click', function (e) {
-      var btn = e.target.closest('.choice-card');
+      var btn = e.target.closest('.choice-opt');
       if (!btn || btn.classList.contains('active')) return;
-      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      this.querySelectorAll('.choice-opt').forEach(function (b) { b.classList.toggle('active', b === btn); });
       setKind(btn.dataset.value);
     });
 
@@ -675,7 +672,7 @@
       if (!isCredit) buyerSelect.value = '';
 
       // Credit is one person (employee or customer) taking product now
-      // against a balance owed later — showing a separate "customer
+      // against a balance owed later, showing a separate "customer
       // name" field alongside it invites confusion over whose name is
       // whose. Hide it, and clear whatever was typed, so nothing stale
       // gets submitted with a Credit sale.
@@ -726,7 +723,7 @@
 
     // Group rows (each its own SKU/unit/price) by item_name so the
     // cashier picks a product first, then only sees the units that
-    // product actually has — the price fills in from whichever unit
+    // product actually has, the price fills in from whichever unit
     // (SKU) ends up selected.
     //
     // Which rows are offered depends on Sale vs Refill: a Sale needs the
@@ -770,11 +767,11 @@
       return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    // Price charged is always PER UNIT of whatever Quantity counts in —
+    // Price charged is always PER UNIT of whatever Quantity counts in,
     // for a bottle-counted product that's per bottle (e.g. ₱250/85ML
     // bottle); for a Bulk/Refill product it's the shared per-mL rate
     // (e.g. ₱0.82), with Quantity being how many mL were given. Either
-    // way, the actual total charged (qty × price — computed the
+    // way, the actual total charged (qty × price, computed the
     // same way everywhere else in the app: receipts, Sales History,
     // reports) is only ever previewed here, never written back into the
     // price field itself, so nothing here can double up with that
@@ -790,7 +787,7 @@
         priceHint.textContent = '';
         return;
       }
-      priceHint.textContent = formatPeso(rate) + ' × ' + qty + ' = ' + formatPeso(rate * qty) + ' total — edit price if this sale used a different rate.';
+      priceHint.textContent = formatPeso(rate) + ' × ' + qty + ' = ' + formatPeso(rate * qty) + ' total. Edit price if this sale used a different rate.';
     }
 
     function applySuggestedPrice() {
@@ -823,8 +820,8 @@
         opt.value = row.sku;
         opt.dataset.price = row.price;
         opt.textContent = topType === 'Refill'
-          ? row.unit + ' — ' + Number(row.bulk_ml).toLocaleString() + ' mL bulk left'
-          : row.unit + ' — ' + row.stock_qty + ' in stock';
+          ? row.unit + ', ' + Number(row.bulk_ml).toLocaleString() + ' mL bulk left'
+          : row.unit + ', ' + row.stock_qty + ' in stock';
         skuSelect.appendChild(opt);
       });
       applySuggestedPrice();
@@ -833,9 +830,9 @@
     productSelect.addEventListener('change', function () { populateUnits(productSelect.value); });
     skuSelect.addEventListener('change', applySuggestedPrice);
 
-    // ---- Bulk/Refill: sold by volume — qty (mL) is freely typed, price
+    // ---- Bulk/Refill: sold by volume, qty (mL) is freely typed, price
     // per mL is always the one shared rate on file (data-bulk-rate,
-    // never retyped by hand here — see the Formulas page /
+    // never retyped by hand here, see the Formulas page /
     // bulk_rate_settings in schema.sql), with the total only ever
     // previewed here, same "never double up with the qty × price
     // multiplication done everywhere downstream" reasoning as
@@ -854,7 +851,7 @@
       looseRows.forEach(function (row) {
         var opt = document.createElement('option');
         opt.value = row.sku;
-        opt.textContent = row.item_name + ' — ' + row.stock_qty + ' mL in stock';
+        opt.textContent = row.item_name + ', ' + row.stock_qty + ' mL in stock';
         looseSelect.appendChild(opt);
       });
     } else {

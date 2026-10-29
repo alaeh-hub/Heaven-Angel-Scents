@@ -1,11 +1,28 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Bulk Batches{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Bulk Batches{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+  }
+  .pg-h { font-size: 1.125rem; margin-bottom: var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); }
+  .pg-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pg-actions .btn { flex: 1; }
+  .pg-foot { padding: var(--space-2xs) var(--space-lg) var(--space-md); }
+  .pg-foot p { font-size: 0.875rem; color: var(--ink-faint); margin: 0; }
+  .pg-head-tools { display: flex; align-items: center; gap: var(--space-md); }
   /* ---- Add-row + line-item cart, same shape/reasoning as the Formulas
      page's own fm-add-row/fm-table (see templates/admin/formulas.html) —
      duplicated here rather than shared since this page's rows carry
@@ -13,7 +30,7 @@
      inside a bigger form (batch size + materials), not a modal. */
   .bb-add-row {
     display: flex;
-    gap: 10px;
+    gap: var(--space-sm);
     align-items: flex-end;
     flex-wrap: wrap;
   }
@@ -28,14 +45,9 @@
      the table instead of being clipped inside it; the header's corner
      radii below stand in for the rounding overflow:hidden used to do. */
   .bb-table-wrap {
-    margin-top: 16px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    margin-top: var(--space-md);
+    border-top: 1px solid var(--border);
   }
-  .bb-table-wrap .bb-table thead th:first-child { border-top-left-radius: calc(var(--radius-sm) - 1px); }
-  .bb-table-wrap .bb-table thead th:last-child { border-top-right-radius: calc(var(--radius-sm) - 1px); }
-  .bb-table-wrap .bb-total-row td:first-child { border-bottom-left-radius: calc(var(--radius-sm) - 1px); }
-  .bb-table-wrap .bb-total-row td:last-child { border-bottom-right-radius: calc(var(--radius-sm) - 1px); }
 
   .bb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .bb-table th {
@@ -43,12 +55,11 @@
     font-size: 12px;
     letter-spacing: 0;
     color: var(--ink-faint);
-    padding: 9px 14px;
-    background: var(--field);
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-xs) var(--space-md);
+    border-bottom: 1px solid var(--border-strong);
   }
   .bb-table td {
-    padding: 10px 14px;
+    padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--border);
     font-size: 13px;
     vertical-align: middle;
@@ -59,69 +70,63 @@
   .bb-qty-input { width: 100px; text-align: right; }
   .bb-remove {
     background: none; border: none; color: var(--danger);
-    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+    cursor: pointer; font-size: 18px; line-height: 1; padding: var(--space-3xs) var(--space-xs);
   }
-  .bb-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
-  .bb-empty-row td { padding: 20px 14px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
-  .bb-total-row td { font-weight: 700; background: var(--field); }
+  .bb-remove:hover { background: var(--danger-soft); border-radius: var(--radius-sm); }
+  .bb-empty-row td { padding: var(--space-lg) var(--space-md); text-align: center; color: var(--ink-faint); font-size: 12.5px; }
+  .bb-total-row td { font-weight: 600; border-top: 1px solid var(--border-strong); }
   .bb-total-row .bb-total-label { text-align: right; }
 
   .bb-preview {
-    margin-top: 14px;
-    padding: 12px 14px;
-    background: var(--field);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    font-size: 12.5px;
+    margin-top: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+    font-size: 0.875rem;
   }
   .bb-preview-yields {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
   }
   .bb-preview-yield {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 12px;
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.75rem;
   }
 
   /* Highlighted calculation box — grand total / per-bottle / per-refill
      / cost-per-mL, the actual numbers this form exists to produce, so
      it should read as a result, not just more form text. */
   .bb-calc-box {
-    margin-top: 12px;
-    padding: 14px;
+    margin-top: var(--space-sm);
+    padding: var(--space-md);
     background: var(--accent-soft);
-    border: var(--border-width-strong) solid var(--accent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
   }
   .bb-calc-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 10px;
+    gap: var(--space-sm);
   }
   .bb-calc-item {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-top: 1px solid var(--border-strong);
+    padding: var(--space-xs) 0 0;
   }
   .bb-calc-label {
-    font-size: 11px;
-    letter-spacing: 0;
+    font-size: 0.75rem;
     color: var(--ink-faint);
-    text-transform: uppercase;
   }
   .bb-calc-value {
-    font-size: 16px;
-    font-weight: 700;
-    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: var(--space-3xs);
   }
   .bb-calc-sub {
-    margin-top: 10px;
+    margin-top: var(--space-sm);
     font-size: 12px;
     color: var(--ink-faint);
   }
@@ -137,18 +142,17 @@
   .bb-yield-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 8px;
-    margin-top: 4px;
+    gap: var(--space-xs);
+    margin-top: var(--space-2xs);
   }
   .bb-yield-card {
-    background: var(--field);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
   }
   .bb-yield-card .bb-yield-unit { font-size: 12px; color: var(--ink-faint); letter-spacing: 0; }
-  .bb-yield-card .bb-yield-count { font-size: 16px; font-weight: 700; margin-top: 2px; }
-  .bb-yield-card .bb-yield-cost { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; }
+  .bb-yield-card .bb-yield-count { font-size: 16px; font-weight: 600; margin-top: var(--space-3xs); }
+  .bb-yield-card .bb-yield-cost { font-size: 11.5px; color: var(--ink-faint); margin-top: var(--space-2xs); }
 
   .bb-detail-scroll { overflow-x: auto; }
 
@@ -158,13 +162,13 @@
      added material becomes its own card: name + remove on top, the two
      editable fields side by side, then the rate and line cost. */
   @media (max-width: 680px) {
-    .bb-form { padding: 0 16px 18px !important; }
-    .bb-intro { padding: 4px 16px 12px !important; }
+    .bb-form { padding: 0 var(--space-md) var(--space-md) !important; }
+    .bb-intro { padding: var(--space-2xs) var(--space-md) var(--space-sm) !important; }
 
     .bb-add-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 10px;
+      gap: var(--space-sm);
     }
     .bb-add-row .field-material { grid-column: 1 / -1; min-width: 0; }
     .bb-add-row .field-qty,
@@ -184,7 +188,7 @@
     .bb-form .bb-table tbody {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: var(--space-sm);
     }
 
     .bb-form .bb-table tbody tr:not(.bb-empty-row) {
@@ -195,10 +199,9 @@
         "qty  unit unit"
         "rate cost cost";
       align-items: center;
-      gap: 10px 10px;
-      padding: 12px 12px 12px 14px;
-      background: var(--field);
-      border: 1px solid var(--border);
+      gap: var(--space-sm) var(--space-sm);
+      padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+      background: var(--surface-2);
       border-radius: var(--radius-sm);
     }
     .bb-form .bb-table tbody td {
@@ -224,14 +227,14 @@
     .bb-form .bb-table tbody td:nth-child(5) {
       grid-area: cost;
       text-align: right;
-      font-weight: 700;
+      font-weight: 600;
       font-size: 14px;
     }
     .bb-form .bb-table tbody td:nth-child(6) {
       grid-area: remove;
       justify-self: end;
       align-self: start;
-      margin: -6px -6px 0 0;
+      margin: calc(var(--space-xs) * -1) calc(var(--space-xs) * -1) 0 0;
     }
     .bb-form .bb-table tbody td:nth-child(2)::before,
     .bb-form .bb-table tbody td:nth-child(3)::before {
@@ -240,7 +243,7 @@
       font-size: 11px;
       font-weight: 600;
       color: var(--ink-faint);
-      margin-bottom: 4px;
+      margin-bottom: var(--space-2xs);
     }
     .bb-form .bb-qty-input { width: 100%; text-align: left; }
     .bb-remove {
@@ -251,7 +254,7 @@
       justify-content: center;
       padding: 0;
       font-size: 22px;
-      border-radius: 10px;
+      border-radius: var(--radius);
     }
 
     .bb-form .bb-empty-row { display: block; }
@@ -260,13 +263,13 @@
       border-radius: var(--radius-sm);
     }
 
-    .bb-form .bb-table tfoot { margin-top: 10px; }
+    .bb-form .bb-table tfoot { margin-top: var(--space-sm); }
     .bb-form .bb-total-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 14px;
-      background: var(--field);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--surface-2);
       border-radius: var(--radius-sm);
     }
     .bb-form .bb-total-row td {
@@ -278,15 +281,27 @@
     .bb-form .bb-total-row td:last-child { display: none; }
     .bb-form .bb-total-row .bb-total-label { text-align: left; }
 
-    .bb-calc-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-    .bb-calc-box { padding: 10px; }
+    .bb-calc-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-xs); }
+    .bb-calc-box { padding: var(--space-sm); }
     .bb-calc-value { font-size: 15px; overflow-wrap: anywhere; }
-    .bb-preview { padding: 12px; }
+    .bb-preview { padding: var(--space-sm); }
     .bb-preview-yield { max-width: 100%; overflow-wrap: anywhere; }
 
-    #batchDetailsOverlay { padding: 12px !important; }
+    #batchDetailsOverlay { padding: var(--space-sm) !important; }
     #batchDetailsOverlay .bb-table { min-width: 520px; }
   }
+  .pg-disclosure > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+  .pg-disclosure > summary::-webkit-details-marker { display: none; }
+  .pg-disclosure > summary svg { transition: transform var(--dur-micro, 0.15s) var(--ease-out); flex: none; }
+  .pg-disclosure[open] > summary svg { transform: rotate(180deg); }
+  .bb-intro { font-size: 0.875rem; color: var(--ink-faint); padding: var(--space-2xs) var(--space-lg) var(--space-md); margin: 0; }
+  .bb-form { padding: 0 var(--space-lg) var(--space-lg); }
+  .bb-hint { font-size: 0.75rem; color: var(--ink-faint); margin: var(--space-2xs) 0 0; }
+  .bb-conflict { display: none; margin: var(--space-sm) 0 0; color: var(--danger); font-size: 0.875rem; font-weight: 600; }
+  .bb-submit { width: 100%; margin-top: var(--space-md); }
+  .bb-h3 { font-size: 0.875rem; margin: var(--space-md) 0 var(--space-xs); }
+  .bb-plan-gap { margin-top: var(--space-xs); }
+  @media (prefers-reduced-motion: reduce) { .pg-disclosure > summary svg { transition: none; } }
 </style>
 {% endblock %}
 
@@ -309,141 +324,13 @@
   <div class="card stat-tile">
     <div class="stat-label">Capital tied up in batches</div>
     <div class="stat-value">{{ active_capital_total|peso }}</div>
-    <div class="stat-foot">sum of active batches' real cost</div>
+    <div class="stat-foot">sum of active batches’ real cost</div>
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Materials tracked</div>
     <div class="stat-value">{{ materials|length }}</div>
-    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">manage stock →</a></div>
+    <div class="stat-foot"><a href="{{ url_for('admin.materials') }}" class="text-soft">Manage stock</a></div>
   </div>
-</div>
-
-<div class="card mt-24">
-  <div class="card-header">
-    <h2>Log a new batch</h2>
-  </div>
-  <p class="text-faint bb-intro" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
-    Mix specific raw materials, at specific quantities, into one bulk batch (e.g. 500ml or 1 gallon). Stock is
-    deducted from each material used, and the batch's total cost, cost per mL, and how many bottles of each size it
-    can fill are all computed from what was actually used — not typed in by hand.
-  </p>
-  <form method="POST" action="{{ url_for('admin.create_bulk_batch') }}" class="bb-form" style="padding: 0 22px 22px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="form_token" value="{{ form_token }}">
-    <div class="form-row">
-      <div class="field">
-        <label for="scent_name">Scent / batch name</label>
-        <input type="text" id="scent_name" name="scent_name" placeholder="Rose Garden" required>
-      </div>
-      <div class="field">
-        <label for="batch_code">Batch code <span class="text-faint">(optional)</span></label>
-        <input type="text" id="batch_code" name="batch_code" placeholder="B-2026-09-A">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="input_qty">Batch size</label>
-        <input type="number" id="input_qty" name="input_qty" step="0.001" min="0.001" placeholder="1" required>
-      </div>
-      <div class="field">
-        <label for="input_unit">Unit</label>
-        <select id="input_unit" name="input_unit" required>
-          {% for u in batch_units %}
-          <option value="{{ u }}" {{ 'selected' if u=='Gallon' }}>{{ u }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="field">
-      <label for="target_unit">Target bottle size <span class="text-faint">(optional)</span></label>
-      <select id="target_unit" name="target_unit">
-        <option value="">None — liquid only, no packaging folded in</option>
-        {% for u in bottle_ml_map %}
-        <option value="{{ u }}">{{ u }}</option>
-        {% endfor %}
-      </select>
-      <div class="help">
-        Picking a size also folds that size's packaging formula (bottle, sticker, seal — see the
-        <a href="{{ url_for('admin.formulas') }}">Formulas page</a>) into THIS batch: qty = however many bottles of
-        that size this batch's whole volume can fill, deducted from stock and added to the batch's total cost right
-        away — same as how the liquid materials below work.
-      </div>
-    </div>
-    <div class="field">
-      <label for="notes">Notes <span class="text-faint">(optional)</span></label>
-      <input type="text" id="notes" name="notes" maxlength="255">
-    </div>
-
-    <div class="bb-add-row" style="margin-top:10px;">
-      <div class="field field-material">
-        <label for="bbMaterialSelect">Material</label>
-        <select id="bbMaterialSelect">
-          <option value="">Select…</option>
-          {% for mat in materials %}
-          <option value="{{ mat.material_id }}" data-name="{{ mat.material_name }}" data-unit="{{ mat.unit }}"
-            data-cost-per-unit="{{ mat.cost_per_unit }}" data-stock-qty="{{ mat.stock_qty }}">
-            {{ mat.material_name }} ({{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }} in
-            stock)
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field field-qty">
-        <label for="bbQtyInput">Qty used</label>
-        <input type="number" id="bbQtyInput" step="0.001" min="0.001" value="1">
-      </div>
-      <div class="field field-unit">
-        <label for="bbQtyUnit">In</label>
-        <select id="bbQtyUnit"></select>
-      </div>
-      <button type="button" class="btn btn-ghost" id="bbAddBtn">Add</button>
-    </div>
-    <p class="text-faint" style="font-size:11.5px; margin:4px 0 0;">
-      A material bought by the Gallon or Liter can still have its per-batch amount logged in mL — pick whichever
-      unit matches how you actually measured it; the cost is converted automatically.
-    </p>
-
-    <div class="bb-table-wrap">
-      <table class="bb-table table-fixed">
-        <colgroup>
-          <col style="width:30%"><col style="width:18%"><col style="width:14%"><col style="width:20%"><col style="width:18%"><col style="width:40px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Material</th>
-            <th class="num">Qty used</th>
-            <th>Unit</th>
-            <th class="num">Cost / unit</th>
-            <th class="num">Line cost</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="bbBody">
-          <tr class="bb-empty-row" id="bbEmptyRow">
-            <td colspan="6">No materials added yet — pick one above.</td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr class="bb-total-row" id="bbTotalRow">
-            <td colspan="4" class="bb-total-label">Total cost</td>
-            <td class="num mono" id="bbTotal">₱0.00</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <div class="bb-preview" id="bbPreview" style="display:none;">
-      <div><strong id="bbPreviewVolume"></strong></div>
-      <div id="bbPreviewCostPerMl"></div>
-      <div class="bb-calc-box" id="bbTargetPreview" style="display:none;"></div>
-    </div>
-    <p id="bbMaterialConflict" role="alert"
-      style="display:none; margin:10px 0 0; color:var(--danger); font-size:13px; font-weight:600;"></p>
-
-    <div id="bbInputs"></div>
-    <button id="bbSubmitBtn" type="submit" class="btn btn-accent" style="width:100%; margin-top:14px;">Save batch</button>
-  </form>
 </div>
 
 <div class="card mt-24">
@@ -455,7 +342,7 @@
   <div data-smart-table data-page-size="10" data-count-target="batchesCount" data-count-label="batch">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -485,7 +372,7 @@
               <div class="item-sub item-sub-badge">
                 {% if b.batch_code %}<span class="badge badge-pending">{{ b.batch_code }}</span>{% endif %}
                 <span class="{{ 'badge badge-rejected' if b.depleted else 'badge badge-fulfilled' }}">{{ 'Depleted' if b.depleted else 'Active' }}</span>
-                {% if b.target_unit %}<span class="badge badge-pending">→ {{ b.target_bottle_qty }}&times; {{ b.target_unit }}</span>{% endif %}
+                {% if b.target_unit %}<span class="badge badge-pending">{{ b.target_bottle_qty }}&times; {{ b.target_unit }}</span>{% endif %}
               </div>
             </td>
             <td class="mono text-soft" data-label="Size">{{ b.input_qty|round(3)|string|replace('.000','') }} {{ b.input_unit.lower() }}
@@ -510,49 +397,175 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No batches match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Bottling an 85ML/50ML/10ML/3ML SKU on the
-      <a href="{{ url_for('admin.production') }}">Production Log page</a> draws down a batch's remaining mL — what it
+  <div class="pg-foot">
+    <p>Bottling an 85ML/50ML/10ML/3ML SKU on the
+      <a href="{{ url_for('admin.production') }}">Production Log page</a> draws down a batch’s remaining mL. What it
       actually gets charged, though, is the flat base price set per size on the
-      <a href="{{ url_for('admin.formulas') }}">Formulas page</a>, not this batch's own cost/mL (shown here purely for
+      <a href="{{ url_for('admin.formulas') }}">Formulas page</a>, not this batch’s own cost/mL (shown here purely for
       reference).</p>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No batches logged yet — use the form above to mix your first one.</p>
+    <p>No batches logged yet. Use the “Log a new batch” form below to mix your first one.</p>
   </div>
   {% endif %}
 </div>
 
-<div id="batchDetailsOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:640px; width:100%; max-height:85vh; overflow-y:auto;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Batch details — <span id="bdScentName"></span></h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;" id="bdSummary"></p>
-
-    <div class="bb-preview" id="bdPlan" style="display:none; margin-bottom:14px;">
-      <div><strong id="bdPlanHeading"></strong></div>
-      <div id="bdPlanBreakdown" style="margin-top:6px;"></div>
-      <div id="bdPlanResults" style="margin-top:8px;"></div>
+<details class="card mt-24 pg-disclosure" {% if not batches %}open{% endif %}>
+  <summary class="card-header">
+    <h2>Log a new batch</h2>
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+  </summary>
+  <p class="text-faint bb-intro">
+    Mix specific raw materials, at specific quantities, into one bulk batch (e.g. 500ml or 1 gallon). Stock is
+    deducted from each material used, and the batch's total cost, cost per mL, and how many bottles of each size it
+    can fill are all computed from what was actually used, not typed in by hand.
+  </p>
+  <form method="POST" action="{{ url_for('admin.create_bulk_batch') }}" class="bb-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="scent_name">Scent / batch name</label>
+        <input type="text" id="scent_name" name="scent_name" placeholder="Rose Garden" required>
+      </div>
+      <div class="field">
+        <label for="batch_code">Batch code <span class="text-faint">(optional)</span></label>
+        <input type="text" id="batch_code" name="batch_code" placeholder="B-2026-09-A">
+      </div>
     </div>
-    <p class="text-faint" id="bdNoPlan" style="font-size:12.5px; margin:0 0 14px; display:none;">
-      No target bottle size was picked for this batch — its total cost is liquid ingredients only, and packaging
-      isn't folded in (see the <a href="{{ url_for('admin.bulk_batches') }}">Log a new batch</a> form's own
+    <div class="form-row">
+      <div class="field">
+        <label for="input_qty">Batch size</label>
+        <input type="number" id="input_qty" name="input_qty" step="0.001" min="0.001" placeholder="1" required>
+      </div>
+      <div class="field">
+        <label for="input_unit">Unit</label>
+        <select id="input_unit" name="input_unit" required>
+          {% for u in batch_units %}
+          <option value="{{ u }}" {{ 'selected' if u=='Gallon' }}>{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="target_unit">Target bottle size <span class="text-faint">(optional)</span></label>
+      <select id="target_unit" name="target_unit">
+        <option value="">None, liquid only, no packaging folded in</option>
+        {% for u in bottle_ml_map %}
+        <option value="{{ u }}">{{ u }}</option>
+        {% endfor %}
+      </select>
+      <div class="help">
+        Picking a size also folds that size’s packaging formula (bottle, sticker, seal, see the
+        <a href="{{ url_for('admin.formulas') }}">Formulas page</a>) into THIS batch: qty = however many bottles of
+        that size this batch’s whole volume can fill, deducted from stock and added to the batch’s total cost right
+        away, same as how the liquid materials below work.
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="text-faint">(optional)</span></label>
+      <input type="text" id="notes" name="notes" maxlength="255">
+    </div>
+
+    <div class="bb-add-row" style="margin-top:var(--space-sm);">
+      <div class="field field-material">
+        <label for="bbMaterialSelect">Material</label>
+        <select id="bbMaterialSelect">
+          <option value="">Select…</option>
+          {% for mat in materials %}
+          <option value="{{ mat.material_id }}" data-name="{{ mat.material_name }}" data-unit="{{ mat.unit }}"
+            data-cost-per-unit="{{ mat.cost_per_unit }}" data-stock-qty="{{ mat.stock_qty }}">
+            {{ mat.material_name }} ({{ mat.stock_qty|round(3)|string|replace('.000','') }} {{ mat.unit.lower() }} in
+            stock)
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field field-qty">
+        <label for="bbQtyInput">Qty used</label>
+        <input type="number" id="bbQtyInput" step="0.001" min="0.001" value="1">
+      </div>
+      <div class="field field-unit">
+        <label for="bbQtyUnit">In</label>
+        <select id="bbQtyUnit"></select>
+      </div>
+      <button type="button" class="btn btn-ghost" id="bbAddBtn">Add</button>
+    </div>
+    <p class="bb-hint">
+      A material bought by the Gallon or Liter can still have its per-batch amount logged in mL: pick whichever
+      unit matches how you actually measured it; the cost is converted automatically.
+    </p>
+
+    <div class="bb-table-wrap">
+      <table class="bb-table table-fixed">
+        <colgroup>
+          <col style="width:30%"><col style="width:18%"><col style="width:14%"><col style="width:20%"><col style="width:18%"><col style="width:40px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th class="num">Qty used</th>
+            <th>Unit</th>
+            <th class="num">Cost / unit</th>
+            <th class="num">Line cost</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="bbBody">
+          <tr class="bb-empty-row" id="bbEmptyRow">
+            <td colspan="6">No materials added yet. Pick one above.</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bb-total-row" id="bbTotalRow">
+            <td colspan="4" class="bb-total-label">Total cost</td>
+            <td class="num mono" id="bbTotal">₱0.00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="bb-preview" id="bbPreview" style="display:none;">
+      <div><strong id="bbPreviewVolume"></strong></div>
+      <div id="bbPreviewCostPerMl"></div>
+      <div class="bb-calc-box" id="bbTargetPreview" style="display:none;"></div>
+    </div>
+    <p id="bbMaterialConflict" class="bb-conflict" role="alert"></p>
+
+    <div id="bbInputs"></div>
+    <button id="bbSubmitBtn" type="submit" class="btn btn-accent bb-submit">Save batch</button>
+  </form>
+</details>
+
+<div id="batchDetailsOverlay"
+  class="pg-overlay">
+  <div class="card card-pad" style="max-width:640px; width:100%; max-height:85vh; overflow-y:auto;">
+    <h2 class="pg-h">Batch details: <span id="bdScentName"></span></h2>
+    <p class="text-faint pg-note" id="bdSummary"></p>
+
+    <div class="bb-preview" id="bdPlan" style="display:none; margin-bottom:var(--space-md);">
+      <div><strong id="bdPlanHeading"></strong></div>
+      <div id="bdPlanBreakdown" class="bb-plan-gap"></div>
+      <div id="bdPlanResults" class="bb-plan-gap"></div>
+    </div>
+    <p class="text-faint" id="bdNoPlan" style="font-size:12.5px; margin:0 0 var(--space-md); display:none;">
+      No target bottle size was picked for this batch, so its total cost is liquid ingredients only, and packaging
+      isn’t folded in (see the <a href="{{ url_for('admin.bulk_batches') }}">Log a new batch</a> form's own
       "Target bottle size" field).
     </p>
 
-    <h3 style="font-size:13px; margin: 14px 0 6px;">Materials used</h3>
+    <h3 class="bb-h3">Materials used</h3>
     <div class="bb-detail-scroll">
     <table class="bb-table table-fixed">
       <colgroup>
@@ -571,10 +584,10 @@
     </table>
     </div>
 
-    <h3 style="font-size:13px; margin: 18px 0 6px;">Bottle yield from what's left</h3>
+    <h3 class="bb-h3">Bottle yield from what's left</h3>
     <div class="bb-yield-grid" id="bdYields"></div>
 
-    <div style="margin-top:18px;">
+    <div style="margin-top:var(--space-md);">
       <button type="button" class="btn btn-ghost" style="width:100%;" id="bdCloseBtn">Close</button>
     </div>
   </div>
@@ -652,7 +665,7 @@
         var isPackaging = !!packagingIds[opt.value];
         opt.disabled = isPackaging;
         opt.textContent = opt.dataset.baseLabel + (isPackaging
-          ? ' — included in selected packaging formula'
+          ? ', included in selected packaging formula'
           : '');
       });
       if (materialSelect.value && packagingIds[materialSelect.value]) {
@@ -790,12 +803,12 @@
             '<div class="bb-calc-item"><div class="bb-calc-label">Cost / refill</div><div class="bb-calc-value">' + formatPeso(costPerRefill) + '</div></div>' +
             '<div class="bb-calc-item"><div class="bb-calc-label">Cost / mL (all-in)</div><div class="bb-calc-value">₱' + allInCostPerMl.toFixed(6) + '</div></div>' +
           '</div>' +
-          '<div class="bb-calc-sub">' + targetQty + '&times; ' + esc(targetUnit) + ' planned — liquid ' + formatPeso(liquidCost) +
+          '<div class="bb-calc-sub">' + targetQty + '&times; ' + esc(targetUnit) + ' planned: liquid ' + formatPeso(liquidCost) +
           ' + packaging ' + formatPeso(packagingCost) + ' = ' + formatPeso(grandTotal) + '</div>' +
           (items.length
             ? '<div class="bb-preview-yields">' + linesHtml + '</div>'
-            : '<div class="text-faint" style="margin-top:6px;">No packaging formula on file for ' + targetUnit +
-              ' yet — add one on the <a href="' + FORMULAS_URL + '">Formulas page</a> first, or this batch will fold in ₱0 packaging.</div>');
+            : '<div class="text-faint bb-plan-gap">No packaging formula on file for ' + targetUnit +
+              ' yet. Add one on the <a href="' + FORMULAS_URL + '">Formulas page</a> first, or this batch will fold in ₱0 packaging.</div>');
         targetPreview.style.display = 'block';
       } else {
         targetPreview.style.display = 'none';
@@ -972,10 +985,10 @@
     window.openBatchDetails = function (btn) {
       scentEl.textContent = btn.dataset.scentName;
       var remainingMl = parseFloat(btn.dataset.remainingMl);
-      summaryEl.textContent = (btn.dataset.batchCode ? btn.dataset.batchCode + ' — ' : '') +
-        remainingMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL left · ' +
-        formatPeso(btn.dataset.totalCost) + ' total cost · ₱' + parseFloat(btn.dataset.costPerMl).toFixed(6) + '/mL' +
-        (btn.dataset.notes ? ' · ' + btn.dataset.notes : '');
+      summaryEl.textContent = (btn.dataset.batchCode ? btn.dataset.batchCode + ', ' : '') +
+        remainingMl.toLocaleString('en-PH', { maximumFractionDigits: 1 }) + ' mL left, ' +
+        formatPeso(btn.dataset.totalCost) + ' total cost, ₱' + parseFloat(btn.dataset.costPerMl).toFixed(6) + '/mL' +
+        (btn.dataset.notes ? ', ' + btn.dataset.notes : '');
 
       var ingredients = [];
       try { ingredients = JSON.parse(btn.dataset.ingredients || '[]'); } catch (e) { ingredients = []; }

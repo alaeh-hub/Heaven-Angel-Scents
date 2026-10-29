@@ -4,27 +4,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ code }} · Heaven &amp; Angel Scents</title>
+  <meta name="description" content="Something went wrong on Heaven &amp; Angel Scents.">
+  <title>{{ code }}, Heaven &amp; Angel Scents</title>
   <script nonce="{{ csp_nonce() }}">
-    // Same dark-by-default stamping as every other page (see base.html) —
+    // Same dark-by-default stamping as every other page (see base.html):
     // without this, an error page hit before any other page loads would
     // render in the light palette regardless of what's actually stored.
     (function () {
       try {
         var stored = localStorage.getItem('theme');
         document.documentElement.setAttribute('data-theme', stored || 'dark');
+        document.documentElement.classList.add('js');
       } catch (e) { }
     })();
   </script>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#14110A">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+    html,
+    body {
+      overflow-x: clip;
+    }
+
+    .error-shell {
+      min-height: 100dvh;
+      gap: var(--space-xs);
+      padding: var(--space-lg);
+    }
+
+    .error-shell .code {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: var(--text-2xl);
+      color: var(--ink-faint);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .error-shell h2 {
+      max-width: 32rem;
+      font-size: var(--text-xl);
+      font-weight: 600;
+      line-height: 1.3;
+      text-wrap: balance;
+      margin: 0 0 var(--space-sm);
+    }
+  </style>
 </head>
 
 <body>
-  <div class="error-shell">
+  <main class="error-shell">
     <div class="code">{{ code }}</div>
     <h2>{{ message }}</h2>
-    <a class="btn btn-primary mt-24" href="{{ url_for('auth.index') }}">Back to home</a>
-  </div>
+    <a class="btn btn-primary" href="{{ url_for('auth.index') }}">Back to home</a>
+  </main>
 </body>
 
 </html>

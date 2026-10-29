@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Credit Purchases{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Credit Purchases{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   @media (min-width: 681px) {
     .cp-table th:nth-child(1), .cp-table td:nth-child(1) { width: 40px; }
     .cp-table th:nth-child(2), .cp-table td:nth-child(2) { width: 26%; }
@@ -15,6 +15,16 @@
     .cp-table th:nth-child(6), .cp-table td:nth-child(6) { width: 16%; }
     .cp-table th:nth-child(7), .cp-table td:nth-child(7) { width: 14%; }
   }
+
+  .cp-note {
+    margin: 0;
+    padding: 0 var(--space-lg) var(--space-md);
+    max-width: 60rem;
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+  .cp-rank { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tnum { font-variant-numeric: tabular-nums; }
 </style>
 {% endblock %}
 
@@ -41,22 +51,20 @@
 <div class="card mt-16">
   <div class="card-header">
     <h2>By name</h2>
-    <span class="hint">Credit only · outstanding</span>
+    <span class="hint">Credit only, outstanding</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      This is who product was taken <em>for</em> on a Credit sale at each branch — an employee
-      against their own pay, or a customer buying on store credit ("utang") — not who rang up the
-      sale. Ordinary Cash sales aren't attributed to any one buyer and aren't counted here. Scan
-      the buyer's receipt on the Scan Receipt page and tap "Mark credit paid" once they've settled
-      up — it drops off this list right after.
-    </p>
-  </div>
+  <p class="cp-note">
+    This is who product was taken <em>for</em> on a Credit sale at each branch (an employee
+    against their own pay, or a customer buying on store credit, “utang”), not who rang up the
+    sale. Ordinary Cash sales aren’t attributed to any one buyer and aren’t counted here. Scan
+    the buyer’s receipt on the Scan Receipt page and tap “Mark credit paid” once they’ve settled
+    up. It drops off this list right after.
+  </p>
   {% if rows %}
   <div data-smart-table data-page-size="10">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by name or branch…" autocomplete="off">
       </div>
     </div>
@@ -68,7 +76,7 @@
         </colgroup>
         <thead>
           <tr>
-            <th style="width:36px;"></th>
+            <th></th>
             <th>Name</th>
             <th>Branch</th>
             <th class="num">Transactions</th>
@@ -80,30 +88,29 @@
         <tbody>
           {% for r in rows %}
           <tr data-search="{{ (r.buyer_name or '')|lower }} {{ r.branch_name|lower }}">
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
-            <td class="item-name" data-label="Name">{{ r.buyer_name or '—' }}</td>
+            <td class="cp-rank text-faint" data-label="Rank">#{{ loop.index }}</td>
+            <td class="item-name" data-label="Name">{{ r.buyer_name or 'No name' }}</td>
             <td data-label="Branch">{{ r.branch_name }}</td>
-            <td class="num mono" data-label="Transactions">{{ r.transaction_count }}</td>
-            <td class="num mono" data-label="Units">{{ m.qty_split(r.total_units, r.total_bulk_ml) }}</td>
-            <td class="num mono" data-label="Total owed">{{ r.total_amount|peso }}</td>
-            <td class="mono text-soft" data-label="Last taken">{{ r.last_taken_at.strftime('%b %d, %Y') }}</td>
+            <td class="num" data-label="Transactions">{{ r.transaction_count }}</td>
+            <td class="num" data-label="Units">{{ m.qty_split(r.total_units, r.total_bulk_ml) }}</td>
+            <td class="num" data-label="Total owed">{{ r.total_amount|peso }}</td>
+            <td class="tnum text-soft" data-label="Last taken">{{ r.last_taken_at.strftime('%b %d, %Y') }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No names match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No outstanding Credit — nothing recorded, or it's all been paid back.</p></div>
+  <div class="empty-state"><p>No outstanding Credit. Nothing recorded, or it’s all been paid back; a Credit sale on Record Sale adds a row here.</p></div>
   {% endif %}
 </div>
 {% endblock %}

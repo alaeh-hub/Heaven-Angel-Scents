@@ -73,10 +73,10 @@ function isSamePageNoOpLink(link) {
 
     function measure() {
         const cs = getComputedStyle(sidebar);
-        const chrome = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)
-            + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        const gutter = (sidebar.getBoundingClientRect().width - chrome
-            - brand.getBoundingClientRect().width) / 2;
+        // The reserved scrollbar gutter is whatever the scroll box gives up
+        // beside its content; independent of how wide the rail is laid out.
+        const gutter = sidebar.offsetWidth - sidebar.clientWidth
+            - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
         if (gutter >= 0) {
             document.documentElement.style.setProperty('--sidebar-gutter', gutter + 'px');
             try { localStorage.setItem('sidebarGutter', String(gutter)); } catch (e) { }
@@ -270,6 +270,15 @@ function initSidebarHoverIntent() {
         if (e.pointerType === 'touch') return;
         schedule(false, CLOSE_DELAY);
     });
+
+    // Keyboard focus opens the rail too, but a mouse click on a link must
+    // not leave it stuck open, so only :focus-visible counts.
+    sidebar.addEventListener('focusin', (e) => {
+        if (e.target.matches(':focus-visible')) sidebar.classList.add('is-kbd');
+    });
+    sidebar.addEventListener('focusout', (e) => {
+        if (!sidebar.contains(e.relatedTarget)) sidebar.classList.remove('is-kbd');
+    });
 }
 
 // Positions the shared sliding highlight (#navIndicator) on the active
@@ -454,6 +463,10 @@ function initSidebarSearch() {
     document.addEventListener('keydown', (e) => {
         if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
         e.preventDefault();
+        if (window.innerWidth > 760 && typeof window.openTopbarSearch === 'function') {
+            window.openTopbarSearch();
+            return;
+        }
         if (window.innerWidth <= 760 && !sidebar.classList.contains('open')) {
             const menuBtn = document.getElementById('menuToggle');
             if (menuBtn) menuBtn.click();
@@ -461,6 +474,147 @@ function initSidebarSearch() {
         input.focus();
         input.select();
     });
+}
+
+// Top-bar search for laptops and desktops: a full field in the top bar. Focus
+// or typing drops a panel of pages built from the sidebar's own links (so the
+// two never drift apart). Choosing a result clicks the real sidebar link,
+// which keeps soft navigation and the active-page highlight as they were.
+function initTopbarSearch() {
+    const sidebar = document.getElementById('sidebar');
+    const root = document.getElementById('topbarSearch');
+    const panel = document.getElementById('topbarSearchPanel');
+    const input = document.getElementById('topbarSearchInput');
+    const list = document.getElementById('topbarSearchList');
+    const empty = document.getElementById('topbarSearchEmpty');
+    const kbd = document.getElementById('topbarSearchKbd');
+    if (!sidebar || !root || !panel || !input || !list) return;
+    if (kbd) kbd.textContent = IS_MAC ? '\u2318K' : 'Ctrl K';
+
+    const seen = new Set();
+    const entries = [];
+    sidebar.querySelectorAll('.nav-group .nav-link[href]').forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || link.classList.contains('has-subs') || seen.has(href)) return;
+        seen.add(href);
+        const textEl = link.querySelector('.nav-text');
+        const label = (textEl ? textEl.textContent : link.textContent).trim();
+        const groupEl = link.closest('.nav-group');
+        const gl = groupEl && groupEl.querySelector('.nav-label');
+        const group = gl ? ((gl.childNodes[0] && gl.childNodes[0].textContent) || gl.textContent).trim() : '';
+        entries.push({ link, label, group, haystack: (label + ' ' + group).toLowerCase() });
+    });
+
+    let shown = [];
+    let active = -1;
+
+    function render() {
+        const raw = input.value.trim();
+        const tokens = raw.toLowerCase().split(/\s+/).filter(Boolean);
+        shown = entries.filter((e) => tokens.every((t) => e.haystack.includes(t)));
+        list.replaceChildren();
+        shown.forEach((e, i) => {
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.id = 'topbarSearchOpt' + i;
+            const a = document.createElement('a');
+            a.href = e.link.getAttribute('href');
+            a.tabIndex = -1;
+            const name = document.createElement('div');
+            const at = tokens.length ? e.label.toLowerCase().indexOf(tokens[0]) : -1;
+            if (at >= 0) {
+                const mark = document.createElement('mark');
+                mark.textContent = e.label.slice(at, at + tokens[0].length);
+                name.append(e.label.slice(0, at), mark, e.label.slice(at + tokens[0].length));
+            } else {
+                name.textContent = e.label;
+            }
+            const grp = document.createElement('span');
+            grp.textContent = e.group;
+            a.append(name, grp);
+            // pointerdown keeps focus in the field until the click lands
+            a.addEventListener('pointerdown', (ev) => ev.preventDefault());
+            a.addEventListener('click', (ev) => { ev.preventDefault(); go(e); });
+            li.appendChild(a);
+            list.appendChild(li);
+        });
+        if (empty) {
+            empty.hidden = shown.length > 0;
+            const q = empty.querySelector('span');
+            if (q) q.textContent = raw;
+        }
+        setActive(shown.length ? 0 : -1);
+    }
+
+    function setActive(i) {
+        active = i;
+        list.querySelectorAll('[role="option"]').forEach((li, n) => li.setAttribute('aria-selected', String(n === i)));
+        const cur = list.children[i];
+        if (cur) {
+            input.setAttribute('aria-activedescendant', cur.id);
+            cur.scrollIntoView({ block: 'nearest' });
+        } else {
+            input.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function open() {
+        if (panel.hidden) {
+            panel.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+            render();
+        }
+    }
+
+    function close() {
+        if (panel.hidden) return;
+        panel.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+    }
+
+    function go(entry) {
+        input.value = '';
+        close();
+        input.blur();
+        entry.link.click();
+    }
+
+    window.openTopbarSearch = () => { input.focus(); input.select(); open(); };
+
+    input.addEventListener('focus', open);
+    input.addEventListener('input', () => { open(); render(); });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            open();
+            if (shown.length) setActive((active + 1) % shown.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (shown.length) setActive((active - 1 + shown.length) % shown.length);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (shown[active]) go(shown[active]);
+        } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            if (input.value) { input.value = ''; render(); } else { close(); input.blur(); }
+        }
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (!panel.hidden && !e.target.closest('#topbarSearch')) close();
+    });
+    input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) close(); }, 120));
+}
+
+// Installable app (PWA): the service worker is what lets the browser offer
+// its own Install option (address-bar icon, menu). Static files only are
+// cached, never pages or data (static/sw.js).
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
+            console.warn('[pwa] Service worker registration failed:', err);
+        });
+    }
 }
 
 // Arrow keys move between visible menu links (Home/End jump to the
@@ -1293,10 +1447,10 @@ function initThemeToggle() {
 function initFillBars() {
     document.querySelectorAll('.fill-bar[data-pct]').forEach((el) => {
         const pct = parseFloat(el.dataset.pct) || 0;
-        el.style.width = '0%';
+        el.style.setProperty('--pct', '0');
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                el.style.width = pct + '%';
+                el.style.setProperty('--pct', String(Math.min(Math.max(pct, 0), 100) / 100));
             });
         });
     });
@@ -1342,44 +1496,22 @@ function initStatCountUp() {
 // initStatCountUp(), skipped under reduced motion and on tab-style soft
 // navs (refreshDynamicContent's skipReveal).
 function initEntranceStagger() {
-    if (!window.anime || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const { animate, stagger } = window.anime;
-
-    const run = (els, from, base) => {
-        if (!els.length) return;
-        animate(els, {
-            opacity: [0, 1],
-            translateY: [from, 0],
-            duration: 520,
-            delay: stagger(40, { start: base }),
-            ease: 'outExpo',
-            onComplete: () => els.forEach((el) => { el.style.opacity = ''; el.style.transform = ''; }),
-        });
-    };
-
-    const tiles = [...document.querySelectorAll('.stat-tile')].filter((el) => !el.dataset.enterDone);
-    tiles.forEach((el) => { el.dataset.enterDone = '1'; });
-    run(tiles, 14, 0);
-
-    const rows = [...document.querySelectorAll('.smart-table tbody tr')]
-        .filter((el) => !el.dataset.enterDone)
-        .slice(0, 14);
-    rows.forEach((el) => { el.dataset.enterDone = '1'; });
-    run(rows, 8, tiles.length ? 160 : 60);
+    // Intentionally empty. Tiles and rows used to slide in one by one on top of
+    // the page transition and the content reveal, so a freshly opened table
+    // moved three ways at once. One reveal per page now (see revealContent).
 }
 
 function revealContent() {
+    // Soft navigations already cross-fade through the browser's view transition
+    // (style.css), so the content must not animate a second time. Browsers
+    // without view transitions get a plain opacity fade, no movement.
+    if (typeof document.startViewTransition === 'function') return;
     if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    const items = document.querySelectorAll('.content > *');
-    if (!items.length) return;
+    const content = document.querySelector('.content');
+    if (!content) return;
 
-    var revealAnim = window.Motion.animate(
-        items,
-        { opacity: [0, 1], transform: ['translateY(8px)', 'translateY(0px)'] },
-        { duration: 0.4, delay: window.Motion.stagger(0.05), easing: [0.16, 1, 0.3, 1] }
-    );
-
+    var revealAnim = window.Motion.animate(content, { opacity: [0, 1] }, { duration: 0.18, easing: 'ease-out' });
     if (revealAnim && typeof revealAnim.then === 'function') {
         revealAnim.then(null, function () { });
     }
@@ -1397,9 +1529,9 @@ function revealContent() {
 // splash exits when it ends. Clicking or pressing any key skips it,
 // and a hard cap guarantees the app is never stuck behind a stalled
 // video. If autoplay is refused, it falls back to the static wordmark.
-const LOGIN_SPLASH_HOLD_MS = 650;
+const LOGIN_SPLASH_HOLD_MS = 2400;
+const LOGIN_SPLASH_REDUCED_HOLD_MS = 600;
 const LOGIN_SPLASH_EXIT_MS = 350;
-const LOGIN_SPLASH_VIDEO_MAX_MS = 4500;
 
 function initLoginSplash() {
     const el = document.getElementById('loginSplash');
@@ -1413,34 +1545,13 @@ function initLoginSplash() {
         el.classList.add('login-splash-exit');
         setTimeout(() => el.remove(), LOGIN_SPLASH_EXIT_MS);
     };
-    const video = document.getElementById('loginSplashVideo');
-    // Swap to the static wordmark (the markup starts in video mode).
-    const holdStatic = () => {
-        el.classList.remove('login-splash--video');
-        if (video) video.pause();
-        setTimeout(dismiss, LOGIN_SPLASH_HOLD_MS);
-    };
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!video || reduceMotion || typeof video.play !== 'function') {
-        holdStatic();
-        return;
-    }
-
-    video.addEventListener('ended', dismiss);
-    video.addEventListener('error', dismiss, true);
+    // Clicking or pressing any key skips it; otherwise it leaves on its own
+    // once the reveal has played and held for a beat.
     el.addEventListener('click', dismiss);
     document.addEventListener('keydown', dismiss);
-    setTimeout(dismiss, LOGIN_SPLASH_VIDEO_MAX_MS);
-
-    const playing = video.play();
-    if (playing && typeof playing.catch === 'function') {
-        playing.catch(() => {
-            // Autoplay blocked (e.g. power-saver mode) — show the
-            // static wordmark instead of a black screen.
-            if (!done) holdStatic();
-        });
-    }
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(dismiss, reduceMotion ? LOGIN_SPLASH_REDUCED_HOLD_MS : LOGIN_SPLASH_HOLD_MS);
 }
 
 // Runs `fn`, logging and swallowing any exception instead of letting it
@@ -1484,6 +1595,8 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initSidebarHoverIntent, 'sidebarHoverIntent');
     safeInit(initSidebarIndicator, 'sidebarIndicator');
     safeInit(initSidebarSearch, 'sidebarSearch');
+    safeInit(initTopbarSearch, 'topbarSearch');
+    safeInit(registerServiceWorker, 'serviceWorker');
     safeInit(initSidebarKeyboardNav, 'sidebarKeyboardNav');
     safeInit(initSidebarScrollShadow, 'sidebarScrollShadow');
     safeInit(initThemeToggle, 'themeToggle');
@@ -2413,25 +2526,47 @@ function pctChange(current, previous) {
     return ((current - previous) / Math.abs(previous)) * 100;
 }
 
+// Chart.js cannot parse every modern CSS colour (oklch, color-mix), so each
+// theme token is resolved to plain sRGB through a 1px canvas first.
+var chartColorCtx = null;
+function chartRgb(value) {
+    if (!chartColorCtx) {
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = 1;
+        chartColorCtx = cv.getContext('2d', { willReadFrequently: true });
+    }
+    chartColorCtx.clearRect(0, 0, 1, 1);
+    chartColorCtx.fillStyle = '#000';
+    chartColorCtx.fillStyle = value;
+    chartColorCtx.fillRect(0, 0, 1, 1);
+    var d = chartColorCtx.getImageData(0, 0, 1, 1).data;
+    return d[3] === 255 ? 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')'
+        : 'rgba(' + d[0] + ',' + d[1] + ',' + d[2] + ',' + (d[3] / 255).toFixed(3) + ')';
+}
+
 function chartTheme() {
     var css = getComputedStyle(document.documentElement);
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var accent = css.getPropertyValue('--accent').trim();
+    var tok = function (name) { return chartRgb(css.getPropertyValue(name).trim()); };
+    var accent = tok('--accent');
+    var sales = tok('--chart-sales');
+    var cream = tok('--chart-cream');
+    var cost = tok('--chart-cost');
     return {
         dark: dark,
-        ink: css.getPropertyValue('--ink').trim(),
-        soft: css.getPropertyValue('--ink-soft').trim(),
-        faint: css.getPropertyValue('--ink-faint').trim(),
-        grid: css.getPropertyValue('--border').trim(),
-        surface: css.getPropertyValue('--surface').trim(),
+        ink: tok('--ink'),
+        soft: tok('--ink-soft'),
+        faint: tok('--ink-faint'),
+        grid: tok('--border'),
+        surface: tok('--surface'),
+        tipEdge: tok('--chart-tip-edge'),
+        font: css.getPropertyValue('--font').trim(),
         accent: accent,
-        sales: dark ? '#4fb3bf' : '#1f93a1',
-        cost: dark ? '#ff7a8a' : '#e0475b',
+        sales: sales,
+        cost: cost,
         profit: accent,
-        cream: dark ? '#d8d3c4' : '#a9a28c',
-        series: dark
-            ? [accent, '#4fb3bf', '#d8d3c4', '#ff7a8a', '#9085e9', '#199e70', '#d95926', '#3d9fd6']
-            : [accent, '#1f93a1', '#a9a28c', '#e0475b', '#4a3aa7', '#1baf7a', '#eb6834', '#1f78b4']
+        cream: cream,
+        series: [accent, sales, cream, cost, tok('--chart-4'), tok('--chart-5'), tok('--chart-6'), tok('--chart-7')]
     };
 }
 
@@ -2439,7 +2574,7 @@ function chartTheme() {
 // call on every data load.
 function applyChartDefaults() {
     var t = chartTheme();
-    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.font.family = t.font;
     Chart.defaults.font.size = 12;
     Chart.defaults.color = t.soft;
     Chart.defaults.borderColor = t.grid;
@@ -2455,7 +2590,7 @@ function applyChartDefaults() {
     tip.backgroundColor = t.surface;
     tip.titleColor = t.ink;
     tip.bodyColor = t.soft;
-    tip.borderColor = t.dark ? 'rgba(255,245,220,0.18)' : 'rgba(23,20,13,0.16)';
+    tip.borderColor = t.tipEdge;
     tip.borderWidth = 1;
     tip.padding = 10;
     tip.cornerRadius = 10;
@@ -3750,13 +3885,52 @@ function wireOverlay(overlayId, openBtnId, cancelBtnId) {
 // the same target-resolution isSoftSubmittableForm() uses, so only a
 // submit that's actually about to navigate *this* tab shows it.
 function initSubmitLoadingState() {
+    // A submit marks its own button busy (label and width stay) and starts the
+    // top progress bar; the page stays interactive. A second submit of the same
+    // form is swallowed while the first is in flight.
+    function clearBusy(form) {
+        delete form.dataset.submitting;
+        form.querySelectorAll('.is-loading').forEach((b) => {
+            b.classList.remove('is-loading');
+            b.removeAttribute('aria-busy');
+            b.removeAttribute('aria-disabled');
+        });
+    }
+
     document.addEventListener('submit', (e) => {
         if (e.defaultPrevented) return;
         if (!(e.target instanceof HTMLFormElement)) return;
         const form = e.target;
         const target = (e.submitter && e.submitter.formTarget) || form.target;
         if (target && target !== '_self') return;
-        showLoadingOverlay();
+        if (form.dataset.submitting === '1') {
+            e.preventDefault();
+            return;
+        }
+        form.dataset.submitting = '1';
+        const btn = e.submitter || form.querySelector('button[type="submit"], button:not([type])');
+        if (btn) {
+            btn.classList.add('is-loading');
+            btn.setAttribute('aria-busy', 'true');
+            btn.setAttribute('aria-disabled', 'true');
+        }
+        const bar = document.getElementById('topbarProgress');
+        if (bar) bar.classList.add('is-loading');
+        // A later handler may still cancel the submit (validation): undo then.
+        setTimeout(() => {
+            if (e.defaultPrevented) {
+                clearBusy(form);
+                if (bar) bar.classList.remove('is-loading');
+            }
+        }, 0);
+    });
+
+    // Back/forward restores the page from cache with the busy state still on.
+    window.addEventListener('pageshow', (ev) => {
+        if (!ev.persisted) return;
+        document.querySelectorAll('form[data-submitting]').forEach(clearBusy);
+        const bar = document.getElementById('topbarProgress');
+        if (bar) bar.classList.remove('is-loading');
     });
 }
 
@@ -3814,7 +3988,7 @@ function showGenerateOverlay() {
     generateOverlayShownAt = Date.now();
     const el = getGenerateOverlay();
     el.querySelector('#genProgressTrack').classList.add('indeterminate');
-    el.querySelector('#genProgressFill').style.width = '';
+    el.querySelector('#genProgressFill').style.removeProperty('--p');
     el.querySelector('#genOverlayText').textContent = 'Preparing your file…';
     el.classList.remove('loading-overlay-exit');
     el.hidden = false;
@@ -3828,7 +4002,7 @@ function showGenerateOverlay() {
 function setGenerateProgress(fraction) {
     if (!generateOverlayEl) return;
     generateOverlayEl.querySelector('#genProgressTrack').classList.remove('indeterminate');
-    generateOverlayEl.querySelector('#genProgressFill').style.width = `${Math.round(Math.min(fraction, 1) * 100)}%`;
+    generateOverlayEl.querySelector('#genProgressFill').style.setProperty('--p', String(Math.min(Math.max(fraction, 0), 1)));
     generateOverlayEl.querySelector('#genOverlayText').textContent = 'Downloading…';
 }
 

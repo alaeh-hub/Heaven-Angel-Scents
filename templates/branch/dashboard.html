@@ -1,47 +1,116 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Dashboard{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Welcome, {{ session.username }}{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* Dashboard: today's figures on a rule, then what needs action, then the
+     open requests. Figures are tabular, tables carry the detail. */
+  .dash-stats {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    gap: var(--space-lg);
+  }
+
+  .dash-stats .stat-tile {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dash-stats .stat-value {
+    font-size: var(--text-2xl);
+  }
+
+  .dash-stats .dash-lead .stat-value {
+    font-size: var(--text-3xl);
+  }
+
+  .dash-stats .kpi-meta {
+    margin-top: var(--space-xs);
+  }
+
+  .dash-stats .kpi-spark {
+    height: 2.5rem;
+    margin: var(--space-sm) 0 0;
+  }
+
+  .dash-stats .stat-foot a {
+    color: var(--ink-soft);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .dash-table-fill {
+    min-width: 9rem;
+  }
+
+  .dash-empty-action {
+    margin-top: var(--space-sm);
+  }
+
+  @media (max-width: 900px) {
+    .dash-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dash-stats .dash-lead {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .dash-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dash-table-fill {
+      min-width: 0;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="kpi-grid stack">
-  <div class="card kpi-tile">
-    <div class="kpi-label">Today's revenue</div>
-    <div class="kpi-value">{{ today_sales.revenue|compact_peso }}</div>
+<div class="dash-stats stack">
+  <div class="stat-tile dash-lead">
+    <div class="stat-label">Today's revenue</div>
+    <div class="stat-value">{{ today_sales.revenue|compact_peso }}</div>
     <div class="kpi-meta">
       {{ m.kpi_chip(today_sales.trend) }}
       <span class="kpi-note">{{ today_sales.units|int }} bottle{{ '' if today_sales.units|int == 1 else 's' }} sold{% if today_sales.bulk_ml %} · {{ today_sales.bulk_ml|int }} mL bulk{% endif %}</span>
     </div>
-    <div class="kpi-spark" data-spark="{{ spark_revenue|tojson|forceescape }}" data-tone="sales"></div>
+    <div class="kpi-spark" data-spark="{{ spark_revenue|tojson|forceescape }}" data-tone="sales" aria-hidden="true"></div>
   </div>
-  <div class="card kpi-tile">
-    <div class="kpi-label">Last 7 days</div>
-    <div class="kpi-value">{{ week_revenue|compact_peso }}</div>
+  <div class="stat-tile">
+    <div class="stat-label">Low stock</div>
+    <div class="stat-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
+    <div class="stat-foot"><a href="{{ url_for('branch.request_stock') }}">Request more</a></div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Last 7 days</div>
+    <div class="stat-value">{{ week_revenue|compact_peso }}</div>
     <div class="kpi-meta">
       {{ m.kpi_chip(week_trend) }}
       <span class="kpi-note">vs. the 7 days before</span>
     </div>
-    <div class="kpi-spark" data-spark="{{ spark_units|tojson|forceescape }}" data-tone="profit"></div>
+    <div class="kpi-spark" data-spark="{{ spark_units|tojson|forceescape }}" data-tone="profit" aria-hidden="true"></div>
   </div>
-  <div class="card kpi-tile">
-    <div class="kpi-label">SKUs carried</div>
+  <div class="stat-tile">
+    <div class="stat-label">SKUs carried</div>
     <div class="kpi-value">{{ sku_count }}</div>
-    <div class="kpi-foot-link">in your branch</div>
-  </div>
-  <div class="card kpi-tile">
-    <div class="kpi-label">Low stock</div>
-    <div class="kpi-value {{ 'danger' if low_stock else '' }}">{{ low_stock|length }}</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('branch.request_stock') }}">request more →</a></div>
+    <div class="stat-foot">in your branch</div>
   </div>
 </div>
 
-<div class="grid grid-2 stack">
+<div class="grid grid-2 stack dash-grid">
   <div class="card">
     <div class="card-header">
       <h2>Low stock</h2>
       {% if reorder_all_url %}
-      <a href="{{ reorder_all_url }}" class="hint">reorder all →</a>
+      <a href="{{ reorder_all_url }}" class="hint">Reorder all</a>
       {% else %}
       <span class="hint">reorder level reached</span>
       {% endif %}
@@ -65,7 +134,7 @@
           {% for row in low_stock %}
           <tr>
             <td class="item-name mobile-inline-anchor" data-label="Item">{{ row.item_name }}</td>
-            <td class="num" style="min-width:150px;" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level
+            <td class="num dash-table-fill" data-label="On hand">{{ m.fill_bar(row.stock_qty, row.reorder_level
               * 3) }}</td>
             <td data-label="" class="mobile-inline-action">
               {% if row.requestable %}
@@ -80,7 +149,6 @@
     </div>
     {% else %}
     <div class="empty-state">
-      <div class="glyph">✓</div>
       <p>Everything is above its reorder threshold.</p>
     </div>
     {% endif %}
@@ -88,7 +156,7 @@
 
   <div class="card">
     <div class="card-header">
-      <h2>Open requests</h2><a href="{{ url_for('branch.request_stock') }}" class="hint">new request →</a>
+      <h2>Open requests</h2><a href="{{ url_for('branch.request_stock') }}" class="hint">New request</a>
     </div>
     {% if pending_requests %}
     <div class="table-wrap">
@@ -121,8 +189,8 @@
     </div>
     {% else %}
     <div class="empty-state">
-      <div class="glyph">—</div>
       <p>No open requests right now.</p>
+      <p class="dash-empty-action"><a href="{{ url_for('branch.request_stock') }}" class="btn btn-ghost btn-sm">New request</a></p>
     </div>
     {% endif %}
   </div>
@@ -133,11 +201,12 @@
 <script nonce="{{ csp_nonce() }}">
   // KPI sparklines (sparklineSVG lives in main.js).
   (function () {
-    var t = chartTheme();
+    var css = getComputedStyle(document.documentElement);
+    var tones = { sales: css.getPropertyValue('--accent').trim(), profit: css.getPropertyValue('--ink-soft').trim() };
     document.querySelectorAll('.kpi-spark[data-spark]').forEach(function (el) {
       try {
         var vals = JSON.parse(el.getAttribute('data-spark'));
-        el.innerHTML = sparklineSVG(vals, t[el.getAttribute('data-tone')] || t.accent);
+        el.innerHTML = sparklineSVG(vals, tones[el.getAttribute('data-tone')] || tones.sales);
       } catch (e) { }
     });
   })();

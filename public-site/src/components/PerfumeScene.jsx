@@ -2,21 +2,23 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { SCENE_LABEL } from '../content/scents.js';
 
-// Uriel H1 & Raphael A3. variant="story" (the hero) is
-// prototype/wings/index.html: a gate of heaven opens in the dark: an oculus ringed in gold, thin beams of light, stars, under
-// a halo. The halo splits into two rings that fly down to
-// become the platforms' LED rings, each landing with a flash and a
-// shockwave across the floor, while the beams and stars dissolve, outermost
-// first, into streams of light that build each bottle from its base
-// upward behind a glowing gold edge. A glossy black floor reflects it
-// all; bloom, a horizontal anamorphic streak, a shallow depth of field
-// and ACES with a little film grain finish each frame.
+// Uriel H1 & Raphael A3. variant="story" (the hero) is "wireframe to real":
+// in the dark, glowing points and thin lines draw a blueprint of each
+// bottle: the points start scattered and settle onto their nodes while the
+// lines trace out rings and meridians from the base upward, with a scan
+// line sliding over them. Then the surface fills in: a bright seam sweeps
+// up the real bottle, the blueprint dissolving behind it, and the glass
+// turns on (an electric rim glow on the dark body). When the seam reaches
+// the cap a small shockwave rings out across the floor and through the air,
+// the platforms' LED rings fire and the lights switch to a studio look. A
+// glossy black floor reflects it all; bloom, a horizontal anamorphic
+// streak, a shallow depth of field and ACES with a little film grain finish
+// each frame.
 //
-// The prototypes looped on three r149 and faded to black between loops;
-// here the timeline is driven from outside (the hero scrubs it with the
-// scroll) and there is no fade, since the hero fades the canvas in. The
-// bottles are the 85 ml white-bottle product: their labels are cut from the
-// product renders into static/img/scene/ by scripts/build_scent_images.py.
+// The timeline is driven from outside (the hero scrubs it with the scroll)
+// and there is no fade, since the hero fades the canvas in. The bottles are
+// the 85 ml white-bottle product: their labels are cut from the product
+// renders into static/img/scene/ by scripts/build_scent_images.py.
 //
 // variant="turntable" is the finished pair from
 // prototype/turntable/*.html (one bottle each there, both here): each
@@ -35,16 +37,15 @@ THREE.ColorManagement.enabled = false;
 
 /** Scene time (seconds) of the final frame: both bottles on their platforms. */
 export const SCENE_END = 10;
-/** Scene time when the clouds and light shafts have opened under the halo. */
+/** Scene time up to which the blueprint simply draws itself; the scroll starts the fill-in. */
 export const SCENE_INTRO = 2.2;
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-const lin = (a, b, t) => clamp((t - a) / (b - a));
 const sstep = (x) => x * x * (3 - 2 * x);
+const lin = (a, b, t) => clamp((t - a) / (b - a));
 const ss = (a, b, t) => sstep(lin(a, b, t));
 const eIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const eIOS = (x) => -(Math.cos(Math.PI * x) - 1) / 2;
-const eIn = (x) => x * x * x;
 const lerp = (a, b, x) => a + (b - a) * x;
 
 /** Cubic Hermite through [t, v] keys (Catmull-Rom tangents, clamped ends). */
@@ -66,7 +67,7 @@ function curve(keys, t) {
   return (2 * u3 - 3 * u2 + 1) * v0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * v1 + (u3 - u2) * m1;
 }
 
-/* Story camera, [time, value] keys as in prototype/wings/index.html. */
+/* Story camera, [time, value] keys. */
 const CAM_KEYS = [0, 3.4, 6.2, 10];
 const camKeys = (v) => CAM_KEYS.map((k, i) => [k, v[i]]);
 const CAM = {
@@ -80,12 +81,20 @@ const CAM = {
 const EASE_MS = 130;
 /** Average ms per frame above which the scene steps down a quality tier (≈ 40 fps). */
 const SLOW_FRAME_MS = 25;
-/** Pixel-ratio cap and glass-refraction resolution, best first. */
+/**
+ * Pixel-ratio cap, canvas pixel budget and glass-refraction resolution,
+ * best first. The budget (total canvas pixels) is what keeps a tier
+ * affordable: a phone's canvas is only ~400 CSS px across, so it can run
+ * at its full 2 to 2.5x density for fewer pixels than a desktop canvas
+ * at 1.75x. Cutting density instead is what made phones look soft.
+ */
 const QUALITY = [
-  { dpr: 1.75, transmission: 1, dof: true },
-  { dpr: 1.5, transmission: 0.75, dof: true },
-  { dpr: 1.25, transmission: 0.5, dof: false },
-  { dpr: 1, transmission: 0.5, dof: false },
+  { dpr: 3, px: 2.6e6, transmission: 1, dof: true },
+  { dpr: 3, px: 2.4e6, transmission: 1, dof: true },
+  { dpr: 3, px: 2e6, transmission: 0.75, dof: false },
+  { dpr: 2, px: 1.2e6, transmission: 0.6, dof: false },
+  { dpr: 1.5, px: 0.9e6, transmission: 0.5, dof: false },
+  { dpr: 1, px: 0.6e6, transmission: 0.5, dof: false },
 ];
 /** Rendered frames the average needs before it may step down (≈ 1/3 s at 60 Hz). */
 const SLOW_STREAK = 20;
@@ -97,11 +106,12 @@ const VERY_SLOW_FRAME_MS = 50;
  * the page (the hero's and the notes section's), so the second scene
  * starts where the first one landed instead of re-learning it, with the
  * stutter and the render-target rebuilds that come with each step.
- * Touch devices start two steps down: a phone's GPU at 1.75x with depth
- * of field is almost always too slow, and every step down taken while
- * the visitor scrolls is a visible hitch.
+ * Touch devices start two steps down, skipping depth of field (the
+ * costly part on a phone's GPU) but keeping the full pixel density, so
+ * the bottles stay sharp and every step down taken while the visitor
+ * scrolls, a visible hitch, is avoided.
  */
-let sharedTier = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 2 : 0;
+let sharedTier = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 1 : 0;
 
 /* Turntable timing, exactly as in prototype/turntable/*.html. */
 const SPIN = (Math.PI * 2) / 10; // one full turn every 10 s
@@ -127,7 +137,7 @@ const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(pos
  * is called when something arrives late (the label images) and the
  * current frame needs drawing again. `variant` is 'story', 'turntable'
  * or 'spray' (all share the studio: caustics, depth of field; the story
- * adds the heaven backdrop and its lens effects); `tones` (CSS colours) tint the turntable's backdrop glow along
+ * adds the blueprint and its lens effects); `tones` (CSS colours) tint the turntable's backdrop glow along
  * render()'s `tone` argument.
  */
 function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}) {
@@ -627,265 +637,245 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     );
   }
 
-  /* ---------------- story: a gate of heaven → streams of light → perfumes ---------------- */
+  /* ---------------- story: wireframe blueprint → surface fills in → studio ---------------- */
   /**
-   * Builds the heaven backdrop (oculus, light beams, halo), light streams and bottle reveal, and returns
+   * Builds the blueprint (glowing points and lines for each bottle), the
+   * cold haze behind it, the shockwaves and the bottle reveal, and returns
    * `update(t)` to pose them (bottles, platforms and camera are posed in
    * poseStory). Everything is a pure function of `t`, so the scroll can
    * scrub it either way.
+   *
+   *   0 - 4.4    the blueprint draws itself: points settle onto their nodes,
+   *              lines trace upward from the base, a scan line slides over
+   *   4.4 - 5.7  the surface fills in behind a bright seam that sweeps up
+   *              each bottle; the blueprint dissolves behind it and the
+   *              glass turns on (electric rim on the dark body)
+   *   5.9        shockwave: LED rings fire, the floor and the air ripple,
+   *              the lights switch to the studio look
    */
-  function makeWings() {
-    const GOLD_ENV = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [3.6, 1.2, 1.4]], [0.8, 9, [5.5, 0.6, -1.5], [0.6, 1.8, 3.4]], [0.5, 8, [0, 0.8, 6], [3.2, 2.5, 1.6]], TOP, STREAK, GOLD_R, GOLD_F]);
+  function makeWireframeStory() {
+    const LAND = [5.9, 6.05]; // when each platform's LED ring fires (just after the seam reaches the cap)
+    const REV_EXT = 0.4; // the seam travels this far past the cap, so its glow has died out before it stops
+    const REVEAL = [
+      { t0: 4.4, dur: 1.3, x: -PX, u: { value: -1 } },
+      { t0: 4.55, dur: 1.3, x: PX, u: { value: -1 } },
+    ];
+    const HTOT = BOTTLE.H + BOTTLE.collarH + BOTTLE.capH;
+    const SPAN = HTOT + REV_EXT;
+    const WIRE_H = PPH + HTOT; // world height the draw-on order is measured against
 
-    // the halo, and the two rings it splits into (they become the platform LED rings)
-    const haloMat = new THREE.MeshPhysicalMaterial({
-      color: 0xf0c46a, metalness: 1, roughness: 0.2, emissive: 0xffc766, emissiveIntensity: 1.6, envMap: GOLD_ENV, envMapIntensity: 1.5,
-    });
-    const HALO_Y = 2.0;
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.014, 16, 128), haloMat);
-    halo.rotation.x = 1.25;
-    scene.add(halo);
-    const LAND = [5.1, 5.3]; // when each ring lands on its platform
-    const haloRings = [[-PX, PINK, LAND[0]], [PX, CYAN, LAND[1]]].map(([x, col, tl]) => {
-      const m = haloMat.clone();
-      const r = new THREE.Mesh(halo.geometry, m);
-      r.visible = false;
-      scene.add(r);
-      const rm = new THREE.Mesh(halo.geometry, m);
-      rm.visible = false;
-      mirror.add(rm);
-      return { r, rm, m, x, col, tl };
-    });
-    // golden motes rising through the light
-    const MOTES = 220;
-    const mp = new Float32Array(MOTES * 3);
-    const ms = new Float32Array(MOTES);
-    for (let i = 0; i < MOTES; i += 1) {
-      mp.set([(Math.random() - 0.5) * 3.2, Math.random() * 2.6, (Math.random() - 0.5) * 1.6], i * 3);
-      ms[i] = Math.random();
-    }
-    const mg = new THREE.BufferGeometry();
-    mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
-    mg.setAttribute('aS', new THREE.BufferAttribute(ms, 1));
-    const motes = new THREE.Points(mg, new THREE.ShaderMaterial({
-      uniforms: { uT: { value: 0 }, uA: { value: 0 }, uScale: { value: 600 } },
-      vertexShader: `
-        attribute float aS; uniform float uT, uA, uScale; varying float vA;
-        void main(){
-          vec3 p = position;
-          p.y = mod(p.y + uT*(0.08 + 0.14*aS), 2.8);
-          p.x += 0.08*sin(uT*0.9 + aS*40.0); p.z += 0.08*cos(uT*0.7 + aS*25.0);
-          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
-          vA = uA * (0.4 + 0.6*sin(uT*3.0 + aS*50.0)*sin(uT*3.0 + aS*50.0)) * smoothstep(0.0, 0.35, p.y) * (1.0 - smoothstep(2.2, 2.8, p.y));
-          gl_PointSize = (0.014 + 0.02*aS) * uScale / -mv.z;
-        }`,
-      fragmentShader: `
-        varying float vA;
-        void main(){ vec2 c = gl_PointCoord - 0.5; float a = exp(-dot(c,c)*16.0) * vA; if (a < 0.003) discard; gl_FragColor = vec4(vec3(1.7, 1.3, 0.7)*a, a); }`,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    }));
-    motes.frustumCulled = false;
-    motes.renderOrder = 8;
-    scene.add(motes);
-    noDepth.push(motes);
+    // cold haze behind the blueprint: a faint blue backlight that blooms when the surface closes
+    const cold = glowPlane(new THREE.Color(0.4, 0.62, 1.0).multiplyScalar(0.5), 5.0, false);
+    cold.position.set(0, 1.3, -2.4);
+    noDepth.push(cold);
 
-    // tall shafts of light descending from the halo
-    const shaftCanvas = document.createElement('canvas');
-    shaftCanvas.width = 64;
-    shaftCanvas.height = 256;
-    {
-      const g = shaftCanvas.getContext('2d');
-      const gx = g.createLinearGradient(0, 0, 64, 0);
-      gx.addColorStop(0, 'rgba(255,255,255,0)');
-      gx.addColorStop(0.5, 'rgba(255,255,255,1)');
-      gx.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gx;
-      g.fillRect(0, 0, 64, 256);
-      g.globalCompositeOperation = 'destination-in';
-      const gy = g.createLinearGradient(0, 0, 0, 256);
-      gy.addColorStop(0, 'rgba(0,0,0,1)');
-      gy.addColorStop(0.7, 'rgba(0,0,0,0.5)');
-      gy.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = gy;
-      g.fillRect(0, 0, 64, 256);
-    }
-    const shaftTex = keep(new THREE.CanvasTexture(shaftCanvas));
-    // they pour from the oculus down onto the floor, fanning out as they fall
-    const PORTAL = { y: 1.6, z: -2.6, r: 1.4 };
-    const SHAFTS = [-1.8, -1.2, -0.7, -0.25, 0.25, 0.7, 1.2, 1.8].map((x1, i) => {
-      const m = new THREE.MeshBasicMaterial({
-        map: shaftTex, color: new THREE.Color(1.0, 0.84, 0.55), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-      });
-      const x0 = x1 * 0.28;
-      const y0 = PORTAL.y - 0.2;
-      const len = Math.hypot(x1 - x0, y0);
-      const w = 0.05 + 0.07 * ((i * 5) % 3) / 2;
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, len), m);
-      p.position.set((x0 + x1) / 2, y0 / 2, -1.4 - 0.15 * (i % 3));
-      p.rotation.z = Math.atan2(x1 - x0, y0);
-      p.renderOrder = 3;
-      scene.add(p);
-      noDepth.push(p);
-      return { p, m, ph: i * 1.3 };
-    });
-
-    // the oculus: a round opening in the dark, blazing with light
-    const portalMat = new THREE.ShaderMaterial({
-      uniforms: { uT: { value: 0 }, uA: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: `
-        uniform float uT, uA; varying vec2 vUv;
-        void main(){
-          vec2 p = (vUv - 0.5) * 2.0; float r = length(p); float a = atan(p.y, p.x);
-          // crisp concentric gold rings and fine radial ticks around a clear, bright centre
-          float ring = max(smoothstep(0.014, 0.0, abs(r - 0.97)), smoothstep(0.008, 0.0, abs(r - 0.78)) * 0.7 + smoothstep(0.008, 0.0, abs(r - 0.56)) * 0.5);
-          float ticks = smoothstep(0.35, 0.5, abs(sin(a*36.0 + uT*0.25))) * step(0.84, r) * step(r, 0.93) * 0.8;
-          float disc = smoothstep(0.35, 0.0, r) * 1.3 + 0.12;
-          float I = (disc + ring + ticks) * step(r, 1.0) * uA;
-          vec3 col = mix(vec3(1.5, 1.05, 0.5), vec3(2.0, 1.85, 1.6), smoothstep(0.5, 0.0, r));
-          gl_FragColor = vec4(col*I, I);
-        }`,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    });
-    const portal = new THREE.Mesh(new THREE.CircleGeometry(1, 96), portalMat);
-    portal.position.set(0, PORTAL.y, PORTAL.z);
-    portal.renderOrder = 3;
-    scene.add(portal);
-    noDepth.push(portal);
-    const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.7, 0.8), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.012, 12, 160), rimMat);
-    rim.position.copy(portal.position);
-    rim.renderOrder = 3;
-    scene.add(rim);
-    noDepth.push(rim);
-
-    // four-point stars that twinkle around the halo
-    const starCanvas = document.createElement('canvas');
-    starCanvas.width = 64;
-    starCanvas.height = 64;
-    {
-      const g = starCanvas.getContext('2d');
-      g.translate(32, 32);
-      for (const [rx, ry] of [[30, 3], [3, 30]]) {
-        const gr = g.createRadialGradient(0, 0, 0, 0, 0, 30);
-        gr.addColorStop(0, 'rgba(255,255,255,1)');
-        gr.addColorStop(1, 'rgba(255,255,255,0)');
-        g.fillStyle = gr;
-        g.beginPath();
-        g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        g.fill();
-      }
-    }
-    const starTex = keep(new THREE.CanvasTexture(starCanvas));
-    const STARS = Array.from({ length: 16 }, () => {
-      const a = Math.random() * Math.PI * 2;
-      const r = 0.5 + Math.random() * 1.7;
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: starTex, color: new THREE.Color(1.6, 1.3, 0.8), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
-      }));
-      sp.position.set(Math.cos(a) * r * 1.2, HALO_Y - 0.4 + Math.sin(a) * r * 0.7, -0.5 + Math.random() * 0.8);
-      sp.renderOrder = 8;
-      scene.add(sp);
-      noDepth.push(sp);
-      return { sp, ph: Math.random() * 6.28, sz: 0.1 + 0.18 * Math.random(), f: 1.5 + 2 * Math.random() };
-    });
-
-    // LED shockwave rings that ripple across the floor as each halo ring lands
+    // The shockwave when each bottle closes: one ring spreading across the
+    // floor (a second, delayed copy and a ring through the air at mid-bottle
+    // height read as duplicates of it, so there is just the one).
     const ringTex = radialTex([[0, 'rgba(255,255,255,0)'], [0.78, 'rgba(255,255,255,0)'], [0.9, 'rgba(255,255,255,1)'], [0.95, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
     const waves = [];
     for (const [x, col, t0] of [[-PX, PINK, LAND[0]], [PX, CYAN, LAND[1]]]) {
-      for (let k = 0; k < 2; k += 1) {
+      // [height, start size, growth per second, strength, delay]
+      for (const [y, s0, gr, amp, dl] of [[0.004, 0.9, 4.2, 0.85, 0]]) {
         const m = new THREE.MeshBasicMaterial({
           map: ringTex, color: col.clone().multiplyScalar(2.2), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
         });
         const p = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
         p.rotation.x = -Math.PI / 2;
-        p.position.set(x, 0.004, 0);
+        p.position.set(x, y, 0);
         p.renderOrder = 3;
         scene.add(p);
         noDepth.push(p);
-        waves.push({ p, m, t0: t0 + k * 0.22 });
+        waves.push({ p, m, t0: t0 + dl, s0, gr, amp });
       }
     }
 
-    // light from the heavens → streams of light → bottles. Each bottle is revealed from
-    // its base upward over `dur` seconds from `t0`, and each particle
-    // arrives at the height being revealed as it lands.
-    const REVEAL = [
-      { t0: 4.45, dur: 1.5, x: -PX, u: { value: -1 } },
-      { t0: 4.65, dur: 1.5, x: PX, u: { value: -1 } },
-    ];
-    const HTOT = BOTTLE.H + BOTTLE.collarH + BOTTLE.capH;
-    function makeStream(side, rv, tint) {
-      const N = 5200;
-      const S = new Float32Array(N * 3); // start: in the clouds and shafts of light
-      const E = new Float32Array(N * 3); // end: on the bottle's surface
-      const C = new Float32Array(N * 3); // control point of the arc between
-      const T = new Float32Array(N * 3); // birth, arrival, seed
-      for (let n = 0; n < N; n += 1) {
-        const inCloud = Math.random() < 0.45;
-        const sx = side * Math.pow(Math.random(), 0.8) * 1.9;
-        const sy = inCloud ? 0.05 + 0.6 * Math.random() : 0.4 + 2.0 * Math.random();
-        const sz = (Math.random() - 0.6) * (inCloud ? 1.8 : 0.7);
-        S.set([sx, sy, sz], n * 3);
-        const h = Math.pow(Math.random(), 0.9) * HTOT;
-        const rr = h < BOTTLE.H ? BOTTLE.R : h < BOTTLE.H + BOTTLE.collarH ? BOTTLE.collarR : BOTTLE.capR;
-        const ph = (Math.random() - 0.5) * Math.PI * 1.6;
-        E.set([rv.x + rr * Math.sin(ph), PPH + h, rr * Math.cos(ph)], n * 3);
-        C.set([
-          (sx + rv.x) / 2 + side * (0.2 + 0.5 * Math.random()),
-          Math.max(sy, PPH + h) + 0.25 + 0.6 * Math.random(),
-          0.5 + 0.9 * (Math.random() - 0.3),
-        ], n * 3);
-        // the outermost light leaves first, then it gathers inward
-        const birth = 3.45 + 0.95 * (Math.abs(sx) / 1.9) + 0.28 * Math.random();
-        const arrive = Math.max(rv.t0 + rv.dur * (h / HTOT) + 0.05, birth + 1.15);
-        T.set([birth, arrive, Math.random()], n * 3);
+    /**
+     * The blueprint of one bottle centred at x = cx: rings and meridians
+     * along its silhouette (body, collar, cap), a dashed centreline, a
+     * dimension line with end ticks, and a ring with tick marks on the
+     * floor. Lines go in as segment pairs; points sit on the ring/meridian
+     * crossings. aH is the world height over WIRE_H, which orders the draw-on.
+     */
+    function buildBlueprint(cx, side) {
+      const LP = [];
+      const LH = [];
+      const PP = [];
+      const PH = [];
+      const PS = [];
+      const RING = 48;
+      const MER = 24;
+      const seg = (ax, ay, az, bx, by, bz) => {
+        LP.push(ax, ay, az, bx, by, bz);
+        LH.push(clamp(ay / WIRE_H), clamp(by / WIRE_H));
+      };
+      const node = (x, y, z, s) => {
+        PP.push(x, y, z);
+        PH.push(clamp(y / WIRE_H));
+        PS.push(s);
+      };
+      // silhouette levels [height above the platform, radius]
+      const body = 14;
+      const levels = [[0, BOTTLE.R * 0.88]];
+      for (let i = 1; i <= body; i += 1) levels.push([(BOTTLE.H * i) / body, BOTTLE.R]);
+      const neck = BOTTLE.collarR;
+      levels.push([BOTTLE.H, neck]);
+      levels.push([BOTTLE.H + BOTTLE.collarH, neck]);
+      levels.push([BOTTLE.H + BOTTLE.collarH, BOTTLE.capR]);
+      levels.push([BOTTLE.H + BOTTLE.collarH + BOTTLE.capH * 0.5, BOTTLE.capR]);
+      levels.push([HTOT, BOTTLE.capR]);
+      levels.push([HTOT, BOTTLE.capR * 0.55]);
+      const pt = (r, a, y) => [cx + r * Math.sin(a), PPH + y, r * Math.cos(a)];
+      levels.forEach(([y, r], li) => {
+        for (let k = 0; k < RING; k += 1) {
+          const a0 = (k / RING) * Math.PI * 2;
+          const a1 = ((k + 1) / RING) * Math.PI * 2;
+          seg(...pt(r, a0, y), ...pt(r, a1, y));
+          if (k % 2 === 0) node(...pt(r, a0, y), 0.03 + 0.03 * ((li * 7 + k * 3) % 5 === 0 ? 1 : 0.3));
+        }
+        if (li > 0) {
+          const [yp, rp] = levels[li - 1];
+          for (let m = 0; m < MER; m += 1) {
+            const a = (m / MER) * Math.PI * 2;
+            seg(...pt(rp, a, yp), ...pt(r, a, y));
+          }
+        }
+      });
+      // crosshair on the cap
+      for (let m = 0; m < 4; m += 1) {
+        const a = (m / 4) * Math.PI * 2;
+        seg(...pt(BOTTLE.capR * 0.55, a, HTOT), cx, PPH + HTOT, 0);
       }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(S, 3));
-      g.setAttribute('aEnd', new THREE.BufferAttribute(E, 3));
-      g.setAttribute('aCtl', new THREE.BufferAttribute(C, 3));
-      g.setAttribute('aT', new THREE.BufferAttribute(T, 3));
-      const m = new THREE.ShaderMaterial({
-        uniforms: { uT: { value: 0 }, uScale: { value: 600 }, uTint: { value: tint.clone() } },
+      node(cx, PPH + HTOT, 0, 0.07);
+      // dashed centreline
+      for (let y = 0.02; y < WIRE_H + 0.22; y += 0.1) seg(cx, y, 0, cx, y + 0.055, 0);
+      // dimension line with end ticks, on the outer side of the bottle
+      const dx = cx + side * (BOTTLE.R + 0.16);
+      seg(dx, PPH, 0, dx, PPH + HTOT, 0);
+      for (const y of [PPH, PPH + HTOT]) seg(dx - 0.05, y, 0, dx + 0.05, y, 0);
+      for (let k = 1; k < 8; k += 1) {
+        const y = PPH + (HTOT * k) / 8;
+        seg(dx - 0.02, y, 0, dx + 0.02, y, 0);
+      }
+      node(dx, PPH, 0, 0.05);
+      node(dx, PPH + HTOT, 0, 0.05);
+      // floor ring with tick marks
+      const fr = PPR + 0.1;
+      for (let k = 0; k < 96; k += 1) {
+        const a0 = (k / 96) * Math.PI * 2;
+        const a1 = ((k + 1) / 96) * Math.PI * 2;
+        seg(cx + fr * Math.sin(a0), 0.003, fr * Math.cos(a0), cx + fr * Math.sin(a1), 0.003, fr * Math.cos(a1));
+      }
+      for (let k = 0; k < 24; k += 1) {
+        const a = (k / 24) * Math.PI * 2;
+        seg(cx + fr * Math.sin(a), 0.003, fr * Math.cos(a), cx + (fr + 0.06) * Math.sin(a), 0.003, (fr + 0.06) * Math.cos(a));
+      }
+      return { LP: new Float32Array(LP), LH: new Float32Array(LH), PP: new Float32Array(PP), PH: new Float32Array(PH), PS: new Float32Array(PS) };
+    }
+
+    // Shared by the line and point shaders, so both draw on (and settle) together.
+    const WIRE_COMMON = `
+      uniform float uT; uniform float uReveal; uniform float uH;
+      float hh(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+      // draw-on progress of a node at height aH: the base first, a little randomness
+      float drawOn(vec3 p, float aH){ return clamp((uT - 0.1 - aH*1.9 - hh(floor(p*500.))*0.35) / 0.7, 0.0, 1.0); }
+      // scattered start position that settles onto the node
+      vec3 scatter(vec3 p, float a){
+        vec3 q = floor(p*500.);
+        vec3 j = vec3(hh(q + 1.3), hh(q + 7.1), hh(q + 3.7)) - 0.5;
+        return p + j * 0.7 * pow(1.0 - a, 2.0);
+      }`;
+    const wireUniforms = (rv, col) => ({
+      uT: { value: 0 }, uReveal: rv.u, uH: { value: WIRE_H }, uCol: { value: col }, uScale: { value: 600 },
+    });
+    const baseCol = new THREE.Color(0.25, 0.7, 1.25);
+    const wires = [];
+    function makeWire(rv, tint) {
+      const bp = buildBlueprint(rv.x, rv.x < 0 ? -1 : 1);
+      const col = baseCol.clone().lerp(tint.clone().multiplyScalar(1.6), 0.25);
+
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute('position', new THREE.BufferAttribute(bp.LP, 3));
+      lg.setAttribute('aH', new THREE.BufferAttribute(bp.LH, 1));
+      const lm = new THREE.ShaderMaterial({
+        uniforms: wireUniforms(rv, col),
         vertexShader: `
-          attribute vec3 aEnd, aCtl, aT; uniform float uT, uScale; varying float vA; varying float vK; varying float vR;
+          attribute float aH; uniform vec3 uCol; varying float vA; varying float vB;
+          ${WIRE_COMMON}
           void main(){
-            float p = clamp((uT - aT.x)/(aT.y - aT.x), 0.0, 1.0);
-            float e = p*p*p*(p*(p*6.0 - 15.0) + 10.0); // smootherstep: no kick at either end
-            vec3 q = mix(mix(position, aCtl, e), mix(aCtl, aEnd, e), e);
-            float sw = sin(3.14159*e)*(1.0 - e)*0.42; float ang = e*9.0 + aT.z*6.2832; q.x += sw*sin(ang); q.z += sw*cos(ang); // wide, slow turns that wind down as the light lands
-            vec4 mv = modelViewMatrix * vec4(q, 1.0); gl_Position = projectionMatrix * mv;
-            float on = step(aT.x, uT) * (1.0 - step(aT.y, uT));
-            vA = on * smoothstep(0.0, 0.18, p) * (1.0 - smoothstep(0.82, 1.0, p)) * (0.82 + 0.18*sin(uT*5.0 + aT.z*60.0));
-            vK = e; vR = aT.z;
-            gl_PointSize = (0.026 + 0.024*aT.z) * (1.3 - 0.6*e) * uScale / -mv.z;
+            float a = drawOn(position, aH);
+            vec4 w = modelMatrix * vec4(scatter(position, a), 1.0);
+            float wy = abs(w.y);
+            float seam = smoothstep(uReveal - 0.03, uReveal + 0.03, wy);        // the blueprint is gone below the seam...
+            float trail = 0.25 * exp(-max(uReveal - wy, 0.0) * 7.0) * step(0.0, uReveal); // ...leaving a short afterglow
+            float sy = (0.04 + fract(uT*0.22) * 1.2) * uH;                      // scan line sliding up
+            float scan = exp(-pow((wy - sy)/0.07, 2.0));
+            float head = exp(-pow((a - 0.4)/0.25, 2.0));                        // brighter while a line is being drawn
+            vA = a * (seam + trail);
+            vB = 0.75 + 2.2*head + 2.4*scan;
+            gl_Position = projectionMatrix * viewMatrix * w;
           }`,
         fragmentShader: `
-          uniform vec3 uTint; varying float vA; varying float vK; varying float vR;
+          uniform vec3 uCol; varying float vA; varying float vB;
+          void main(){ if (vA < 0.003) discard; gl_FragColor = vec4(uCol * vB, vA); }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+
+      const pg = new THREE.BufferGeometry();
+      pg.setAttribute('position', new THREE.BufferAttribute(bp.PP, 3));
+      pg.setAttribute('aH', new THREE.BufferAttribute(bp.PH, 1));
+      pg.setAttribute('aS', new THREE.BufferAttribute(bp.PS, 1));
+      const pm = new THREE.ShaderMaterial({
+        uniforms: wireUniforms(rv, col),
+        vertexShader: `
+          attribute float aH; attribute float aS; uniform vec3 uCol; uniform float uScale;
+          varying float vA; varying float vB;
+          ${WIRE_COMMON}
           void main(){
-            vec2 c = gl_PointCoord - 0.5; float a = exp(-dot(c,c)*14.0) * vA; if (a < 0.003) discard;
-            vec3 gold = vec3(1.6, 1.1, 0.45);
-            vec3 col = mix(gold, uTint*1.6, smoothstep(0.35, 0.95, vK)*0.7);
-            gl_FragColor = vec4(col*a*1.4, a);
+            float a = drawOn(position, aH);
+            vec4 w = modelMatrix * vec4(scatter(position, a), 1.0);
+            float wy = abs(w.y);
+            float seam = smoothstep(uReveal - 0.03, uReveal + 0.03, wy);
+            float seed = hh(floor(position*500.));
+            float tw = 0.7 + 0.3*sin(uT*3.0 + seed*30.0);                        // twinkle
+            float sy = (0.04 + fract(uT*0.22) * 1.2) * uH;
+            float scan = exp(-pow((wy - sy)/0.07, 2.0));
+            float head = exp(-pow((a - 0.4)/0.25, 2.0));
+            vec4 mv = viewMatrix * w;
+            vA = a * seam;
+            vB = tw * (1.0 + 1.6*head + 2.0*scan);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = aS * (0.8 + 0.9*tw) * (1.0 + 1.2*head) * uScale / -mv.z;
+          }`,
+        fragmentShader: `
+          uniform vec3 uCol; varying float vA; varying float vB;
+          void main(){
+            if (vA < 0.003) discard;
+            vec2 c = gl_PointCoord - 0.5; float r = dot(c, c) * 4.0;
+            float d = exp(-r*3.0) + 0.6*exp(-r*18.0);
+            gl_FragColor = vec4(mix(uCol, vec3(1.4, 1.6, 1.8), 0.45) * vB * d, vA);
           }`,
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       });
-      const pts = new THREE.Points(g, m);
-      pts.frustumCulled = false;
-      pts.renderOrder = 8;
-      scene.add(pts);
-      const reflected = new THREE.Points(g, m);
-      reflected.frustumCulled = false;
-      mirror.add(reflected);
-      noDepth.push(pts, reflected);
-      return m;
-    }
-    const streams = [makeStream(-1, REVEAL[0], PINK), makeStream(1, REVEAL[1], CYAN)];
 
-    // Bottles build upward behind a glowing gold edge: every fragment above
-    // the reveal height (|y|, so the reflection builds too) is discarded.
+      for (const [geo, mat, Obj] of [[lg, lm, THREE.LineSegments], [pg, pm, THREE.Points]]) {
+        const o = new Obj(geo, mat);
+        o.frustumCulled = false;
+        o.renderOrder = 8;
+        scene.add(o);
+        const refl = new Obj(geo, mat);
+        refl.frustumCulled = false;
+        mirror.add(refl);
+        noDepth.push(o, refl);
+      }
+      wires.push(lm, pm);
+    }
+    makeWire(REVEAL[0], PINK);
+    makeWire(REVEAL[1], CYAN);
+
+    // Bottles build upward behind a bright seam: every fragment above the
+    // reveal height (|y|, so the reflection builds too) is discarded; the
+    // seam itself is a thin cold-white line with a short glow trailing it.
     function addReveal(root, u) {
       root.traverse((o) => {
         if (!o.isMesh || o.material.userData.revealed) return;
@@ -899,7 +889,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
           sh.vertexShader = 'varying vec3 vRevW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vRevW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
           sh.fragmentShader = 'uniform float uReveal; varying vec3 vRevW;\n' + sh.fragmentShader
             .replace('void main() {', 'void main() {\n if (abs(vRevW.y) > uReveal) discard;')
-            .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vec3(3.2, 2.1, 0.8) * (1.0 - smoothstep(0.0, 0.045, uReveal - abs(vRevW.y))) * step(uReveal, 2.4);');
+            .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n float dRev = max(uReveal - abs(vRevW.y), 0.0); float edgeRev = 1.0 - smoothstep(0.0, 0.035, dRev); float trailRev = exp(-dRev * 16.0);\n totalEmissiveRadiance += vec3(2.4, 3.0, 3.8) * edgeRev + vec3(0.5, 0.85, 1.2) * trailRev * 0.5;');
         };
         // three caches programs by onBeforeCompile's source, which this
         // wrapper makes identical for every material: key by the original.
@@ -912,86 +902,36 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     addReveal(blue.root, REVEAL[1].u);
     addReveal(blueM.root, REVEAL[1].u);
 
-    const fmTmp = new THREE.Matrix4();
-    const bufTmp = new THREE.Vector2();
+    const dbSize = new THREE.Vector2();
     return {
       update(t) {
-        const glow = ss(0.1, 1.2, t);
-        const mote = ss(0.6, 1.6, t) * (1 - ss(4.6, 5.6, t));
-        motes.visible = mote > 0.002;
-        motes.material.uniforms.uT.value = t;
-        motes.material.uniforms.uA.value = mote;
-        motes.material.uniforms.uScale.value = renderer.getDrawingBufferSize(bufTmp).y * 0.62;
-        // the shafts shimmer and the stars twinkle; all of it gives way to the streams
-        const fade = ss(0.2, 1.4, t) * (1 - ss(3.5, 4.7, t));
-        // the oculus irises open with a little overshoot, then eases down to a backlight behind the bottles
-        const open = ss(0.2, 1.9, t);
-        const iris = open * (1 + 0.05 * Math.sin(Math.PI * lin(0.2, 1.9, t))) * (1 + 0.015 * Math.sin(t * 1.8));
-        const keepGlow = 0.16 + 0.84 * (1 - ss(3.6, 5.0, t));
-        portal.scale.setScalar(Math.max(iris * PORTAL.r, 0.001));
-        portal.visible = open > 0.002;
-        portalMat.uniforms.uT.value = t;
-        portalMat.uniforms.uA.value = keepGlow * open;
-        rim.scale.copy(portal.scale);
-        rim.visible = portal.visible;
-        rimMat.opacity = 0.9 * keepGlow * open;
-        for (const sh of SHAFTS) {
-          sh.p.visible = fade > 0.002;
-          sh.m.opacity = (0.55 + 0.25 * Math.sin(t * 1.6 + sh.ph)) * ss(0.4, 2.0, t) * (1 - ss(3.5, 4.7, t));
-        }
-        for (const st of STARS) {
-          const tw = Math.max(0, Math.sin(t * st.f + st.ph));
-          st.sp.visible = fade > 0.002;
-          st.sp.material.opacity = tw * tw * fade;
-          st.sp.scale.setScalar(st.sz * (0.6 + 0.6 * tw));
-          st.sp.material.rotation = t * 0.3;
-        }
+        // the haze: a faint blue backlight, with a bloom as the surface closes
+        cold.material.opacity = 0.12 * ss(0.0, 1.6, t) * (1 - ss(5.2, 7.0, t)) + 0.2 * Math.exp(-Math.pow((t - (LAND[0] - 0.1)) / 0.35, 2));
 
-        halo.visible = t < 3.62;
-        haloMat.emissiveIntensity = 1.8 * ss(0.9, 1.7, t);
-        halo.scale.setScalar(lerp(0.6, 1, ss(0.9, 1.7, t)));
-        halo.position.set(0, HALO_Y + 0.03 * Math.sin(t * 1.6), 0);
-        halo.rotation.z = t * 0.3;
-        for (const h of haloRings) {
-          const on = t >= 3.62 && t < h.tl;
-          h.r.visible = on;
-          h.rm.visible = on;
-          if (!on) continue;
-          const u = eIO(lin(3.62, h.tl, t));
-          h.r.position.set(lerp(0, h.x, u), lerp(HALO_Y, PPH * 0.42, u) + 0.5 * Math.sin(Math.PI * u), 0.25 * Math.sin(Math.PI * u));
-          h.r.rotation.set(lerp(1.25, Math.PI / 2, u), 0, t * 2.0 * (1 - u));
-          h.r.scale.setScalar(lerp(1, (PPR + 0.004) / 0.22, u));
-          h.m.emissive.setRGB(lerp(1, h.col.r, u), lerp(0.78, h.col.g, u), lerp(0.4, h.col.b, u));
-          h.m.emissiveIntensity = 1.8 + 1.2 * u;
-          h.rm.position.copy(h.r.position);
-          h.rm.rotation.copy(h.r.rotation);
-          h.rm.scale.copy(h.r.scale);
-        }
-
-        const scale = renderer.getDrawingBufferSize(bufTmp).y * 0.62;
-        for (const m of streams) {
+        const scale = renderer.getDrawingBufferSize(dbSize).y * 0.62;
+        for (const m of wires) {
           m.uniforms.uT.value = t;
-          m.uniforms.uScale.value = scale;
+          if (m.uniforms.uScale) m.uniforms.uScale.value = scale;
         }
         for (const rv of REVEAL) {
           rv.u.value = t < rv.t0 ? -1
             : t > rv.t0 + rv.dur + 0.4 ? 9
-              : PPH - 0.02 + (HTOT + 0.06) * eIO(lin(rv.t0, rv.t0 + rv.dur, t));
+              : PPH - 0.02 + SPAN * lin(rv.t0, rv.t0 + rv.dur, t);
         }
         for (const w of waves) {
           const a = t - w.t0;
           const on = a > 0 && a < 1.6;
           w.p.visible = on;
           if (!on) continue;
-          const sc = 0.9 + a * 4.2;
+          const sc = w.s0 + a * w.gr;
           w.p.scale.set(sc, sc, 1);
-          w.m.opacity = 0.85 * Math.exp(-a * 2.2) * ss(0, 0.05, a);
+          w.m.opacity = w.amp * Math.exp(-a * 2.2) * ss(0, 0.05, a);
         }
       },
       land: LAND,
     };
   }
-  const wings = story ? makeWings() : null;
+  const wireStory = story ? makeWireframeStory() : null;
 
   /* ---------------- bloom + tone-mapping pipeline ---------------- */
   // Multisampled HDR scene target (this is where the antialiasing happens).
@@ -1055,8 +995,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
         c = mix(c, texture2D(d2, vUv).rgb, smoothstep(0.5, 1.0, coc));`);
   }
   // Story only: an anamorphic streak (a long, horizontal-only blur of the
-  // bright pass, added back in cool blue) and a brief flash as each halo
-  // ring lands.
+  // bright pass, added back in cool blue) and a flash: a big one when the
+  // surface closes, a small one as each LED ring fires.
   const streakRT = story ? [new THREE.WebGLRenderTarget(1, 1, rtOpts), new THREE.WebGLRenderTarget(1, 1, rtOpts)] : null;
   if (streakRT) {
     compFS = compFS
@@ -1142,11 +1082,12 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   /** Story: pose everything for scene time `t` (0 to SCENE_END). */
   function poseStory(t) {
     SWEEP.i.value = 1;
-    wings.update(t);
+    wireStory.update(t);
 
-    // the bottles, revealed standing on their platforms as the lights come up
-    const light = ss(4.4, 6.4, t);
-    const base = { show: t > 4.4, parts: 1, label: 1, light: 0.35 + 0.65 * light, rim: 0.45 - 0.2 * light };
+    // the bottles, filled in standing on their platforms as the lights switch to the studio look
+    const light = ss(5.2, 6.4, t);
+    // the glass turns on: a strong electric rim on the dark body first, settling as the studio lights arrive
+    const base = { show: t > 4.35, parts: 1, label: 1, light: 0.2 + 0.8 * light, rim: 1.0 - 0.75 * light };
     const turn = eIOS(lin(4.4, 10, t));
     const rs = { ...base, rotY: lerp(-0.35, 0.08, turn) };
     const bs = { ...base, rotY: lerp(0.35, -0.08, turn) };
@@ -1159,9 +1100,9 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     redM.update(rs);
     blueM.update(bs);
 
-    // the platforms rise; each LED ring switches on (with a pulse) as its halo ring lands
-    const rise = eIO(lin(4.15, 4.9, t));
-    const [landR, landB] = wings.land;
+    // the platforms rise under the blueprint; each LED ring switches on (with a pulse) as the seam reaches the cap
+    const rise = eIO(lin(3.9, 4.7, t));
+    const [landR, landB] = wireStory.land;
     for (const [p, tl] of [[platR, landR], [platRM, landR], [platB, landB], [platBM, landB]]) {
       p.g.visible = rise > 0.001;
       p.g.scale.y = Math.max(rise, 0.001);
@@ -1172,9 +1113,9 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     }
     floorGlowR.position.x = -PX;
     floorGlowB.position.x = PX;
-    const wingGlow = 0.15 * ss(0.3, 1.5, t) * (1 - ss(3.5, 4.5, t));
-    floorGlowR.material.opacity = 0.4 * ss(landR, landR + 0.2, t) + wingGlow;
-    floorGlowB.material.opacity = 0.4 * ss(landB, landB + 0.2, t) + wingGlow;
+    const coldGlow = 0.12 * ss(0.3, 1.5, t) * (1 - ss(3.8, 4.8, t));
+    floorGlowR.material.opacity = 0.4 * ss(landR, landR + 0.2, t) + coldGlow;
+    floorGlowB.material.opacity = 0.4 * ss(landB, landB + 0.2, t) + coldGlow;
     hazeR.material.opacity = 0.17 * ss(0.2, 1.5, t);
     hazeB.material.opacity = hazeR.material.opacity;
 
@@ -1187,9 +1128,10 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     camera.lookAt(0, ty, 0);
     camera.updateMatrixWorld();
     compMat.uniforms.focus.value = d - 0.1;
-    const flashAt = (tl) => 0.12 * Math.exp(-Math.pow((t - (tl + 0.02)) / 0.05, 2));
-    compMat.uniforms.flash.value = flashAt(landR) + flashAt(landB);
-    compMat.uniforms.streak.value = 0.3 + 0.35 * ss(3.5, 5.0, t) * (1 - ss(5.6, 6.6, t)) + 0.3 * ss(7.5, 9.0, t);
+    // a flash as the surface closes, then a small one as each LED ring fires
+    const flashAt = (tc, amp, w) => amp * Math.exp(-Math.pow((t - tc) / w, 2));
+    compMat.uniforms.flash.value = flashAt(5.8, 0.2, 0.12) + flashAt(landR + 0.02, 0.08, 0.05) + flashAt(landB + 0.02, 0.08, 0.05);
+    compMat.uniforms.streak.value = 0.3 + 0.35 * ss(4.4, 5.7, t) * (1 - ss(6.2, 7.2, t)) + 0.3 * ss(7.5, 9.0, t);
     const sa = -1.4 + t * 0.3;
     const sb = 1.6 - t * 0.24;
     SWEEP.a.value.set(Math.sin(sa), 0.35, Math.cos(sa)).normalize().transformDirection(camera.matrixWorldInverse);
@@ -1376,8 +1318,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
 
   function dispose() {
     scene.traverse((o) => {
-      if (o.isMesh || o.isPoints) o.geometry.dispose();
-      if (o.isMesh || o.isSprite || o.isPoints) o.material.dispose();
+      if (o.isMesh || o.isPoints || o.isLine) o.geometry.dispose();
+      if (o.isMesh || o.isSprite || o.isPoints || o.isLine) o.material.dispose();
     });
     quad.geometry.dispose();
     [brightMat, blurMat, compMat, sceneRT, ...rtA, ...rtB, ...disposables].forEach((x) => x.dispose());
@@ -1392,8 +1334,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
  *
  * variant="story" (the default): `progress` (anything with .get()
  * returning 0..1, e.g. a Motion scroll value) scrubs the scene from the
- * glowing droplets (0) to both bottles on their platforms (1); on load
- * the droplets first glow in by themselves. Without `progress`, `time`
+ * drawing blueprint (0) to both bottles on their platforms (1); on load
+ * the blueprint first draws itself and hangs by itself. Without `progress`, `time`
  * holds one fixed moment (reduced motion uses the final frame). Renders
  * only while on screen and while something is changing.
  *
@@ -1425,6 +1367,20 @@ export default function PerfumeScene({
   const running = variant !== 'story' && !paused;
 
   useEffect(() => {
+    // Let the page paint its text first: building the scene and compiling
+    // its shaders is a long task that otherwise freezes the first frames.
+    let stop;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => { stop = start(); });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      stop?.();
+    };
+
+    function start() {
     const mount = mountRef.current;
     if (!mount) return undefined;
 
@@ -1438,12 +1394,20 @@ export default function PerfumeScene({
     // Quality steps, dropped (never raised again, so it can't oscillate)
     // when the frame rate sags while the scene is moving. Starts from the
     // tier the page has already settled on (see sharedTier).
-    let tier = sharedTier;
+    // The scent turntable is the showpiece: it starts one step above the
+    // tier the page settled on (the step-down below still protects weak GPUs).
+    let tier = variant === 'turntable' ? Math.max(0, sharedTier - 1) : sharedTier;
     let dirty = true;
     const view = buildScene(renderer, () => { dirty = true; }, { variant, tones: tonesRef.current ?? [] });
+    // The tier's density, held to its pixel budget for the canvas's size.
+    const pixelRatio = () => {
+      const q = QUALITY[tier];
+      const css = Math.max(1, mount.clientWidth);
+      return Math.min(window.devicePixelRatio || 1, q.dpr, Math.sqrt(q.px) / css);
+    };
     const applyTier = () => {
       const q = QUALITY[tier];
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr));
+      renderer.setPixelRatio(pixelRatio());
       renderer.transmissionResolutionScale = q.transmission;
       view.setQuality(q);
     };
@@ -1455,6 +1419,7 @@ export default function PerfumeScene({
     view.warm().then(() => { dirty = true; }, () => { });
 
     const resize = () => {
+      renderer.setPixelRatio(pixelRatio());
       view.setSize(Math.max(1, Math.floor(mount.clientWidth)));
       dirty = true;
     };
@@ -1466,8 +1431,8 @@ export default function PerfumeScene({
     const target = () => {
       const p = progressRef.current;
       if (!p) return time;
-      // The droplets glow in on their own when the page opens; after that
-      // the scroll carries the story on to the platforms.
+      // The blueprint draws itself when the page opens; after that the
+      // scroll fills the surface in and switches the studio on.
       const intro = Math.min(SCENE_INTRO, (performance.now() - t0) / 1000);
       return Math.max(intro, lerp(SCENE_INTRO, SCENE_END, clamp(p.get())));
     };
@@ -1545,6 +1510,7 @@ export default function PerfumeScene({
       renderer.dispose();
       renderer.domElement.remove();
     };
+    }
   }, [time, variant, running]);
 
   return <div ref={mountRef} className={`perfume-scene ${className}`} aria-hidden="true" />;

@@ -1,75 +1,172 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Partners{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Partners{% endblock %}
 
 {% block head %}
 <style>
-  /* The generic .table-wrap mobile card (style.css) turns every <td>
-     into a single flex row with justify-content:space-between. That
-     works for one-value cells (Partner, Type, Added) but breaks
-     Contact, which packs a name + <br> + phone span + " · " + email
-     into one unwrapped row, so the email gets squeezed and clipped.
-     (Package sales and Last inquiry have the same "value + small
-     caption" shape, but that's now handled once, globally, by
-     style.css's .table-wrap td:has(>.item-sub) rule.) */
-  @media (max-width: 680px) {
-    .ptn-table td[data-label="Contact"] {
-      display: block;
-      text-align: left;
-      overflow-wrap: anywhere;
-    }
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .ptn-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-lg); margin-bottom: var(--space-lg); }
+  .ptn-portal { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; margin-bottom: var(--space-lg); padding: var(--space-md) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .ptn-portal-text { flex: 1 1 280px; min-width: 0; }
+  .ptn-portal-text h2 { font-size: 1rem; margin: 0 0 var(--space-3xs); }
+  .ptn-portal-text p { font-size: 0.75rem; color: var(--ink-faint); margin: 0; max-width: 60ch; }
+  .ptn-portal-link { display: flex; align-items: center; gap: var(--space-xs); flex: 1 1 320px; min-width: 0; }
+  .ptn-portal-link code { flex: 1; min-width: 0; padding: var(--space-xs) var(--space-sm); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: var(--ink); font-family: var(--font-mono); font-size: 0.75rem; word-break: break-all; }
+  .ptn-note { font-size: 0.75rem; color: var(--ink-faint); margin: 0; padding: var(--space-sm) var(--space-md) var(--space-md); }
+  .ptn-add { margin-top: var(--space-lg); }
+  .ptn-add-lead { font-size: 0.875rem; color: var(--ink-faint); margin: 0 0 var(--space-md); max-width: 70ch; }
+  .ptn-contact { font-size: 0.875rem; color: var(--ink-soft); }
+  .ptn-contact span { display: block; }
+  .ptn-table td.num .item-sub { text-align: right; }
 
-    .ptn-table td[data-label="Contact"]::before {
-      display: block;
-      margin-bottom: 4px;
-    }
+  @media (max-width: 680px) {
+    .ptn-stats { grid-template-columns: 1fr; gap: var(--space-md); }
+    .ptn-table td[data-label="Contact"] { display: block; text-align: left; overflow-wrap: anywhere; }
+    .ptn-table td[data-label="Contact"]::before { display: block; margin-bottom: var(--space-2xs); }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card card-pad stack" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-  <div style="flex:1; min-width:240px;">
-    <h2 style="font-size:14.5px; margin-bottom:4px;">Partner Portal link</h2>
-    <p class="text-faint" style="font-size:12px; margin:0;">
-      Share this privately with a distributor or reseller — it's the only way to reach the portal
-      (it isn't linked from the sign-in page or anywhere else). They'll browse packages, open one, and
-      send an inquiry straight from there.
-    </p>
-  </div>
-  <div style="display:flex; gap:8px; align-items:center; flex:1 1 320px; min-width:260px;">
-    <code id="portalLinkValue" class="mono" style="flex:1; padding:10px 12px; border:var(--border-width-strong) solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg); font-size:12.5px; word-break:break-all;">{{ portal_link }}</code>
-    <button type="button" class="btn btn-ghost btn-sm" id="portalLinkCopyBtn">Copy</button>
-  </div>
-</div>
-
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
+<div class="ptn-stats">
+  <div class="stat-tile">
     <div class="stat-label">Distributors</div>
     <div class="stat-value">{{ counts.distributor_count }}</div>
     <div class="stat-foot">{{ totals.total_distributor|peso }} in package sales</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Resellers</div>
     <div class="stat-value">{{ counts.reseller_count }}</div>
     <div class="stat-foot">{{ totals.total_reseller|peso }} in package sales</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Total package sales</div>
     <div class="stat-value accent">{{ totals.total_all|peso }}</div>
-    <div class="stat-foot">across every partner &middot; closed orders only</div>
+    <div class="stat-foot">across every partner, closed orders only</div>
   </div>
 </div>
 
-<!-- Add-a-partner form now sits full width, on top of the table — same
-     fix as Packages: a side-by-side 1.6fr/1fr grid next to a table
-     would squish/clip once the table had real rows. -->
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a partner</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Distributors resell further down a chain of their own; resellers sell directly to end customers. Either way, they're a bulk buyer outside the branch network.
+<div class="ptn-portal">
+  <div class="ptn-portal-text">
+    <h2>Partner Portal link</h2>
+    <p>
+      Share this privately with a distributor or reseller. It&rsquo;s the only way to reach the portal
+      (it isn&rsquo;t linked from the sign-in page or anywhere else). They&rsquo;ll browse packages, open one, and
+      send an inquiry straight from there.
+    </p>
+  </div>
+  <div class="ptn-portal-link">
+    <code id="portalLinkValue" class="mono">{{ portal_link }}</code>
+    <button type="button" class="btn btn-ghost btn-sm" id="portalLinkCopyBtn">Copy</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab {{ 'active' if type_filter == 'all' }}" href="{{ url_for('admin.partners') }}">All</a>
+  <a class="tab {{ 'active' if type_filter == 'Distributor' }}" href="{{ url_for('admin.partners', type='Distributor') }}">Distributors</a>
+  <a class="tab {{ 'active' if type_filter == 'Reseller' }}" href="{{ url_for('admin.partners', type='Reseller') }}">Resellers</a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>{{ 'Distributors' if type_filter == 'Distributor' else ('Resellers' if type_filter == 'Reseller' else 'All partners') }}</h2>
+    <span class="hint" id="partnersCount">{{ partner_list|length }} total</span>
+  </div>
+  {% if partner_list %}
+  <div data-smart-table data-page-size="10" data-count-target="partnersCount" data-count-label="partner">
+    <div class="table-toolbar">
+      <div class="table-search">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" class="smart-search-input" placeholder="Search by name or contact…" autocomplete="off">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="smart-table table-fixed ptn-table table-collapsible">
+        <colgroup>
+          <col style="width:22%"><col style="width:15%"><col style="width:19%">
+          <col style="width:16%"><col style="width:16%"><col style="width:12%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Partner</th>
+            <th>Type</th>
+            <th>Contact</th>
+            <th class="num">Package sales</th>
+            <th>Last inquiry</th>
+            <th>Added</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in partner_list %}
+          <tr data-search="{{ (p.partner_name ~ ' ' ~ (p.contact_person or '') ~ ' ' ~ (p.phone or '') ~ ' ' ~ (p.email or ''))|lower }}">
+            <td data-label="Partner">
+              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a>
+              {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
+              <div class="item-sub item-sub-badge">
+                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
+                <span class="mono">{{ p.created_at.strftime('%b %d, %Y') }}</span>
+              </div>
+            </td>
+            <td class="mobile-fold" data-label="Type">
+              <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
+            </td>
+            <td class="ptn-contact mobile-detail" data-label="Contact">
+              {% if p.contact_person %}<span>{{ p.contact_person }}</span>{% endif %}
+              {% if p.phone %}<span class="mono">{{ p.phone }}</span>{% endif %}
+              {% if p.email %}<span>{{ p.email }}</span>{% endif %}
+              {% if not p.contact_person and not p.phone and not p.email %}<span class="text-faint">None on file</span>{% endif %}
+            </td>
+            <td class="num mono mobile-detail" data-label="Package sales">
+              {{ p.total_invested|peso }}
+              {% if p.investment_count %}<div class="item-sub">{{ p.investment_count }} closed order{{ 's' if p.investment_count != 1 }}</div>{% endif %}
+            </td>
+            <td data-label="Last inquiry" class="mobile-detail">
+              {% if p.last_inquiry_at %}
+              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="mono text-soft">{{ p.last_inquiry_at.strftime('%b %d, %Y') }}</a>
+              <div class="item-sub" style="text-align:left;">{{ p.inquiry_count }} inquir{{ 'y' if p.inquiry_count == 1 else 'ies' }}</div>
+              {% else %}
+              <span class="text-faint">None yet</span>
+              {% endif %}
+            </td>
+            <td class="mono text-soft mobile-fold" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
+            <!-- Mobile-only: see .mobile-toggle-row/.row-toggle-btn in style.css. -->
+            <td data-label="" class="mobile-toggle-row">
+              <button type="button" class="row-toggle-btn" aria-expanded="false">
+                <span>Details</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="empty-state smart-no-match" style="display:none;">
+        <p>No partners match your search.</p>
+      </div>
+    </div>
+    <div class="smart-pagination" style="display:none;">
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
+      <span class="smart-page-info"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
+    </div>
+  </div>
+  {% if totals.total_all %}
+  <p class="ptn-note">Package sales counts only inquiries an admin has marked Closed, see <a href="{{ url_for('admin.partner_inquiries') }}">Partner Inquiries</a>. A New or Contacted lead hasn&rsquo;t converted into a sale yet, so it isn&rsquo;t counted here.</p>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <p>No {{ 'distributors' if type_filter == 'Distributor' else ('resellers' if type_filter == 'Reseller' else 'partners') }} yet. Add the first one below.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card card-pad ptn-add">
+  <h2>Add a partner</h2>
+  <p class="ptn-add-lead">
+    Distributors resell further down a chain of their own; resellers sell directly to end customers. Either way, they&rsquo;re a bulk buyer outside the branch network.
   </p>
   <form method="POST" action="{{ url_for('admin.partners') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -115,113 +212,6 @@
     </div>
     <button type="submit" class="btn btn-accent btn-cta">Add partner</button>
   </form>
-</div>
-
-<div class="tabs">
-  <a class="tab {{ 'active' if type_filter == 'all' }}" href="{{ url_for('admin.partners') }}">All</a>
-  <a class="tab {{ 'active' if type_filter == 'Distributor' }}" href="{{ url_for('admin.partners', type='Distributor') }}">Distributors</a>
-  <a class="tab {{ 'active' if type_filter == 'Reseller' }}" href="{{ url_for('admin.partners', type='Reseller') }}">Resellers</a>
-</div>
-
-<div class="card">
-  <div class="card-header">
-    <h2>{{ 'Distributors' if type_filter == 'Distributor' else ('Resellers' if type_filter == 'Reseller' else 'All partners') }}</h2>
-    <span class="hint" id="partnersCount">{{ partner_list|length }} total</span>
-  </div>
-  {% if partner_list %}
-  <div data-smart-table data-page-size="10" data-count-target="partnersCount" data-count-label="partner">
-    <div class="table-toolbar">
-      <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" class="smart-search-input" placeholder="Search by name or contact…" autocomplete="off">
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table class="smart-table table-fixed ptn-table table-collapsible">
-        <colgroup>
-          <col style="width:22%"><col style="width:15%"><col style="width:19%">
-          <col style="width:16%"><col style="width:16%"><col style="width:12%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Partner</th>
-            <th>Type</th>
-            <th>Contact</th>
-            <th class="num">Package sales</th>
-            <th>Last inquiry</th>
-            <th>Added</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in partner_list %}
-          <tr data-search="{{ (p.partner_name ~ ' ' ~ (p.contact_person or '') ~ ' ' ~ (p.phone or '') ~ ' ' ~ (p.email or ''))|lower }}">
-            <td data-label="Partner">
-              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="item-name">{{ p.partner_name }}</a>
-              {% if p.address %}<div class="item-sub">{{ p.address }}</div>{% endif %}
-              <div class="item-sub item-sub-badge">
-                <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
-                <span class="mono">{{ p.created_at.strftime('%b %d, %Y') }}</span>
-              </div>
-            </td>
-            <td class="mobile-fold" data-label="Type">
-              <span class="badge badge-{{ 'transit' if p.partner_type == 'Distributor' else 'neutral' }}">{{ p.partner_type }}</span>
-            </td>
-            <td class="text-soft mobile-detail" style="font-size:12.5px;" data-label="Contact">
-              {% if p.contact_person %}{{ p.contact_person }}<br>{% endif %}
-              {% if p.phone %}<span class="mono">{{ p.phone }}</span>{% endif %}
-              {% if p.email %}{{ ' · ' if p.phone }}{{ p.email }}{% endif %}
-              {% if not p.contact_person and not p.phone and not p.email %}—{% endif %}
-            </td>
-            <td class="num mono mobile-detail" data-label="Package sales">
-              {{ p.total_invested|peso }}
-              {% if p.investment_count %}<div class="item-sub" style="text-align:right;">{{ p.investment_count }} closed order{{ 's' if p.investment_count != 1 }}</div>{% endif %}
-            </td>
-            <td data-label="Last inquiry" class="mobile-detail">
-              {% if p.last_inquiry_at %}
-              <a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}" class="mono text-soft" style="font-size:12px;">{{ p.last_inquiry_at.strftime('%b %d, %Y') }}</a>
-              <div class="item-sub" style="text-align:left;">{{ p.inquiry_count }} inquir{{ 'y' if p.inquiry_count == 1 else 'ies' }}</div>
-              {% else %}
-              <span class="text-faint">—</span>
-              {% endif %}
-            </td>
-            <td class="mono text-soft mobile-fold" data-label="Added">{{ p.created_at.strftime('%b %d, %Y') }}</td>
-            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
-                 style.css. Hidden on desktop, where every cell above is
-                 already visible in the real table row. -->
-            <td data-label="" class="mobile-toggle-row">
-              <button type="button" class="row-toggle-btn" aria-expanded="false">
-                <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
-        <p>No partners match your search.</p>
-      </div>
-    </div>
-    <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
-      <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
-    </div>
-  </div>
-  {% if totals.total_all %}
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Package sales counts only inquiries an admin has marked Closed — see <a href="{{ url_for('admin.partner_inquiries') }}">Partner Inquiries</a>. A New or Contacted lead hasn't converted into a sale yet, so it isn't counted here.</p>
-  </div>
-  {% endif %}
-  {% else %}
-  <div class="empty-state">
-    <div class="glyph">✦</div>
-    <p>No {{ 'distributors' if type_filter == 'Distributor' else ('resellers' if type_filter == 'Reseller' else 'partners') }} yet — add the first one.</p>
-  </div>
-  {% endif %}
 </div>
 {% endblock %}
 

@@ -1,245 +1,288 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Products{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Products{% endblock %}
 
 {% block head %}
 <style>
-  /* Catalog-only polish, scoped to .prod-table so none of it leaks onto
-     any other page's .smart-table (Packages, Partners, etc. all reuse
-     the same base classes). Thumbnail gets a small hover pop, mirroring
-     the lift .card-hoverable already uses elsewhere, so a row reads as
-     interactive even though only its Edit button actually is one. */
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* Catalog ledger: the list leads, the add form and CSV tools sit beside it
+     in the same card recipe. Scoped to .prod-table so none of it leaks onto
+     other pages that reuse .smart-table. */
+  .pg-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    gap: var(--space-md);
+    align-items: start;
+  }
+  .pg-split > * { min-width: 0; }
+  .pg-aside { display: grid; gap: var(--space-md); }
+  .pg-aside h2 { font-size: 1.125rem; margin: 0 0 var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-sm); }
+  .pg-aside .form-row { display: grid; grid-template-columns: 1fr; }
+  .pg-aside .form-row > * { flex: none; }
+  .pg-aside .btn { width: 100%; }
+  .pg-aside .csv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-xs); }
+  .pg-disclosure > summary {
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 1.125rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+  .pg-disclosure > summary::-webkit-details-marker { display: none; }
+  .pg-disclosure > summary svg { transition: transform var(--dur-micro, 0.15s) var(--ease-out); }
+  .pg-disclosure[open] > summary svg { transform: rotate(180deg); }
+  .pg-disclosure .pg-body { margin-top: var(--space-sm); }
+  .prod-table .item-sub-unit { margin-inline-start: var(--space-xs); }
   .prod-table .product-thumb,
   .prod-table .product-thumb-empty {
-    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: transform var(--dur-micro, 0.15s) var(--ease-out);
   }
-
   .prod-table tbody tr:hover .product-thumb,
   .prod-table tbody tr:hover .product-thumb-empty {
-    transform: scale(1.08);
+    transform: scale(1.06);
   }
-
-  /* SKU preview field animates in via anime.js (see updatePreview() in
-     block scripts below) rather than pure CSS — it's shown/hidden with
-     display:none/'' so its width doesn't stay reserved in the form-row
-     while hidden; a max-height/opacity transition would leave that gap
-     since collapsing height doesn't collapse a flex row's width. */
-  #skuPreviewField {
-    will-change: opacity, transform;
+  #skuPreviewField { will-change: opacity, transform; align-self: center; }
+  .pg-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+  }
+  .pg-overlay > .card { max-width: 37.5rem; width: 100%; }
+  .pg-overlay h2 { font-size: 1.125rem; margin-bottom: var(--space-2xs); }
+  .pg-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pg-actions .btn { flex: 1; }
+  #editUnitDisplay { background: var(--bg); color: var(--ink-faint); }
+  #editImagePreviewWrap { margin-bottom: var(--space-xs); }
+  .pg-check { display: flex; align-items: center; gap: var(--space-xs); font-weight: 500; }
+  .pg-check input { width: auto; }
+  .pg-edit-img { width: 4rem; height: 4rem; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border-strong); }
+  .pg-edit-avatar { width: 4rem; height: 4rem; font-size: 1.6rem; }
+  .pg-edit-note { font-size: 0.875rem; margin-top: var(--space-2xs); }
+  @media (max-width: 64rem) {
+    .pg-split { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .prod-table .product-thumb,
+    .prod-table .product-thumb-empty,
+    .pg-disclosure > summary svg { transition: none; }
+    .prod-table tbody tr:hover .product-thumb,
+    .prod-table tbody tr:hover .product-thumb-empty { transform: none; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Add-a-product form now sits full width, on top of the table — same
-     fix as Packages and Partners: a side-by-side 1.6fr/1fr grid next to
-     a table would squish/clip once the table had real rows. -->
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a product</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Reuse the code for another size as a new row. Need to change an existing product's details? Use Edit on that row instead.
-  </p>
-  <form method="POST" id="addProductForm" enctype="multipart/form-data">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row">
-      <div class="field">
-        <label for="base_code">Product code</label>
-        <input type="text" id="base_code" name="base_code" placeholder="A1" required>
-      </div>
-      <div class="field">
-        <label for="item_name">Fragrance name</label>
-        <input type="text" id="item_name" name="item_name" placeholder="Golden Hour" required>
-      </div>
+<div class="pg-split">
+  <div class="card">
+    <div class="card-header">
+      <h2>All Products</h2>
+      {% set sku_total = catalog|map(attribute='base_code')|unique|list|length %}
+      <span class="hint" id="catalogCount">{{ sku_total }} SKU{{ 's' if sku_total != 1 }}</span>
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="variant">Variant</label>
-        <select id="variant" name="variant" required>
-          <option value="">Select…</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-        </select>
+    {% if catalog %}
+    <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU"
+      data-count-distinct>
+      <div class="table-toolbar">
+        <div class="table-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
+        </div>
+        <div class="table-filter">
+          <select class="smart-filter-select" data-filter-key="unit">
+            <option value="">All units</option>
+            {% for u in unit_choices %}
+            <option value="{{ u }}" {{ 'selected' if u == '85ML' }}>{{ u }}</option>
+            {% endfor %}
+            <option value="BULK">Bulk/Refill</option>
+          </select>
+        </div>
       </div>
-      <div class="field">
-        <label for="category">Category</label>
-        <select id="category" name="category" required>
-          {% for c in category_choices %}
-          <option value="{{ c }}">{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field" id="unitField">
-        <label for="unit">Unit</label>
-        <select id="unit" name="unit" required>
-          <option value="">Select…</option>
-          {% for u in unit_choices %}
-          <option value="{{ u }}">{{ u }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field" id="priceField">
-        <label for="price">Price for this unit (₱)</label>
-        <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
-      </div>
-      <div class="field" id="bulkNoticeField" style="display:none; align-self:center;">
-        <div class="help">Bulk/Refill has no fixed size or catalog price — it's produced and sold at a custom mL
-          amount, priced off the shared rate on the <a href="{{ url_for('admin.formulas') }}">Formulas page</a>.</div>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="image">Product image <span class="text-faint">(optional)</span></label>
-        <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp">
-        <div class="help">JPG, PNG, or WEBP. This is per size — reusing the code for another size needs its own image too.</div>
-      </div>
-      <div class="field" id="skuPreviewField" style="display:none; align-self:center;">
-        <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-accent btn-cta">Add to catalog</button>
-  </form>
-</div>
-
-<!-- Bulk CSV import/export — same base_code/item_name/variant/unit/price
-     shape as the single-product form above. Export downloads the full
-     catalog in that shape; the downloaded file can be edited (prices,
-     new rows) and dropped straight back into the import form on the
-     left, no reshaping needed. See admin.py's export_products() /
-     import_products() for the column contract. -->
-<div class="card card-pad mt-24">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Bulk import / export (CSV)</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Export the current catalog, edit it in a spreadsheet, then import it back — a row whose
-    product code + unit already exists updates that product's name/variant/price; a new
-    combination adds it to the catalog with zero stock everywhere, same as adding one by hand.
-    Unit can be a bottle size or BULK (a BULK row is added as Bulk/Refill).
-    A new size for a code that already has other sizes on file takes that product's existing
-    name and variant, so a typo in one row can't rename it differently across its own sizes.
-  </p>
-  <!-- The "Columns: ..." help line used to live inside this field, which
-       made column 1 taller than the button columns next to it — with
-       align-items:flex-end that pulled Import/Export CSV down to match
-       the help text's bottom instead of sitting flush with the file
-       input itself. Moved the help text below the row entirely so all
-       three columns are the same height and the buttons line up with
-       the Choose File box. -->
-  <div class="form-row" style="align-items:flex-end;">
-    <div class="field" style="flex:2 1 320px;">
-      <label for="csvFile">CSV file</label>
-      <input type="file" id="csvFile" name="csv_file" accept=".csv,text/csv" form="importProductsForm" required>
-    </div>
-    <div class="field csv-actions">
-      <button type="submit" form="importProductsForm" class="btn btn-accent">Upload CSV</button>
-      <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank" data-generate-file>Download CSV</a>
-    </div>
-  </div>
-  <div class="help" style="margin-top:8px;">Columns: base_code, item_name, variant, unit, price — same order as Download CSV.</div>
-  <form method="POST" action="{{ url_for('admin.import_products') }}" enctype="multipart/form-data" id="importProductsForm">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  </form>
-</div>
-
-<div class="card mt-24">
-  <div class="card-header">
-    <h2>All Products</h2>
-    {% set sku_total = catalog|map(attribute='base_code')|unique|list|length %}
-    <span class="hint" id="catalogCount">{{ sku_total }} SKU{{ 's' if sku_total != 1 }}</span>
-  </div>
-  {% if catalog %}
-  <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU"
-    data-count-distinct>
-    <div class="table-toolbar">
-      <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-        <input type="text" class="smart-search-input" placeholder="Search by name or SKU…" autocomplete="off">
-      </div>
-      <div class="table-filter">
-        <select class="smart-filter-select" data-filter-key="unit">
-          <option value="">All units</option>
-          {% for u in unit_choices %}
-          <option value="{{ u }}" {{ 'selected' if u == '85ML' }}>{{ u }}</option>
-          {% endfor %}
-          <option value="BULK">Bulk/Refill</option>
-        </select>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table class="smart-table table-fixed prod-table">
-        <colgroup>
-          <col style="width:28%"><col style="width:12%">
-          <col style="width:10%"><col style="width:16%"><col style="width:16%"><col style="width:18%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Variant</th>
-            <th>Unit</th>
-            <th class="num">Price</th>
-            <th class="num">Total stock</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in catalog %}
-          <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
-            data-unit="{{ p.unit }}" data-count-key="{{ p.base_code }}">
-            <td data-label="Item" class="mobile-inline-anchor">
-              <div class="item-thumb-row">
-                {{ m.product_thumb(p.image_path, p.item_name) }}
-                <div>
-                  <div class="item-name">{{ p.item_name }}</div>
-                  <div class="item-sub mono">{{ p.sku }}<span class="item-sub-unit"> · {{ 'Bulk' if p.unit == 'BULK' else p.unit }}</span></div>
-                  <div class="item-sub item-sub-badge">
-                    {{ m.variant_badge(p.variant) }}
+      <div class="table-wrap">
+        <table class="smart-table table-fixed prod-table">
+          <colgroup>
+            <col style="width:33%"><col style="width:11%">
+            <col style="width:12%"><col style="width:15%"><col style="width:15%"><col style="width:14%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Variant</th>
+              <th>Unit</th>
+              <th class="num">Price</th>
+              <th class="num">Total stock</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in catalog %}
+            <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
+              data-unit="{{ p.unit }}" data-count-key="{{ p.base_code }}">
+              <td data-label="Item" class="mobile-inline-anchor">
+                <div class="item-thumb-row">
+                  {{ m.product_thumb(p.image_path, p.item_name) }}
+                  <div>
+                    <div class="item-name">{{ p.item_name }}</div>
+                    <div class="item-sub mono"><span>{{ p.sku }}</span><span class="item-sub-unit">{{ 'Bulk' if p.unit == 'BULK' else p.unit }}</span></div>
+                    <div class="item-sub item-sub-badge">
+                      {{ m.variant_badge(p.variant) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </td>
-            <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
-            <td class="mono text-soft mobile-fold" data-label="Unit" style="white-space:nowrap;">{{ 'Bulk' if p.unit == 'BULK' else p.unit }}</td>
-            <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
-            <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
-            <td data-label="" class="mobile-inline-action">
-              <button type="button" class="btn btn-ghost btn-sm" data-call="openEditProduct"
-                data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
-                data-unit="{{ p.unit }}" data-price="{{ p.price }}"
-                data-image-url="{{ url_for('static', filename=p.image_path) if p.image_path else '' }}">Edit</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
-        <p>No products match your search.</p>
+              </td>
+              <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(p.variant) }}</td>
+              <td class="mono text-soft mobile-fold" data-label="Unit" style="white-space:nowrap;">{{ 'Bulk' if p.unit == 'BULK' else p.unit }}</td>
+              <td class="num mono" data-label="Price">{{ p.price|peso }}</td>
+              <td class="num mono" data-label="Total stock">{{ p.total_stock }}</td>
+              <td data-label="" class="mobile-inline-action">
+                <button type="button" class="btn btn-ghost btn-sm" data-call="openEditProduct"
+                  data-sku="{{ p.sku }}" data-item-name="{{ p.item_name }}" data-variant="{{ p.variant }}"
+                  data-unit="{{ p.unit }}" data-price="{{ p.price }}"
+                  data-image-url="{{ url_for('static', filename=p.image_path) if p.image_path else '' }}">Edit</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="empty-state smart-no-match" style="display:none;">
+          <p>No products match your search.</p>
+        </div>
+      </div>
+      <div class="smart-pagination" style="display:none;">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
+        <span class="smart-page-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
       </div>
     </div>
-    <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
-      <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+    {% else %}
+    <div class="empty-state">
+      <p>No products yet. Add the first fragrance to the catalog with the form beside this list.</p>
     </div>
+    {% endif %}
   </div>
-  {% else %}
-  <div class="empty-state">
-    <div class="glyph">✦</div>
-    <p>No products yet — add the first fragrance to the catalog.</p>
+
+  <div class="pg-aside">
+    <div class="card card-pad">
+      <h2>Add a product</h2>
+      <p class="pg-note">
+        Reuse the code for another size as a new row. Need to change an existing product’s details? Use Edit on that row instead.
+      </p>
+      <form method="POST" id="addProductForm" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-row">
+          <div class="field">
+            <label for="base_code">Product code</label>
+            <input type="text" id="base_code" name="base_code" placeholder="A1" required>
+          </div>
+          <div class="field">
+            <label for="item_name">Fragrance name</label>
+            <input type="text" id="item_name" name="item_name" placeholder="Golden Hour" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="variant">Variant</label>
+            <select id="variant" name="variant" required>
+              <option value="">Select…</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="category">Category</label>
+            <select id="category" name="category" required>
+              {% for c in category_choices %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field" id="unitField">
+            <label for="unit">Unit</label>
+            <select id="unit" name="unit" required>
+              <option value="">Select…</option>
+              {% for u in unit_choices %}
+              <option value="{{ u }}">{{ u }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="priceField">
+            <label for="price">Price for this unit (₱)</label>
+            <input type="number" id="price" name="price" step="0.01" min="0" placeholder="1450.00" required>
+          </div>
+          <div class="field" id="bulkNoticeField" style="display:none;">
+            <div class="help">Bulk/Refill has no fixed size or catalog price. It’s produced and sold at a custom mL
+              amount, priced off the shared rate on the <a href="{{ url_for('admin.formulas') }}">Formulas page</a>.</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="image">Product image <span class="text-faint">(optional)</span></label>
+            <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp">
+            <div class="help">JPG, PNG, or WEBP. This is per size: reusing the code for another size needs its own image too.</div>
+          </div>
+          <div class="field" id="skuPreviewField" style="display:none;">
+            <div class="help">Will be saved as SKU <strong id="skuPreviewValue" class="mono"></strong></div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-accent btn-cta">Add to catalog</button>
+      </form>
+    </div>
+
+    <!-- Bulk CSV import/export: same base_code/item_name/variant/unit/price
+         shape as the single-product form. See admin.py's export_products() /
+         import_products() for the column contract. -->
+    <details class="card card-pad pg-disclosure">
+      <summary>
+        <span>Bulk import / export (CSV)</span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+      </summary>
+      <div class="pg-body">
+        <p class="pg-note">
+          Export the current catalog, edit it in a spreadsheet, then import it back. A row whose
+          product code + unit already exists updates that product’s name/variant/price; a new
+          combination adds it to the catalog with zero stock everywhere, same as adding one by hand.
+          Unit can be a bottle size or BULK (a BULK row is added as Bulk/Refill).
+          A new size for a code that already has other sizes on file takes that product’s existing
+          name and variant, so a typo in one row can’t rename it differently across its own sizes.
+        </p>
+        <div class="form-row">
+          <div class="field">
+            <label for="csvFile">CSV file</label>
+            <input type="file" id="csvFile" name="csv_file" accept=".csv,text/csv" form="importProductsForm" required>
+          </div>
+          <div class="field csv-actions">
+            <button type="submit" form="importProductsForm" class="btn btn-accent">Upload CSV</button>
+            <a href="{{ url_for('admin.export_products') }}" class="btn btn-ghost" target="_blank" data-generate-file>Download CSV</a>
+          </div>
+        </div>
+        <div class="help">Columns: base_code, item_name, variant, unit, price, in the same order as Download CSV.</div>
+        <form method="POST" action="{{ url_for('admin.import_products') }}" enctype="multipart/form-data" id="importProductsForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        </form>
+      </div>
+    </details>
   </div>
-  {% endif %}
 </div>
 
-<div id="editProductOverlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:600px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Edit product</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      SKU <strong id="editProductSkuLabel" class="mono"></strong> — the SKU itself can't be changed here.
+<div id="editProductOverlay" class="pg-overlay">
+  <div class="card card-pad">
+    <h2>Edit product</h2>
+    <p class="pg-note">
+      SKU <strong id="editProductSkuLabel" class="mono"></strong>: the SKU itself can’t be changed here.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_product') }}" id="editProductForm" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -263,27 +306,26 @@
           </select>
         </div>
         <div class="field">
-          <label>Unit</label>
-          <input type="text" id="editUnitDisplay" class="mono" disabled
-            style="background:var(--bg); color:var(--ink-faint);">
-          <div class="help">Fixed to this SKU — add a new size as its own product instead.</div>
+          <label for="editUnitDisplay">Unit</label>
+          <input type="text" id="editUnitDisplay" class="mono" disabled>
+          <div class="help">Fixed to this SKU. Add a new size as its own product instead.</div>
         </div>
       </div>
       <div class="field">
-        <label>Product image</label>
-        <div id="editImagePreviewWrap" style="margin-bottom:8px;"></div>
+        <label for="editImage">Product image</label>
+        <div id="editImagePreviewWrap"></div>
         <input type="file" id="editImage" name="image" accept="image/png,image/jpeg,image/webp">
         <div class="help">Leave blank to keep the current image.</div>
       </div>
       <div class="field" id="editRemoveImageField" style="display:none;">
-        <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
-          <input type="checkbox" id="editRemoveImage" name="remove_image" value="1" style="width:auto;">
+        <label class="pg-check">
+          <input type="checkbox" id="editRemoveImage" name="remove_image" value="1">
           Remove current image
         </label>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="editProductCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="editProductCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save changes</button>
       </div>
     </form>
   </div>
@@ -534,21 +576,19 @@
         var img = document.createElement('img');
         img.src = imageUrl;
         img.alt = '';
-        img.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:var(--border-width-strong) solid var(--border-strong);';
+        img.className = 'pg-edit-img';
         imagePreviewWrap.appendChild(img);
         removeImageField.style.display = '';
       } else {
         var av = productAvatar(nameInput.value);
         var avatarDiv = document.createElement('div');
-        avatarDiv.className = 'product-thumb product-thumb-empty product-thumb-avatar';
-        avatarDiv.style.cssText = 'width:64px;height:64px;font-size:25.6px;';
+        avatarDiv.className = 'product-thumb product-thumb-empty product-thumb-avatar pg-edit-avatar';
         avatarDiv.setAttribute('aria-label', nameInput.value);
         avatarDiv.textContent = av.initials;
         imagePreviewWrap.appendChild(avatarDiv);
         var note = document.createElement('div');
-        note.className = 'text-faint';
-        note.style.cssText = 'font-size:12.5px;margin-top:6px;';
-        note.textContent = 'No image set — showing the generated avatar.';
+        note.className = 'text-faint pg-edit-note';
+        note.textContent = 'No image set. Showing the generated avatar.';
         imagePreviewWrap.appendChild(note);
         removeImageField.style.display = 'none';
       }

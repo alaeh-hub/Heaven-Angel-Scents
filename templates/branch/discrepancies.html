@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Shipment Discrepancies{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Shipment Discrepancies{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Notes value can't stretch this column — and therefore the whole
      table — wider than the others. Same pattern as Inventory Log.
@@ -31,28 +31,45 @@
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
+  }
+
+  .page-note {
+    padding: var(--space-xs) var(--space-lg) var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+    max-width: 60rem;
+  }
+
+  .cell-note {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .cell-hint {
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .smart-pagination .btn svg {
+    flex: none;
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Every DAMAGE and ADJUSTMENT entry tied to a delivery — units reported damaged in transit, or
+  <p class="page-note">Every DAMAGE and ADJUSTMENT entry tied to a delivery: units reported damaged in transit, or
       dispatched but never received or reported damaged (flagged automatically for HQ follow-up). This is
       the same data each delivery's own receipt shows, just rolled up across every delivery so a pattern
       is easier to spot. Everyday Production/Sale/Refill activity lives on the
-      <a href="{{ url_for('branch.movement_logs') }}">Inventory Log</a> instead.
-    </p>
-  </div>
+      <a href="{{ url_for('branch.movement_logs') }}">Inventory Log</a> instead.</p>
   {% if rows %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by item, delivery #, or notes…" autocomplete="off">
       </div>
     </div>
@@ -78,28 +95,27 @@
               {% if r.delivery_number %}
               <a href="{{ url_for('branch.requests_list') }}" class="mono item-name">{{ r.delivery_number }}</a>
               {% else %}
-              <span class="text-faint">—</span>
+              <span class="cell-hint">None</span>
               {% endif %}
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.movement_badge(r.movement_type) }}</td>
-            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ r.notes or '—' }}</td>
+            <td class="cell-note" data-label="Notes">{{ r.notes or 'No notes' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No entries match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">✓</div><p>No damage or shortfall reported on any delivery yet.</p></div>
+  <div class="empty-state"><p>No damage or shortfall reported on any delivery yet.</p></div>
   {% endif %}
 </div>
 {% endblock %}

@@ -1,13 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Announcements{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Announcements{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .panel-title { margin-bottom: var(--space-2xs); font-size: var(--text-lg); text-wrap: balance; }
+  .panel-note { margin: 0 0 var(--space-md); font-size: var(--text-sm); color: var(--ink-soft); max-width: 60rem; }
+  .panel-submit { width: 100%; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .ann-panel { max-width: 40rem; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card card-pad" style="max-width:640px;">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Send an announcement</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Pushed straight to the notification bell of every signed-in tab it targets — nothing is saved to an
+<div class="card card-pad ann-panel">
+  <h2 class="panel-title">Send an announcement</h2>
+  <p class="panel-note">
+    Pushed straight to the notification bell of every signed-in tab it targets. Nothing is saved to an
     inbox, so only branches with the app open right now will see it. A record of who sent what, and to
     whom, is still kept on the <a href="{{ url_for('admin.audit_log') }}">Admin Log</a>.
   </p>
@@ -37,7 +47,7 @@
       <label for="message">Message</label>
       <input type="text" id="message" name="message" maxlength="500" placeholder="e.g. HQ closes early today at 5PM." required>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%;">Post announcement</button>
+    <button type="submit" class="btn btn-accent panel-submit">Post announcement</button>
   </form>
 </div>
 {% endblock %}

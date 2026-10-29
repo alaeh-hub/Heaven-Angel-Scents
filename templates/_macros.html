@@ -3,7 +3,7 @@
 {% set pct = 100 if pct > 100 else pct %}
 {% set low = qty <= (reference / 4) %} <div class="fill-row">
   <div class="fill-track">
-    <div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}"></div>
+    <div class="fill-bar {{ 'low' if low }}" data-pct="{{ pct }}" style="--pct: {{ (pct / 100)|round(3) }}"></div>
   </div>
   <span class="fill-qty num">{{ qty }} {{ unit_label }}</span>
   </div>
@@ -15,7 +15,7 @@
      badge cell and spill long names out of the column. #}
   {% macro location_cell(name, is_hq) %}<span class="loc-cell"><span class="loc-name">{{ name }}</span>{% if is_hq %}<span class="badge badge-transit">HQ</span>{% endif %}</span>{% endmacro %}
 
-  {# Bottles on one line, bulk mL on its own muted line beneath — for a
+  {# Bottles on one line, bulk mL on its own muted line beneath, for a
      table cell where "2 · 100 mL" squeezed onto one line would get cut
      off. A bulk-only customer shows just the mL line. #}
   {% macro qty_stack(units, ml) %}
@@ -29,7 +29,7 @@
   {# Bottle count with bulk volume kept separate. Bulk sales store
      qty_sold in mL, so adding them to bottle counts would be meaningless;
      `ml` only shows when there was some bulk. #}
-  {% macro qty_split(units, ml) %}{{ (units or 0)|int }}{% if ml %} <span class="text-faint" style="white-space:nowrap;">· {{ ml|int }} mL</span>{% endif %}{% endmacro %}
+  {% macro qty_split(units, ml) %}{{ (units or 0)|int }}{% if ml %} <span class="text-faint" style="white-space:nowrap;">, {{ ml|int }} mL</span>{% endif %}{% endmacro %}
 
   {# Up/down percentage badge for a stat tile. `pct` comes from
      utils.percent_change(); None (no baseline to compare against)
@@ -95,7 +95,7 @@
 
   {# A Sale is the normal case (customer takes a bottle). A Refill is a
   customer bringing their own bottle back and only paying for product.
-  A Freebie is a giveaway/comp/sample — always ₱0, consumes stock like
+  A Freebie is a giveaway/comp/sample, always ₱0, consumes stock like
   a Sale. All three consume stock; this badge is purely a visual cue
   for which one a given row was. #}
   {% macro sale_type_badge(sale_type) %}
@@ -103,16 +103,16 @@
   <span class="badge badge-{{ map.get(sale_type, 'pending') }}">{{ sale_type }}</span>
   {% endmacro %}
 
-  {# Cash is a normal register transaction. Credit is anyone — an employee
+  {# Cash is a normal register transaction. Credit is anyone, an employee
   taking product against their own pay, or a customer buying on store
-  credit ("utang") — taking product now without paying cash, flagged
+  credit ("utang"), taking product now without paying cash, flagged
   distinctly so it's easy to spot rows that still need to be settled or
   reconciled rather than the till. #}
   {% macro payment_method_badge(payment_method, buyer_username=None) %}
   {% if payment_method == 'Credit' %}
   <span class="badge badge-pending badge-credit"
     title="On credit for {{ buyer_username or 'someone' }}, not paid in cash">Credit{% if buyer_username
-    %}<span class="badge-credit-name"> · {{ buyer_username }}</span>{% endif %}</span>
+    %}<span class="badge-credit-name"> {{ buyer_username }}</span>{% endif %}</span>
   {% else %}
   <span class="badge badge-active">Cash</span>
   {% endif %}

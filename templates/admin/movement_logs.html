@@ -1,28 +1,17 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Inventory Log{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Inventory Log{% endblock %}
 
 {% block head %}
 <style>
-  /* Fixed column widths (see .table-fixed in style.css) so a long
-     Notes value can't stretch this column — and therefore the whole
-     table — wider than the others; it wraps in place instead.
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-note { margin: 0; padding: 0 var(--space-lg) var(--space-sm); font-size: 0.8125rem; color: var(--ink-faint); max-width: 60rem; }
+  .ml-notes { font-size: 0.8125rem; }
 
-     Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.ml-table td:nth-child(n))
-     out-specificity style.css's generic mobile rule .table-wrap td
-     { width: 100% } (one class + one tag), so below the 680px
-     breakpoint a cell like "When" stayed pinned to a hardcoded 14% of
-     the row instead of taking the full-width mobile layout — and
-     combined with overflow-wrap:anywhere from .table-fixed, that
-     narrow box wrapped every character onto its own line. Same
-     pattern/fix as branch's Inventory Log and Admin Log. */
+  /* Fixed column widths, desktop table layout only: below 680px the
+     generic .table-wrap td rule stacks cells full width. */
   @media (min-width: 681px) {
-    /* "When" bumped up from 14% to 18% (branch's own Inventory Log
-       already uses 18% for the same column) — 14% was still tight
-       enough to wrap "Sep 04, 2026" at ordinary desktop widths. */
     .ml-table th:nth-child(1), .ml-table td:nth-child(1) { width: 18%; }
     .ml-table th:nth-child(2), .ml-table td:nth-child(2) { width: 14%; }
     .ml-table th:nth-child(3), .ml-table td:nth-child(3) { width: 20%; }
@@ -32,14 +21,11 @@
   }
 
   @media (max-width: 680px) {
-    /* Same reasoning as Admin Log's Details column: a long Notes
-       paragraph reads better stacked (label above value) than
-       squeezed into the generic right-aligned mobile row. */
     .ml-table td[data-label="Notes"] {
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
   }
 </style>
@@ -47,18 +33,20 @@
 
 {% block content %}
 <div class="card">
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      This tracks Production, Sale, and Refill activity. Dispatch, receipt, and damage detail for stock
-      requests now lives on each delivery instead — see <a href="{{ url_for('admin.requests_list') }}">Stock
-      Requests</a>, or that delivery's own receipt once it's Fulfilled.
-    </p>
+  <div class="card-header">
+    <h2>Stock movement ledger</h2>
+    <span class="hint">Production, sale and refill</span>
   </div>
+  <p class="pg-note">
+    This tracks Production, Sale, and Refill activity. Dispatch, receipt, and damage detail for stock
+    requests now lives on each delivery instead. See <a href="{{ url_for('admin.requests_list') }}">Stock
+    Requests</a>, or that delivery’s own receipt once it’s Fulfilled.
+  </p>
   {% if logs %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by branch, item, or notes…" autocomplete="off">
       </div>
     </div>
@@ -83,24 +71,23 @@
             </td>
             <td class="mobile-fold" data-label="Type">{{ m.movement_badge(l.movement_type) }}</td>
             <td class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}" data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
-            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
+            <td class="text-soft ml-notes" data-label="Notes">{{ l.notes or '-' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No ledger entries match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No ledger entries yet.</p></div>
+  <div class="empty-state"><p>No ledger entries yet. They appear here once production, a sale or a refill is recorded.</p></div>
   {% endif %}
 </div>
 {% endblock %}

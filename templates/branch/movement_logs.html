@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Inventory Log{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Inventory Log{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Notes value can't stretch this column — and therefore the whole
      table — wider than the others. Same reasoning as admin's
@@ -57,27 +57,44 @@
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
+  }
+
+  .page-note {
+    padding: var(--space-xs) var(--space-lg) var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+    max-width: 60rem;
+  }
+
+  .cell-note {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .cell-hint {
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .smart-pagination .btn svg {
+    flex: none;
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      This tracks Production, Sale, and Refill activity at your branch. Dispatch, receipt, and damage
-      detail for stock requests now lives on each delivery instead — see
+  <p class="page-note">This tracks Production, Sale, and Refill activity at your branch. Dispatch, receipt, and damage
+      detail for stock requests now lives on each delivery instead, so see
       <a href="{{ url_for('branch.request_stock') }}">Request Stock</a> or
-      <a href="{{ url_for('branch.receive_stock') }}">Receive Shipment</a>.
-    </p>
-  </div>
+      <a href="{{ url_for('branch.receive_stock') }}">Receive Shipment</a>.</p>
   {% if logs %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -117,25 +134,23 @@
             <td
               class="num mono {{ 'qty-up' if l.change_qty > 0 else ('qty-down' if l.change_qty < 0 else 'qty-flat') }}"
               data-label="Change">{{ '%+d'|format(l.change_qty) }}</td>
-            <td class="text-soft" style="font-size: 12.5px;" data-label="Notes">{{ l.notes or '—' }}</td>
+            <td class="cell-note" data-label="Notes">{{ l.notes or 'No notes' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No ledger entries match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
     <p>No ledger entries yet.</p>
   </div>
   {% endif %}

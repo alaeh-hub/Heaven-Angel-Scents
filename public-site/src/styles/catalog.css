@@ -77,7 +77,7 @@
   width: 84%;
   height: 88%;
   object-fit: contain;
-  filter: drop-shadow(0 18px 22px rgb(20 20 30 / 0.16));
+  filter: drop-shadow(0 18px 22px var(--shadow-bottle));
 }
 
 .product-card-body {
@@ -145,8 +145,9 @@
 }
 
 .page-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+  background: var(--surface-sunk);
+  color: var(--ink-3);
+  cursor: not-allowed;
 }
 
 .page-pill {
@@ -190,7 +191,9 @@
 /* "Ask about this scent": opens the general inquiry form, pre-filled. */
 .product-card-ask {
   justify-self: start;
-  margin: 2px 6px 0;
+  min-height: 44px;
+  margin: 0 6px;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 550;
   color: var(--gold-ink);
@@ -200,4 +203,71 @@
 
 .product-card-ask:hover {
   border-bottom-color: currentColor;
+}
+
+/* ===================================================== phone scale-down
+   Mobile only: smaller type, tighter spacing and smaller controls. Kept
+   last in the cascade so it wins over the desktop rules above. */
+@media (max-width: 640px) {
+  :root {
+    --gutter: 16px;
+    --nav-h: 56px;
+    --r-surface: 18px;
+    --r-inner: 12px;
+  }
+
+  body { font-size: 15px; }
+
+  .display { font-size: clamp(30px, 8vw, 38px); }
+  .title-xl { font-size: clamp(26px, 7vw, 32px); }
+  .title-lg { font-size: clamp(22px, 6vw, 27px); }
+  .lede { font-size: 15px; }
+  .eyebrow { font-size: 12px; margin-bottom: 10px; }
+
+  .btn { height: 42px; padding: 0 18px; font-size: 14.5px; }
+  .btn-sm { height: 34px; padding: 0 13px; font-size: 13px; }
+
+  .section { padding: clamp(52px, 14vw, 72px) 0; }
+
+  .nav-sheet a { font-size: 20px; }
+  .hero-caps { font-size: 12.5px; }
+  .hero-title { font-size: clamp(27px, 7.4vw, 36px); }
+  .hero-copy { gap: 12px; }
+  .hero-ctas { gap: 10px 16px; }
+
+  .segmented-item { height: 34px; padding: 0 14px; font-size: 13px; }
+
+  .pkg-card { padding: 20px; gap: 11px; }
+  .pkg-card h3 { font-size: 20px; }
+  .pkg-price-now { font-size: 25px; }
+  .shop-card { padding: 18px; }
+  .step h3 { font-size: 19px; }
+  .faq-q { padding: 16px 18px; }
+  .about-point { padding: 20px 0; }
+  .about-point h3 { font-size: 17px; }
+  .journey-block h3 { font-size: 22px; }
+  .journey-static-list h3 { font-size: 22px; }
+  .stats-item { padding: 20px 16px 2px 0; }
+  .stats-value { font-size: clamp(26px, 7.5vw, 32px); }
+  .quote { padding: 20px; }
+  .earn-panel { padding: 20px; }
+  .earn-row dd { font-size: 18px; }
+  .earn-profit dd { font-size: clamp(30px, 8.5vw, 38px); }
+  .closing-panel { padding: 28px 20px; }
+  .footer-body { padding: 44px 0 22px; }
+
+  .detail { padding: 22px 0 48px; }
+  .block-title { font-size: 19px; }
+  .other-card { padding: 16px; }
+  .other-card .price { font-size: 17px; }
+  .summary { padding: 20px; }
+  .summary-price { font-size: 34px; }
+  .summary-earn-profit dd { font-size: 18px; }
+  .detail-bar-price { font-size: 17px; }
+  .inquiry-overlay { padding: 12px; }
+  .inquiry { padding: 20px; }
+  .inquiry-head h2 { font-size: 20px; }
+  .inquiry-done h2 { font-size: 22px; }
+
+  .catalog { padding: 32px 0 64px; }
 }

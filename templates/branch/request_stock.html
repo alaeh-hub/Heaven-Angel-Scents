@@ -1,19 +1,65 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Request Stock{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Request Stock{% endblock %}
 
 {% block head %}
 <style>
-  .cart-add-row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-end;
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* The request is a ledger being filled: pick a line, add it, read the
+     running total, send. One card holds it; the cart is rows on hairlines,
+     not boxes inside the card. */
+  .rq-head h2 {
+    text-wrap: balance;
+    font-size: var(--text-lg);
+    font-weight: 600;
   }
 
-  .request-form-card {
-    max-width: 760px;
+  .rq-lede {
+    margin: var(--space-2xs) 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .rq-foot {
+    margin-top: var(--space-sm);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .rq-meta {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-2xs) var(--space-md);
+    font-size: var(--text-xs);
+  }
+
+  .rq-form {
+    margin-top: var(--space-md);
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .rq-form #cartInputs {
+    display: none;
+  }
+
+  .rq-submit {
+    min-height: 2.5rem;
+    min-width: 12rem;
+  }
+
+  .page-note {
+    padding: var(--space-xs) var(--space-lg) var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .cart-add-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: flex-end;
   }
 
   .cart-add-row .field {
@@ -29,42 +75,16 @@
   }
 
   .cart-add-row .field-qty {
-    flex: 0 0 84px;
+    flex: 0 0 5.5rem;
   }
 
   .cart-add-row .btn {
     flex: 0 0 auto;
-  }
-
-  @media (max-width: 640px) {
-    .cart-add-row {
-      flex-wrap: wrap;
-      row-gap: 12px;
-    }
-
-    .cart-add-row .field-product {
-      flex: 1 1 100%;
-    }
-
-    .cart-add-row .field-unit {
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-
-    .cart-add-row .field-qty {
-      flex: 0 0 72px;
-    }
-
-    .cart-add-row .btn {
-      padding-left: 14px;
-      padding-right: 14px;
-    }
+    min-height: 2.5rem;
   }
 
   .cart-table-wrap {
-    margin-top: 16px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    margin-top: var(--space-md);
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -81,82 +101,78 @@
 
   .cart-table th {
     text-align: left;
-    font-size: 12px;
+    font-size: var(--text-xs);
+    font-weight: 500;
     letter-spacing: 0;
     color: var(--ink-faint);
-    padding: 9px 14px;
-    background: var(--field);
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-xs) var(--space-sm);
+    border-bottom: 1px solid var(--border-strong);
   }
 
   .cart-table td {
-    padding: 10px 14px;
+    padding: var(--space-xs) var(--space-sm);
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--text-sm);
     vertical-align: middle;
   }
 
   .cart-table tbody tr:last-child td {
-    border-bottom: none;
+    border-bottom: 1px solid var(--border);
   }
 
   .cart-table td.num,
   .cart-table th.num {
     text-align: right;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   .cart-qty-input {
-    width: 80px;
+    width: 5rem;
+    min-height: 2.25rem;
     text-align: right;
   }
 
   .cart-remove {
     background: none;
     border: none;
-    color: var(--danger);
+    border-radius: var(--radius-sm);
+    color: var(--red-ink);
     cursor: pointer;
-    font-size: 18px;
+    font-size: var(--text-xl);
     line-height: 1;
-    padding: 2px 6px;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: var(--space-3xs) var(--space-xs);
   }
 
   .cart-remove:hover {
-    background: var(--danger-soft, rgba(226, 58, 72, .1));
-    border-radius: 6px;
+    background: var(--red-soft);
   }
 
   .cart-empty-row td {
-    padding: 20px 14px;
+    padding: var(--space-lg) var(--space-sm);
     text-align: center;
     color: var(--ink-faint);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
 
   .cart-total-row td {
-    font-weight: 700;
-    background: var(--field);
+    font-weight: 600;
+    border-bottom: none;
+    padding-top: var(--space-sm);
+    font-size: var(--text-md);
   }
 
   .cart-total-row .cart-total-label {
     text-align: right;
+    color: var(--ink-soft);
+    font-weight: 500;
   }
 
-  /* Fixed column widths (see .table-fixed in style.css) so nothing in
-     this row — the delivery number included — can stretch a column,
-     and therefore the whole table, wider than the others.
-
-     Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.rh-table td:nth-child(n))
-     out-specificity style.css's generic mobile rule .table-wrap td
-     { width: 100% } (one class + one tag), so below the 680px
-     breakpoint the Requested cell stayed pinned to a hardcoded width
-     of the row instead of taking the full-width mobile layout — and
-     combined with overflow-wrap:anywhere from .table-fixed, that
-     narrow box wrapped every character onto its own line. "Requested"
-     itself was also bumped up from 16% to 20% — same fix as Stock
-     Requests' own "Requested" column, which was wrapping onto a
-     second line at ordinary desktop widths. */
+  /* Fixed column widths (see .table-fixed in style.css) so nothing in this
+     row can stretch a column. Scoped to the desktop table layout: below
+     680px the generic responsive rule takes over. */
   @media (min-width: 681px) {
     .rh-table th:nth-child(1), .rh-table td:nth-child(1) { width: 20%; }
     .rh-table th:nth-child(2), .rh-table td:nth-child(2) { width: 20%; }
@@ -166,18 +182,51 @@
     .rh-table th:nth-child(6), .rh-table td:nth-child(6) { width: 20%; }
   }
 
+  @media (max-width: 640px) {
+    .cart-add-row {
+      flex-wrap: wrap;
+      row-gap: var(--space-sm);
+    }
+
+    .cart-add-row .field-product {
+      flex: 1 1 100%;
+    }
+
+    .cart-add-row .field-unit {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .cart-add-row .field-qty {
+      flex: 0 0 4.5rem;
+    }
+
+    .cart-add-row .btn {
+      min-height: 2.75rem;
+      padding-left: var(--space-md);
+      padding-right: var(--space-md);
+    }
+
+    .rq-form {
+      display: block;
+    }
+
+    .rq-submit {
+      width: 100%;
+      min-height: 2.75rem;
+    }
+  }
+
   @media (max-width: 680px) {
     .cart-table-wrap {
       overflow: visible;
-      border: none;
-      border-radius: 0;
     }
 
     .cart-table thead {
       position: absolute;
       width: 1px;
       height: 1px;
-      margin: -1px;
+      margin: calc(var(--space-3xs) * -1);
       padding: 0;
       border: 0;
       overflow: hidden;
@@ -191,43 +240,32 @@
       width: 100%;
     }
 
-    /* Each cart item becomes a compact 2-row card: item name + remove
-       button on top, and unit/qty/price/total condensed into a single
-       row of four narrow columns underneath — instead of six separate
-       full-width rows stacked on top of each other. */
+    /* Each cart line is two rows on a hairline: item and remove on top,
+       unit, qty, price and line total underneath. */
     .cart-table tbody tr {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: auto auto;
-      column-gap: 8px;
-      row-gap: 8px;
-      margin-bottom: 10px;
-      padding: 12px;
-      border: var(--border-width-strong) solid var(--border-strong);
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-    }
-
-    .cart-table tbody tr:last-child {
-      margin-bottom: 0;
+      column-gap: var(--space-xs);
+      row-gap: var(--space-xs);
+      padding: var(--space-sm) 0;
+      border-bottom: 1px solid var(--border);
     }
 
     .cart-table tbody td {
       padding: 0;
       border-bottom: none;
-      font-size: 12.5px;
+      font-size: var(--text-sm);
       text-align: left;
     }
 
-    /* Item name — spans the first three columns of row 1 */
     .cart-table tbody td:nth-child(1) {
       grid-column: 1 / 4;
       grid-row: 1;
       align-self: center;
-      font-size: 13.5px;
+      font-size: var(--text-md);
     }
 
-    /* Remove button — last column of row 1, right-aligned */
     .cart-table tbody td:nth-child(6) {
       grid-column: 4 / 5;
       grid-row: 1;
@@ -236,7 +274,6 @@
       justify-content: flex-end;
     }
 
-    /* Unit / Qty / Ref. price / Line total — one narrow column each on row 2 */
     .cart-table tbody td:nth-child(2),
     .cart-table tbody td:nth-child(3),
     .cart-table tbody td:nth-child(4),
@@ -252,11 +289,11 @@
     .cart-table tbody td[data-label]:not([data-label=""])::before {
       content: attr(data-label);
       display: block;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: var(--text-xs);
+      font-weight: 500;
       letter-spacing: 0;
       color: var(--ink-faint);
-      margin-bottom: 3px;
+      margin-bottom: var(--space-2xs);
     }
 
     .cart-table tbody td[data-label]:not([data-label=""]):nth-child(1)::before {
@@ -270,9 +307,8 @@
 
     #cartEmptyRow {
       display: block !important;
-      padding: 20px 14px;
-      border: 1px dashed var(--border);
-      border-radius: var(--radius-sm);
+      padding: var(--space-lg) 0;
+      border-bottom: 1px solid var(--border);
     }
 
     #cartEmptyRow td {
@@ -283,25 +319,17 @@
 
     .cart-qty-input {
       width: 100%;
-      max-width: 68px;
-      padding: 6px 8px;
-    }
-
-    .cart-remove {
-      font-size: 19px;
-      padding: 0 4px;
+      max-width: 4.5rem;
+      padding: var(--space-xs) var(--space-xs);
     }
 
     .cart-table tr.cart-total-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      padding: 12px 14px;
-      border: var(--border-width-strong) solid var(--border-strong);
-      border-radius: var(--radius-sm);
-      margin-top: 10px;
-      background: var(--field);
+      gap: var(--space-sm);
+      padding: var(--space-sm) 0;
+      border-bottom: none;
     }
 
     .cart-table tr.cart-total-row td {
@@ -317,10 +345,10 @@
 
 {% block content %}
 <div class="card card-pad stack request-form-card">
-  <div class="card-header" style="padding:0 0 4px; border:none;">
-    <h2 style="font-size:16.5px;">Request Stock</h2>
+  <div class="rq-head">
+    <h2>Request Stock</h2>
   </div>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+  <p class="rq-lede">
     Add as many products as you need, then send it as one delivery request to Main Branch.
   </p>
 
@@ -362,7 +390,7 @@
         </thead>
         <tbody id="cartBody">
           <tr class="cart-empty-row" id="cartEmptyRow">
-            <td colspan="6">No items added yet — pick a product above.</td>
+            <td colspan="6">No items added yet. Pick a product above.</td>
           </tr>
         </tbody>
         <tfoot>
@@ -375,28 +403,28 @@
       </table>
     </div>
 
-    <form method="POST" id="requestForm" style="margin-top:16px;">
+    <form method="POST" id="requestForm" class="rq-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="form_token" value="{{ form_token }}">
       <div id="cartInputs"></div>
-      <button type="submit" class="btn btn-accent" style="width:100%;" id="submitRequestBtn" disabled>Send request</button>
+      <button type="submit" class="btn btn-accent rq-submit" id="submitRequestBtn" disabled>Send request</button>
     </form>
-    <p class="text-faint" style="font-size:11.5px; margin-top:10px;">
-      Priced at each product's current reference price — HQ may still adjust what's actually dispatched.
+    <p class="rq-foot">
+      Priced at each product’s current reference price. HQ may still adjust what’s actually dispatched.
     </p>
   </div>
 
   <div class="card">
     <div class="card-header">
       <h2>Still open</h2>
-      <span class="hint">
-        {% if open_count > open_requests|length %}Latest {{ open_requests|length }} of {{ open_count }} open{% else %}{{ open_count }} open{% endif %}
-        · <a href="{{ url_for('branch.requests_list') }}" class="text-soft">full history →</a>
+      <span class="rq-meta">
+        <span class="hint">{% if open_count > open_requests|length %}Latest {{ open_requests|length }} of {{ open_count }} open{% else %}{{ open_count }} open{% endif %}</span>
+        <a href="{{ url_for('branch.requests_list') }}" class="text-soft">Full history</a>
       </span>
     </div>
     {% if open_requests %}
-    <p class="text-faint" style="font-size:12px; margin:-4px 0 12px;">
-      Already pending or on the way to you — check here before requesting the same items again.
+    <p class="page-note">
+      Already pending or on the way to you. Check here before requesting the same items again.
     </p>
     <div class="table-wrap">
         <table class="table-fixed rh-table">
@@ -436,7 +464,7 @@
         </table>
     </div>
     {% else %}
-    <div class="empty-state"><div class="glyph">—</div><p>No open requests — everything you've asked for has been delivered or closed.</p></div>
+    <div class="empty-state"><p>No open requests: everything you’ve asked for has been delivered or closed.</p></div>
     {% endif %}
   </div>
 {% endblock %}

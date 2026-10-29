@@ -1,28 +1,45 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Materials &amp; Suppliers{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Materials &amp; Suppliers{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+  }
+  .pg-h { font-size: 1.125rem; margin-bottom: var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); }
+  .pg-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pg-actions .btn { flex: 1; }
+  .pg-foot { padding: var(--space-2xs) var(--space-lg) var(--space-md); }
+  .pg-foot p { font-size: 0.875rem; color: var(--ink-faint); margin: 0; }
+  .pg-head-tools { display: flex; align-items: center; gap: var(--space-md); }
   /* "Purchased as" toggle in the Add/Edit material modals — same
      segmented-control look as the Sale/Refill and Cash/Salary
      switches on Record Sale, reused here under a generic class name
      so both modals (add + edit) can share one stylesheet block. */
   .rb-mode {
     display: inline-flex;
-    gap: 2px;
+    gap: var(--space-3xs);
     background: var(--field);
     border: var(--border-width-strong) solid var(--border-strong);
     border-radius: 99px;
-    padding: 3px;
+    padding: var(--space-2xs);
     width: 100%;
   }
 
   .rb-mode-opt {
     flex: 1;
-    padding: 8px 13px;
+    padding: var(--space-xs) var(--space-sm);
     border: none;
     background: transparent;
     border-radius: 99px;
@@ -90,7 +107,7 @@
      buttons. */
   .sup-table td.sup-col-actions .btn,
   .mat-table td.mat-col-actions .btn {
-    padding: 5px 10px;
+    padding: var(--space-2xs) var(--space-sm);
     font-size: 11.5px;
   }
 
@@ -109,15 +126,15 @@
       grid-row: auto;
       grid-column: 1 / -1;
       width: 100%;
-      padding-top: 0.625rem;
-      padding-bottom: 0.75rem;
+      padding-top: var(--space-sm);
+      padding-bottom: var(--space-sm);
     }
 
     .table-wrap .sup-table td.sup-col-actions .inline-form,
     .table-wrap .mat-table td.mat-col-actions .inline-form {
       display: flex;
       flex-direction: row;
-      gap: 0.5rem;
+      gap: var(--space-xs);
       width: 100%;
     }
 
@@ -125,7 +142,7 @@
     .table-wrap .mat-table td.mat-col-actions .btn {
       flex: 1 1 0;
       justify-content: center;
-      padding: 8px 12px;
+      padding: var(--space-xs) var(--space-sm);
       font-size: 12.5px;
     }
   }
@@ -133,16 +150,17 @@
   .sup-history-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12.5px;
+    font-size: 0.875rem;
   }
 
   .sup-history-table th,
   .sup-history-table td {
-    padding: 8px 10px;
+    padding: var(--space-xs) var(--space-sm);
     border-bottom: 1px solid var(--border);
     text-align: left;
   }
 
+  .mat-phone { font-size: 0.875rem; }
   .sup-history-table th.num,
   .sup-history-table td.num {
     text-align: right;
@@ -178,7 +196,7 @@
 <div class="card mt-24">
   <div class="card-header">
     <h2>Raw materials</h2>
-    <div style="display:flex; align-items:center; gap:14px;">
+    <div class="pg-head-tools">
       <span class="hint" id="materialsCount">{{ materials|length }} item{{ 's' if materials|length != 1 }}</span>
       <button type="button" class="btn btn-accent btn-sm" id="openAddMaterialBtn">+ Add material</button>
     </div>
@@ -187,7 +205,7 @@
   <div data-smart-table data-page-size="10" data-count-target="materialsCount" data-count-label="item">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -228,7 +246,7 @@
               <div class="item-sub">for {{ mat.package_cost|peso }}</div>
               {% endif %}
             </td>
-            <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or '—' }}</td>
+            <td class="text-soft" data-label="Supplier">{{ mat.supplier_name or 'None' }}</td>
             <td class="num mono" data-label="Cost per unit">₱{{ '%.4f'|format(mat.cost_per_unit) }} / {{
               mat.unit.lower() }}</td>
             <td class="num mono {{ 'danger' if mat.stock_qty <= 0 }}" data-label="Stock on hand">{{
@@ -251,25 +269,23 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No products match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Stock on hand is real now — "Restock" adds to it (and rolls the
-      purchase into the running cost-per-unit average), and it's deducted whenever a
+  <div class="pg-foot">
+    <p>Stock on hand is real now: “Restock” adds to it (and rolls the
+      purchase into the running cost-per-unit average), and it’s deducted whenever a
       <a href="{{ url_for('admin.bulk_batches') }}">bulk batch</a> uses it up. Edit only corrects this record's own
-      fields — it never touches stock on hand.</p>
+      fields. It never touches stock on hand.</p>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
     <p>No materials added yet.</p>
   </div>
   {% endif %}
@@ -278,22 +294,22 @@
 <div class="card mt-24">
   <div class="card-header">
     <h2>Suppliers</h2>
-    <div style="display:flex; align-items:center; gap:14px;">
+    <div class="pg-head-tools">
       <span class="hint" id="suppliersCount">{{ suppliers|length }} supplier{{ 's' if suppliers|length != 1 }}</span>
       <button type="button" class="btn btn-accent btn-sm" id="openAddSupplierBtn">+ Add supplier</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
+  <div class="pg-foot">
+    <p>
       Total spend and material count are rolled up from every material package logged against a supplier above.
-      Open "Supply history" on any row to see exactly what's been bought from them and at what volume.
+      Open “Supply history” on any row to see exactly what’s been bought from them and at what volume.
     </p>
   </div>
   {% if suppliers %}
   <div class="table-compact" data-smart-table data-page-size="10" data-count-target="suppliersCount" data-count-label="supplier">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -327,15 +343,15 @@
           <tr
             data-search="{{ (s.supplier_name ~ ' ' ~ (s.contact_person or '') ~ ' ' ~ (s.phone or '') ~ ' ' ~ (s.email or ''))|lower }}">
             <td class="item-name mobile-inline-anchor" data-label="Supplier">{{ s.supplier_name }}</td>
-            <td class="text-soft" data-label="Contact">{{ s.contact_person or '—' }}</td>
+            <td class="text-soft" data-label="Contact">{{ s.contact_person or 'None' }}</td>
             <td data-label="Reach">
-              <div class="mono text-soft" style="font-size:12.5px;">{{ s.phone or '—' }}</div>
-              <div class="item-sub">{{ s.email or '—' }}</div>
+              <div class="mono text-soft mat-phone">{{ s.phone or 'None' }}</div>
+              <div class="item-sub">{{ s.email or 'None' }}</div>
             </td>
             <td class="num mono" data-label="Materials">{{ s.material_count }}</td>
             <td class="num mono" data-label="Total spend">{{ s.total_spent|peso }}</td>
             <td class="mono text-soft" data-label="Last purchase">{{ s.last_purchase_at.strftime('%b %d, %Y') if
-              s.last_purchase_at else '—' }}</td>
+              s.last_purchase_at else 'None' }}</td>
             <td data-label="" class="sup-col-actions mobile-inline-action">
               <div class="inline-form">
                 {% if s.materials_supplied %}
@@ -355,34 +371,32 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No suppliers match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">There's no delete here — edit a supplier's details instead, or just
+  <div class="pg-foot">
+    <p>There’s no delete here. Edit a supplier’s details instead, or just
       leave it unused. Materials keep their price history even if their supplier is edited or unassigned later.</p>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
     <p>No suppliers added yet.</p>
   </div>
   {% endif %}
 </div>
 
 <div id="addMaterialOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:640px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Add a material</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Enter it the way you actually buy it — e.g. 140 grams for ₱490 — and the cost per unit is worked out for you.
+    <h2 class="pg-h">Add a material</h2>
+    <p class="text-faint pg-note">
+      Enter it the way you actually buy it, e.g. 140 grams for ₱490, and the cost per unit is worked out for you.
     </p>
     <form method="POST" id="addMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -439,14 +453,14 @@
         </div>
       </div>
       <div class="field">
-        <label for="purchased_at">Purchase date <span class="text-faint">(optional — logging a past
+        <label for="purchased_at">Purchase date <span class="text-faint">(optional: logging a past
             purchase)</span></label>
         <input type="date" id="purchased_at" name="purchased_at" max="{{ today }}">
         <div class="help">Leave blank to use today's date.</div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="addMaterialCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Add material</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="addMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Add material</button>
       </div>
     </form>
   </div>
@@ -454,10 +468,10 @@
 
 
 <div id="editMaterialOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:640px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Edit material</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+    <h2 class="pg-h">Edit material</h2>
+    <p class="text-faint pg-note">
       The unit is fixed after creation because formulas and inventory history use it. To track this material in a
       different unit, add it as a separate material.
     </p>
@@ -517,9 +531,9 @@
           </select>
         </div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="editMaterialCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="editMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save changes</button>
       </div>
     </form>
   </div>
@@ -527,10 +541,10 @@
 
 <!-- Restock material -->
 <div id="restockMaterialOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:400px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Restock <span id="restockMaterialName"></span></h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;" id="restockCurrentStock"></p>
+    <h2 class="pg-h">Restock <span id="restockMaterialName"></span></h2>
+    <p class="text-faint pg-note" id="restockCurrentStock"></p>
     <form method="POST" action="{{ url_for('admin.restock_material') }}" id="restockMaterialForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="material_id" id="restockMaterialId">
@@ -547,9 +561,9 @@
         <label for="restockPurchasedAt">Purchase date</label>
         <input type="date" id="restockPurchasedAt" name="purchased_at" value="{{ today }}" max="{{ today }}" data-today="{{ today }}" required>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="restockMaterialCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Restock</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="restockMaterialCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Restock</button>
       </div>
     </form>
   </div>
@@ -557,11 +571,11 @@
 
 <!-- Add supplier -->
 <div id="addSupplierOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:640px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Add a supplier</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Only the name is required — fill in what you have and add the rest later from Edit.
+    <h2 class="pg-h">Add a supplier</h2>
+    <p class="text-faint pg-note">
+      Only the name is required. Fill in what you have and add the rest later from Edit.
     </p>
     <form method="POST" action="{{ url_for('admin.add_supplier') }}" id="addSupplierForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -597,14 +611,14 @@
         </div>
       </div>
       <div class="field">
-        <label for="added_on">Date added <span class="text-faint">(optional — logging a supplier from
+        <label for="added_on">Date added <span class="text-faint">(optional: logging a supplier from
             before)</span></label>
         <input type="date" id="added_on" name="added_on" max="{{ today }}">
         <div class="help">Leave blank to use today's date.</div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="addSupplierCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Add supplier</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="addSupplierCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Add supplier</button>
       </div>
     </form>
   </div>
@@ -612,11 +626,11 @@
 
 <!-- Edit supplier -->
 <div id="editSupplierOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:640px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Edit supplier</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Changes apply immediately — every material already linked to this supplier will show the updated details.
+    <h2 class="pg-h">Edit supplier</h2>
+    <p class="text-faint pg-note">
+      Changes apply immediately. Every material already linked to this supplier will show the updated details.
     </p>
     <form method="POST" action="{{ url_for('admin.edit_supplier') }}" id="editSupplierForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -651,9 +665,9 @@
           <input type="text" id="editSupplierNotes" name="notes" maxlength="255">
         </div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="editSupplierCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Save changes</button>
+      <div class="pg-actions">
+        <button type="button" class="btn btn-ghost" id="editSupplierCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save changes</button>
       </div>
     </form>
   </div>
@@ -661,10 +675,10 @@
 
 <!-- Supply history (read-only) -->
 <div id="supplyHistoryOverlay"
-  style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); align-items:center; justify-content:center; padding:20px;">
+  class="pg-overlay">
   <div class="card card-pad" style="max-width:560px; width:100%; max-height:80vh; overflow-y:auto;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Supply history — <span id="supplyHistorySupplierName"></span></h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
+    <h2 class="pg-h">Supply history: <span id="supplyHistorySupplierName"></span></h2>
+    <p class="text-faint pg-note">
       Every material this supplier has provided, rolled up across every purchase logged for it.
     </p>
     <table class="sup-history-table table-fixed">
@@ -681,7 +695,7 @@
       </thead>
       <tbody id="supplyHistoryBody"></tbody>
     </table>
-    <div style="margin-top:16px;">
+    <div style="margin-top:var(--space-md);">
       <button type="button" class="btn btn-ghost" style="width:100%;" id="supplyHistoryCloseBtn">Close</button>
     </div>
   </div>
@@ -751,7 +765,7 @@
         packageQty.placeholder = '5';
         packageCostLabel.textContent = 'Total cost for this purchase (₱)';
         packageCost.placeholder = '175.00';
-        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package — enter how many pieces and the total you paid for them.';
+        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package. Enter how many pieces and the total you paid for them.';
       } else {
         packageQtyLabel.textContent = 'Package quantity';
         packageQty.placeholder = '140';
@@ -838,7 +852,7 @@
       if (value === 'individual') {
         qtyLabel.textContent = 'Quantity (pieces)';
         costLabel.textContent = 'Total cost for this purchase (₱)';
-        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package — enter how many pieces and the total you paid for them.';
+        modeHelp.textContent = 'Individual unit: bought one at a time rather than as a bulk package. Enter how many pieces and the total you paid for them.';
       } else {
         qtyLabel.textContent = 'Package quantity';
         costLabel.textContent = 'Cost for that package (₱)';

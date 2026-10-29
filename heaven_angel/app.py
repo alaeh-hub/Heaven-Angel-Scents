@@ -6,7 +6,7 @@ import re
 import secrets
 import uuid
 
-from flask import Flask, g, has_request_context, render_template, request, session
+from flask import Flask, g, has_request_context, render_template, request, send_from_directory, session
 from flask_talisman import Talisman
 from mysql.connector.errors import PoolError
 from flask_wtf import CSRFProtect
@@ -211,6 +211,27 @@ def create_app():
             app.logger.exception("Health check failed")
             return "unhealthy", 503, {"Content-Type": "text/plain; charset=utf-8"}
         return "ok", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+    @app.route("/manifest.webmanifest")
+    def web_manifest():
+        # Makes the site installable (pin to the taskbar, own window). Public
+        # on purpose: the browser fetches it before anyone has signed in.
+        resp = send_from_directory(
+            os.path.join(app.root_path, "static"), "manifest.webmanifest",
+            mimetype="application/manifest+json")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.route("/sw.js")
+    def service_worker():
+        # Served from the site root so its scope covers every page. It caches
+        # only static files, never pages or data (see static/sw.js).
+        resp = send_from_directory(
+            os.path.join(app.root_path, "static"), "sw.js",
+            mimetype="application/javascript")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Service-Worker-Allowed"] = "/"
+        return resp
 
     @app.route("/robots.txt")
     def robots_txt():

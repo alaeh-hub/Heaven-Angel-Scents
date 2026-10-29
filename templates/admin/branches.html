@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Branches{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Branches{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
-     Location value can't stretch this column — and therefore the
-     whole table — wider than the others.
+     Location value can't stretch this column, and therefore the
+     whole table, wider than the others.
 
      Scoped to min-width: 681px (desktop table layout) only. Left
      unscoped, these two-selector rules (.br-table td:nth-child(n))
      out-specificity style.css's generic mobile rule .table-wrap td
      { width: 100% } (one class + one tag), so below the 680px
      breakpoint the Branch cell stayed pinned to a hardcoded 26% of
-     the row instead of taking the full-width mobile layout — and
+     the row instead of taking the full-width mobile layout, and
      combined with overflow-wrap:anywhere from .table-fixed, that
      narrow box wrapped a long branch name one character per line.
      Same pattern/fix as Admin Log's .al-table. */
@@ -24,18 +24,25 @@
     .br-table th:nth-child(3), .br-table td:nth-child(3) { width: 14%; }
     .br-table th:nth-child(4), .br-table td:nth-child(4) { width: 20%; }
   }
+
+  .panel-title { margin-bottom: var(--space-2xs); font-size: var(--text-lg); text-wrap: balance; }
+  .panel-note { margin: 0 0 var(--space-md); font-size: var(--text-sm); color: var(--ink-soft); max-width: 60rem; }
+  .panel-submit { width: 100%; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .br-layout { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 860px) { .br-layout { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid" style="grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start;">
+<div class="grid br-layout">
   <div class="card">
     <div class="card-header"><h2>Retail branches</h2><span class="hint" id="branchesCount">{{ branch_list|length }} total</span></div>
     {% if branch_list %}
     <div data-smart-table data-page-size="10" data-count-target="branchesCount" data-count-label="branch">
       <div class="table-toolbar">
         <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
           <input type="text" class="smart-search-input" placeholder="Search by name or location…" autocomplete="off">
         </div>
       </div>
@@ -49,16 +56,16 @@
             {% for b in branch_list %}
             <tr data-search="{{ (b.branch_name ~ ' ' ~ (b.location or ''))|lower }}">
               <td class="item-name" data-label="Branch">{{ b.branch_name }}</td>
-              <td class="text-soft mobile-detail" data-label="Location">{{ b.location or '—' }}</td>
-              <td class="num mono mobile-detail" data-label="Accounts">{{ b.user_count }}</td>
-              <td class="mono text-soft mobile-detail" data-label="Added">{{ b.created_at.strftime('%b %d, %Y') }}</td>
-              <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+              <td class="text-soft mobile-detail" data-label="Location">{{ b.location or 'No location' }}</td>
+              <td class="num mobile-detail" data-label="Accounts">{{ b.user_count }}</td>
+              <td class="tnum text-soft mobile-detail" data-label="Added">{{ b.created_at.strftime('%b %d, %Y') }}</td>
+              <!-- Mobile-only, see .mobile-toggle-row/.row-toggle-btn in
                    style.css. Hidden on desktop, where every cell above is
                    already visible in the real table row. -->
               <td data-label="" class="mobile-toggle-row">
                 <button type="button" class="row-toggle-btn" aria-expanded="false">
                   <span>Details</span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="m6 9 6 6 6-6" />
                   </svg>
                 </button>
@@ -68,24 +75,23 @@
           </tbody>
         </table>
         <div class="empty-state smart-no-match" style="display:none;">
-          <div class="glyph">—</div>
           <p>No branches match your search.</p>
         </div>
       </div>
       <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
         <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
       </div>
     </div>
     {% else %}
-    <div class="empty-state"><div class="glyph">✦</div><p>No branches yet — add your first retail location.</p></div>
+    <div class="empty-state"><p>No branches yet. Add your first retail location with the form beside this table.</p></div>
     {% endif %}
   </div>
 
   <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Add a branch</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">New branches start with zero stock for every SKU in the catalog.</p>
+    <h2 class="panel-title">Add a branch</h2>
+    <p class="panel-note">New branches start with zero stock for every SKU in the catalog.</p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
@@ -96,7 +102,7 @@
         <label for="location">Location</label>
         <input type="text" id="location" name="location" placeholder="Abreeza Mall">
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add branch</button>
+      <button type="submit" class="btn btn-accent panel-submit">Add branch</button>
     </form>
   </div>
 </div>

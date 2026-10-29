@@ -1,63 +1,148 @@
 {% extends "base.html" %}
 {% block title %}Reports{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Reports{% endblock %}
 
 {% block head %}
 <style>
-  .rb-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 14px 16px;
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* Reports: the generator is a tool at the top, the figures sit on a rule
+     (no tile boxes), charts are the only cards below. */
+  .rb-head h2 {
+    text-wrap: balance;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-2xs);
   }
 
+  .rb-lede {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    max-width: 48rem;
+  }
+
+  #reportForm > .field:first-child {
+    max-width: 22rem;
+  }
+
+  .rb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: var(--space-md) var(--space-md);
+  }
+
+  .rb-window-grid {
+    margin-top: var(--space-sm);
+  }
+
+  /* One segmented control: a well with the current choice in gold. */
   .rb-mode {
     display: inline-flex;
-    gap: 2px;
-    background: var(--field);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: 99px;
-    padding: 3px;
+    gap: var(--space-3xs);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+    padding: var(--space-3xs);
   }
 
   .rb-mode-opt {
-    padding: 6px 13px;
+    min-height: 2rem;
+    padding: 0 var(--space-sm);
     border: none;
     background: transparent;
-    border-radius: 99px;
-    font-family: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ink-faint);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--ink-soft);
     cursor: pointer;
   }
 
+  .rb-mode-opt:hover {
+    color: var(--ink);
+  }
+
   .rb-mode-opt.active {
-    background: var(--surface);
-    border: var(--border-width-strong) solid var(--border-strong);
-    color: var(--accent-ink);
+    background: var(--accent);
+    color: var(--gold-contrast);
   }
 
   .rb-actions {
     display: flex;
-    gap: 10px;
-    margin-top: 18px;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
     flex-wrap: wrap;
   }
 
   .rb-note {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--ink-faint);
-    margin-top: 10px;
+    margin-top: var(--space-sm);
+  }
+
+  /* Report figures: label over a tabular figure on a top rule. */
+  #kpiGrid {
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: var(--space-lg);
+  }
+
+  #kpiGrid .kpi-tile {
+    padding: var(--space-md) 0 0;
+    border-top: 1px solid var(--border-strong);
+    overflow: visible;
+  }
+
+  #kpiGrid .kpi-tile:not(:has(.kpi-spark)) {
+    padding-bottom: 0;
+  }
+
+  #kpiGrid .kpi-value {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  #kpiGrid .kpi-spark {
+    height: 2.5rem;
+    margin: var(--space-sm) 0 0;
+  }
+
+  .rb-trend-head {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    justify-content: space-between;
+  }
+
+  .rb-trend-wrap {
+    height: 19rem;
+  }
+
+  @media (max-width: 680px) {
+    .rb-mode {
+      display: flex;
+      width: 100%;
+    }
+
+    .rb-mode-opt {
+      flex: 1 1 0;
+      min-height: 2.5rem;
+      padding: 0 var(--space-xs);
+    }
+
+    .rb-actions .btn {
+      flex: 1 1 100%;
+      min-height: 2.75rem;
+    }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card card-pad" id="reportBuilder">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Generate a report</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Pick what to report on, narrow it down, then download as PDF or Excel — scoped to {{ session.branch_name }}.
+<div class="card card-pad stack" id="reportBuilder">
+  <div class="rb-head"><h2>Generate a report</h2></div>
+  <p class="rb-lede">
+    Pick what to report on, narrow it down, then download as PDF or Excel, scoped to {{ session.branch_name }}.
     Reports are capped at 1,000 rows.
   </p>
 
@@ -152,7 +237,7 @@
       </div>
       <input type="hidden" name="mode" id="rb_mode" value="recent">
 
-      <div class="rb-grid" style="margin-top: 12px;">
+      <div class="rb-grid rb-window-grid">
         <div class="field" data-mode-field="recent">
           <label for="rb_recent_n">Show last</label>
           <select id="rb_recent_n" name="recent_n">
@@ -191,38 +276,38 @@
   </form>
 </div>
 
-<div class="kpi-grid stack" id="kpiGrid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
-  <div class="card kpi-tile" id="kpiRevenue">
+<div class="kpi-grid stack" id="kpiGrid">
+  <div class="kpi-tile" id="kpiRevenue">
     <div class="kpi-label">Total revenue</div>
-    <div class="kpi-value" id="totalRevenue">—</div>
+    <div class="kpi-value" id="totalRevenue">…</div>
     <div class="kpi-meta"></div>
-    <div class="kpi-spark"></div>
+    <div class="kpi-spark" aria-hidden="true"></div>
   </div>
-  <div class="card kpi-tile" id="kpiUnits">
+  <div class="kpi-tile" id="kpiUnits">
     <div class="kpi-label">Total bottles sold</div>
-    <div class="kpi-value" id="totalUnits">—</div>
+    <div class="kpi-value" id="totalUnits">…</div>
     <div class="kpi-meta"></div>
-    <div class="kpi-spark"></div>
+    <div class="kpi-spark" aria-hidden="true"></div>
   </div>
-  <div class="card kpi-tile" id="kpiAvg">
+  <div class="kpi-tile" id="kpiAvg">
     <div class="kpi-label">Avg. price per bottle</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">…</div>
     <div class="kpi-meta"></div>
-    <div class="kpi-spark"></div>
+    <div class="kpi-spark" aria-hidden="true"></div>
   </div>
 </div>
 
 <div class="insight-split stack">
   <div class="card insight-card">
     <h2>Sales trend</h2>
-    <p class="insight-sub">Revenue and bottles sold, last 14 days · hover the chart for exact values</p>
+    <p class="insight-sub">Revenue and bottles sold, last 14 days. Hover the chart for exact values</p>
     <div class="chart-legend chart-legend-top" id="salesTrendLegend"></div>
-    <div class="chart-canvas-wrap" style="height:19rem;"><canvas id="salesTrendChart"></canvas></div>
+    <div class="chart-canvas-wrap rb-trend-wrap"><canvas id="salesTrendChart" role="img" aria-label="Line chart of revenue and bottles sold per day over the last 14 days"></canvas></div>
   </div>
   <div class="card insight-card">
     <h2>Sale vs. Refill</h2>
     <p class="insight-sub">Share of revenue</p>
-    <div class="donut-wrap"><canvas id="saleTypeChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="saleTypeChart" role="img" aria-label="Doughnut chart of revenue share, Sale versus Refill"></canvas></div>
     <div class="share-list" id="saleTypeList"></div>
   </div>
 </div>
@@ -231,13 +316,13 @@
   <div class="card insight-card">
     <h2>Units sold by variant</h2>
     <p class="insight-sub">Bottles, all-time</p>
-    <div class="donut-wrap"><canvas id="variantChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="variantChart" role="img" aria-label="Doughnut chart of bottles sold by variant, all-time"></canvas></div>
     <div class="share-list" id="variantList"></div>
   </div>
   <div class="card insight-card">
     <h2>Cash vs. Credit</h2>
     <p class="insight-sub">Share of revenue</p>
-    <div class="donut-wrap"><canvas id="paymentChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="paymentChart" role="img" aria-label="Doughnut chart of revenue share, Cash versus Credit"></canvas></div>
     <div class="share-list" id="paymentList"></div>
   </div>
 </div>
@@ -246,19 +331,19 @@
   <div class="card insight-card">
     <h2>Top selling products</h2>
     <p class="insight-sub">Bottles, all-time</p>
-    <div class="chart-canvas-wrap"><canvas id="topProductsChart"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas id="topProductsChart" role="img" aria-label="Bar chart of the top selling products by bottles, all-time"></canvas></div>
   </div>
   <div class="card insight-card">
     <h2>Current stock by variant</h2>
     <p class="insight-sub">Bottles on hand</p>
-    <div class="donut-wrap"><canvas id="stockChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="stockChart" role="img" aria-label="Doughnut chart of bottles on hand by variant"></canvas></div>
     <div class="share-list" id="stockList"></div>
   </div>
 </div>
 
 <div class="grid grid-1 stack">
   <div class="card insight-card">
-    <div style="display:flex; align-items:flex-start; flex-wrap:wrap; gap:10px; justify-content:space-between;">
+    <div class="rb-trend-head">
       <div>
         <h2>Ledger movement</h2>
         <p class="insight-sub" id="trendWindowLabel">last 14 days</p>
@@ -271,7 +356,7 @@
       </div>
     </div>
     <div class="chart-legend chart-legend-top" id="trendLegend"></div>
-    <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas id="trendChart" role="img" aria-label="Line chart of ledger movement by type over time"></canvas></div>
   </div>
 </div>
 {% endblock %}
@@ -287,18 +372,14 @@
   }
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-  // Slot 1 is the theme's gold accent; the rest are a validated,
-  // colorblind-safe categorical order (see the dataviz skill's
-  // reference palette) — branch only ever sees 5 movement types, so
-  // this stays shorter than admin's own copy of this chart.
-  const PALETTE = (isDark
-    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181']
-    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4']);
-  // One color per movement type, in MOVEMENT_TYPE_ORDER (main.js) slot
-  // order: the palette above plus more, so every movement type stays distinct.
-  const MOVEMENT_PALETTE = (isDark
-    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#3d9fd6', '#b07cc6', '#9aa33a', '#c0392b']
-    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#1f78b4', '#8e44ad', '#6f7d0e', '#a93226']);
+  // Every colour is a theme variable, so charts repaint correctly in
+  // dark, light and every interface style. One colour per movement type, in
+  // MOVEMENT_TYPE_ORDER (main.js) slot order, so each type keeps its colour.
+  const MOVEMENT_PALETTE = [
+    themeColor('--accent'), themeColor('--red'), themeColor('--success'), themeColor('--warning'),
+    themeColor('--ink'), themeColor('--ink-soft'), themeColor('--accent-ink'), themeColor('--ink-faint'),
+    themeColor('--red-ink'), themeColor('--border-strong'), themeColor('--success-border')
+  ];
   const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink') };
   const SALE_TYPE_COLORS = { Sale: themeColor('--success'), Refill: themeColor('--accent'), Freebie: themeColor('--warning') };
   const PAYMENT_COLORS = { Cash: themeColor('--success'), Credit: themeColor('--warning') };
@@ -368,6 +449,13 @@
 
     applyChartDefaults();
     const T = chartTheme();
+    // Page palette from theme variables (chartTheme's own series are fixed colours).
+    T.sales = themeColor('--accent');
+    T.profit = themeColor('--ink-soft');
+    T.cost = themeColor('--red');
+    T.cream = themeColor('--ink-faint');
+    T.series = [themeColor('--accent'), themeColor('--ink-soft'), themeColor('--ink-faint'), themeColor('--red'),
+      themeColor('--success'), themeColor('--warning'), themeColor('--ink'), themeColor('--accent-ink')];
 
     // "3 bottles" or "3 bottles + 250 mL" — bulk mL never added to bottles.
     function qtyLabel(row) {

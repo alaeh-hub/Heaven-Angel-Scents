@@ -1,63 +1,101 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Reports{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Reports{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   .rb-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 14px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: var(--space-md);
   }
 
   .rb-mode {
     display: inline-flex;
-    gap: 2px;
-    background: var(--field);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: 99px;
-    padding: 3px;
+    gap: var(--space-3xs);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+    padding: var(--space-2xs);
   }
 
   .rb-mode-opt {
-    padding: 6px 13px;
+    min-height: 2rem;
+    padding: var(--space-2xs) var(--space-sm);
     border: none;
     background: transparent;
-    border-radius: 99px;
-    font-family: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--ink-faint);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ink-soft);
     cursor: pointer;
   }
 
+  .rb-mode-opt:hover { color: var(--ink); }
+
   .rb-mode-opt.active {
-    background: var(--surface);
-    border: var(--border-width-strong) solid var(--border-strong);
-    color: var(--accent-ink);
+    background: var(--accent);
+    color: var(--gold-contrast);
   }
 
   .rb-actions {
     display: flex;
-    gap: 10px;
-    margin-top: 18px;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
     flex-wrap: wrap;
   }
 
   .rb-note {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--ink-faint);
-    margin-top: 10px;
+    margin-top: var(--space-sm);
+  }
+
+  .rb-hidden { display: none; }
+  .rb-title { font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-2xs); }
+  .rb-lede { font-size: 0.8125rem; color: var(--ink-faint); margin: 0 0 var(--space-md); }
+  .rb-window-grid { margin-top: var(--space-sm); }
+  .rb-head { display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--space-sm); justify-content: space-between; }
+  .rb-bars { height: 19rem; }
+  .pg-note { margin: 0; padding: 0 var(--space-lg) var(--space-md); font-size: 0.8125rem; color: var(--ink-faint); }
+  .rb-rank { white-space: nowrap; }
+  .rb-chart-error { font-size: 0.8125rem; }
+  .rb-section { margin-bottom: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-strong); }
+  .rb-section p { margin: 0; font-size: 0.8125rem; color: var(--ink-faint); }
+
+  /* The figures are a ledger row on hairlines, not tiles in cards. */
+  #kpiGrid { gap: 0; border-top: 1px solid var(--border-strong); }
+  #kpiGrid .kpi-tile {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-left: 1px solid var(--border);
+    padding: var(--space-md) var(--space-md) 0;
+  }
+  #kpiGrid .kpi-tile:nth-child(4n+1) { border-left: 0; padding-left: 0; }
+  #kpiGrid .kpi-tile:not(:has(.kpi-spark)) { padding-bottom: 0; }
+  #kpiGrid .kpi-value { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-top: var(--space-3xs); }
+  #kpiGrid .kpi-meta { min-height: 0; }
+  #kpiGrid .kpi-spark { height: 2rem; margin: var(--space-xs) 0 var(--space-sm); }
+  #kpiGrid .kpi-tile:nth-child(n+5) { border-top: 1px solid var(--border); }
+  @media (max-width: 1100px) {
+    #kpiGrid .kpi-tile:nth-child(4n+1) { border-left: 1px solid var(--border); padding-left: var(--space-md); }
+    #kpiGrid .kpi-tile:nth-child(2n+1) { border-left: 0; padding-left: 0; }
+    #kpiGrid .kpi-tile:nth-child(n+3) { border-top: 1px solid var(--border); }
+  }
+  @media (max-width: 520px) {
+    #kpiGrid .kpi-tile { border-left: 0; padding-left: 0; padding-right: 0; }
+    #kpiGrid .kpi-tile:nth-child(n+2) { border-top: 1px solid var(--border); }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card card-pad mt-24" id="reportBuilder">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Generate a report</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
+  <h2 class="rb-title">Generate a report</h2>
+  <p class="rb-lede">
     Pick what to report on, narrow it down, then download as PDF or Excel. Reports are capped at 1,000 rows.
   </p>
 
@@ -228,7 +266,7 @@
       </div>
       <input type="hidden" name="mode" id="rb_mode" value="recent">
 
-      <div class="rb-grid" style="margin-top: 12px;">
+      <div class="rb-grid rb-window-grid">
         <div class="field" data-mode-field="recent">
           <label for="rb_recent_n">Show last</label>
           <select id="rb_recent_n" name="recent_n">
@@ -272,37 +310,37 @@
 <div class="kpi-grid stack" id="kpiGrid">
   <div class="card kpi-tile" id="kpiProfit">
     <div class="kpi-label">Net profit</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
   <div class="card kpi-tile" id="kpiSales">
     <div class="kpi-label">Total sales</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
   <div class="card kpi-tile" id="kpiCost">
     <div class="kpi-label">Cost of goods sold</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
   <div class="card kpi-tile" id="kpiMargin">
     <div class="kpi-label">Profit margin</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
   <div class="card kpi-tile" id="kpiUnits">
     <div class="kpi-label">Bottles sold</div>
-    <div class="kpi-value" id="totalUnits">—</div>
+    <div class="kpi-value" id="totalUnits">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
   <div class="card kpi-tile" id="kpiAvg">
     <div class="kpi-label">Avg. price per bottle</div>
-    <div class="kpi-value">—</div>
+    <div class="kpi-value">-</div>
     <div class="kpi-meta"></div>
     <div class="kpi-spark"></div>
   </div>
@@ -312,24 +350,24 @@
        ingredients for them. Both are all-time, so no sparkline/chip. -->
   <div class="card kpi-tile">
     <div class="kpi-label">Total capital (cost of goods)</div>
-    <div class="kpi-value" id="totalCapital">—</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('admin.formulas') }}">from logged formulas →</a></div>
+    <div class="kpi-value" id="totalCapital">-</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.formulas') }}">From logged formulas</a></div>
     <div class="kpi-spark" id="sparkCapital"></div>
   </div>
   <div class="card kpi-tile">
     <div class="kpi-label">Raw materials bought</div>
-    <div class="kpi-value" id="totalRawMaterials">—</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('admin.materials') }}">for comparison →</a></div>
+    <div class="kpi-value" id="totalRawMaterials">-</div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.materials') }}">For comparison</a></div>
     <div class="kpi-spark" id="sparkRaw"></div>
   </div>
 </div>
 
 <div class="insight-split stack">
   <div class="card insight-card">
-    <div style="display:flex; align-items:flex-start; flex-wrap:wrap; gap:10px; justify-content:space-between;">
+    <div class="rb-head">
       <div>
         <h2>Sales, cost and net profit</h2>
-        <p class="insight-sub" id="trendWindowLabel">last 14 days · hover the chart for exact values</p>
+        <p class="insight-sub" id="trendWindowLabel">last 14 days, hover the chart for exact values</p>
       </div>
       <!-- Granularity switch drives this chart, the KPI tiles' window and
            the Ledger movement chart below. -->
@@ -341,12 +379,12 @@
       </div>
     </div>
     <div class="chart-legend chart-legend-top" id="profitLegend"></div>
-    <div class="chart-canvas-wrap" style="height:19rem;"><canvas id="profitChart"></canvas></div>
+    <div class="chart-canvas-wrap rb-bars"><canvas id="profitChart" role="img" aria-label="Line chart of sales, cost and net profit over the selected window"></canvas></div>
   </div>
   <div class="card insight-card">
     <h2>Sales by channel</h2>
     <p class="insight-sub">Share of all-time sales</p>
-    <div class="donut-wrap"><canvas id="channelChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="channelChart" role="img" aria-label="Doughnut chart of all-time sales share by channel"></canvas></div>
     <div class="share-list" id="channelList"></div>
   </div>
 </div>
@@ -355,39 +393,39 @@
   <div class="card insight-card">
     <h2>Units sold by variant</h2>
     <p class="insight-sub">Bottles, all-time</p>
-    <div class="donut-wrap"><canvas id="variantChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="variantChart" role="img" aria-label="Doughnut chart of all-time bottles sold by variant"></canvas></div>
     <div class="share-list" id="variantList"></div>
   </div>
   <div class="card insight-card">
     <h2>Units sold by branch</h2>
     <p class="insight-sub">Bottles, all-time</p>
-    <div class="chart-canvas-wrap"><canvas id="branchSalesChart"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas id="branchSalesChart" role="img" aria-label="Bar chart of all-time bottles sold by branch"></canvas></div>
   </div>
 </div>
 
 <div class="grid grid-1 stack">
   <div class="card insight-card">
-    <h2>Revenue vs. Capital</h2>
+    <h2>Revenue vs. capital</h2>
     <p class="insight-sub">cost of goods vs. raw materials bought vs. revenue earned, all-time</p>
-    <div class="chart-canvas-wrap"><canvas id="capitalChart"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas id="capitalChart" role="img" aria-label="Bar chart comparing cost of goods, raw materials bought and revenue earned, all-time"></canvas></div>
   </div>
 </div>
 
-<div class="stack">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Rankings</h2>
-  <p class="text-faint" style="font-size:12.5px; margin:0;">All-time leaders &mdash; best-selling items, package orders and partners.</p>
+<div class="rb-section">
+  <h2 class="rb-title">Rankings</h2>
+  <p>All-time leaders: best-selling items, package orders and partners.</p>
 </div>
 
 <div class="card stack">
   <div class="card-header">
     <h2>Top sellers</h2>
-    <span class="hint">all-time · by units sold</span>
+    <span class="hint">all-time, by units sold</span>
   </div>
   {% if top_sellers %}
   <div class="table-wrap">
     <table class="table-fixed">
       <colgroup>
-        <col style="width:40px">
+        <col style="width:4.5rem">
         <col style="width:46%">
         <col style="width:27%">
         <col style="width:27%">
@@ -403,7 +441,7 @@
       <tbody>
         {% for p in top_sellers %}
         <tr>
-          <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+          <td class="num text-faint rb-rank" data-label="Rank">#{{ loop.index }}</td>
           <td data-label="Item">
             <div class="item-name-row"><span class="item-name">{{ p.item_name }}</span>{{ m.variant_tag(p.variant) }}
             </div>
@@ -417,8 +455,7 @@
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No sales recorded yet.</p>
+        <p>No sales recorded yet.</p>
   </div>
   {% endif %}
 </div>
@@ -427,13 +464,13 @@
   <div class="card">
     <div class="card-header">
       <h2>Top packages</h2>
-      <span class="hint"><a href="{{ url_for('admin.packages') }}" class="text-soft">all packages →</a></span>
+      <span class="hint"><a href="{{ url_for('admin.packages') }}" class="text-soft">All packages</a></span>
     </div>
     {% if top_packages %}
     <div class="table-wrap">
       <table class="table-fixed">
         <colgroup>
-          <col style="width:40px">
+          <col style="width:4.5rem">
           <col style="width:48%">
           <col style="width:26%">
           <col style="width:26%">
@@ -449,7 +486,7 @@
         <tbody>
           {% for pkg in top_packages %}
           <tr>
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td class="num text-faint rb-rank" data-label="Rank">#{{ loop.index }}</td>
             <td class="item-name" data-label="Package">{{ pkg.package_name }}</td>
             <td class="num mono" data-label="Orders">{{ pkg.order_count }}</td>
             <td class="num mono" data-label="Revenue">{{ pkg.total_revenue|peso }}</td>
@@ -458,14 +495,11 @@
         </tbody>
       </table>
     </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Only inquiries marked Closed count as an order here — a New or
-        Contacted lead hasn't converted yet.</p>
-    </div>
+    <p class="pg-note">Only inquiries marked Closed count as an order here: a New or
+      Contacted lead hasn’t converted yet.</p>
     {% else %}
     <div class="empty-state">
-      <div class="glyph">—</div>
-      <p>No closed package orders yet.</p>
+            <p>No closed package orders yet.</p>
     </div>
     {% endif %}
   </div>
@@ -473,13 +507,13 @@
   <div class="card">
     <div class="card-header">
       <h2>Top distributors &amp; resellers</h2>
-      <span class="hint"><a href="{{ url_for('admin.partners') }}" class="text-soft">all partners →</a></span>
+      <span class="hint"><a href="{{ url_for('admin.partners') }}" class="text-soft">All partners</a></span>
     </div>
     {% if top_partners %}
     <div class="table-wrap">
       <table class="table-fixed">
         <colgroup>
-          <col style="width:56px">
+          <col style="width:4.5rem">
           <col style="width:30%">
           <col style="width:28%">
           <col style="width:16%">
@@ -497,7 +531,7 @@
         <tbody>
           {% for p in top_partners %}
           <tr>
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td class="num text-faint rb-rank" data-label="Rank">#{{ loop.index }}</td>
             <td data-label="Partner"><a href="{{ url_for('admin.partner_detail', partner_id=p.partner_id) }}"
                 class="item-name">{{ p.partner_name }}</a></td>
             <td data-label="Type"><span
@@ -510,14 +544,11 @@
         </tbody>
       </table>
     </div>
-    <div style="padding: 4px 22px 18px;">
-      <p class="text-faint" style="font-size:12px;">Total sales counts Closed package orders only, same rule as Top
-        packages.</p>
-    </div>
+    <p class="pg-note">Total sales counts Closed package orders only, same rule as Top
+      packages.</p>
     {% else %}
     <div class="empty-state">
-      <div class="glyph">—</div>
-      <p>No closed package orders yet.</p>
+            <p>No closed package orders yet.</p>
     </div>
     {% endif %}
   </div>
@@ -528,7 +559,7 @@
     <h2>Ledger movement</h2>
     <p class="insight-sub" id="ledgerWindowLabel">last 14 days</p>
     <div class="chart-legend chart-legend-top" id="trendLegend"></div>
-    <div class="chart-canvas-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas id="trendChart" role="img" aria-label="Stacked bar chart of ledger movement by type over the selected window"></canvas></div>
   </div>
 </div>
 {% endblock %}
@@ -556,14 +587,18 @@
   // is the theme's gold accent; the rest are a validated, colorblind-safe
   // categorical order (see the dataviz skill's reference palette) — a
   // 7-way identity chart can't be told apart in black-and-gold alone.
-  const PALETTE = (isDark
-    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9']
-    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']);
+  const PALETTE = [
+    themeColor('--accent'), themeColor('--success'), themeColor('--warning'), themeColor('--red'),
+    themeColor('--ink'), themeColor('--ink-soft'), themeColor('--ink-faint'),
+  ];
   // One color per movement type, in MOVEMENT_TYPE_ORDER (main.js) slot
-  // order: the palette above plus more, so every movement type stays distinct.
-  const MOVEMENT_PALETTE = (isDark
-    ? [themeColor('--accent'), '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#3d9fd6', '#b07cc6', '#9aa33a', '#c0392b']
-    : [themeColor('--accent'), '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#1f78b4', '#8e44ad', '#6f7d0e', '#a93226']);
+  // order. Every color is a theme token, so it repaints with the theme;
+  // the extra slots reuse the state and ink tokens with a lighter edge.
+  const MOVEMENT_PALETTE = [
+    themeColor('--accent'), themeColor('--success'), themeColor('--warning'), themeColor('--red'),
+    themeColor('--ink'), themeColor('--ink-soft'), themeColor('--ink-faint'), themeColor('--border-strong'),
+    themeColor('--accent-ink'), themeColor('--red-ink'), themeColor('--border'),
+  ];
   const VARIANT_COLORS = { Male: themeColor('--accent'), Female: themeColor('--ink') };
 
   // Kept in sync with admin.py's _TREND_GRANULARITIES — only used here
@@ -610,7 +645,7 @@
       if (wrap.querySelector('.chart-error-note')) return;
       const note = document.createElement('p');
       note.className = 'text-faint chart-error-note';
-      note.style.fontSize = '13px';
+      note.className = 'text-faint chart-error-note rb-chart-error';
       note.textContent = message;
       wrap.appendChild(note);
     });
@@ -788,7 +823,7 @@
             datasets: [{
               label: 'Units sold',
               data: data.by_branch.map(d => d.units_sold),
-              borderColor: T.accent, backgroundColor: T.accent + '22',
+              borderColor: T.accent, backgroundColor: chartRgb(T.accent.replace('rgb(', 'rgba(').replace(')', ',0.13)')),
               pointBackgroundColor: T.accent, pointRadius: 4, fill: true,
             }]
           },
@@ -815,7 +850,7 @@
         });
 
         const trendLabelEl = document.getElementById('trendWindowLabel');
-        if (trendLabelEl) trendLabelEl.textContent = windowLabel + ' · hover the chart for exact values';
+        if (trendLabelEl) trendLabelEl.textContent = windowLabel + ', hover the chart for exact values';
         const ledgerLabelEl = document.getElementById('ledgerWindowLabel');
         if (ledgerLabelEl) ledgerLabelEl.textContent = windowLabel;
 

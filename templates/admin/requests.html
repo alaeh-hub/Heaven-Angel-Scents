@@ -1,10 +1,23 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Stock Requests{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Stock Requests{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .rq-intro { font-size: 0.75rem; color: var(--ink-faint); margin: 0 0 var(--space-md); max-width: 75ch; }
+  .rq-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-xs); }
+  .rq-actions form { margin: 0; }
+  .rq-aside { font-size: 0.875rem; color: var(--ink-faint); }
+</style>
+{% endblock %}
+
 {% block content %}
+<p class="rq-intro">
+  Each row is one delivery a branch requested, and it can carry any number of products. Open a delivery to see
+  exactly what&rsquo;s on it; once it&rsquo;s Fulfilled, the full breakdown is also on its receipt.
+</p>
 <div class="tabs">
   {% for key, label in [('all','All'), ('Pending','Pending'), ('In Transit','In Transit'), ('Partially Fulfilled','Partially Fulfilled'), ('Fulfilled','Fulfilled'),
   ('Rejected','Rejected')] %}
@@ -13,17 +26,11 @@
   {% endfor %}
 </div>
 <div class="card">
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Each row is one delivery a branch requested — it can carry any number of products. Open a delivery to see
-      exactly what's on it; once it's Fulfilled, the full breakdown is also on its receipt.
-    </p>
-  </div>
   {% if stock_requests %}
   <div data-smart-table data-page-size="10">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -65,7 +72,7 @@
             <td class="mobile-fold" data-label="Status">{{ m.status_badge(r.status) }}</td>
             <td data-label="" class="mobile-inline-action">
               {% if r.status in ('Pending', 'Partially Fulfilled') %}
-              <div class="inline-form">
+              <div class="inline-form rq-actions">
                 <a href="{{ url_for('admin.review_request', request_id=r.request_id) }}"
                   class="btn btn-accent btn-sm">{{ 'Dispatch remaining' if r.status == 'Partially Fulfilled' else 'Review' }}</a>
                 <!-- Deliberately just "Review", not "Review & dispatch":
@@ -86,12 +93,12 @@
                 </form>{% endif %}
               </div>
               {% elif r.status == 'In Transit' %}
-              <span class="text-faint" style="font-size:12.5px;">awaiting branch receipt</span>
+              <span class="rq-aside">awaiting branch receipt</span>
               {% elif r.status == 'Fulfilled' %}
               <a href="{{ url_for('admin.request_receipt', request_id=r.request_id) }}"
                 class="btn btn-ghost btn-sm" target="_blank" data-generate-file>Receipt</a>
               {% else %}
-              <span class="text-faint" style="font-size:12.5px;">—</span>
+              <span class="rq-aside">None</span>
               {% endif %}
             </td>
           </tr>
@@ -99,20 +106,18 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No requests match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No requests in this view.</p>
+    <p>No requests in this view. A request appears here when a branch asks HQ for stock.</p>
   </div>
   {% endif %}
 </div>

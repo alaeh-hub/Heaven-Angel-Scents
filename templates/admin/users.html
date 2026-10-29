@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Accounts{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Accounts{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .panel-title { margin-bottom: var(--space-2xs); font-size: var(--text-lg); text-wrap: balance; }
+  .panel-note { margin: 0 0 var(--space-md); font-size: var(--text-sm); color: var(--ink-soft); max-width: 60rem; }
+  .panel-submit { width: 100%; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .acct-create { max-width: 40rem; }
+  .temp-overlay { position: fixed; inset: 0; z-index: 9999; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: var(--space-lg); }
+  .temp-panel { max-width: 26.25rem; width: 100%; }
+  .temp-row { display: flex; gap: var(--space-xs); align-items: center; margin-bottom: var(--space-md); }
+  .temp-value { flex: 1; padding: var(--space-sm); border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--field); font-size: var(--text-md); word-break: break-all; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card card-pad" style="max-width:640px;">
-    <h2 style="font-size:16.5px; margin-bottom: 4px;">Create an account</h2>
-    <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">Branch accounts only see their own branch. Users set their password at first login.</p>
+<div class="card card-pad acct-create">
+    <h2 class="panel-title">Create an account</h2>
+    <p class="panel-note">Branch accounts only see their own branch. Users set their password at first login.</p>
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
@@ -16,7 +30,7 @@
       <div class="field">
         <label for="password">Temporary password</label>
         <input type="password" id="password" name="password" minlength="8" required>
-        <div class="help">At least 8 characters. Share securely — they'll set their own at login.</div>
+        <div class="help">At least 8 characters. Share securely. They’ll set their own at login.</div>
       </div>
       <div class="field">
         <label for="role">Role</label>
@@ -34,7 +48,7 @@
           {% endfor %}
         </select>
       </div>
-      <button type="submit" class="btn btn-accent" style="width:100%;">Add account</button>
+      <button type="submit" class="btn btn-accent panel-submit">Add account</button>
     </form>
 </div>
 
@@ -43,7 +57,7 @@
     <div data-smart-table data-page-size="10" data-count-target="accountsCount" data-count-label="account">
       <div class="table-toolbar">
         <div class="table-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
           <input type="text" class="smart-search-input" placeholder="Search by username, role, or branch…" autocomplete="off">
         </div>
       </div>
@@ -65,7 +79,7 @@
                 </div>
               </td>
               <td class="mobile-fold" data-label="Role"><span class="badge badge-{{ 'neutral' if a.role == 'Admin' else 'transit' }}">{{ a.role }}</span></td>
-              <td class="text-soft" data-label="Branch">{{ a.branch_name or '— Main Branch —' }}</td>
+              <td class="text-soft" data-label="Branch">{{ a.branch_name or 'Main Branch' }}</td>
               <td class="mobile-fold" data-label="Status"><span class="badge badge-{{ 'active' if a.is_active else 'inactive' }}">{{ 'Active' if a.is_active else 'Deactivated' }}</span></td>
               <td data-label="" class="mobile-inline-action">
                 <div class="inline-form">
@@ -89,30 +103,29 @@
           </tbody>
         </table>
         <div class="empty-state smart-no-match" style="display:none;">
-          <div class="glyph">—</div>
           <p>No accounts match your search.</p>
         </div>
       </div>
       <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
         <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
       </div>
     </div>
 </div>
 
 {% if temp_password_reveal %}
-<div id="tempPasswordOverlay" style="position:fixed; inset:0; z-index:9999; background:rgba(28,27,25,0.45); display:flex; align-items:center; justify-content:center; padding:20px;">
-  <div class="card card-pad" style="max-width:420px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Password reset</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      New temporary password for <strong>{{ temp_password_reveal.username }}</strong>. Copy it now — it won't be shown again.
+<div id="tempPasswordOverlay" class="temp-overlay">
+  <div class="card card-pad temp-panel">
+    <h2 class="panel-title">Password reset</h2>
+    <p class="panel-note">
+      New temporary password for <strong>{{ temp_password_reveal.username }}</strong>. Copy it now. It won’t be shown again.
     </p>
-    <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px;">
-      <code id="tempPasswordValue" style="flex:1; padding:10px 12px; border:var(--border-width-strong) solid var(--border-strong); border-radius:var(--radius-sm); background:var(--bg); font-size:14px; word-break:break-all;">{{ temp_password_reveal.password }}</code>
+    <div class="temp-row">
+      <code id="tempPasswordValue" class="temp-value">{{ temp_password_reveal.password }}</code>
       <button type="button" class="btn btn-ghost btn-sm" id="tempPasswordCopyBtn">Copy</button>
     </div>
-    <button type="button" class="btn btn-accent" style="width:100%;" id="tempPasswordCloseBtn">Done</button>
+    <button type="button" class="btn btn-accent panel-submit" id="tempPasswordCloseBtn">Done</button>
   </div>
 </div>
 {% endif %}
@@ -146,15 +159,15 @@
       }
     });
 
-    // Server-rendered already open (there's no "open" trigger — this
+    // Server-rendered already open (there's no "open" trigger, this
     // only exists in the DOM at all when a password reset just
-    // happened) — openOverlay() still gives it the same entrance
+    // happened), openOverlay() still gives it the same entrance
     // animation on that initial reveal, same as every other overlay
     // in the app gets on its own open.
     openOverlay(overlay);
 
     // A real password lingering as a hidden-but-present DOM node
-    // isn't good enough for something this sensitive — remove() it
+    // isn't good enough for something this sensitive, remove() it
     // outright, not just closeOverlay()'s usual hide, once the exit
     // animation (see OVERLAY_EXIT_MS, main.js) has actually finished.
     function dismiss() {

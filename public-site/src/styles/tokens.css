@@ -1,3 +1,13 @@
+/* Hallmark · checked: 2026-10-29 · genre: atmospheric (inferred)
+ * floor: 0 FAIL · fixed: 48, 7a, 6a, 10a, 34, 39a, 40, 49a, 56, 62, 67 · structural: 3, 44c, 58, 77 printed
+ * surface: absolute (the hero stage only, matching the WebGL canvas)
+ * surface: absolute (the hero stage only, matching the WebGL canvas)
+ * built: the project · redesign: polish · v2.0.0 */
+/* Hallmark · waive 7b · hero-pin and hero-stage both use var(--stage) · the PerfumeScene canvas clears to pure black, so the hero stage has to match it or a seam shows */
+/* Hallmark · waive 28b · BackdropVideo and CraftFilm sit below the hero, never the first paint · the craft film and scent backdrop need a poster frame that the owner exports from the footage */
+/* Hallmark · waive 3 · ol.steps-list with three steps on one gold rule · each icon is a stop on the timeline rule, set beside its heading, so the steps are not icon tiles above a heading */
+/* Hallmark · waive 39b · button.faq-q rows in the FAQ accordion · the questions wrap across full-width rows, so the accordion button is taller than a pill control */
+/* Hallmark · waive 49b · the footer contact email at 1024px · the address breaks inside the contact column on purpose instead of overflowing the footer */
 /* Design tokens + primitives for the partner portal.
 
    Direction: Apple-inspired premium product page (quiet neutrals, big
@@ -28,7 +38,7 @@
   --surface-sunk: #1d1d21;
   --ink: #f3f3f1;
   --ink-2: #a9a9b0;
-  --ink-3: #75757d;
+  --ink-3: #8d8d95;
   --hairline: rgb(255 255 255 / 0.08);
   --hairline-strong: rgb(255 255 255 / 0.15);
 
@@ -39,6 +49,14 @@
   --gold-ink: #e0c068;
   --gold-soft: rgb(217 182 75 / 0.14);
   --on-gold: #17140a;
+
+  /* Colours that used to sit as literals in the page rules. */
+  --stage: #000; /* the WebGL hero canvas clears to pure black; the stage must match it */
+  --on-brand: #fffdf7; /* text on a marketplace's own brand colour */
+  --gold-deep: #2a2418;
+  --aura-female: #ff2f7a;
+  --aura-male: #2f86ff;
+  --shadow-bottle: rgb(20 20 30 / 0.16);
 
   --success: #4cc07a;
   --success-soft: rgb(76 192 122 / 0.14);
@@ -248,7 +266,9 @@ button {
 }
 
 .btn-primary:disabled {
-  opacity: 0.7;
+  background: var(--surface-sunk);
+  color: var(--ink-3);
+  box-shadow: none;
   cursor: progress;
 }
 
@@ -497,7 +517,7 @@ select.input {
   display: grid;
   justify-items: center;
   gap: 8px;
-  width: min(460px, calc(100vw - 32px));
+  width: min(460px, calc(100% - 32px));
   pointer-events: none;
 }
 

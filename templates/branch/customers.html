@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Customers{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Customers{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
      name/address can't stretch this column — and therefore the whole
      table — wider than the others.
@@ -18,6 +18,11 @@
      the row instead of taking the full-width mobile layout — and
      combined with overflow-wrap:anywhere from .table-fixed, that
      narrow box wrapped a long name one character per line. -->
+  .cu-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-lg);
+  }
+
   @media (min-width: 681px) {
     .cu-table th:nth-child(1), .cu-table td:nth-child(1) { width: 30%; }
     .cu-table th:nth-child(2), .cu-table td:nth-child(2) { width: 12%; }
@@ -25,17 +30,38 @@
     .cu-table th:nth-child(4), .cu-table td:nth-child(4) { width: 18%; }
     .cu-table th:nth-child(5), .cu-table td:nth-child(5) { width: 24%; }
   }
+
+  .page-note {
+    padding: var(--space-xs) var(--space-lg) var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+    max-width: 60rem;
+  }
+
+  .cell-note {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .cell-hint {
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .smart-pagination .btn svg {
+    flex: none;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-2 stack">
-  <div class="card stat-tile">
+<div class="grid grid-2 stack cu-stats">
+  <div class="stat-tile">
     <div class="stat-label">Named customers</div>
     <div class="stat-value">{{ totals.customer_count }}</div>
     <div class="stat-foot">with at least one sale on file by name</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Revenue from named customers</div>
     <div class="stat-value accent">{{ totals.total_named_revenue|peso }}</div>
     <div class="stat-foot">excludes anonymous walk-ins</div>
@@ -47,17 +73,13 @@
     <h2>Customer directory</h2>
     <span class="hint" id="customersCount">{{ rows|length }} total</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Built from the customer name entered on Record Sale — walk-ins with no name given aren't tracked
-      here. Address shown is whatever was recorded on that customer's <em>first</em> sale.
-    </p>
-  </div>
+  <p class="page-note">Built from the customer name entered on Record Sale, so walk-ins with no name given aren’t tracked
+      here. Address shown is whatever was recorded on that customer’s <em>first</em> sale.</p>
   {% if rows %}
   <div data-smart-table data-page-size="12" data-count-target="customersCount" data-count-label="customer">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by name or address…" autocomplete="off">
       </div>
     </div>
@@ -93,7 +115,7 @@
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -103,20 +125,19 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No customers match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No named customers recorded yet — Record Sale's customer name field is optional, so walk-ins won't show up here.</p>
+    <p>No named customers recorded yet. Record Sale’s customer name field is optional, so walk-ins won’t show up here.</p>
+    <p><a href="{{ url_for('branch.record_sale') }}" class="btn btn-ghost btn-sm">Record a sale</a></p>
   </div>
   {% endif %}
 </div>

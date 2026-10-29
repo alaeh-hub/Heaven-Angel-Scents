@@ -5,6 +5,7 @@
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
      Reasoning value (free text, no length cap of its own) can't
      stretch this column — and therefore the whole table — wider than
@@ -104,6 +105,22 @@
     display: none;
   }
 
+  .dr-intro {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 48rem;
+    text-wrap: pretty;
+  }
+
+  .dr-reasoning {
+    font-size: var(--text-sm);
+  }
+
+  .dr-none {
+    font-size: var(--text-sm);
+  }
+
   @media (max-width: 680px) {
 
     /* Same reasoning as Admin Log's Details column and Inventory Log's
@@ -117,7 +134,7 @@
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      gap: 4px;
+      gap: var(--space-2xs);
     }
 
     /* Collapsible mobile cards — same .table-collapsible/.mobile-detail/
@@ -143,8 +160,8 @@
 
 {% block content %}
 <div class="card card-pad">
-  <p class="text-faint" style="font-size:12.5px; margin:0;">
-    Halo can draft a stock request when you ask it to, or when it spots low stock —
+  <p class="dr-intro">
+    Halo can draft a stock request when you ask it to, or when it spots low stock,
     but nothing here is real until you approve it. Approving turns a draft into a normal
     Pending delivery on the <a
       href="{{ url_for('admin.requests_list') if session.role == 'Admin' else url_for('branch.request_stock') }}">Stock
@@ -155,17 +172,17 @@
 <div class="card mt-24">
   <div class="card-header">
     <h2>Drafts</h2>
-    <span class="hint" id="draftsCount">{{ drafts|length }} total &middot; most recent first</span>
+    <span class="hint" id="draftsCount">{{ drafts|length }} total, most recent first</span>
   </div>
   {% if drafts %}
   <div data-smart-table data-page-size="15" data-count-target="draftsCount" data-count-label="draft">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
-        <input type="text" class="smart-search-input" placeholder="Search by branch, item, or reasoning…"
+        <input type="text" class="smart-search-input" placeholder="Search by branch, item, or reasoning…" aria-label="Search drafts"
           autocomplete="off">
       </div>
     </div>
@@ -197,7 +214,7 @@
                 <span class="badge badge-{{ status_class }}">{{ d.status }}</span>
                 <span class="mono">{{ d.created_at.strftime('%b %d') }}</span>
               </div>
-              {% if d.resulting_request_id %}<div class="item-sub dr-resulting-note">&rarr; delivery on file</div>{% endif %}
+              {% if d.resulting_request_id %}<div class="item-sub dr-resulting-note">Delivery on file</div>{% endif %}
             </td>
             <td class="dr-col-items mobile-detail" data-label="Items">
               {% for item in d.draft_items %}
@@ -205,11 +222,11 @@
                   class="mono text-faint">({{ item.unit }})</span></div>
               {% endfor %}
             </td>
-            <td class="text-soft dr-col-reasoning mobile-detail" style="font-size:12.5px;" data-label="Reasoning">{{
-              d.reasoning or d.note or '—' }}</td>
+            <td class="text-soft dr-col-reasoning dr-reasoning mobile-detail" data-label="Reasoning">{{
+              d.reasoning or d.note or 'None recorded' }}</td>
             <td class="mobile-fold" data-label="Status">
               <span class="badge badge-{{ status_class }}">{{ d.status }}</span>
-              {% if d.resulting_request_id %}<div class="item-sub">&rarr; delivery on file</div>{% endif %}
+              {% if d.resulting_request_id %}<div class="item-sub">Delivery on file</div>{% endif %}
             </td>
             <td data-label="" class="mobile-inline-action">
               {% if d.status == 'Pending Review' %}
@@ -225,7 +242,7 @@
                 </form>
               </div>
               {% else %}
-              <span class="text-faint" style="font-size:12.5px;">—</span>
+              <span class="text-faint dr-none">No action</span>
               {% endif %}
             </td>
             <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
@@ -234,7 +251,7 @@
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -244,20 +261,18 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No drafts match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No AI-proposed drafts yet — ask Halo to put together a reorder.</p>
+    <p>No AI-proposed drafts yet. Ask Halo to put together a reorder.</p>
   </div>
   {% endif %}
 </div>

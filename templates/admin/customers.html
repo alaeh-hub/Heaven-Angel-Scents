@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Customers{% endblock %}
-{% block eyebrow %}Organization{% endblock %}
 {% block heading %}Customers{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   /* Fixed column widths (see .table-fixed in style.css) so a long
-     customer/branch list can't stretch this column — and therefore the
-     whole table — wider than the others.
+     customer/branch list can't stretch this column, and therefore the
+     whole table, wider than the others.
 
      Scoped to min-width: 681px (desktop table layout) only. Left
      unscoped, these two-selector rules (.cust-table td:nth-child(n))
      out-specificity style.css's generic mobile rule .table-wrap td
      { width: 100% } (one class + one tag), so below the 680px
      breakpoint the Customer cell stayed pinned to a hardcoded 20% of
-     the row instead of taking the full-width mobile layout — and
+     the row instead of taking the full-width mobile layout, and
      combined with overflow-wrap:anywhere from .table-fixed, that
      narrow box wrapped a long customer name one character per line.
      Same pattern/fix as Admin Log's .al-table. */
@@ -28,6 +28,17 @@
     .cust-table th:nth-child(6), .cust-table td:nth-child(6) { width: 12%; }
     .cust-table th:nth-child(7), .cust-table td:nth-child(7) { width: 12%; }
   }
+
+  .cust-note {
+    margin: 0;
+    padding: 0 var(--space-lg) var(--space-md);
+    max-width: 60rem;
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+  .cust-branches { font-size: var(--text-sm); }
+  .cust-branch-badge { margin-top: var(--space-3xs); }
+  .tnum { font-variant-numeric: tabular-nums; }
 </style>
 {% endblock %}
 
@@ -55,19 +66,17 @@
     <h2>Customer directory</h2>
     <span class="hint" id="customersCount">{{ rows|length }} customer{{ 's' if rows|length != 1 }}</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Built from the customer name recorded on each sale — there's no separate customer accounts system, so this
-      groups by exact name text the same way each branch's own Customers page does. A customer who has bought from
-      more than one branch appears once here, with every branch they've shopped at listed. Address shown is from
-      their earliest sale on file, fleet-wide; walk-ins with no name recorded aren't included.
-    </p>
-  </div>
+  <p class="cust-note">
+    Built from the customer name recorded on each sale. There’s no separate customer accounts system, so this
+    groups by exact name text the same way each branch’s own Customers page does. A customer who has bought from
+    more than one branch appears once here, with every branch they’ve shopped at listed. Address shown is from
+    their earliest sale on file, fleet-wide; walk-ins with no name recorded aren’t included.
+  </p>
   {% if rows %}
   <div data-smart-table data-page-size="15" data-count-target="customersCount" data-count-label="customer">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by name, address, or branch…" autocomplete="off">
       </div>
     </div>
@@ -95,22 +104,22 @@
               <div class="item-name">{{ r.name }}</div>
               {% if r.address %}<div class="item-sub">{{ r.address }}</div>{% endif %}
             </td>
-            <td class="text-soft mobile-detail" style="font-size:12.5px;" data-label="Branches shopped">
+            <td class="text-soft mobile-detail cust-branches" data-label="Branches shopped">
               {{ r.branches }}
-              {% if r.branch_count > 1 %}<div class="item-sub" style="margin-top:2px;"><span class="badge badge-pending">{{ r.branch_count }} branches</span></div>{% endif %}
+              {% if r.branch_count > 1 %}<div class="item-sub cust-branch-badge"><span class="badge badge-pending">{{ r.branch_count }} branches</span></div>{% endif %}
             </td>
-            <td class="num mono mobile-detail" data-label="Purchases">{{ r.purchase_count }}</td>
-            <td class="num mono mobile-detail" data-label="Qty bought">{{ m.qty_stack(r.total_units, r.total_bulk_ml) }}</td>
-            <td class="num mono mobile-detail" data-label="Total spent">{{ r.total_spent|peso }}</td>
-            <td class="mono text-soft mobile-detail" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
+            <td class="num mobile-detail" data-label="Purchases">{{ r.purchase_count }}</td>
+            <td class="num mobile-detail" data-label="Qty bought">{{ m.qty_stack(r.total_units, r.total_bulk_ml) }}</td>
+            <td class="num mobile-detail" data-label="Total spent">{{ r.total_spent|peso }}</td>
+            <td class="tnum text-soft mobile-detail" data-label="Last purchase">{{ r.last_purchase_at.strftime('%b %d, %Y') }}</td>
             <td class="text-soft mobile-detail" data-label="Last at">{{ r.last_branch_name }}</td>
-            <!-- Mobile-only — see .mobile-toggle-row/.row-toggle-btn in
+            <!-- Mobile-only, see .mobile-toggle-row/.row-toggle-btn in
                  style.css. Hidden on desktop, where every cell above is
                  already visible in the real table row. -->
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -120,18 +129,17 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No customers match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No named customers on file yet — sales need a customer name entered on Record Sale to show up here.</p></div>
+  <div class="empty-state"><p>No named customers on file yet. Enter a customer name on Record Sale and the sale shows up here.</p></div>
   {% endif %}
 </div>
 {% endblock %}

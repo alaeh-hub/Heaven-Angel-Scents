@@ -1,20 +1,37 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Packages{% endblock %}
-{% block eyebrow %}Partners &amp; Distribution{% endblock %}
 {% block heading %}Packages{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+  }
+  .pg-h { font-size: 1.125rem; margin-bottom: var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); }
+  .pg-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pg-actions .btn { flex: 1; }
+  .pg-foot { padding: var(--space-2xs) var(--space-lg) var(--space-md); }
+  .pg-foot p { font-size: 0.875rem; color: var(--ink-faint); margin: 0; }
+  .pg-head-tools { display: flex; align-items: center; gap: var(--space-md); }
   .pk-discount-chip {
     display: inline-flex;
     align-items: center;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--success);
-    background: color-mix(in srgb, var(--success) 14%, transparent);
-    padding: 3px 9px;
-    border-radius: 999px;
+    background: var(--success-soft);
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-sm);
     white-space: nowrap;
   }
 
@@ -41,6 +58,20 @@
     .pk-all-table th:nth-child(7), .pk-all-table td:nth-child(7) { width: 10%; }
     .pk-all-table th:nth-child(8), .pk-all-table td:nth-child(8) { width: 12%; }
   }
+  .pg-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: var(--space-md);
+    align-items: start;
+  }
+  .pg-split > * { min-width: 0; }
+  .pg-aside { display: grid; gap: var(--space-md); }
+  .pg-aside .form-row { display: grid; grid-template-columns: 1fr; }
+  .pg-aside .form-row > * { flex: none; }
+  .pg-sub-unit { margin-inline-start: var(--space-xs); }
+  @media (max-width: 64rem) {
+    .pg-split { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 {% endblock %}
 
@@ -65,50 +96,8 @@
   </div>
 </div>
 
-<!-- Create-a-package form now sits full width, on top of the table —
-     previously this lived in a side-by-side 1.6fr/1fr grid next to the
-     table, which would visually squish/clip once the table had real
-     rows (see style.css's .grid[style*="grid-template-columns"] fix
-     too, kept as a safety net for the other pages still using that
-     two-column pattern). -->
-<div class="card card-pad">
-  <h2 style="font-size:16.5px; margin-bottom: 4px;">Create a package</h2>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 18px;">
-    Give it a name and a discount now — you'll add the actual products on the next screen.
-  </p>
-  <form method="POST" action="{{ url_for('admin.packages') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row">
-      <div class="field">
-        <label for="package_name">Package name</label>
-        <input type="text" id="package_name" name="package_name" placeholder="e.g. Starter Bundle" required>
-      </div>
-      <div class="field">
-        <label for="description">Description <span class="text-faint">(optional)</span></label>
-        <input type="text" id="description" name="description" maxlength="255" placeholder="What's this bundle for?">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="partner_scope">Available to</label>
-        <select id="partner_scope" name="partner_scope" required>
-          <option value="Both">Both distributors &amp; resellers</option>
-          {% for t in partner_types %}
-          <option value="{{ t }}">{{ t }}s only</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field">
-        <label for="discount_percent">Discount off reference price (%)</label>
-        <input type="number" id="discount_percent" name="discount_percent" step="0.01" min="0" max="100" placeholder="15.00" required>
-        <div class="help">Applied to the combined price of everything in the bundle. Editable any time from the package's page.</div>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-accent btn-cta">Add package</button>
-  </form>
-</div>
-
-<div class="card mt-24">
+<div class="pg-split">
+<div class="card">
   <div class="card-header">
     <h2>All packages</h2>
     <span class="hint" id="packagesCount">{{ package_list|length }} total</span>
@@ -117,7 +106,7 @@
   <div data-smart-table data-page-size="10" data-count-target="packagesCount" data-count-label="package">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by package name…" autocomplete="off">
       </div>
     </div>
@@ -169,7 +158,7 @@
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -179,24 +168,62 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No packages match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount — this is what shows up when they order.</p>
+  <div class="pg-foot">
+    <p>Reference value is what the bundled products would cost at full price. Order price is what a partner actually pays after the discount. This is what shows up when they order.</p>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">✦</div>
-    <p>No packages yet — create one, then add products to it.</p>
+    <p>No packages yet. Create one with the form beside this list, then add products to it.</p>
   </div>
   {% endif %}
+</div>
+
+<div class="pg-aside">
+<div class="card card-pad">
+  <h2 class="pg-h">Create a package</h2>
+  <p class="text-faint pg-note">
+    Give it a name and a discount now. You’ll add the actual products on the next screen.
+  </p>
+  <form method="POST" action="{{ url_for('admin.packages') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="package_name">Package name</label>
+        <input type="text" id="package_name" name="package_name" placeholder="e.g. Starter Bundle" required>
+      </div>
+      <div class="field">
+        <label for="description">Description <span class="text-faint">(optional)</span></label>
+        <input type="text" id="description" name="description" maxlength="255" placeholder="What’s this bundle for?">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="partner_scope">Available to</label>
+        <select id="partner_scope" name="partner_scope" required>
+          <option value="Both">Both distributors &amp; resellers</option>
+          {% for t in partner_types %}
+          <option value="{{ t }}">{{ t }}s only</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="discount_percent">Discount off reference price (%)</label>
+        <input type="number" id="discount_percent" name="discount_percent" step="0.01" min="0" max="100" placeholder="15.00" required>
+        <div class="help">Applied to the combined price of everything in the bundle. Editable any time from the package’s page.</div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-accent btn-cta">Add package</button>
+  </form>
+</div>
+</div>
 </div>
 {% endblock %}

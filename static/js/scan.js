@@ -57,12 +57,12 @@
         toggleBtn.textContent = "Start camera";
         toggleBtn.classList.remove("btn-ghost");
         toggleBtn.classList.add("btn-accent");
-        setStatus("Camera is off \u2014 tap Start camera to scan.");
+        setStatus("Camera is off \, tap Start camera to scan.");
     }
 
     function startCamera(deviceId) {
         if (!hasCamera()) {
-            setStatus("This browser doesn't support camera access here \u2014 use upload or manual entry below.");
+            setStatus("This browser doesn't support camera access here \, use upload or manual entry below.");
             return;
         }
         stopCamera();
@@ -91,7 +91,7 @@
             switchBtn.style.display = (cameraOn && devices.length > 1) ? "" : "none";
         }).catch(function () {
             stopCamera();
-            setStatus("Camera access was blocked or unavailable \u2014 use upload or manual entry below.");
+            setStatus("Camera access was blocked or unavailable \, use upload or manual entry below.");
         });
     }
 
@@ -153,7 +153,7 @@
 
     function handleFile(file) {
         if (typeof jsQR !== "function") {
-            showNotFound("The QR reader didn't load \u2014 refresh the page and try again.");
+            showNotFound("The QR reader didn't load \, refresh the page and try again.");
             return;
         }
         var objectUrl = URL.createObjectURL(file);
@@ -168,7 +168,7 @@
             if (code && code.data) {
                 verifyCode(code.data);
             } else {
-                showNotFound("Couldn\u2019t find a QR code in that image \u2014 try a clearer or closer photo.");
+                showNotFound("Couldn\u2019t find a QR code in that image \, try a clearer or closer photo.");
             }
         };
         img.onerror = function () {
@@ -248,12 +248,12 @@
         popResult(true);
         if (window.Sfx) window.Sfx.play("scanOk");
         resultHead.innerHTML =
-            '<span class="scan-badge-ok">&#10003; Verified &mdash; on file</span>' +
+            '<span class="scan-badge-ok">&#10003; Verified, on file</span>' +
             '<span class="mono text-soft" style="margin-left:auto;font-size:12px;">' + esc(sale.receipt_no) + "</span>";
 
         var rows = [
             field("Item", esc(sale.item_name) + ' <span class="text-soft mono" style="font-size:11px;">(' + esc(sale.sku) + ")</span>"),
-            field("Variant / Unit", esc(sale.variant) + " &middot; " + esc(sale.unit)),
+            field("Variant / Unit", esc(sale.variant) + ", " + esc(sale.unit)),
             field("Quantity", esc(sale.qty_sold)),
             field("Unit price", esc(peso(sale.unit_price))),
             field("Total", esc(peso(sale.line_total))),
@@ -309,7 +309,7 @@
         voidBtn.textContent = "Void sale";
         if (!sale.voidable) {
             voidBtn.disabled = true;
-            voidBtn.title = "Branch staff can only void sales recorded today — ask HQ to void older ones.";
+            voidBtn.title = "Branch staff can only void sales recorded today. Ask HQ to void older ones.";
         } else {
             voidBtn.addEventListener("click", function () { showVoidPrompt(sale); });
         }

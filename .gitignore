@@ -44,8 +44,10 @@ static/video/white_background*.mp4
 .idea/
 .agents/
 .claude/
+.hallmark/
 .mcp.json
 skills-lock.json
+caddy-local-root.crt
 
 # Local media assets and generated files
 static/video/*.mp4

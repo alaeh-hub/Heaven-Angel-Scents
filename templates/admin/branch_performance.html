@@ -1,23 +1,49 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Branch Performance{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Branch Performance{% endblock %}
 
 {% block head %}
 <style>
-  /* Fixed column widths (see .table-fixed in style.css) so nothing in
-     this comparison table can stretch wider than its neighbors.
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .bp-ledger {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-top: 1px solid var(--border-strong);
+    margin-bottom: var(--space-lg);
+  }
+  .bp-ledger > div {
+    padding: var(--space-md) var(--space-lg) 0;
+    border-left: 1px solid var(--border);
+    min-width: 0;
+  }
+  .bp-ledger > div:first-child { border-left: 0; padding-left: 0; }
+  .bp-ledger .kpi-label { font-size: var(--text-sm); }
+  .bp-ledger .kpi-value { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-top: var(--space-3xs); }
+  .bp-ledger .kpi-value.bp-top { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bp-ledger .kpi-meta { min-height: 0; margin-top: var(--space-2xs); }
+  .bp-ledger .kpi-foot-link { margin-top: var(--space-2xs); }
+  .bp-charts { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--space-md); margin-bottom: var(--space-lg); align-items: start; }
+  .bp-charts > * { min-width: 0; }
+  .bp-charts .insight-card h2 { font-size: var(--text-lg); font-weight: 600; text-wrap: balance; }
+  .bp-bars { height: 21rem; }
+  .bp-note { margin: 0; padding: 0 var(--space-lg) var(--space-sm); font-size: 0.8125rem; color: var(--ink-faint); }
+  .bp-rank { white-space: nowrap; }
 
-     Scoped to min-width: 681px (desktop table layout) only. Left
-     unscoped, these two-selector rules (.bp-table td:nth-child(n))
-     out-specificity style.css's generic mobile rule .table-wrap td
-     { width: 100% } (one class + one tag), so below the 680px
-     breakpoint the Branch cell stayed pinned to a hardcoded 22% of
-     the row instead of taking the full-width mobile layout — and
-     combined with overflow-wrap:anywhere from .table-fixed, that
-     narrow box wrapped a long branch name one character per line.
-     Same pattern/fix as Admin Log's .al-table. */
+  @media (max-width: 1000px) {
+    .bp-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bp-ledger > div:nth-child(3) { border-left: 0; padding-left: 0; }
+    .bp-ledger > div:nth-child(n+3) { border-top: 1px solid var(--border); margin-top: var(--space-md); }
+    .bp-charts { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .bp-ledger { grid-template-columns: minmax(0, 1fr); }
+    .bp-ledger > div { border-left: 0; padding-left: 0; padding-right: 0; }
+    .bp-ledger > div + div { border-top: 1px solid var(--border); margin-top: var(--space-md); }
+  }
+
+  /* Fixed column widths, desktop table layout only: below 680px the
+     generic .table-wrap td rule stacks cells full width. */
   @media (min-width: 681px) {
     .bp-table th:nth-child(1), .bp-table td:nth-child(1) { width: 6%; }
     .bp-table th:nth-child(2), .bp-table td:nth-child(2) { width: 22%; }
@@ -33,20 +59,20 @@
 
 {% block content %}
 {% set top_branch = (rows|sort(attribute='revenue', reverse=true)|first) if rows else none %}
-<div class="kpi-grid stack">
-  <div class="card kpi-tile">
+<div class="bp-ledger">
+  <div>
     <div class="kpi-label">Combined revenue</div>
     <div class="kpi-value" title="{{ totals.revenue|peso }}">{{ totals.revenue|compact_peso }}</div>
     <div class="kpi-foot-link">branch sales, all-time</div>
   </div>
-  <div class="card kpi-tile">
+  <div>
     <div class="kpi-label">Combined bottles sold</div>
     <div class="kpi-value">{{ '{:,}'.format(totals.units_sold|int) }}</div>
-    <div class="kpi-foot-link">across every retail branch{% if totals.bulk_ml_sold %} · + {{ totals.bulk_ml_sold|int }} mL bulk{% endif %}</div>
+    <div class="kpi-foot-link">across every retail branch{% if totals.bulk_ml_sold %}, plus {{ totals.bulk_ml_sold|int }} mL bulk{% endif %}</div>
   </div>
-  <div class="card kpi-tile">
+  <div>
     <div class="kpi-label">Top branch</div>
-    <div class="kpi-value" style="font-size:1.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ top_branch.branch_name if top_branch else '—' }}</div>
+    <div class="kpi-value bp-top">{{ top_branch.branch_name if top_branch else '-' }}</div>
     <div class="kpi-meta">
       {% if top_branch and totals.revenue|float %}
       <span class="kpi-chip kpi-chip-good">{{ '%.1f'|format(top_branch.revenue|float / totals.revenue|float * 100) }}%</span>
@@ -54,24 +80,24 @@
       {% endif %}
     </div>
   </div>
-  <div class="card kpi-tile">
+  <div>
     <div class="kpi-label">Combined discrepancies</div>
     <div class="kpi-value {{ 'danger' if totals.discrepancy_count else '' }}">{{ totals.discrepancy_count }}</div>
-    <div class="kpi-foot-link"><a href="{{ url_for('admin.discrepancies') }}">full breakdown →</a></div>
+    <div class="kpi-foot-link"><a href="{{ url_for('admin.discrepancies') }}">Full breakdown</a></div>
   </div>
 </div>
 
-<div class="grid grid-2 stack">
+<div class="bp-charts">
   <div class="card insight-card">
     <h2>Revenue by branch</h2>
     <p class="insight-sub">Share of combined branch sales, all-time</p>
-    <div class="donut-wrap"><canvas id="bpRevenueChart"></canvas></div>
+    <div class="donut-wrap"><canvas id="bpRevenueChart" role="img" aria-label="Doughnut chart of each branch’s share of combined branch revenue, all-time"></canvas></div>
     <div class="share-list" id="bpRevenueList"></div>
   </div>
   <div class="card insight-card">
     <h2>Bottles sold by branch</h2>
     <p class="insight-sub">All-time, ranked</p>
-    <div class="chart-canvas-wrap" style="height:21rem;"><canvas id="bpUnitsChart"></canvas></div>
+    <div class="chart-canvas-wrap bp-bars"><canvas id="bpUnitsChart" role="img" aria-label="Horizontal bar chart of bottles sold by branch, all-time, ranked"></canvas></div>
   </div>
 </div>
 
@@ -87,18 +113,16 @@
     <h2>All branches</h2>
     <span class="hint" id="bpBranchesCount">{{ rows|length }} branch{{ 'es' if rows|length != 1 }}</span>
   </div>
-  <div style="padding: 4px 22px 14px;">
-    <p class="text-faint" style="font-size:12px;">
-      Turnover is an approximation — all-time units sold divided by current stock on hand, not a proper
-      cost-based ratio over a matching period — useful for comparing branches against each other, not as an
-      absolute figure. A branch showing "—" currently has zero total stock, so the ratio can't be computed.
-    </p>
-  </div>
+  <p class="bp-note">
+    Turnover is an approximation (all-time units sold divided by current stock on hand, not a proper
+    cost-based ratio over a matching period). It is useful for comparing branches against each other, not as an
+    absolute figure. A branch showing “-” currently has zero total stock, so the ratio can’t be computed.
+  </p>
   {% if rows %}
   <div data-smart-table data-page-size="10" data-count-target="bpBranchesCount" data-count-label="branch">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by branch…" autocomplete="off">
       </div>
     </div>
@@ -110,7 +134,7 @@
         </colgroup>
         <thead>
           <tr>
-            <th></th>
+            <th>Rank</th>
             <th>Branch</th>
             <th class="num">Revenue</th>
             <th class="num">Units sold</th>
@@ -123,31 +147,30 @@
         <tbody>
           {% for r in rows %}
           <tr data-search="{{ r.branch_name|lower }}">
-            <td class="mono text-faint" data-label="Rank" style="white-space:nowrap;">#{{ loop.index }}</td>
+            <td class="num text-faint bp-rank" data-label="Rank">#{{ loop.index }}</td>
             <td class="item-name" data-label="Branch">{{ r.branch_name }}</td>
             <td class="num mono" data-label="Revenue">{{ r.revenue|peso }}</td>
             <td class="num mono" data-label="Units sold">{{ m.qty_split(r.units_sold, r.bulk_ml_sold) }}</td>
             <td class="num mono" data-label="Sales">{{ r.sales_count }}</td>
             <td class="num mono {{ 'qty-down' if r.discrepancy_count }}" data-label="Discrepancies">{{ r.discrepancy_count }}</td>
             <td class="num mono" data-label="Current stock">{{ m.qty_split(r.total_stock, r.bulk_ml_stock) }}</td>
-            <td class="num mono" data-label="Turnover">{{ (r.turnover|string ~ 'x') if r.turnover is not none else '—' }}</td>
+            <td class="num mono" data-label="Turnover">{{ (r.turnover|string ~ 'x') if r.turnover is not none else '-' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No branches match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">—</div><p>No branches yet.</p></div>
+  <div class="empty-state"><p>No branches yet.</p></div>
   {% endif %}
 </div>
 {% endblock %}
@@ -173,7 +196,7 @@
     var totalRevenue = branchRevenue.reduce(function (a, b) { return a + b; }, 0);
 
     // Revenue by branch is a share of the combined total shown in the
-    // tile above, so a doughnut (total in the middle, share list below)
+    // figure above, so a doughnut (total in the middle, share list below)
     // reads that relationship better than a bar ranking would.
     var chart = new Chart(canvas, {
       type: 'doughnut',
@@ -216,11 +239,9 @@
       }
     });
 
-    // Same first-paint sizing fix as Reports (see reports.html's own
-    // comment on this): the canvas can be measured once, before the
-    // sidebar/webfonts finish settling, and Chart.js never re-measures
-    // it after that on its own. Re-running resize() once things have
-    // actually settled corrects that without rebuilding the chart.
+    // First-paint sizing fix (see reports.html): the canvas can be measured
+    // once, before the sidebar/webfonts settle, and Chart.js never
+    // re-measures on its own. Re-running resize() corrects that.
     document.fonts.ready.then(function () { chart.resize(); unitsChart.resize(); });
     window.addEventListener('load', function () { chart.resize(); unitsChart.resize(); });
   })();

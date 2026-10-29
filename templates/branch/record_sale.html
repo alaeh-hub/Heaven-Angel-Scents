@@ -1,127 +1,177 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Record Sale{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}Record Sale{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* The till. The recent-sales ledger is the screen; "New sale" opens the
+     till as one dialog with one containment layer: fields on the panel,
+     a segmented Cash/Credit choice, the running total as a ledger line,
+     one gold button. Hit targets are 44px on touch. */
+
   /* Recent sales: never scroll sideways. Long names already truncate with
      a hover title; badges and the Receipt button get sized columns. */
   .table-wrap.rs-recent-wrap { overflow-x: hidden; }
   @media (min-width: 681px) {
-    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: 0.5rem; padding-right: 0.75rem; text-align: right; }
+    .table-wrap.rs-recent-wrap td.mobile-inline-action { padding-left: var(--space-xs); padding-right: var(--space-sm); text-align: right; }
   }
+
+  .rs-lede {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .rs-fine {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .rs-pad-bottom {
+    margin-bottom: var(--space-md);
+  }
+
+  .rs-pull {
+    margin-top: calc(var(--space-sm) * -1);
+    margin-bottom: var(--space-md);
+  }
+
+  .rs-wide-btn {
+    white-space: nowrap;
+    width: 100%;
+  }
+
+  .rs-wide-btn + .rs-wide-btn,
+  a.rs-wide-btn {
+    margin-bottom: var(--space-sm);
+  }
+
+  .rs-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+
+  .rs-check input {
+    width: auto;
+    margin: 0;
+  }
+
+  .rs-buyer-field {
+    flex: 1;
+  }
+
+  /* Segmented choice: one well, the current choice in gold. */
   .rb-mode {
-    display: inline-flex;
-    gap: 2px;
-    background: var(--field);
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: 99px;
-    padding: 3px;
+    display: flex;
+    gap: var(--space-3xs);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+    padding: var(--space-3xs);
     width: 100%;
   }
 
   .rb-mode-opt {
     flex: 1;
-    padding: 8px 13px;
+    min-height: 2.5rem;
+    padding: 0 var(--space-sm);
     border: none;
     background: transparent;
-    border-radius: 99px;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink-faint);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: var(--text-md);
+    font-weight: 500;
+    color: var(--ink-soft);
     cursor: pointer;
-    transition: color 0.12s ease;
+  }
+
+  .rb-mode-opt:hover {
+    color: var(--ink);
   }
 
   .rb-mode-opt.active {
-    background: var(--surface);
-    border: var(--border-width-strong) solid var(--border-strong);
-    color: var(--accent-ink);
+    background: var(--accent);
+    color: var(--gold-contrast);
   }
 
+  /* Total as a ledger line: a rule above, the working and the figure in
+     tabular numerals. Empty until there is something to total. */
   .price-hint {
-    font-size: 11.5px;
-    color: var(--ink-faint);
-    margin-top: 5px;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    margin-top: var(--space-2xs);
   }
 
-  /* ---- Choice cards: the two top-level decisions (Sale vs Refill,
-     Bottle vs Bulk/Refill) get more visual weight than an in-form pill
-     toggle like Cash/Credit — each option carries its own always-visible
-     one-line explanation, so there's no separate hint text to toggle. ---- */
+  .price-hint:not(:empty) {
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--border-strong);
+  }
+
+  /* ---- Choice rows: radio-style options inside the panel (one layer,
+     no card inside the card). The current one carries the gold edge. ---- */
   .choice-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: var(--space-xs);
   }
 
-  .choice-card {
+  .choice-opt {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 3px;
+    gap: var(--space-2xs);
     text-align: left;
-    padding: 10px 12px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    padding: var(--space-sm);
+    min-height: 2.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: transparent;
     cursor: pointer;
-    transition: border-color 0.16s ease, background 0.16s ease,
-      box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: var(--font);
   }
 
-  .choice-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+  .choice-opt:hover {
+    background: var(--surface-2);
   }
 
-  .choice-card:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  .choice-card.active {
+  .choice-opt.active {
     border-color: var(--accent);
     background: var(--accent-soft);
-    box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 40%, transparent);
   }
 
-  .choice-card-title {
-    font-size: 13.5px;
-    font-weight: 700;
+  .choice-opt-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--ink);
-    transition: color 0.16s ease;
   }
 
-  .choice-card.active .choice-card-title {
-    color: var(--accent-ink);
-  }
-
-  .choice-card-desc {
-    font-size: 11px;
+  .choice-opt-desc {
+    font-size: var(--text-xs);
     color: var(--ink-faint);
     line-height: 1.35;
   }
 
   @media (max-width: 420px) {
-    .choice-card {
-      padding: 8px 10px;
+    .choice-opt {
+      padding: var(--space-xs) var(--space-sm);
     }
   }
 
-  /* ---- Bottle/Bulk/Refill section swap: a quick fade + rise instead of an
-     instant display toggle. .kind-panel-enter starts the incoming panel
-     transparent/offset; removing it (on the next frame, after display is
-     already set) lets the transition animate it in. See setKind() in
-     the script block below. ---- */
+  /* ---- Bottle/Bulk/Refill section swap: a quick fade + rise. The entering
+     class is only ever applied by script for one frame, so content is
+     visible at rest and with scripting off. ---- */
   .kind-panel {
-    transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
   }
 
-  .kind-panel-enter {
+  .js .kind-panel-enter {
     opacity: 0;
     transform: translateY(4px);
   }
@@ -132,11 +182,11 @@
   .rs-dialog {
     position: fixed;
     inset: 0;
-    z-index: 9999;
-    background: rgba(28, 27, 25, 0.45);
+    z-index: var(--z-modal);
+    background: var(--scrim);
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: var(--space-lg);
   }
 
   .rs-dialog-panel {
@@ -145,21 +195,20 @@
     max-height: calc(100dvh - 40px);
     overflow-y: auto;
     overscroll-behavior: contain;
+    box-shadow: var(--shadow-lg);
   }
 
   .rs-dialog-panel.is-wide {
-    max-width: 880px;
+    max-width: 55rem;
   }
 
   .rs-dialog-panel.is-narrow {
-    max-width: 440px;
+    max-width: 27.5rem;
   }
 
   /* Title + close stay pinned while the form scrolls underneath. The
      negative margins pull it out to the panel's edges (matching
-     .card-pad's padding) so its background covers the full width, and
-     the negative top pins it flush with the panel's top edge rather
-     than one padding-width below it, where content would peek out. */
+     .card-pad's padding) so its background covers the full width. */
   .rs-dialog-head {
     position: sticky;
     top: -1.375rem;
@@ -167,15 +216,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin: -1.375rem -1.5rem 4px;
-    padding: 1.375rem 1.5rem 8px;
+    gap: var(--space-sm);
+    margin: calc(var(--space-lg) * -1) calc(var(--space-lg) * -1) var(--space-2xs);
+    padding: var(--space-lg) var(--space-lg) var(--space-xs);
     background: var(--surface);
   }
 
   .rs-dialog-head h2 {
-    font-size: 16.5px;
+    text-wrap: balance;
+    font-size: var(--text-lg);
+    font-weight: 600;
     margin: 0;
+  }
+
+  .rs-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
   }
 
   /* The floating Halo assistant button (base.html) would otherwise sit
@@ -188,11 +248,37 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px 14px;
+    gap: var(--space-sm) var(--space-md);
+  }
+
+  .rs-header-actions .hint {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-2xs) var(--space-sm);
+  }
+
+  .rs-submit {
+    width: 100%;
+    min-height: 2.75rem;
+    font-size: var(--text-md);
+  }
+
+  @media (pointer: coarse) {
+    .rs-dialog .field input,
+    .rs-dialog .cs-trigger,
+    .rs-dialog .field select {
+      min-height: 2.75rem;
+    }
+
+    .rs-header-actions .btn,
+    .rs-close {
+      min-height: 2.75rem;
+    }
   }
 
   @media (max-width: 600px) {
-    /* Phones: the dialogs become bottom sheets — full width, rising
+    /* Phones: the dialogs become bottom sheets, full width, rising
        from the bottom edge, with room for the home-indicator inset. */
     .rs-dialog {
       padding: 0;
@@ -205,15 +291,15 @@
       max-width: none;
       max-height: 92vh;
       max-height: 92dvh;
-      border-radius: 18px 18px 0 0;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       border-bottom: none;
-      padding: 1rem 1rem calc(1.25rem + env(safe-area-inset-bottom));
+      padding: var(--space-md) var(--space-md) calc(1.25rem + env(safe-area-inset-bottom));
     }
 
     .rs-dialog-head {
       top: -1rem;
-      margin: -1rem -1rem 4px;
-      padding: 1rem 1rem 8px;
+      margin: calc(var(--space-md) * -1) calc(var(--space-md) * -1) var(--space-2xs);
+      padding: var(--space-md) var(--space-md) var(--space-xs);
     }
 
     /* Name + address are too cramped side by side at phone width. */
@@ -233,7 +319,21 @@
 
     .rs-header-actions .btn {
       flex: 1;
-      min-height: 40px;
+      min-height: 2.75rem;
+    }
+  }
+
+  .smart-pagination .btn svg {
+    flex: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kind-panel {
+      transition: none;
+    }
+
+    .js .kind-panel-enter {
+      transform: none;
     }
   }
 </style>
@@ -246,10 +346,9 @@
 <div class="card card-pad rs-dialog-panel is-wide">
   <div class="rs-dialog-head">
     <h2 id="newSaleOverlayTitle">New sale</h2>
-    <button type="button" class="btn btn-ghost btn-sm" id="newSaleCloseBtn" aria-label="Close">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm rs-close" id="newSaleCloseBtn" aria-label="Close"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 14px;">Deducts from your branch inventory immediately.
-  </p>
+  <p class="rs-lede">Deducts from your branch inventory immediately.</p>
 
   <form method="POST" id="saleForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -264,9 +363,9 @@
     <div class="field" style="display:none;">
       <label>Transaction</label>
       <div class="choice-grid" id="topTypeSwitch">
-        <button type="button" class="choice-card active" data-value="Sale">
-          <span class="choice-card-title">Sale</span>
-          <span class="choice-card-desc">Normal charge — customer pays for what they take.</span>
+        <button type="button" class="choice-opt active" data-value="Sale">
+          <span class="choice-opt-title">Sale</span>
+          <span class="choice-opt-desc">Normal charge: customer pays for what they take.</span>
         </button>
       </div>
     </div>
@@ -274,13 +373,13 @@
     <div class="field" style="display:none;">
       <label>Sale kind</label>
       <div class="choice-grid" id="kindSwitch">
-        <button type="button" class="choice-card active" data-value="bottle">
-          <span class="choice-card-title">Bottle</span>
-          <span class="choice-card-desc">Fixed size, picked from your product list.</span>
+        <button type="button" class="choice-opt active" data-value="bottle">
+          <span class="choice-opt-title">Bottle</span>
+          <span class="choice-opt-desc">Fixed size, picked from your product list.</span>
         </button>
-        <button type="button" class="choice-card" data-value="loose">
-          <span class="choice-card-title">Bulk/Refill</span>
-          <span class="choice-card-desc">Custom mL amount, priced at the shared rate per mL.</span>
+        <button type="button" class="choice-opt" data-value="loose">
+          <span class="choice-opt-title">Bulk/Refill</span>
+          <span class="choice-opt-desc">Custom mL amount, priced at the shared rate per mL.</span>
         </button>
       </div>
     </div>
@@ -311,14 +410,14 @@
           <input type="number" id="unit_price" name="unit_price" step="0.01" min="0" required>
         </div>
       </div>
-      <div class="price-hint" id="priceHint" style="margin-top:-10px; margin-bottom:14px;"></div>
+      <div class="price-hint rs-pull" id="priceHint" aria-live="polite"></div>
 
       <div class="field kind-panel" id="freebieField">
-        <label style="display:flex; align-items:center; gap:8px; font-weight:500; cursor:pointer; margin-bottom:0;">
-          <input type="checkbox" id="freebieCheckbox" style="width:auto; margin:0;">
+        <label class="rs-check">
+          <input type="checkbox" id="freebieCheckbox">
           This is a freebie / giveaway (₱0, no charge)
         </label>
-        <div class="help">Still deducts stock like a normal sale — just charges nothing, and hides payment method below.</div>
+        <div class="help">Still deducts stock like a normal sale, just charges nothing, and hides payment method below.</div>
       </div>
     </div>
 
@@ -344,14 +443,14 @@
           <label for="unit_price_loose">Price per mL (₱)</label>
           <input type="number" id="unit_price_loose" name="unit_price" step="0.01" min="0" readonly disabled required
             data-bulk-rate="{{ bulk_rate }}">
-          <div class="help">Set on the Formulas page — not editable here.</div>
+          <div class="help">Set on the Formulas page, not editable here.</div>
         </div>
       </div>
 
       <div class="field">
         <label for="looseTotalDisplay">Total price</label>
         <input type="text" id="looseTotalDisplay" readonly placeholder="₱0.00">
-        <div class="help">Quantity (mL) × price per mL — filled in automatically as you type the quantity.</div>
+        <div class="help">Quantity (mL) × price per mL, filled in automatically as you type the quantity.</div>
       </div>
     </div>
 
@@ -359,7 +458,7 @@
 
     <div>
     <div class="field">
-      <label for="sold_at">Sale date <span class="text-faint">(optional — logging a past sale)</span></label>
+      <label for="sold_at">Sale date <span class="text-faint">(optional, for logging a past sale)</span></label>
       <input type="date" id="sold_at" name="sold_at" max="{{ today }}">
       <div class="help">Leave blank to use today's date.</div>
     </div>
@@ -374,11 +473,11 @@
     </div>
 
     <div class="form-row" id="buyerField" style="display:none;">
-      <div class="field" style="flex:1;">
+      <div class="field rs-buyer-field">
         <label for="buyer_name">Name (Credit)</label>
         <input type="text" id="buyer_name" name="buyer_name" placeholder="Type the employee's or customer's name…" autocomplete="off"
           maxlength="120">
-        <div class="help">Free text — type whoever this credit sale is owed by, employee or customer. Not tied to a login account.
+        <div class="help">Free text: type whoever this credit sale is owed by, employee or customer. Not tied to a login account.
         </div>
       </div>
     </div>
@@ -409,11 +508,11 @@
             placeholder="Fills in automatically for a repeat customer">
         </div>
       </div>
-      <div class="price-hint" style="margin-top:-10px; margin-bottom:14px;">Picking a name already on file fills in
-        their address from the first sale it was recorded on — edit it if it's changed.</div>
+      <div class="rs-fine rs-pull">Picking a name already on file fills in
+        their address from the first sale it was recorded on. Edit it if it’s changed.</div>
     </div>
 
-    <button type="submit" class="btn btn-accent" style="width:100%;">Record sale</button>
+    <button type="submit" class="btn btn-accent rs-submit">Record sale</button>
     </div>
     </div>
   </form>
@@ -424,13 +523,13 @@
 <div class="card card-pad rs-dialog-panel is-narrow">
   <div class="rs-dialog-head">
     <h2 id="importSalesOverlayTitle">Upload from Excel</h2>
-    <button type="button" class="btn btn-ghost btn-sm" id="importSalesCloseBtn" aria-label="Close">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm rs-close" id="importSalesCloseBtn" aria-label="Close"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
-  <p class="text-faint" style="font-size:12.5px; margin: 0 0 16px;">
-    Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here —
-    every row is inserted at once instead of typing each one in by hand.
+  <p class="rs-lede">
+    Got a backlog of sales to log? Download the template, fill in one row per sale, then upload it here.
+    Every row is inserted at once instead of typing each one in by hand.
   </p>
-  <a href="{{ url_for('branch.sales_import_template') }}" class="btn btn-ghost" style="width:100%; margin-bottom:12px;" data-generate-file>
+  <a href="{{ url_for('branch.sales_import_template') }}" class="btn btn-ghost rs-wide-btn" data-generate-file>
     Download import template (.xlsx)
   </a>
   <form method="POST" action="{{ url_for('branch.import_sales') }}" enctype="multipart/form-data">
@@ -439,9 +538,9 @@
     <div class="field">
       <label for="import_file">Filled-in template</label>
       <input type="file" id="import_file" name="import_file" accept=".xlsx" required>
-      <div class="help">Only SKUs already stocked at this branch can be imported — see the "Products (reference)" sheet in the template.</div>
+      <div class="help">Only SKUs already stocked at this branch can be imported; see the “Products (reference)” sheet in the template.</div>
     </div>
-    <button type="submit" class="btn btn-accent" style="width:100%;">Upload sales</button>
+    <button type="submit" class="btn btn-accent rs-submit">Upload sales</button>
   </form>
 </div>
 </div>
@@ -450,8 +549,8 @@
   <div class="card-header">
     <h2>Recent sales</h2>
     <div class="rs-header-actions">
-      <span class="hint" id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if recent_sales|length != 1 }} · <a
-        href="{{ url_for('branch.sales_history') }}" class="text-soft">full history →</a></span>
+      <span class="hint"><span id="recentSalesCount">{{ recent_sales|length }} sale{{ 's' if recent_sales|length != 1 }}</span><a
+        href="{{ url_for('branch.sales_history') }}" class="text-soft">Full history</a></span>
       <button type="button" class="btn btn-ghost btn-sm" id="openImportSalesBtn">Upload from Excel</button>
       <button type="button" class="btn btn-accent btn-sm" id="openNewSaleBtn">New sale</button>
     </div>
@@ -460,7 +559,7 @@
   <div data-smart-table data-page-size="10" data-count-target="recentSalesCount" data-count-label="sale">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -517,7 +616,7 @@
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -527,20 +626,18 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No sales match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No sales recorded yet.</p>
+    <p>No sales recorded yet. Use New sale above to record the first one.</p>
   </div>
   {% endif %}
 </div>
@@ -649,18 +746,18 @@
     }
 
     document.getElementById('topTypeSwitch').addEventListener('click', function (e) {
-      var btn = e.target.closest('.choice-card');
+      var btn = e.target.closest('.choice-opt');
       if (!btn || btn.classList.contains('active')) return;
-      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      this.querySelectorAll('.choice-opt').forEach(function (b) { b.classList.toggle('active', b === btn); });
       topType = btn.dataset.value;
       updateFreebieVisibility();
       recomputeSaleType();
     });
 
     document.getElementById('kindSwitch').addEventListener('click', function (e) {
-      var btn = e.target.closest('.choice-card');
+      var btn = e.target.closest('.choice-opt');
       if (!btn || btn.classList.contains('active')) return;
-      this.querySelectorAll('.choice-card').forEach(function (b) { b.classList.toggle('active', b === btn); });
+      this.querySelectorAll('.choice-opt').forEach(function (b) { b.classList.toggle('active', b === btn); });
       setKind(btn.dataset.value);
     });
 
@@ -767,7 +864,7 @@
         priceHint.textContent = '';
         return;
       }
-      priceHint.textContent = formatPeso(rate) + ' × ' + qty + ' = ' + formatPeso(rate * qty) + ' total — edit price if this sale used a different rate.';
+      priceHint.textContent = formatPeso(rate) + ' × ' + qty + ' = ' + formatPeso(rate * qty) + ' total. Edit price if this sale used a different rate.';
     }
 
     function applySuggestedPrice() {
@@ -799,7 +896,7 @@
         var opt = document.createElement('option');
         opt.value = row.sku;
         opt.dataset.price = row.price;
-        opt.textContent = row.unit + ' — ' + row.stock_qty + ' in stock';
+        opt.textContent = row.unit + ', ' + row.stock_qty + ' in stock';
         skuSelect.appendChild(opt);
       });
       applySuggestedPrice();
@@ -829,7 +926,7 @@
       looseRows.forEach(function (row) {
         var opt = document.createElement('option');
         opt.value = row.sku;
-        opt.textContent = row.item_name + ' — ' + row.stock_qty + ' mL in stock';
+        opt.textContent = row.item_name + ', ' + row.stock_qty + ' mL in stock';
         looseSelect.appendChild(opt);
       });
     } else {

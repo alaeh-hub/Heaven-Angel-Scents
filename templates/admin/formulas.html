@@ -1,11 +1,28 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Formulas{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Formulas{% endblock %}
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pg-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+  }
+  .pg-h { font-size: 1.125rem; margin-bottom: var(--space-2xs); text-wrap: balance; }
+  .pg-note { font-size: 0.875rem; color: var(--ink-soft); margin: 0 0 var(--space-md); }
+  .pg-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pg-actions .btn { flex: 1; }
+  .pg-foot { padding: var(--space-2xs) var(--space-lg) var(--space-md); }
+  .pg-foot p { font-size: 0.875rem; color: var(--ink-faint); margin: 0; }
+  .pg-head-tools { display: flex; align-items: center; gap: var(--space-md); }
   /* Fixed column widths (see .table-fixed in style.css), same convention
      as Materials/Suppliers/Inventory Log. Only 4 rows ever exist here
      (one per Bottled packaging size — see utils.BOTTLE_UNITS), so unlike
@@ -19,7 +36,7 @@
 
   .cogs-inline-form {
     display: flex;
-    gap: 8px;
+    gap: var(--space-xs);
     align-items: center;
     justify-content: flex-end;
   }
@@ -36,10 +53,10 @@
      doesn't need. */
   .fm-add-row {
     display: flex;
-    gap: 10px;
+    gap: var(--space-sm);
     align-items: flex-end;
     flex-wrap: wrap;
-    padding: 0 22px 14px;
+    padding: 0 var(--space-lg) var(--space-md);
   }
   .fm-add-row .field { margin-bottom: 0; }
   .fm-add-row .field-unit { flex: 0 0 110px; }
@@ -48,9 +65,8 @@
   .fm-add-row .btn { flex: 0 0 auto; }
 
   .fm-table-wrap {
-    margin: 0 22px 22px;
-    border: var(--border-width-strong) solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    margin: 0 var(--space-lg) var(--space-lg);
+    border-top: 1px solid var(--border);
     overflow-x: auto;
   }
   .fm-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -59,26 +75,25 @@
     font-size: 12px;
     letter-spacing: 0;
     color: var(--ink-faint);
-    padding: 9px 14px;
-    background: var(--field);
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-xs) var(--space-md);
+    border-bottom: 1px solid var(--border-strong);
   }
   .fm-table td {
-    padding: 10px 14px;
+    padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--border);
     font-size: 13px;
     vertical-align: middle;
     overflow-wrap: anywhere;
   }
   .fm-table td.num, .fm-table th.num { text-align: right; white-space: nowrap; }
-  .fm-empty-row td { padding: 20px 14px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
-  .fm-total-row td { font-weight: 700; background: var(--field); }
+  .fm-empty-row td { padding: var(--space-lg) var(--space-md); text-align: center; color: var(--ink-faint); font-size: 12.5px; }
+  .fm-total-row td { font-weight: 600; background: var(--surface-2); }
   .fm-total-row .fm-total-label { text-align: right; }
   .fm-remove {
     background: none; border: none; color: var(--danger);
-    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+    cursor: pointer; font-size: 18px; line-height: 1; padding: var(--space-3xs) var(--space-xs);
   }
-  .fm-remove:hover { background: var(--danger-soft, rgba(226,58,72,.1)); border-radius: 6px; }
+  .fm-remove:hover { background: var(--danger-soft); border-radius: var(--radius-sm); }
 
   /* ---- Phone layout ----
      Six columns can't fit a phone (the size code wrapped one letter per
@@ -86,18 +101,18 @@
      a card: size badge + remove on top, material name, then qty / rate /
      line cost; each size's total closes its group as a bar. */
   @media (max-width: 680px) {
-    .fm-rate-form .form-row { flex-direction: column; align-items: stretch !important; gap: 10px; }
+    .fm-rate-form .form-row { flex-direction: column; align-items: stretch !important; gap: var(--space-sm); }
     .fm-rate-form .field { flex: 1 1 auto !important; }
     .fm-rate-form .btn { width: 100%; }
 
     .cogs-inline-form { width: 100%; justify-content: stretch; }
     .cogs-inline-form input[type="number"] { flex: 1 1 auto; width: auto; min-width: 0; text-align: left; }
-    .cogs-inline-form .btn { flex: 0 0 auto; min-height: 2.5rem; padding-inline: 1.125rem; }
+    .cogs-inline-form .btn { flex: 0 0 auto; min-height: 2.5rem; padding-inline: var(--space-md); }
 
     .fm-add-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 10px;
+      gap: var(--space-sm);
     }
     .fm-add-row .field-material { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
     .fm-add-row .field-unit,
@@ -116,7 +131,7 @@
     .fm-table tbody {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: var(--space-xs);
     }
 
     .fm-table tbody tr:not(.fm-total-row):not(.fm-empty-row) {
@@ -127,10 +142,9 @@
         "name name name"
         "qty  rate cost";
       align-items: end;
-      gap: 6px 12px;
-      padding: 10px 12px 12px 14px;
-      background: var(--field);
-      border: 1px solid var(--border);
+      gap: var(--space-xs) var(--space-sm);
+      padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+      background: var(--surface-2);
       border-radius: var(--radius-sm);
     }
     .fm-table tbody td {
@@ -145,27 +159,26 @@
       grid-area: size;
       align-self: center;
       justify-self: start;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
+      font-size: 0.75rem;
+      font-weight: 600;
       color: var(--accent-ink);
-      background: color-mix(in srgb, var(--accent) 14%, transparent);
-      padding: 3px 8px;
-      border-radius: 999px;
+      background: var(--accent-soft);
+      padding: var(--space-2xs) var(--space-xs);
+      border-radius: var(--radius-sm);
     }
     .fm-table tbody td:nth-child(2) {
       grid-area: name;
       font-size: 14px;
       font-weight: 600;
       overflow-wrap: anywhere;
-      margin-bottom: 2px;
+      margin-bottom: var(--space-3xs);
     }
     .fm-table tbody td.num:nth-child(3) { grid-area: qty; text-align: left; }
     .fm-table tbody td.num:nth-child(4) { grid-area: rate; text-align: left; }
     .fm-table tbody td.num:nth-child(5) {
       grid-area: cost;
       text-align: right;
-      font-weight: 700;
+      font-weight: 600;
       font-size: 13.5px;
     }
     .fm-table tbody td:nth-child(3)::before,
@@ -174,16 +187,16 @@
       content: attr(data-label);
       display: block;
       font-family: var(--font);
-      font-size: 11px;
+      font-size: 0.75rem;
       font-weight: 600;
       color: var(--ink-faint);
-      margin-bottom: 2px;
+      margin-bottom: var(--space-3xs);
     }
     .fm-table tbody td:nth-child(6) {
       grid-area: remove;
       justify-self: end;
       align-self: start;
-      margin: -4px -6px 0 0;
+      margin: calc(var(--space-2xs) * -1) calc(var(--space-xs) * -1) 0 0;
     }
     .fm-remove {
       width: 36px;
@@ -193,18 +206,17 @@
       justify-content: center;
       padding: 0;
       font-size: 22px;
-      border-radius: 10px;
+      border-radius: var(--radius);
     }
 
     .fm-table .fm-total-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
-      padding: 11px 14px;
-      margin-bottom: 10px;
-      background: color-mix(in srgb, var(--accent) 10%, var(--field));
-      border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      margin-bottom: var(--space-sm);
+      background: var(--accent-soft);
       border-radius: var(--radius-sm);
     }
     .fm-table .fm-total-row:last-child { margin-bottom: 0; }
@@ -217,8 +229,7 @@
     .fm-table .fm-total-row td:last-child { display: none; }
     .fm-table .fm-total-row .fm-total-label {
       text-align: left;
-      font-size: 13px;
-      letter-spacing: 0;
+      font-size: 0.875rem;
       color: var(--ink);
       background: none;
       padding: 0;
@@ -232,6 +243,27 @@
       border-radius: var(--radius-sm);
     }
   }
+  .pg-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: var(--space-md);
+    align-items: start;
+  }
+  .pg-split > * { min-width: 0; }
+  .pg-aside { display: grid; gap: var(--space-md); }
+  .pg-aside .form-row { display: grid; grid-template-columns: 1fr; }
+  .pg-aside .form-row > * { flex: none; }
+  .pg-sub-unit { margin-inline-start: var(--space-xs); }
+  @media (max-width: 64rem) {
+    .pg-split { grid-template-columns: minmax(0, 1fr); }
+  }
+  .pg-lead { font-size: 0.875rem; color: var(--ink-faint); padding: var(--space-2xs) var(--space-lg) var(--space-md); margin: 0; }
+  .fm-rate-form { padding: 0 var(--space-lg) var(--space-lg); }
+  .fm-rate-form .form-row { align-items: flex-end; }
+  .fm-rate-form .field { margin-bottom: 0; }
+  .fm-rate-form .help { margin-top: var(--space-sm); }
+  .cogs-ref { white-space: normal; overflow: visible; text-overflow: clip; }
+  .fm-title-note { font-weight: 400; }
 </style>
 {% endblock %}
 
@@ -244,53 +276,21 @@
   </div>
   <div class="card stat-tile">
     <div class="stat-label">Cost of goods</div>
-    <div class="stat-value accent" style="font-size:15px;"><a href="{{ url_for('admin.production') }}" class="text-soft">logged automatically on Production →</a></div>
-    <div class="stat-foot">every run's packaging size decides the base cost used — no separate step</div>
+    <div class="stat-value accent"><a href="{{ url_for('admin.production') }}" class="text-soft">logged automatically on Production</a></div>
+    <div class="stat-foot">every run's packaging size decides the base cost used, with no separate step</div>
   </div>
 </div>
 
-<div class="card mt-24">
-  <div class="card-header">
-    <h2>Bulk/Refill rate per mL</h2>
-    <span class="hint">current: ₱{{ '%.4f'|format(bulk_rate) }}/mL</span>
-  </div>
-  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
-    The one shared rate every Bulk/Refill-category product is sold at (Record Sale multiplies this by the mL amount
-    typed in). Production starts from this rate too, but lets it be retyped per batch since material costs
-    fluctuate — this figure is only ever a starting point there, not read live.
-  </p>
-  <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" class="fm-rate-form" style="padding: 0 22px 22px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row" style="align-items:flex-end;">
-      <div class="field" style="flex:1 1 220px; margin-bottom: 0;">
-        <label for="rate_per_ml">Rate per mL (₱)</label>
-        <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0" value="{{ bulk_rate }}" required>
-      </div>
-      <div class="field" style="flex:0 0 auto; margin-bottom: 0;">
-        <button type="submit" class="btn btn-accent">Update rate</button>
-      </div>
-    </div>
-    {% if reference_rate_per_ml is not none %}
-    <div class="help" style="margin-top:0.625rem;">
-      Reference: ~₱{{ '%.4f'|format(reference_rate_per_ml) }}/mL avg cost across
-      {{ reference_rate_batch_count }} active batch{{ 'es' if reference_rate_batch_count != 1 }} on
-      <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a>.
-    </div>
-    {% else %}
-    <div class="help" style="margin-top:0.625rem;">Reference unavailable — no active bulk batch yet.</div>
-    {% endif %}
-  </form>
-</div>
-
-<div class="card mt-24">
+<div class="pg-split">
+<div class="card">
   <div class="card-header">
     <h2>Bottled cost of goods (base price per unit)</h2>
     <span class="hint">{{ units|length }} packaging size{{ 's' if units|length != 1 }}</span>
   </div>
-  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
-    A flat, hand-typed cost of goods for each Bottled packaging size — e.g. "85ML costs ₱95". This is what a
+  <p class="pg-lead">
+    A flat, hand-typed cost of goods for each Bottled packaging size, e.g. “85ML costs ₱95”. This is what a
     Production Log run for that size gets charged, regardless of which
-    <a href="{{ url_for('admin.bulk_batches') }}">bulk batch</a> it's actually filled from (a batch's own real
+    <a href="{{ url_for('admin.bulk_batches') }}">bulk batch</a> it’s actually filled from (a batch’s own real
     materials cost is already accounted for when the batch itself is made, so it isn't re-derived per bottle here).
   </p>
   <div class="table-wrap table-airy">
@@ -311,15 +311,15 @@
           <td class="item-name mobile-inline-anchor" data-label="Packaging size">{{ u.unit }}</td>
           <td class="num mono" data-label="Base cost of goods">₱{{ '%.4f'|format(u.base_cost_per_unit) }} / unit
             {% if u.reference_cost_per_new is not none %}
-            <div class="item-sub" style="white-space:normal;">
+            <div class="item-sub cogs-ref">
               Reference: ~₱{{ '%.2f'|format(u.reference_cost_per_new) }}/new bottle,
               ~₱{{ '%.2f'|format(u.reference_cost_per_refill) }}/refill
               (avg across {{ u.reference_batch_count }} active batch{{ 'es' if u.reference_batch_count != 1 }}
               targeting {{ u.unit }})
             </div>
             {% else %}
-            <div class="item-sub" style="white-space:normal;">
-              Reference unavailable — no active bulk batch has targeted {{ u.unit }} yet.
+            <div class="item-sub cogs-ref">
+              Reference unavailable: no active bulk batch has targeted {{ u.unit }} yet.
             </div>
             {% endif %}
           </td>
@@ -339,15 +339,51 @@
   </div>
 </div>
 
+<div class="pg-aside">
+<div class="card">
+  <div class="card-header">
+    <h2>Bulk/Refill rate per mL</h2>
+    <span class="hint">current: ₱{{ '%.4f'|format(bulk_rate) }}/mL</span>
+  </div>
+  <p class="pg-lead">
+    The one shared rate every Bulk/Refill-category product is sold at (Record Sale multiplies this by the mL amount
+    typed in). Production starts from this rate too, but lets it be retyped per batch since material costs
+    fluctuate. This figure is only ever a starting point there, not read live.
+  </p>
+  <form method="POST" action="{{ url_for('admin.save_bulk_rate') }}" class="fm-rate-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <div class="field">
+        <label for="rate_per_ml">Rate per mL (₱)</label>
+        <input type="number" id="rate_per_ml" name="rate_per_ml" step="0.0001" min="0" value="{{ bulk_rate }}" required>
+      </div>
+      <div class="field">
+        <button type="submit" class="btn btn-accent">Update rate</button>
+      </div>
+    </div>
+    {% if reference_rate_per_ml is not none %}
+    <div class="help">
+      Reference: ~₱{{ '%.4f'|format(reference_rate_per_ml) }}/mL avg cost across
+      {{ reference_rate_batch_count }} active batch{{ 'es' if reference_rate_batch_count != 1 }} on
+      <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a>.
+    </div>
+    {% else %}
+    <div class="help">Reference unavailable: no active bulk batch yet.</div>
+    {% endif %}
+  </form>
+</div>
+</div>
+</div>
+
 <div class="card mt-24">
   <div class="card-header">
-    <h2>Packaging materials per bottle <span class="text-faint" style="font-weight:400;">(reference)</span></h2>
+    <h2>Packaging materials per bottle (reference)</h2>
     <span class="hint">computed, not hand-typed</span>
   </div>
-  <p class="text-faint" style="font-size:12.5px; padding: 4px 22px 14px; margin:0;">
-    What it actually costs, materials-wise, to package one bottle of each size — e.g. the bottle itself, cap,
+  <p class="pg-lead">
+    What it actually costs, materials-wise, to package one bottle of each size, e.g. the bottle itself, cap,
     sprayer, label, box. Each line's cost is computed live from the material's current price (qty per unit ×
-    cost per unit), so it always stays up to date. This is a reference only — it does not feed the base cost of
+    cost per unit), so it always stays up to date. This is a reference only. It does not feed the base cost of
     goods above; update that by hand once you've checked it against this breakdown, plus (for the liquid itself)
     a batch's own cost per mL on the <a href="{{ url_for('admin.bulk_batches') }}">Bulk Batches</a> page.
   </p>
@@ -425,7 +461,7 @@
           {% endfor %}
         {% else %}
         <tr class="fm-empty-row">
-          <td colspan="6">No packaging materials added yet — pick a size and material above.</td>
+          <td colspan="6">No packaging materials added yet. Pick a size and material above.</td>
         </tr>
         {% endif %}
       </tbody>

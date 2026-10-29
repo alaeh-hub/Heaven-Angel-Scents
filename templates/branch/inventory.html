@@ -1,41 +1,34 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}My Inventory{% endblock %}
-{% block eyebrow %}{{ session.branch_name }}{% endblock %}
 {% block heading %}My Inventory{% endblock %}
 
 {% block head %}
 <style>
-  /* Scoped to .binv-table so none of this leaks onto the other pages
-     that reuse fill_bar() (dashboard, production, low stock) — see
-     _macros.html's fill_bar macro, which this page renders as-is. */
-  .binv-table .product-thumb,
-  .binv-table .product-thumb-empty {
-    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  /* The stock ledger: SKU in mono under the name, tabular figures right
+     aligned, one stock bar per row. Scoped to .binv-table so nothing leaks
+     onto the other pages that reuse fill_bar(). */
+  .binv-table .fill-row {
+    min-width: 11rem;
   }
 
-  .binv-table tbody tr:hover .product-thumb,
-  .binv-table tbody tr:hover .product-thumb-empty {
-    transform: scale(1.08);
+  .binv-table .binv-low {
+    margin-left: var(--space-xs);
   }
 
-  /* A slow, gentle ring pulse on any track holding a low-stock bar —
-     the red fill already flags it as a static color, this just keeps a
-     "needs a restock request" row from being easy to miss while
-     scanning down a long table. :has() targets the track (fixed width)
-     rather than the bar itself, since a near-empty bar is too narrow
-     for its own box-shadow ring to read clearly. Left out of
-     prefers-reduced-motion entirely, same as .fill-bar's own fill
-     transition in style.css. */
-  @media (prefers-reduced-motion: no-preference) {
-    .binv-table .fill-track:has(.fill-bar.low) {
-      animation: binv-low-pulse 1.8s ease-in-out infinite;
-    }
+  .binv-table .item-sub-unit {
+    margin-left: var(--space-xs);
   }
 
-  @keyframes binv-low-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 45%, transparent); }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 0%, transparent); }
+  .page-note {
+    padding: var(--space-sm) var(--space-lg) var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--ink-faint);
+  }
+
+  .smart-pagination .btn svg {
+    flex: none;
   }
 </style>
 {% endblock %}
@@ -47,7 +40,7 @@
   <div data-smart-table data-page-size="10">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -74,7 +67,7 @@
             <th>Variant</th>
             <th>Unit</th>
             <th class="num">Reference price</th>
-            <th style="min-width:200px;">Stock level</th>
+            <th>Stock level</th>
           </tr>
         </thead>
         <tbody>
@@ -86,7 +79,7 @@
                 {{ m.product_thumb(row.image_path, row.item_name) }}
                 <div>
                   <div class="item-name">{{ row.item_name }}</div>
-                  <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit"> · {{ row.unit }}</span></div>
+                  <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit">{{ row.unit }}</span></div>
                   <div class="item-sub item-sub-badge">{{ m.variant_badge(row.variant) }}</div>
                 </div>
               </div>
@@ -94,29 +87,25 @@
             <td class="mobile-fold" data-label="Variant">{{ m.variant_badge(row.variant) }}</td>
             <td class="mono text-soft mobile-fold" data-label="Unit">{{ row.unit }}</td>
             <td class="num mono" data-label="Reference price">{{ row.price|peso }}</td>
-            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}</td>
+            <td data-label="Stock level">{{ m.fill_bar(row.stock_qty, row.reorder_level * 3) }}{% if row.stock_qty <= (row.reorder_level * 3 / 4) %}<span class="badge badge-rejected binv-low">Low</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No products match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 6-6 6 6 6"/></svg>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">This is the reference price — the amount actually charged is
-      recorded per sale on the Record Sale page.</p>
-  </div>
+  <p class="page-note">This is the reference price: the amount actually charged is
+    recorded per sale on the Record Sale page.</p>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
     <p>No products assigned to your branch yet.</p>
   </div>
   {% endif %}

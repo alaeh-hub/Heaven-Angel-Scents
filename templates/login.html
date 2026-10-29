@@ -4,43 +4,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in · Heaven &amp; Angel Scents</title>
+  <meta name="description" content="Sign in to Heaven &amp; Angel Scents with your HQ Admin or branch account.">
+  <title>Sign in to Heaven &amp; Angel Scents</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
-  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
+  <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#14110A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="H&amp;A Scents">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
   <script nonce="{{ csp_nonce() }}">
     (function () {
       try {
         var stored = localStorage.getItem('theme');
         var theme = stored || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.classList.add('js');
       } catch (e) {}
     })();
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
+    /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
     /* ---------------------------------------------------------------
-       Login: "the arch". Layout, the arched brand window and its
-       motion live in style.css (.auth-shell / .auth-stage /
-       .auth-arch / .auth-form-col / .auth-card). This block holds the
-       page-specific form pieces: heading, role switch, inputs with
-       icons and the reveal button, validation states.
-       All IDs/classes main.js and the inline scripts below hook into
-       are preserved (.auth-card, .role-switch, .field, the
-       field-error / has-error contract, #themeToggle).
-       The form sits directly on the page background, so every colour
-       here is a theme token that already passes contrast in both
-       light and dark.
+       Login: "the arch". Layout and the flat arched brand window live
+       in style.css (.auth-shell / .auth-stage / .auth-arch /
+       .auth-form-col / .auth-card). This block holds the page-specific
+       form pieces: heading, role switch, inputs with icons and the
+       reveal button, validation states. Every colour is a theme token.
        ------------------------------------------------------------- */
+
+    html,
+    body {
+      overflow-x: clip;
+    }
 
     body {
       min-height: 100dvh;
     }
 
-    /* Shake on a failed submit is the only animation on the card
-       itself (the card's children carry the entrance). Plain CSS so
-       there is no promise to reject when submit navigates away. */
+    /* Shake on a failed submit is the only animation on the card:
+       transform only, and off for reduced motion. */
     .auth-card.shake {
-      animation: auth-shake 0.4s;
+      animation: auth-shake var(--dur-long) var(--ease-out);
     }
 
     @keyframes auth-shake {
@@ -75,7 +81,7 @@
       position: static;
       width: auto;
       z-index: auto;
-      margin: 0 0 18px;
+      margin: 0 0 var(--space-md);
     }
 
     .auth-card .flash {
@@ -83,47 +89,36 @@
     }
 
     .auth-card-head {
-      margin-bottom: 1.75rem;
+      margin-bottom: var(--space-lg);
     }
 
-    /* The mascot sits beside the heading, not above it: stacked, it
-       pushed the whole form down the card and read as an illustration
-       rather than as something greeting you. */
     .auth-head-row {
       display: flex;
       align-items: center;
       justify-content: flex-start;
-      gap: 1rem;
-      margin-bottom: 0.75rem;
+      gap: var(--space-md);
+      margin-bottom: var(--space-sm);
     }
 
-    /* The heading block can shrink; the mascot cannot. */
     .auth-head-text {
       min-width: 0;
     }
 
-    /* Two classes deep on purpose: .auth-card-head h1 below sets a
-       bottom margin and ties with this on specificity, so matching it
-       plainly would lose on source order and leave the heading sitting
-       high against the mascot. */
     .auth-card-head .auth-head-text h1 {
-      margin-bottom: 0;
+      margin-bottom: var(--space-2xs);
     }
 
     /* Sized here rather than from the script, so the breakpoints below
-       can change it. A size passed to mount() lands as an inline style
-       on this element, which no media query could then override. */
+       can change it. */
     .auth-mascot {
-      --mascot-size: 7.5rem;
+      --mascot-size: 5.5rem;
       width: var(--mascot-size);
       height: var(--mascot-size);
       flex-shrink: 0;
     }
 
     /* The mascot sits at the card's left edge, so its bubble hangs off
-       that edge instead of being centred on it — centred, the bubble
-       ran past the card on a phone and took the page with it. The tail
-       still points at the middle of the head. */
+       that edge; the tail still points at the middle of the head. */
     .auth-mascot .mascot-bubble {
       left: 0;
       right: auto;
@@ -142,45 +137,40 @@
       margin-left: 0;
     }
 
-    .auth-greeting {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--accent-ink);
-      margin: 0 0 0.5rem;
-    }
-
     .auth-card-head h1 {
-      font-size: clamp(2.5rem, 4.4vw, 3.5rem);
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1;
-      margin: 0 0 0.75rem;
+      font-size: var(--text-2xl);
+      font-weight: 600;
+      letter-spacing: 0;
+      line-height: 1.2;
+      text-wrap: balance;
+      margin: 0 0 var(--space-xs);
     }
 
     .auth-card-head p {
-      font-size: 15px;
+      font-size: var(--text-sm);
       line-height: 1.5;
       color: var(--ink-soft);
       margin: 0;
     }
 
     .auth-card-head p.auth-greeting {
-      color: var(--accent-ink);
-      margin: 0 0 0.5rem;
+      font-size: var(--text-md);
+      font-weight: 500;
+      color: var(--ink);
+      margin: 0 0 var(--space-3xs);
     }
 
-    /* ---- role switch (Branch / HQ Admin pill toggle) ---- */
+    /* ---- role switch: a two-option segmented control ---- */
     .role-switch {
       position: relative;
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 2px;
-      background: var(--field);
-      border: 1px solid var(--border-strong);
-      border-radius: 99px;
-      padding: 4px;
-      margin: 0 0 1.5rem;
+      gap: var(--space-3xs);
+      background: var(--surface-2);
+      border-radius: var(--radius-lg);
+      padding: var(--space-2xs);
+      margin: 0 0 var(--space-lg);
     }
 
     .role-option {
@@ -190,22 +180,23 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      padding: 11px 14px;
+      gap: var(--space-xs);
+      min-height: 2.25rem;
+      padding: 0 var(--space-md);
       border: none;
       background: transparent;
-      border-radius: 99px;
+      border-radius: var(--radius);
       font-family: inherit;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: var(--text-sm);
+      font-weight: 500;
       color: var(--ink-soft);
       cursor: pointer;
-      transition: color 0.18s ease;
+      transition: color var(--dur-micro) var(--ease-out);
     }
 
     .role-option svg {
-      width: 16px;
-      height: 16px;
+      width: 1rem;
+      height: 1rem;
       flex-shrink: 0;
     }
 
@@ -213,8 +204,13 @@
       color: var(--ink);
     }
 
+    .role-option:active {
+      color: var(--ink);
+    }
+
     .role-option.active {
       color: var(--ink);
+      font-weight: 600;
     }
 
     .role-option.active svg {
@@ -223,15 +219,14 @@
 
     .role-switch-thumb {
       position: absolute;
-      top: 4px;
-      bottom: 4px;
-      left: 4px;
-      width: calc(50% - 4px);
+      top: var(--space-2xs);
+      bottom: var(--space-2xs);
+      left: var(--space-2xs);
+      width: calc(50% - var(--space-2xs));
       background: var(--surface);
       border: 1px solid var(--border-strong);
-      border-radius: 99px;
-      box-shadow: var(--shadow-sm);
-      transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.64, 1);
+      border-radius: var(--radius);
+      transition: transform var(--dur-short) var(--ease-out);
     }
 
     .role-switch-thumb.admin {
@@ -240,16 +235,16 @@
 
     /* ---- inputs with a leading icon + (for password) a reveal toggle ---- */
     .field {
-      margin-bottom: 1.125rem;
+      margin-bottom: var(--space-md);
     }
 
     .field label {
       display: block;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: var(--text-sm);
+      font-weight: 500;
       letter-spacing: 0;
       color: var(--ink);
-      margin-bottom: 8px;
+      margin-bottom: var(--space-xs);
     }
 
     .input-shell {
@@ -260,49 +255,48 @@
 
     .input-shell svg.field-icon {
       position: absolute;
-      left: 16px;
-      width: 18px;
-      height: 18px;
+      left: var(--space-sm);
+      width: 1.125rem;
+      height: 1.125rem;
       color: var(--ink-soft);
       pointer-events: none;
     }
 
     .input-shell input {
       width: 100%;
-      height: 3.25rem;
-      padding: 0 16px 0 46px;
-      font-size: 16px;
-      border-radius: 14px;
-      /* A real 3:1 edge: the filled field alone is too faint on light. */
-      border: 1px solid color-mix(in srgb, var(--ink) 38%, transparent);
+      height: 2.25rem;
+      padding: 0 var(--space-sm) 0 var(--space-xl);
+      font-size: var(--text-md);
     }
 
     .input-shell input[type="password"],
     .input-shell input.has-reveal {
-      padding-right: 48px;
+      padding-right: var(--space-xl);
     }
 
     /* Browsers inject their own reveal-password eye inside
-       type="password"; hide it so ours is the only one. */
-    .input-shell input[type="password"]::-ms-reveal,
-    .input-shell input[type="password"]::-ms-clear,
-    .input-shell input[type="password"]::-webkit-reveal,
-    .input-shell input[type="password"]::-webkit-textfield-decoration-container,
-    .input-shell input[type="password"]::-webkit-credentials-auto-fill-button,
-    .input-shell input[type="password"]::-webkit-strong-password-auto-fill-button {
+       type="password"; hide it so ours is the only one. Only under .js:
+       with scripting off our button is hidden and the native one stays. */
+    .js .input-shell input[type="password"]::-ms-reveal,
+    .js .input-shell input[type="password"]::-ms-clear,
+    .js .input-shell input[type="password"]::-webkit-credentials-auto-fill-button,
+    .js .input-shell input[type="password"]::-webkit-strong-password-auto-fill-button {
       display: none !important;
-      visibility: hidden !important;
       pointer-events: none !important;
     }
 
     .reveal-btn {
+      display: none;
+    }
+
+    .js .reveal-btn {
       position: absolute;
-      right: 8px;
-      width: 36px;
-      height: 36px;
+      right: var(--space-3xs);
+      width: 2rem;
+      height: 2rem;
       border: none;
       background: transparent;
-      border-radius: 10px;
+      border-radius: var(--radius-sm);
       color: var(--ink-soft);
       display: inline-flex;
       align-items: center;
@@ -310,39 +304,48 @@
       cursor: pointer;
     }
 
-    .reveal-btn:hover {
+    .js .reveal-btn:hover {
       color: var(--ink);
-      background: var(--accent-soft);
+      background: var(--surface-2);
+    }
+
+    .js .reveal-btn:active {
+      color: var(--ink);
+      background: var(--surface-2);
     }
 
     .reveal-btn svg {
-      width: 18px;
-      height: 18px;
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+
+    .reveal-btn svg[hidden] {
+      display: none;
     }
 
     .field.has-error input {
-      border-color: var(--danger);
-    }
-
-    .field.has-error input:focus {
-      box-shadow: 0 0 0 4px var(--danger-soft);
+      border-color: var(--red);
     }
 
     .field-error,
     .field-note {
       display: none;
       align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      margin-top: 8px;
+      gap: var(--space-xs);
+      font-size: var(--text-sm);
+      margin-top: var(--space-xs);
       font-weight: 500;
     }
 
     .field-error {
-      color: var(--danger);
+      color: var(--red-ink);
     }
 
     .field-note {
+      color: var(--ink);
+    }
+
+    .field-note svg {
       color: var(--warning);
     }
 
@@ -356,8 +359,8 @@
 
     .field-error svg,
     .field-note svg {
-      width: 14px;
-      height: 14px;
+      width: 1rem;
+      height: 1rem;
       flex-shrink: 0;
     }
 
@@ -366,27 +369,36 @@
        looks disabled. */
     .auth-card .btn-accent {
       width: 100%;
-      height: 3.25rem;
-      margin-top: 0.5rem;
-      font-size: 16px;
-      letter-spacing: -0.01em;
-    }
-
-    .auth-card .btn-accent:active {
-      transform: scale(0.98);
+      margin-top: var(--space-xs);
+      white-space: nowrap;
     }
 
     .btn-accent[disabled] {
-      opacity: 0.85;
+      opacity: 0.55;
       cursor: not-allowed;
     }
 
     .auth-hint {
       text-align: left;
-      font-size: 14px;
+      font-size: var(--text-sm);
       color: var(--ink-soft);
-      margin-top: 1.25rem;
+      margin-top: var(--space-lg);
       line-height: 1.6;
+    }
+
+    @media (pointer: coarse) {
+      .role-option {
+        min-height: 2.75rem;
+      }
+
+      .input-shell input {
+        height: 2.75rem;
+      }
+
+      .js .reveal-btn {
+        width: 2.75rem;
+        height: 2.75rem;
+      }
     }
 
     @media (max-width: 960px) {
@@ -394,35 +406,8 @@
         max-width: none;
       }
 
-      .auth-card-head {
-        margin-bottom: 1.25rem;
-      }
-
-      .auth-card-head h1 {
-        font-size: 2.25rem;
-      }
-
       .auth-mascot {
-        --mascot-size: 5.5rem;
-      }
-
-      .auth-card-head p {
-        font-size: 14px;
-      }
-
-      /* Comfortable thumb targets. */
-      .role-option {
-        min-height: 44px;
-      }
-
-      .reveal-btn {
-        width: 44px;
-        height: 44px;
-        right: 4px;
-      }
-
-      .auth-hint {
-        font-size: 13px;
+        --mascot-size: 4.5rem;
       }
     }
 
@@ -465,35 +450,33 @@
       .auth-mascot .mascot-bubble::after {
         left: 50%;
         right: auto;
-        margin-left: -0.3125rem;
+        margin-left: calc(var(--space-2xs) * -1);
       }
     }
 
     @media (max-width: 400px) {
-      .auth-card-head h1 {
-        font-size: 2rem;
-      }
-
       .auth-head-row {
-        gap: 0.625rem;
+        gap: var(--space-sm);
       }
 
       .auth-mascot {
-        --mascot-size: 4.5rem;
+        --mascot-size: 4rem;
       }
 
       .role-option {
-        gap: 6px;
-        padding: 10px 8px;
-        font-size: 13.5px;
+        padding: 0 var(--space-xs);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .auth-card.shake {
+        animation: none;
       }
 
-      .input-shell input {
-        padding-left: 42px;
-      }
-
-      .input-shell svg.field-icon {
-        left: 14px;
+      .role-switch-thumb,
+      .role-option {
+        transition: none;
       }
     }
   </style>
@@ -506,8 +489,8 @@
     <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
   </button>
   <button type="button" class="theme-toggle theme-toggle-fixed" id="themeToggle" aria-label="Switch between light and dark theme">
-    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
-    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
+    <svg aria-hidden="true" class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+    <svg aria-hidden="true" class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11 7 7 0 0 0 9.7 11z"/></svg>
   </button>
 
   {% set login_type = login_type|default('Branch') %}
@@ -515,12 +498,10 @@
     <div class="auth-stage">
       <div class="auth-arch-wrap">
         <div class="auth-arch">
-          <video class="auth-visual-video" autoplay muted loop playsinline aria-hidden="true">
+          <video class="auth-visual-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true"
+            poster="{{ url_for('static', filename='img/login-poster.jpg') }}">
             <source src="{{ url_for('static', filename='video/login_background.mp4') }}" type="video/mp4">
           </video>
-          <div class="auth-blob auth-blob-gold" aria-hidden="true"></div>
-          <div class="auth-blob auth-blob-amber" aria-hidden="true"></div>
-          <div class="auth-arch-light" aria-hidden="true"></div>
 
           <div class="auth-visual-inner">
             <div class="brand-top">
@@ -528,7 +509,7 @@
                 alt="Heaven &amp; Angel Scents">
             </div>
             <div>
-              <div class="brand-sub"><span class="brand-sub-text">Scents · Inventory System</span></div>
+              <div class="brand-sub"><span class="brand-sub-text">Scents Inventory System</span></div>
               <div class="auth-visual-tagline">One system for HQ and every branch. Stock, requests, and sales, all in sync.</div>
               <p class="auth-role-line">
                 <span class="role-copy-branch">Check stock, request refills and record sales for your branch.</span>
@@ -536,15 +517,15 @@
               </p>
               <ul class="auth-visual-points">
                 <li>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
                   <span>Live stock levels across HQ and every branch</span>
                 </li>
                 <li>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
                   <span>Review and dispatch stock requests with full traceability</span>
                 </li>
                 <li>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
                   <span>Every sale, delivery, and admin action logged for audit</span>
                 </li>
               </ul>
@@ -560,8 +541,8 @@
           <div class="auth-head-row">
             <div class="auth-mascot" id="authMascot"></div>
             <div class="auth-head-text">
-              <p class="auth-greeting" id="auth-greeting">Welcome back</p>
               <h1>Sign in</h1>
+              <p class="auth-greeting" id="auth-greeting">Welcome back</p>
             </div>
           </div>
           <p>Use your HQ Admin or branch account to continue.</p>
@@ -580,14 +561,14 @@
         <div class="role-switch" role="tablist" aria-label="Sign in as">
           <button type="button" class="role-option {{ 'active' if login_type != 'Admin' }}" data-role="Branch" role="tab"
             aria-selected="{{ 'true' if login_type != 'Admin' else 'false' }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M20.5 7.3 12 12l-8.5-4.7M12 12v9M3.5 7.3V16.7L12 21l8.5-4.3V7.3L12 3z" />
             </svg>
             Branch
           </button>
           <button type="button" class="role-option {{ 'active' if login_type == 'Admin' }}" data-role="Admin" role="tab"
             aria-selected="{{ 'true' if login_type == 'Admin' else 'false' }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="8" r="3.2" />
               <path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5" />
             </svg>
@@ -602,13 +583,13 @@
           <div class="field" id="username-field">
             <label for="username">Username</label>
             <div class="input-shell">
-              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <svg aria-hidden="true" class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="8" r="3.4"/><path d="M5 20.5c0-3.6 3.1-6 7-6s7 2.4 7 6"/>
               </svg>
-              <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" required>
+              <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" aria-describedby="username-error" required>
             </div>
-            <div class="field-error" id="username-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="field-error" id="username-error" role="alert">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8v5M12 16h.01" />
               </svg>
@@ -618,24 +599,24 @@
           <div class="field" id="password-field">
             <label for="password">Password</label>
             <div class="input-shell">
-              <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <svg aria-hidden="true" class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
               </svg>
-              <input type="password" id="password" name="password" autocomplete="current-password" minlength="8" enterkeyhint="go" required class="has-reveal">
+              <input type="password" id="password" name="password" autocomplete="current-password" minlength="8" enterkeyhint="go" aria-describedby="password-error caps-note" required class="has-reveal">
               <button type="button" class="reveal-btn" id="passwordReveal" aria-label="Show password" tabindex="-1">
-                <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                <svg id="eyeOffIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a15.6 15.6 0 0 1-3.1 4.1M6.5 6.6C4 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.2-.9"/><path d="M9.9 10a3 3 0 0 0 4.2 4.2"/></svg>
+                <svg aria-hidden="true" id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg aria-hidden="true" id="eyeOffIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" hidden><path d="M3 3l18 18"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a15.6 15.6 0 0 1-3.1 4.1M6.5 6.6C4 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.2-.9"/><path d="M9.9 10a3 3 0 0 0 4.2 4.2"/></svg>
               </button>
             </div>
-            <div class="field-error" id="password-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="field-error" id="password-error" role="alert">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8v5M12 16h.01" />
               </svg>
               <span>Enter your password.</span>
             </div>
             <div class="field-note" id="caps-note" role="status">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8v5M12 16h.01" />
               </svg>
@@ -850,8 +831,8 @@
         revealBtn.addEventListener('click', function () {
           var showing = passwordInput.type === 'text';
           passwordInput.type = showing ? 'password' : 'text';
-          eyeIcon.style.display = showing ? '' : 'none';
-          eyeOffIcon.style.display = showing ? 'none' : '';
+          eyeIcon.hidden = !showing;
+          eyeOffIcon.hidden = showing;
           revealBtn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
         });
       }
@@ -871,37 +852,17 @@
       var submitBtn = document.getElementById('submit-btn');
       var usernameInput = document.getElementById('username');
 
-      // ---- The arch fills with light as the form is completed ----
-      function updateFill() {
-        var fill = 0;
-        if (usernameInput.value.trim()) fill += 0.35;
-        if (passwordInput.value) fill += 0.35;
-        if (passwordInput.value.length >= 8) fill += 0.3;
-        shell.style.setProperty('--fill', fill.toFixed(2));
-      }
-      usernameInput.addEventListener('input', updateFill);
-      passwordInput.addEventListener('input', updateFill);
-      updateFill();
-
-      // ---- The arch leans toward the pointer (fine pointers only) ----
-      var canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
       // Autofocus only where there is no on-screen keyboard to cover the page.
+      var canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
       if (canHover) usernameInput.focus();
+
+      // The brand video is a one-time moment, not a loop to watch under
+      // reduced motion: hold it on the poster frame.
       var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (canHover && !reduceMotion) {
-        var ticking = false;
-        var nx = 0, ny = 0;
-        shell.addEventListener('pointermove', function (e) {
-          nx = (e.clientX / window.innerWidth - 0.5) * 2;
-          ny = (e.clientY / window.innerHeight - 0.5) * 2;
-          if (ticking) return;
-          ticking = true;
-          requestAnimationFrame(function () {
-            shell.style.setProperty('--px', nx.toFixed(3));
-            shell.style.setProperty('--py', ny.toFixed(3));
-            ticking = false;
-          });
-        });
+      var brandVideo = document.querySelector('.auth-visual-video');
+      if (reduceMotion && brandVideo) {
+        brandVideo.removeAttribute('autoplay');
+        brandVideo.pause();
       }
 
       var fields = [
@@ -930,8 +891,10 @@
         if (message) {
           field.wrap.classList.add('has-error');
           field.errorEl.textContent = message;
+          field.input.setAttribute('aria-invalid', 'true');
         } else {
           field.wrap.classList.remove('has-error');
+          field.input.removeAttribute('aria-invalid');
         }
       }
 
@@ -979,7 +942,6 @@
         // (initSubmitLoadingState()) shows the shared centered
         // "Loading" dialog; disabling the button is just a guard
         // against a second click/Enter while the request is in flight.
-        shell.style.setProperty('--fill', '1');
         submitBtn.disabled = true;
       });
     })();

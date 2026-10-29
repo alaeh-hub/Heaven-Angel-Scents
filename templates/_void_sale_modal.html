@@ -5,10 +5,10 @@
    Voiding returns the sale's stock and removes it from every total. #}
 <div class="void-overlay" id="voidSaleOverlay" style="display:none;">
   <div class="card card-pad void-modal">
-    <h2 style="font-size:16px; margin-bottom:4px;">Void this sale?</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;">
+    <h2 class="void-title">Void this sale?</h2>
+    <p class="void-note">
       <strong id="voidSaleLabel"></strong> will be removed from sales and revenue, and its stock returned.
-      This can't be undone — record it again if it was voided by mistake.
+      This can’t be undone. Record it again if it was voided by mistake.
     </p>
     <form method="POST" id="voidSaleForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -17,26 +17,47 @@
         <textarea id="voidSaleReason" name="reason" rows="3" maxlength="255" required
           placeholder="e.g. Wrong item scanned, customer returned it, entered twice"></textarea>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="voidSaleCancel">Cancel</button>
-        <button type="submit" class="btn btn-danger" style="flex:1;">Void sale</button>
+      <div class="void-actions">
+        <button type="button" class="btn btn-ghost" id="voidSaleCancel">Cancel</button>
+        <button type="submit" class="btn btn-danger">Void sale</button>
       </div>
     </form>
   </div>
 </div>
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
   .void-overlay {
     position: fixed;
     inset: 0;
     z-index: 9999;
     align-items: center;
     justify-content: center;
-    padding: 16px;
-    background: rgba(12, 10, 6, 0.55);
+    padding: var(--space-md);
+    background: var(--scrim);
   }
 
   .void-modal {
-    max-width: 440px;
+    max-width: 27.5rem;
     width: 100%;
   }
+
+  .void-title {
+    margin-bottom: var(--space-2xs);
+    font-size: var(--text-lg);
+    text-wrap: balance;
+  }
+
+  .void-note {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .void-actions {
+    display: flex;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+  }
+
+  .void-actions .btn { flex: 1; }
 </style>

@@ -11,6 +11,7 @@ This repository is an active operational application. The system currently inclu
 - Public partner portal for browsing packages and submitting inquiries without a login
 - Role-based access control for Admin and Branch accounts
 - Real-time updates with Socket.IO for shared operational views
+- Installable back-office app (PWA) with static-asset caching and an offline notice; operational pages and records are never cached
 - AI-powered internal assistant for scoped business questions over live data
 - Audit trail and movement logging for operational accountability
 - Receipt generation and QR-code scan verification for branch sales
@@ -98,6 +99,8 @@ The platform uses:
 - Pillow for image handling (product photos, uploads)
 - Google's Gemini API for the internal AI assistant
 - A separate React + Vite front end (`public-site/`) for the public partner portal
+
+The back-office visual system is documented in [`design.md`](./design.md). Its shared theme tokens live in `static/css/tokens.css`, global foundations in `static/css/base.css`, and application styles in `static/css/style.css` and `static/css/themes.css`.
 
 ---
 
@@ -279,6 +282,8 @@ npm run build    # or build once and use Flask's own :5000 URL
 
 (The npm scripts call Vite through `node` directly because npm's Windows shims break on the `&` in this folder's name.)
 
+The signed-in back office can be installed from a supported browser's install option. Service workers require HTTPS (except on localhost); the worker caches static files only and shows an offline notice when a page cannot load. It does not make operational pages or records available offline.
+
 For production-style WSGI serving, the repo also includes `wsgi.py` and the required Gunicorn + gevent stack in `requirements.txt`. The app is designed as a **single worker process** by default. Rate-limit counters use in-memory state unless `RATELIMIT_STORAGE_URI` is set to a shared backend such as Redis (install the `redis` package when using Redis); Socket.IO still uses process-local state.
 
 ### Running tests
@@ -330,6 +335,7 @@ manifest are committed and are all the running site needs.
 ├── schema.sql
 ├── requirements.txt
 ├── README.md
+├── design.md             # Back-office visual-system rules
 ├── docs/                 # BACKUP, DEPLOY, DOCKER_DEPLOY, HOSTINGER_DEPLOY, QA pack
 ├── public-site/          # partner portal front end (React + Vite)
 │   └── src/
@@ -339,12 +345,14 @@ manifest are committed and are all the running site needs.
 │       ├── pages/
 │       └── styles/
 ├── static/
-│   ├── css/
+│   ├── css/              # Tokens, shared foundations, and application themes
 │   ├── js/
 │   ├── img/
 │   ├── video/
 │   ├── uploads/
-│   └── public-site/      # build output of public-site/ (git-ignored)
+│   ├── public-site/       # build output of public-site/ (git-ignored)
+│   ├── manifest.webmanifest
+│   └── sw.js              # Static-only service worker
 ├── templates/
 │   ├── admin/
 │   ├── branch/

@@ -12,6 +12,10 @@ import './styles/catalog.css';
 // scroll position before the videos/marquee/images have re-established
 // their final size, landing mid-reflow (which some mobile browsers show
 // as the page zoomed out until it settles). Start at the top instead.
+// Hover-revealed details hide only once this script is running, so nothing
+// is left invisible if it never does (landing.css scopes them under .js).
+document.documentElement.classList.add('js');
+
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';
 }

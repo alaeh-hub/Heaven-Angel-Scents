@@ -1,38 +1,70 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Low Stock{% endblock %}
-{% block eyebrow %}Catalog &amp; Supply{% endblock %}
 {% block heading %}Low Stock{% endblock %}
 
+{% block head %}
+<style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .ls-ledger {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--border-strong);
+    margin-bottom: var(--space-lg);
+  }
+  .ls-ledger > div {
+    padding: var(--space-md) var(--space-lg) 0;
+    border-left: 1px solid var(--border);
+    min-width: 0;
+  }
+  .ls-ledger > div:first-child { border-left: 0; padding-left: 0; }
+  .ls-ledger .stat-value { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+  .ls-layout { display: grid; gap: var(--space-md); align-items: start; grid-template-columns: minmax(0, 1fr); }
+  .ls-layout > * { min-width: 0; }
+  .ls-note { margin: 0; padding: var(--space-sm) var(--space-lg) var(--space-md); font-size: 0.8125rem; color: var(--ink-faint); }
+  .ls-level { min-width: 11rem; }
+  .item-sub-unit { margin-left: var(--space-xs); }
+  @media (min-width: 1100px) {
+    .ls-layout { grid-template-columns: minmax(20rem, 1fr) minmax(0, 3fr); }
+  }
+  @media (max-width: 680px) {
+    .ls-ledger { grid-template-columns: minmax(0, 1fr); }
+    .ls-ledger > div { border-left: 0; padding-left: 0; padding-right: 0; }
+    .ls-ledger > div + div { margin-top: var(--space-md); border-top: 1px solid var(--border); }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid grid-3 stack">
-  <div class="card stat-tile">
+<div class="ls-ledger">
+  <div>
     <div class="stat-label">Low stock SKUs</div>
     <div class="stat-value {{ 'danger' if totals.low_stock_count else '' }}">{{ totals.low_stock_count }}</div>
     <div class="stat-foot">at or below reorder level, across HQ and every branch</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Completely out of stock</div>
     <div class="stat-value {{ 'danger' if totals.out_of_stock_count else '' }}">{{ totals.out_of_stock_count }}</div>
     <div class="stat-foot">0 units on hand</div>
   </div>
-  <div class="card stat-tile">
+  <div>
     <div class="stat-label">Locations affected</div>
     <div class="stat-value">{{ totals.branches_affected }}</div>
     <div class="stat-foot">have at least one SKU to reorder</div>
   </div>
 </div>
 
+<div class="ls-layout">
 <div class="card">
   <div class="card-header">
-    <h2>By location</h2>
+    <h2>Low stock by location</h2>
     <span class="hint">HQ first, then branches by most SKUs to reorder</span>
   </div>
   {% if summary %}
   <div class="table-wrap">
     <table class="table-fixed">
       <colgroup>
-        <col style="width:46%"><col style="width:27%"><col style="width:27%">
+        <col style="width:34%"><col style="width:33%"><col style="width:33%">
       </colgroup>
       <thead>
         <tr>
@@ -53,10 +85,11 @@
     </table>
   </div>
   {% else %}
-  <div class="empty-state"><div class="glyph">✓</div><p>HQ and every branch are above their reorder thresholds.</p></div>
+  <div class="empty-state"><p>HQ and every branch are above their reorder thresholds.</p></div>
   {% endif %}
 </div>
 
+<div>
 <div class="tabs">
   <a class="tab {{ 'active' if branch_filter == 'all' }}" href="{{ url_for('admin.low_stock') }}">All locations</a>
   {% for b in branch_list %}
@@ -74,15 +107,15 @@
   <div data-smart-table data-page-size="15" data-count-target="lowStockCount" data-count-label="SKU">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         <input type="text" class="smart-search-input" placeholder="Search by location, name, or SKU…" autocomplete="off">
       </div>
     </div>
     <div class="table-wrap">
       <table class="smart-table table-fixed">
         <colgroup>
-          <col style="width:20%"><col style="width:24%"><col style="width:12%">
-          <col style="width:9%"><col style="width:35%">
+          <col style="width:18%"><col style="width:24%"><col style="width:12%">
+          <col style="width:12%"><col style="width:34%">
         </colgroup>
         <thead>
           <tr>
@@ -90,7 +123,7 @@
             <th>Item</th>
             <th>Variant</th>
             <th>Unit</th>
-            <th style="min-width:180px;">Stock level</th>
+            <th class="ls-level">Stock level</th>
           </tr>
         </thead>
         <tbody>
@@ -102,7 +135,7 @@
                 {{ m.product_thumb(row.image_path, row.item_name) }}
                 <div>
                   <div class="item-name">{{ row.item_name }}</div>
-                  <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit"> · {{ row.unit }}</span></div>
+                  <div class="item-sub mono">{{ row.sku }}<span class="item-sub-unit">{{ row.unit }}</span></div>
                   <div class="item-sub item-sub-badge">
                     {{ m.variant_badge(row.variant) }}
                   </div>
@@ -117,24 +150,22 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No SKUs match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
-  <div style="padding: 4px 22px 18px;">
-    <p class="text-faint" style="font-size:12px;">Sorted most-critical first — furthest below its own reorder level, regardless of location. A branch can dispatch a request for these from its own Request Stock page; HQ dispatches once that request comes in on <a href="{{ url_for('admin.requests_list') }}">Stock Requests</a>. HQ's own low stock is restocked through <a href="{{ url_for('admin.production') }}">Production</a>.</p>
-  </div>
+  <p class="ls-note">Sorted most-critical first: furthest below its own reorder level, regardless of location. A branch can dispatch a request for these from its own Request Stock page; HQ dispatches once that request comes in on <a href="{{ url_for('admin.requests_list') }}">Stock Requests</a>. HQ’s own low stock is restocked through <a href="{{ url_for('admin.production') }}">Production</a>.</p>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">✓</div>
     <p>{{ 'All HQ and branch inventory is above its reorder threshold.' if branch_filter == 'all' else 'This location is above its reorder threshold for every SKU.' }}</p>
   </div>
   {% endif %}
+</div>
+</div>
 </div>
 {% endblock %}

@@ -1,478 +1,122 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Partner Inquiries{% endblock %}
-{% block eyebrow %}Partners &amp; Distribution{% endblock %}
 {% block heading %}Partner Inquiries{% endblock %}
 
 {% block head %}
 <style>
-  /* table-layout: fixed with percentage columns left big dead gaps
-     whenever a column's content (e.g. a short email) didn't fill its
-     allotted width. table-layout: auto lets each column hug its own
-     content instead, so the row reads as continuous rather than full
-     of empty rectangles. Long values (emails, long company names)
-     still wrap via overflow-wrap rather than stretching the column. */
-  .pi-table {
-    table-layout: fixed;
-    width: 100%;
-    font-size: 13px;
-  }
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .pi-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-lg); margin-bottom: var(--space-lg); }
+  .pi-stats-foot { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); }
+  .pi-hint { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); }
 
-  .pi-table th {
-    font-size: 10.5px;
-    padding: 10px 14px;
-    white-space: nowrap;
-  }
+  .pi-table { table-layout: fixed; width: 100%; font-size: 0.875rem; }
+  .pi-table th { padding: var(--space-sm) var(--space-md); white-space: nowrap; }
+  .pi-table td { padding: var(--space-sm) var(--space-md); white-space: normal; overflow-wrap: break-word; vertical-align: top; }
+  .pi-col-status { white-space: nowrap; }
+  .pi-table .item-sub-badge { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }
+  .pi-when { display: inline-flex; gap: var(--space-xs); font-size: 0.75rem; color: var(--ink-faint); }
+  .pi-table .mono.text-soft { font-size: 0.75rem; line-height: 1.4; }
 
-  .pi-table td {
-    padding: 12px 14px;
-    white-space: normal;
-    overflow-wrap: break-word;
-    vertical-align: top;
-  }
-
-  .pi-col-status {
-    white-space: nowrap;
-  }
-
-  /* The type badge + submitted date used to be mobile-only duplicates of
-     the When/Type columns; those columns are gone, so this line is now
-     the one place they live, on desktop too. */
-  .pi-table .item-sub-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .pi-when {
-    font-size: 11.5px;
-    color: var(--ink-faint);
-  }
-
-  /* These four max-widths only bite when they're on the actual data
-     cell, not just its header — table-layout: auto sizes a column
-     from the widest cell across the whole column, so a <th> capped at
-     220px did nothing to stop a long company name/email/package name
-     in the <td> below it from stretching the column (and the table)
-     past that on desktop. Applied to both th and td below.
-
-     Scoped to min-width: 681px (desktop table layout) only — left
-     unscoped, these same caps also squeezed the mobile card down to a
-     narrow ~150-240px-wide column (instead of the full card width),
-     which is what left every field's label+value bunched up on the
-     left with a big dead gap on the right instead of using the row's
-     full width. Same fix shape as Partners'/Packages'/Branches' own
-     desktop-only nth-child width rules. */
   @media (min-width: 681px) {
-    .pi-col-company {
-      max-width: 220px;
-    }
-
-    .pi-col-contact {
-      max-width: 240px;
-    }
-
+    .pi-col-company { max-width: 14rem; }
+    .pi-col-contact { max-width: 15rem; }
+    .pi-col-remarks { max-width: 12rem; }
   }
 
-  .pi-table .mono.text-soft {
-    font-size: 12px;
-    line-height: 1.4;
-  }
+  .pi-company .item-name { font-size: 0.875rem; font-weight: 600; overflow-wrap: break-word; }
+  .pi-company .item-sub { font-size: 0.75rem; }
+  .pi-msg-icon { display: inline-flex; vertical-align: -2px; color: var(--ink-faint); cursor: help; }
+  .pi-msg-icon svg { width: 12px; height: 12px; }
+  .pi-msg-icon:hover { color: var(--accent-ink); }
+  .pi-table .badge { white-space: nowrap; }
 
-  .pi-company {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-  }
+  .pi-contact-row { display: flex; align-items: flex-start; gap: var(--space-2xs); font-size: 0.75rem; color: var(--ink-soft); line-height: 1.5; margin-bottom: var(--space-2xs); }
+  .pi-contact-row:last-child { margin-bottom: 0; }
+  .pi-contact-row svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--ink-faint); margin-top: var(--space-3xs); }
+  .pi-contact-row a { color: inherit; text-decoration: none; overflow-wrap: break-word; }
+  .pi-contact-row a:hover { color: var(--accent-ink); text-decoration: underline; }
 
-  .pi-avatar {
-    flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: var(--thumb-radius, 8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    color: var(--avatar-ink);
-    background: var(--avatar-bg);
-    box-shadow: inset 0 0 0 1px var(--avatar-ring);
-  }
+  .pi-package-chip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; width: fit-content; max-width: 100%; font-size: 0.75rem; font-weight: 500; color: var(--ink-soft); background: var(--surface-2); padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-sm); line-height: 1.4; overflow-wrap: anywhere; }
 
-  .pi-company .item-name {
-    font-size: 13.5px;
-    overflow-wrap: break-word;
-  }
+  .pi-status-cell { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }
+  .pi-status-form { margin: 0; min-width: 0; }
+  .pi-email-dot { display: inline-flex; align-items: center; justify-content: center; width: 1.125rem; height: 1.125rem; border-radius: var(--radius-sm); flex-shrink: 0; }
+  .pi-email-dot svg { width: 10px; height: 10px; }
+  .pi-email-dot.sent { background: var(--success-soft); color: var(--success); }
+  .pi-email-dot.not-sent { background: var(--surface-2); color: var(--ink-faint); }
 
-  .pi-company .item-sub {
-    font-size: 11px;
-  }
+  .pi-remarks-cell { display: flex; align-items: center; gap: var(--space-xs); max-width: 12rem; }
+  .pi-remarks-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; line-height: 1.4; color: var(--ink-soft); min-width: 0; flex: 1 1 auto; }
+  .pi-remarks-empty { font-size: 0.75rem; color: var(--ink-faint); }
+  .pi-remarks-btn { flex-shrink: 0; white-space: nowrap; }
 
-  .pi-msg-icon {
-    display: inline-flex;
-    vertical-align: -2px;
-    color: var(--ink-faint);
-    cursor: help;
-  }
+  .pi-modal-overlay { display: none; position: fixed; inset: 0; z-index: 9999; background: color-mix(in srgb, var(--bg) 72%, transparent); align-items: center; justify-content: center; padding: var(--space-lg); }
+  .pi-modal-overlay.open { display: flex; }
+  .pi-modal { width: 100%; box-shadow: var(--shadow-lg); }
+  .pi-modal-fulfill { max-width: 35rem; }
+  .pi-modal-remarks { max-width: 29rem; }
+  .pi-modal h2 { font-size: 1.125rem; margin-bottom: var(--space-2xs); }
+  .pi-modal-lead { font-size: 0.875rem; color: var(--ink-faint); margin: 0 0 var(--space-md); }
+  .pi-modal textarea { width: 100%; resize: vertical; min-height: 7rem; font-family: var(--font); }
+  .pi-modal-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-md); }
+  .pi-modal-actions .btn { flex: 1; }
 
-  .pi-msg-icon svg {
-    width: 12px;
-    height: 12px;
-  }
+  .pi-intro { font-size: 0.75rem; color: var(--ink-faint); margin: 0; padding: var(--space-2xs) var(--space-lg) var(--space-md); max-width: 90ch; }
 
-  .pi-msg-icon:hover {
-    color: var(--accent-ink);
-  }
-
-  /* Badges are short fixed words ("Distributor") — letting them wrap
-     mid-word inside a narrow column is what broke the layout before, so
-     they get their own no-wrap rule regardless of the column's general
-     wrap behavior. */
-  .pi-table .badge {
-    font-size: 10px;
-    padding: 3px 8px;
-    white-space: nowrap;
-  }
-
-  .pi-contact-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 5px;
-    font-size: 12px;
-    color: var(--ink-soft);
-    line-height: 1.5;
-    margin-bottom: 3px;
-  }
-
-  .pi-contact-row:last-child {
-    margin-bottom: 0;
-  }
-
-  .pi-contact-row svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-    color: var(--ink-faint);
-    margin-top: 2px;
-  }
-
-  .pi-contact-row a {
-    color: inherit;
-    text-decoration: none;
-    overflow-wrap: break-word;
-  }
-
-  .pi-contact-row a:hover {
-    color: var(--accent-ink);
-    text-decoration: underline;
-  }
-
-  /* A long package name used to wrap inside a fully-rounded pill, which
-     stretched into a tall oval (and an unbreakable word overflowed the
-     cell). Now: a block capped to the cell width, softly rounded, wrapping
-     at word boundaries (or anywhere for a single long word) and clamped
-     to two lines — the full name is in the title tooltip. */
-  .pi-package-chip {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    width: fit-content;
-    max-width: 100%;
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--ink-soft);
-    background: var(--surface-2);
-    border: var(--border-width-strong) solid var(--border-strong);
-    padding: 4px 10px;
-    border-radius: 0.75rem;
-    line-height: 1.4;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .pi-status-cell {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  /* Status is the row's primary control: an enhanced select (see
-     .cs-variant-status in style.css) rendered as a tinted pill, with the
-     Fulfill action stacked under it once an order is Closed. */
-  .pi-status-form {
-    margin: 0;
-    min-width: 0;
-  }
-
-  .pi-status-cell .pi-fulfill-row {
-    flex-basis: 100%;
-    margin-top: 2px;
-  }
-
-  .pi-email-dot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 17px;
-    height: 17px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .pi-email-dot svg {
-    width: 9.5px;
-    height: 9.5px;
-  }
-
-  .pi-email-dot.sent {
-    background: var(--success-soft);
-    color: var(--success);
-  }
-
-  .pi-email-dot.not-sent {
-    background: var(--surface-2);
-    color: var(--ink-faint);
-  }
-
-  /* ---- Remarks column + modal ---- */
-  /* Desktop-only for the same reason as the .pi-col-company/-contact/
-     -package caps above — left unscoped, this also squeezed the
-     mobile Remarks card down to 180px wide regardless of the
-     .pi-remarks-cell max-width:none override further below, since a
-     child can never exceed its own parent td's max-width. */
-  @media (min-width: 681px) {
-    .pi-col-remarks {
-      max-width: 180px;
-    }
-  }
-
-  .pi-remarks-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 180px;
-  }
-
-  .pi-remarks-preview {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--ink-soft);
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .pi-remarks-btn {
-    font-size: 11.5px;
-    padding: 4px 10px;
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-
-  .pi-modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: rgba(28, 27, 25, 0.45);
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-
-  .pi-modal-overlay.open {
-    display: flex;
-  }
-
-  .pi-modal textarea {
-    width: 100%;
-    resize: vertical;
-    min-height: 110px;
-    font-family: inherit;
-  }
-
-  .pi-intro {
-    padding: 4px 22px 14px;
-  }
+  .pi-fulfill-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-xs); }
+  .pi-short-note { font-size: 0.75rem; color: var(--warning); font-weight: 600; }
+  .pi-fulfill-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .pi-fulfill-table th, .pi-fulfill-table td { padding: var(--space-xs); border-bottom: 1px solid var(--border); text-align: left; }
+  .pi-fulfill-table th.num, .pi-fulfill-table td.num { text-align: right; white-space: nowrap; }
+  .pi-fulfill-blocked { display: none; margin: var(--space-sm) 0 0; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius); background: var(--warning-soft); color: var(--ink-soft); font-size: 0.875rem; }
 
   @media (max-width: 680px) {
-    /* Same 22px side padding as desktop left very little room for the
-       description on a phone-width screen — tightened to match the
-       mobile card padding used elsewhere. */
-    .pi-intro {
-      padding: 4px 14px 14px;
-    }
-
-    /* Same approach used to fix the Partners table on mobile: leave
-       the generic .table-wrap behavior in place (every <td> is its
-       own full-width "LABEL value" row), and only override the
-       columns whose content is more than one piece — Company,
-       Contact, Status, Remarks — switching those from a flex row to
-       a stacked block so their pieces read top-to-bottom instead of
-       being forced onto one line together. Package is a single value,
-       so the generic row already handles it; When is mobile-fold
-       (duplicated in Company's own badge row, see the markup) and
-       Type is mobile-fold too, so neither renders here at all. */
-    /* Tightened from the generic 10px/14px .table-wrap td padding —
-       with several stacked fields per card, that padding plus each
-       label's own margin added up to noticeably more breathing room
-       between fields here than on the Partners card. !important
-       guards this against the unrelated 12px/14px .pi-table td rule
-       declared above (outside this media query) and anything else in
-       the cascade that could otherwise still win on specificity. */
-    .pi-table td {
-      padding: 5px 14px !important;
-    }
-
+    .pi-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); }
+    .pi-intro { padding: var(--space-2xs) var(--space-md) var(--space-md); }
+    .pi-table td { padding: var(--space-2xs) var(--space-md); }
     .pi-table td[data-label="Company"],
     .pi-table td[data-label="Contact"],
     .pi-table td[data-label="Status"],
-    .pi-table td[data-label="Remarks"] {
-      display: block;
-      text-align: left;
-    }
-
+    .pi-table td[data-label="Remarks"] { display: block; text-align: left; }
     .pi-table td[data-label="Company"]::before,
     .pi-table td[data-label="Contact"]::before,
     .pi-table td[data-label="Status"]::before,
-    .pi-table td[data-label="Remarks"]::before {
-      display: block;
-      margin-bottom: 2px;
-    }
+    .pi-table td[data-label="Remarks"]::before { display: block; margin-bottom: var(--space-3xs); }
+    .pi-table td[data-label="Company"] .pi-company { width: 100%; }
+    .pi-table td[data-label="Status"] .pi-status-cell { justify-content: flex-start; }
+    .pi-remarks-cell { max-width: none; width: 100%; flex-wrap: wrap; }
+    .pi-remarks-preview { white-space: normal; overflow: visible; text-overflow: clip; max-width: 100%; }
 
-    .pi-table td[data-label="Company"] .pi-company {
-      width: 100%;
-    }
-
-    .pi-table td[data-label="Status"] .pi-status-cell {
-      justify-content: flex-start;
-    }
-
-    .pi-remarks-cell {
-      max-width: none;
-      width: 100%;
-      flex-wrap: wrap;
-    }
-
-    .pi-remarks-preview {
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
-      max-width: 100%;
-    }
-
-    /* Collapsible mobile cards — reuses the same .table-collapsible/
-       .mobile-detail/.row-toggle-btn mechanism (and JS) as Record
-       Sale/Customers/Partners/Packages (see style.css), but tuned to
-       this page's own tighter 5px vertical rhythm above rather than
-       the shared default, and !important for the same reason that
-       rule needs it: beating the unrelated 12px/14px .pi-table td
-       rule that would otherwise still win on specificity alone. */
-    .pi-table.table-collapsible .mobile-detail {
-      max-height: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      opacity: 0;
-      overflow: hidden;
-      border-bottom-color: transparent;
-      transition: max-height 0.22s ease, opacity 0.16s ease,
-        padding 0.22s ease, border-bottom-color 0.22s ease;
-    }
-
-    /* 24rem (not the shared 6rem default) — Remarks can hold up to
-       1000 characters of free text (see the Remarks modal below),
-       nowhere near guaranteed to be a couple of short lines the way
-       every other collapsible cell on this table is, so the cap has
-       to clear a realistically long note rather than clip it. */
-    .pi-table.table-collapsible tr.row-expanded .mobile-detail {
-      max-height: 24rem !important;
-      padding-top: 5px !important;
-      padding-bottom: 5px !important;
-      opacity: 1;
-      border-bottom-color: var(--border);
-    }
-
-    .pi-table.table-collapsible td.mobile-toggle-row {
-      padding: 0 !important;
-      border-bottom: none !important;
-    }
-  }
-  .pi-fulfill-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.375rem 0.5rem;
-    margin-top: 6px;
-  }
-
-  .pi-short-note {
-    font-size: 11.5px;
-    color: var(--warning);
-    font-weight: 600;
-  }
-
-  .pi-fulfill-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-  }
-
-  .pi-fulfill-table th,
-  .pi-fulfill-table td {
-    padding: 7px 8px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-  }
-
-  .pi-fulfill-table th.num,
-  .pi-fulfill-table td.num {
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  .pi-fulfill-blocked {
-    display: none;
-    margin: 12px 0 0;
-    padding: 9px 11px;
-    border-radius: 0.625rem;
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    color: var(--ink-soft);
-    font-size: 12.5px;
+    /* Collapsible mobile cards: details are simply shown or hidden. */
+    .pi-table.table-collapsible .mobile-detail { display: none; max-height: none; opacity: 1; transition: none; }
+    .pi-table.table-collapsible tr.row-expanded .mobile-detail { display: block; max-height: none; }
+    .pi-table.table-collapsible td.mobile-toggle-row { padding: 0; border-bottom: none; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="bento-grid stack">
-  <div class="card stat-tile">
+<div class="pi-stats">
+  <div class="stat-tile">
     <div class="stat-label">New</div>
     <div class="stat-value accent">{{ counts.new_count }}</div>
     <div class="stat-foot">not yet followed up on</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Contacted</div>
     <div class="stat-value">{{ counts.contacted_count }}</div>
     <div class="stat-foot">reached out, in progress</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Follow-up / On Hold</div>
     <div class="stat-value">{{ counts.in_progress_count }}</div>
     <div class="stat-foot">needs a nudge, or waiting on them</div>
   </div>
-  <div class="card stat-tile">
+  <div class="stat-tile">
     <div class="stat-label">Closed</div>
     <div class="stat-value">{{ counts.closed_count }}</div>
-    <div class="stat-foot">{{ counts.to_fulfill_count }} awaiting fulfillment &middot; {{ counts.declined_count }} declined</div>
+    <div class="stat-foot pi-stats-foot"><span>{{ counts.to_fulfill_count }} awaiting fulfillment</span><span>{{ counts.declined_count }} declined</span></div>
   </div>
 </div>
 
@@ -487,25 +131,23 @@
 <div class="card">
   <div class="card-header">
     <h2>Package inquiries</h2>
-    <span class="hint">from the public partner portal &middot; last 300</span>
+    <span class="hint pi-hint"><span>from the public partner portal</span><span>last 300</span></span>
   </div>
-  <div class="pi-intro">
-    <p class="text-faint" style="font-size:12px;">
-      Every inquiry submitted through <a href="{{ portal_link }}" target="_blank" rel="noopener">the private
-        partner portal</a> lands here and is automatically added to <a href="{{ url_for('admin.partners') }}">Partners</a>
-      — an admin can only change its Status (New &rarr; Contacted &rarr; Follow-up/On Hold &rarr; Closed/Declined)
-      and internal Remarks; everything else stays a permanent record of what the partner actually submitted.
-      Closed means the order is confirmed (it counts as a sale); <strong>Fulfill</strong> then ships it, taking the
-      package's items out of HQ stock — produce any shortfall on
-      <a href="{{ url_for('admin.production') }}">Production Log</a> first. Moving a fulfilled order off Closed
-      returns its items to HQ stock.
-    </p>
-  </div>
+  <p class="pi-intro">
+    Every inquiry submitted through <a href="{{ portal_link }}" target="_blank" rel="noopener">the private
+      partner portal</a> lands here and is automatically added to <a href="{{ url_for('admin.partners') }}">Partners</a>.
+    An admin can only change its Status (New, Contacted, Follow-up/On Hold, then Closed/Declined)
+    and internal Remarks; everything else stays a permanent record of what the partner actually submitted.
+    Closed means the order is confirmed (it counts as a sale); <strong>Fulfill</strong> then ships it, taking the
+    package&rsquo;s items out of HQ stock. Produce any shortfall on
+    <a href="{{ url_for('admin.production') }}">Production Log</a> first. Moving a fulfilled order off Closed
+    returns its items to HQ stock.
+  </p>
   {% if inquiries %}
   <div data-smart-table data-page-size="15">
     <div class="table-toolbar">
       <div class="table-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -533,10 +175,9 @@
             data-search="{{ (inq.company_name ~ ' ' ~ (inq.contact_person or '') ~ ' ' ~ inq.package_name_snapshot ~ ' ' ~ (inq.phone or '') ~ ' ' ~ (inq.email or '') ~ ' ' ~ (inq.remarks or ''))|lower }}">
             <td data-label="Company" class="pi-col-company">
               <div class="pi-company">
-                <div class="pi-avatar">{{ inq.company_name[:2]|upper }}</div>
                 <div>
                   <div class="item-name">{{ inq.company_name }}{% if inq.message %} <span class="pi-msg-icon"
-                      title="{{ inq.message }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      title="{{ inq.message }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg></span>{% endif %}</div>
@@ -544,7 +185,7 @@
                   <div class="item-sub item-sub-badge">
                     <span class="badge badge-{{ 'transit' if inq.partner_type == 'Distributor' else 'neutral' }}">{{
                       inq.partner_type }}</span>
-                    <span class="mono pi-when" title="Submitted {{ inq.created_at.strftime('%b %d, %Y at %I:%M %p') }}">{{ inq.created_at.strftime('%b %d, %Y') }} &middot; {{ inq.created_at.strftime('%I:%M %p') }}</span>
+                    <span class="mono pi-when" title="Submitted {{ inq.created_at.strftime('%b %d, %Y at %I:%M %p') }}"><span>{{ inq.created_at.strftime('%b %d, %Y') }}</span><span>{{ inq.created_at.strftime('%I:%M %p') }}</span></span>
                   </div>
                 </div>
               </div>
@@ -552,7 +193,7 @@
             <td data-label="Contact" class="pi-col-contact mobile-detail">
               {% if inq.phone %}
               <div class="pi-contact-row">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path
                     d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
                 </svg>
@@ -561,7 +202,7 @@
               {% endif %}
               {% if inq.email %}
               <div class="pi-contact-row">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M4 4h16v16H4z" opacity="0" />
                   <path d="M22 6 12 13 2 6" />
                   <path d="M2 6h20v12H2z" />
@@ -569,7 +210,7 @@
                 <a href="mailto:{{ inq.email }}">{{ inq.email }}</a>
               </div>
               {% endif %}
-              {% if not inq.phone and not inq.email %}<span class="text-faint">—</span>{% endif %}
+              {% if not inq.phone and not inq.email %}<span class="text-faint">None on file</span>{% endif %}
               {% if inq.preferred_contact %}<div class="item-sub">Prefers {{ inq.preferred_contact }}</div>{% endif %}
             </td>
             <td data-label="Package" class="pi-col-package mobile-detail"><span class="pi-package-chip" title="{{ inq.package_name_snapshot }}">{{ inq.package_name_snapshot.split(' (')[0] }}</span>
@@ -604,14 +245,14 @@
                 </form>
                 {% if inq.email_sent %}
                 <span class="pi-email-dot sent" title="HQ notification email was sent">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <path d="M20 6 9 17l-5-5" />
                   </svg>
                 </span>
                 {% else %}
                 <span class="pi-email-dot not-sent"
                   title="Notification email wasn't sent - mail may be unconfigured. The inquiry itself is still saved.">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <path d="M4 4h16v16H4z" opacity="0" />
                     <path d="M22 6 12 13 2 6" />
                     <path d="M2 6h20v12H2z" />
@@ -631,10 +272,10 @@
                   <tbody>
                     {% for it in inq['items'] %}
                     <tr>
-                      <td>{{ it.item_name }} <span class="text-faint">· {{ it.unit }}</span></td>
+                      <td>{{ it.item_name }} <span class="text-faint">{{ it.unit }}</span></td>
                       <td class="num mono">{{ it.qty }}{{ ' mL' if it.unit == 'BULK' }}</td>
                       <td class="num mono">{{ it.hq_stock }}{{ ' mL' if it.unit == 'BULK' }}</td>
-                      <td class="num mono {{ 'qty-down' if it.short }}">{{ it.short if it.short else '—' }}</td>
+                      <td class="num mono {{ 'qty-down' if it.short }}">{{ it.short if it.short else 'None' }}</td>
                     </tr>
                     {% endfor %}
                   </tbody>
@@ -652,7 +293,7 @@
                 {% if inq.remarks %}
                 <span class="pi-remarks-preview" title="{{ inq.remarks }}">{{ inq.remarks }}</span>
                 {% else %}
-                <span class="text-faint" style="font-size:12px;">No remarks yet</span>
+                <span class="pi-remarks-empty">No remarks yet</span>
                 {% endif %}
                 <button type="button" class="btn btn-ghost btn-sm pi-remarks-btn"
                   data-url="{{ url_for('admin.update_inquiry_remarks', inquiry_id=inq.inquiry_id) }}"
@@ -669,7 +310,7 @@
             <td data-label="" class="mobile-toggle-row">
               <button type="button" class="row-toggle-btn" aria-expanded="false">
                 <span>Details</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -679,48 +320,46 @@
         </tbody>
       </table>
       <div class="empty-state smart-no-match" style="display:none;">
-        <div class="glyph">—</div>
         <p>No inquiries match your search.</p>
       </div>
     </div>
     <div class="smart-pagination" style="display:none;">
-      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>← Previous</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
       <span class="smart-page-info"></span>
-      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next →</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
     </div>
   </div>
   {% else %}
   <div class="empty-state">
-    <div class="glyph">—</div>
-    <p>No inquiries in this view yet.</p>
+    <p>No inquiries in this view yet. They land here when a partner sends one from the private partner portal.</p>
   </div>
   {% endif %}
 </div>
 
 <div class="pi-modal-overlay" id="fulfillOverlay">
-  <div class="card card-pad pi-modal" style="max-width:560px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Fulfill order</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 14px;">
-      Ships <strong id="fulfillCompanyLabel"></strong>'s package: these items come out of HQ stock and are logged in
+  <div class="card card-pad pi-modal pi-modal-fulfill">
+    <h2>Fulfill order</h2>
+    <p class="pi-modal-lead">
+      Ships <strong id="fulfillCompanyLabel"></strong>&rsquo;s package: these items come out of HQ stock and are logged in
       the Inventory Log.
     </p>
     <div id="fulfillBody"></div>
     <p class="pi-fulfill-blocked" id="fulfillBlocked">
-      HQ doesn't have enough of everything yet — produce the shortfall on
+      HQ doesn&rsquo;t have enough of everything yet. Produce the shortfall on
       <a href="{{ url_for('admin.production') }}">Production Log</a>, then fulfill.
     </p>
-    <div style="display:flex; gap:8px; margin-top:14px;">
-      <button type="button" class="btn btn-ghost" style="flex:1;" id="fulfillCancelBtn">Cancel</button>
-      <button type="button" class="btn btn-accent" style="flex:1;" id="fulfillSubmitBtn">Ship order</button>
+    <div class="pi-modal-actions">
+      <button type="button" class="btn btn-ghost" id="fulfillCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-accent" id="fulfillSubmitBtn">Ship order</button>
     </div>
   </div>
 </div>
 
 <div class="pi-modal-overlay" id="remarksOverlay">
-  <div class="card card-pad pi-modal" style="max-width:460px; width:100%;">
-    <h2 style="font-size:16px; margin-bottom:4px;">Remarks</h2>
-    <p class="text-faint" style="font-size:12.5px; margin:0 0 16px;">
-      Internal note for <strong id="remarksCompanyLabel"></strong>'s inquiry — visible to admins only, never
+  <div class="card card-pad pi-modal pi-modal-remarks">
+    <h2>Remarks</h2>
+    <p class="pi-modal-lead">
+      Internal note for <strong id="remarksCompanyLabel"></strong>&rsquo;s inquiry: visible to admins only, never
       shown to the partner. Independent of status; leave it blank to clear it.
     </p>
     <form method="POST" id="remarksForm">
@@ -729,12 +368,12 @@
       <div class="field">
         <label for="remarksTextarea">Remarks</label>
         <textarea id="remarksTextarea" name="remarks" rows="4" maxlength="1000"
-          placeholder="e.g. On hold — still comparing packages with another supplier. Follow up next week."></textarea>
+          placeholder="e.g. On hold: still comparing packages with another supplier. Follow up next week."></textarea>
         <div class="help">Up to 1000 characters.</div>
       </div>
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" class="btn btn-ghost" style="flex:1;" id="remarksCancelBtn">Cancel</button>
-        <button type="submit" class="btn btn-accent" style="flex:1;">Save remarks</button>
+      <div class="pi-modal-actions">
+        <button type="button" class="btn btn-ghost" id="remarksCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save remarks</button>
       </div>
     </form>
   </div>

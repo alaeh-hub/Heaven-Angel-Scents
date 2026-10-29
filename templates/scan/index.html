@@ -5,23 +5,48 @@
 
 {% block head %}
 <style>
+  /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+  .scan-intro {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 48rem;
+    text-wrap: pretty;
+  }
+
+  /* Mobile first: one column, input then result. Two columns from 48rem. */
   .scan-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-md);
     align-items: start;
   }
 
-  @media (max-width: 780px) {
-    .scan-grid { grid-template-columns: 1fr; }
+  @media (min-width: 48rem) {
+    .scan-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .scan-section + .scan-section {
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+  }
+
+  .scan-section h2 {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    margin: 0 0 var(--space-sm);
+    text-wrap: balance;
   }
 
   .scan-video-wrap {
     position: relative;
     width: 100%;
     aspect-ratio: 4 / 3;
-    background: #000;
-    border-radius: var(--radius-sm);
+    background: var(--brand-black);
+    border-radius: var(--radius);
     overflow: hidden;
   }
 
@@ -32,43 +57,31 @@
     display: block;
   }
 
+  /* The targeting frame: a flat gold outline, no glow, no dimming. */
   .scan-reticle {
     position: absolute;
     inset: 14%;
-    border: 2px solid var(--accent);
-    border-radius: 14px;
+    border: 2px solid var(--brand-gold);
+    border-radius: var(--radius);
     pointer-events: none;
-    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
-      0 0 16px 1px color-mix(in srgb, var(--accent) 55%, transparent);
-    animation: scan-reticle-glow 2s ease-in-out infinite;
-  }
-
-  /* Subtle "actively looking" pulse on the targeting frame while the
-     camera is on — the dimmed backdrop shadow (the 1000px spread above)
-     stays fixed, only the gold glow breathes. */
-  @keyframes scan-reticle-glow {
-
-    0%,
-    100% {
-      box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
-        0 0 10px 0 color-mix(in srgb, var(--accent) 40%, transparent);
-    }
-
-    50% {
-      box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.28),
-        0 0 20px 2px color-mix(in srgb, var(--accent) 65%, transparent);
-    }
   }
 
   .scan-status {
-    font-size: 12px;
-    color: var(--ink-faint);
-    margin-top: 8px;
-    min-height: 16px;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    margin-top: var(--space-xs);
+    min-height: 1.25rem;
+  }
+
+  .scan-camera-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
   }
 
   /* Shown inside the video frame while the camera hasn't been turned on
-     (including on first load — the camera no longer starts by itself,
+     (including on first load: the camera no longer starts by itself,
      see scan.js) instead of leaving a blank black rectangle. Hidden
      the moment the camera actually starts. */
   .scan-camera-off {
@@ -78,30 +91,34 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    color: rgba(255, 255, 255, 0.55);
-    background: #000;
+    gap: var(--space-xs);
+    color: var(--color-on-dark-2);
+    background: var(--brand-black);
     text-align: center;
-    padding: 16px;
+    padding: var(--space-md);
   }
 
   .scan-camera-off svg {
-    width: 30px;
-    height: 30px;
+    width: 1.75rem;
+    height: 1.75rem;
   }
 
   .scan-camera-off p {
     margin: 0;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
 
   .scan-drop {
-    border: 1.5px dashed var(--border);
-    border-radius: var(--radius-sm);
-    padding: 22px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: var(--space-lg);
     text-align: center;
     cursor: pointer;
-    transition: border-color .12s ease, background .12s ease;
+    transition: border-color var(--dur-micro) var(--ease-out), background var(--dur-micro) var(--ease-out);
+  }
+
+  .scan-drop:hover {
+    background: var(--surface-2);
   }
 
   .scan-drop.is-dragover {
@@ -109,91 +126,119 @@
     background: var(--accent-soft);
   }
 
+  .scan-drop-title {
+    margin: 0 0 var(--space-xs);
+    font-weight: 500;
+    font-size: var(--text-md);
+  }
+
+  .scan-drop-note {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
   .scan-manual {
     display: flex;
-    gap: 8px;
-    margin-top: 6px;
+    gap: var(--space-xs);
   }
 
   .scan-manual input {
     flex: 1;
-    font-family: inherit;
+    min-width: 0;
+    font-family: var(--font-mono);
+  }
+
+  .scan-help {
+    font-size: var(--text-xs);
+    color: var(--ink-soft);
+    margin-top: var(--space-xs);
   }
 
   .scan-result-empty {
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
 
+  /* The result is read by its words first (Verified / Not verified, with
+     its mark); the tint only backs the words up. */
   .scan-result-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 18px;
+    gap: var(--space-sm);
+    padding: var(--space-md);
     border-bottom: 1px solid var(--border);
-    background: var(--field);
+    background: var(--surface-2);
     flex-wrap: wrap;
   }
 
+  #scanResultCard.scan-pop-ok .scan-result-head {
+    background: var(--success-soft);
+  }
+
+  #scanResultCard.scan-pop-bad .scan-result-head {
+    background: var(--danger-soft);
+  }
+
   .scan-result-body {
-    padding: 14px 18px 18px;
+    padding: var(--space-md);
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px 16px;
-    font-size: 12.5px;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: var(--space-sm) var(--space-md);
+    font-size: var(--text-sm);
   }
 
   .scan-field-label {
-    font-size: 12px;
+    font-size: var(--text-xs);
     letter-spacing: 0;
-    color: var(--ink-faint);
-    font-weight: 700;
-    margin-bottom: 2px;
+    color: var(--ink-soft);
+    font-weight: 500;
+    margin-bottom: var(--space-3xs);
   }
 
   .scan-field-full {
     grid-column: 1 / -1;
   }
 
-  .scan-badge-ok, .scan-badge-bad {
+  .scan-badge-ok,
+  .scan-badge-bad {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 700;
+    gap: var(--space-xs);
+    font-size: var(--text-md);
+    font-weight: 600;
   }
 
   .scan-badge-ok { color: var(--success); }
-  .scan-badge-bad { color: var(--danger); }
+  .scan-badge-bad { color: var(--red-ink); }
 
   .scan-actions {
-    padding: 0 18px 18px;
+    padding: 0 var(--space-md) var(--space-md);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-sm);
   }
 
   .scan-actions-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-xs);
     flex-wrap: wrap;
   }
 
   .scan-action-feedback {
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .scan-action-feedback.ok { color: var(--success); }
-  .scan-action-feedback.bad { color: var(--danger); }
+  .scan-action-feedback.bad { color: var(--red-ink); }
 
   .scan-void-prompt {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--field);
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border-radius: var(--radius);
+    background: var(--surface-2);
   }
 
   .scan-void-prompt textarea {
@@ -203,51 +248,46 @@
   }
 
   /* Each verify (camera hit, upload, or manual entry) re-triggers one of
-     these on #scanResultCard — see scan.js's popResult() — so every
-     scan reads as a distinct, acknowledged event instead of the result
-     panel just silently swapping text, even on back-to-back scans while
-     it's already open. */
+     these on #scanResultCard (see scan.js's popResult()) so every scan
+     reads as a distinct, acknowledged event. Opacity and transform only. */
   @keyframes scan-result-in {
-    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    from { opacity: 0; transform: translateY(0.5rem); }
   }
 
-  @keyframes scan-flash-ok {
-    from {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent),
-        0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent);
-    }
-    to {
-      box-shadow: 0 0 0 14px color-mix(in srgb, var(--success) 0%, transparent),
-        0 0 32px 6px color-mix(in srgb, var(--success) 0%, transparent);
-    }
-  }
-
-  @keyframes scan-flash-bad {
-    from {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent),
-        0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent);
-    }
-    to {
-      box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent),
-        0 0 32px 6px color-mix(in srgb, var(--danger) 0%, transparent);
-    }
-  }
-
-  #scanResultCard.scan-pop-ok {
-    animation: scan-result-in .32s cubic-bezier(0.16, 1, 0.3, 1), scan-flash-ok .6s ease-out;
-  }
-
+  #scanResultCard.scan-pop-ok,
   #scanResultCard.scan-pop-bad {
-    animation: scan-result-in .32s cubic-bezier(0.16, 1, 0.3, 1), scan-flash-bad .6s ease-out;
+    animation: scan-result-in var(--dur-short) var(--ease-out);
+  }
+
+  @media (pointer: coarse) {
+    .scan-camera-actions .btn,
+    .scan-manual .btn {
+      min-height: 2.75rem;
+    }
+
+    .scan-manual input {
+      min-height: 2.75rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #scanResultCard.scan-pop-ok,
+    #scanResultCard.scan-pop-bad {
+      animation: none;
+    }
+
+    .scan-drop {
+      transition: none;
+    }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card card-pad">
-  <p class="text-faint" style="font-size:12.5px; margin:0;">
+  <p class="scan-intro">
     Point a camera at the QR code on a printed sale receipt, upload a photo or screenshot of one, or type its
-    code by hand — this confirms it's genuinely on file
+    code by hand. This confirms it’s genuinely on file
     {{ 'for ' ~ session.branch_name if session.role != 'Admin' else '' }}
     and shows exactly what was recorded, straight from the database.
   </p>
@@ -255,38 +295,45 @@
 
 <div class="scan-grid mt-24">
   <div class="card card-pad">
-    <h2 style="font-size:16.5px; margin-bottom:12px;">Scan with camera</h2>
-    <div class="scan-video-wrap">
-      <video id="scanVideo" playsinline muted></video>
-      <div class="scan-reticle"></div>
-      <div class="scan-camera-off" id="scanCameraOff">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7c1.4 0 2.7.27 3.9.75M22 12s-1.2 2.4-3.4 4.35M2 12s3.5 7 10 7c1.4 0 2.7-.27 3.9-.75"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>
-        <p>Camera is off</p>
+    <section class="scan-section">
+      <h2>Scan with camera</h2>
+      <div class="scan-video-wrap">
+        <video id="scanVideo" playsinline muted aria-label="Camera preview"
+          poster="{{ url_for('static', filename='img/icon_180.png') }}"></video>
+        <div class="scan-reticle" aria-hidden="true"></div>
+        <div class="scan-camera-off" id="scanCameraOff">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7c1.4 0 2.7.27 3.9.75M22 12s-1.2 2.4-3.4 4.35M2 12s3.5 7 10 7c1.4 0 2.7-.27 3.9-.75"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>
+          <p>Camera is off</p>
+        </div>
       </div>
-    </div>
-    <div class="scan-status" id="scanCameraStatus">Camera is off &mdash; tap Start camera to scan.</div>
-    <div style="display:flex; gap:8px; margin-top:10px;">
-      <button type="button" class="btn btn-accent btn-sm" id="scanCameraToggle">Start camera</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="scanCameraSwitch" style="display:none;">Switch camera</button>
-    </div>
+      <div class="scan-status" id="scanCameraStatus" role="status">Camera is off. Tap Start camera to scan.</div>
+      <div class="scan-camera-actions">
+        <button type="button" class="btn btn-accent" id="scanCameraToggle">Start camera</button>
+        <button type="button" class="btn btn-ghost" id="scanCameraSwitch" style="display:none;">Switch camera</button>
+      </div>
+    </section>
 
-    <h2 style="font-size:16.5px; margin:22px 0 10px;">Or upload a photo</h2>
-    <div class="scan-drop" id="scanDrop">
-      <p style="margin:0 0 6px; font-weight:600; font-size:13.5px;">Drop an image here, or click to choose one</p>
-      <p class="text-faint" style="font-size:12px; margin:0;">JPG, PNG, or WEBP &mdash; a clear photo or screenshot showing the receipt's QR code.</p>
-    </div>
-    <input type="file" id="scanFileInput" accept="image/png,image/jpeg,image/webp" style="display:none;">
-    <canvas id="scanCanvas" style="display:none;"></canvas>
+    <section class="scan-section">
+      <h2>Or upload a photo</h2>
+      <div class="scan-drop" id="scanDrop">
+        <p class="scan-drop-title">Drop an image here, or click to choose one</p>
+        <p class="scan-drop-note">JPG, PNG, or WEBP: a clear photo or screenshot showing the receipt’s QR code.</p>
+      </div>
+      <input type="file" id="scanFileInput" accept="image/png,image/jpeg,image/webp" aria-label="Choose a receipt image" style="display:none;">
+      <canvas id="scanCanvas" aria-hidden="true" style="display:none;"></canvas>
+    </section>
 
-    <h2 style="font-size:16.5px; margin:22px 0 10px;">Or type the code</h2>
-    <div class="scan-manual">
-      <input type="text" id="scanManualInput" class="mono" placeholder="HAS-000128-XXXXXXXXXX" autocomplete="off">
-      <button type="button" class="btn btn-accent btn-sm" id="scanManualBtn">Verify</button>
-    </div>
-    <div class="help">Printed under the QR code on every receipt &mdash; useful if a camera or clear photo isn't handy.</div>
+    <section class="scan-section">
+      <h2>Or type the code</h2>
+      <div class="scan-manual">
+        <input type="text" id="scanManualInput" class="mono" placeholder="HAS-000128-XXXXXXXXXX" aria-label="Receipt code" autocomplete="off">
+        <button type="button" class="btn btn-ghost" id="scanManualBtn">Verify</button>
+      </div>
+      <div class="scan-help">Printed under the QR code on every receipt, useful if a camera or clear photo isn’t handy.</div>
+    </section>
   </div>
 
-  <div>
+  <div aria-live="polite">
     <div class="card" id="scanResultCard" style="display:none;">
       <div class="scan-result-head" id="scanResultHead"></div>
       <div class="scan-result-body" id="scanResultBody"></div>
