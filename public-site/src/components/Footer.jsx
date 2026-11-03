@@ -2,21 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import {
-  EnvelopeSimpleIcon, FacebookLogoIcon, InstagramLogoIcon, LockKeyIcon, MapPinIcon,
-  MessengerLogoIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
-  StorefrontIcon, TiktokLogoIcon, XLogoIcon, YoutubeLogoIcon,
+  EnvelopeSimpleIcon, LockKeyIcon, MapPinIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
+  StorefrontIcon,
 } from '@phosphor-icons/react';
 import { FOOTER } from '../content/footer.js';
 import { packagesPath, productsPath, scrollToSection } from '../utils.js';
+import { UNDERLINE_HOVER } from '@/components/ui/skiper-ui/skiper40';
+import { FaFacebookF, FaFacebookMessenger, FaInstagram, FaTiktok, FaXTwitter, FaYoutube } from 'react-icons/fa6';
 import { useSite } from './InquiryProvider.jsx';
 
 const SOCIAL_ICONS = {
-  facebook: FacebookLogoIcon,
-  instagram: InstagramLogoIcon,
-  tiktok: TiktokLogoIcon,
-  youtube: YoutubeLogoIcon,
-  messenger: MessengerLogoIcon,
-  x: XLogoIcon,
+  facebook: FaFacebookF,
+  instagram: FaInstagram,
+  tiktok: FaTiktok,
+  youtube: FaYoutube,
+  messenger: FaFacebookMessenger,
+  x: FaXTwitter,
 };
 
 // Phosphor has no official Shopee/Lazada/TikTok Shop marks, so each
@@ -122,9 +123,9 @@ export default function Footer({ children }) {
 
   /** On the landing page, glide to the section; elsewhere, go there. */
   const sectionLink = ({ id, label }) => (onLanding ? (
-    <a href={`#${id}`} onClick={(e) => { if (scrollToSection(id)) e.preventDefault(); }}>{label}</a>
+    <a className={UNDERLINE_HOVER} href={`#${id}`} onClick={(e) => { if (scrollToSection(id)) e.preventDefault(); }}>{label}</a>
   ) : (
-    <Link to={`${packagesPath(slug)}#${id}`}>{label}</Link>
+    <Link className={UNDERLINE_HOVER} to={`${packagesPath(slug)}#${id}`}>{label}</Link>
   ));
 
   return (
@@ -139,6 +140,15 @@ export default function Footer({ children }) {
           className="footer-body"
           style={reveal ? { opacity, scale, y } : undefined}
         >
+          <svg className="footer-mega" viewBox="0 0 1500 250" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="footer-mega-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#d9b64b" stopOpacity="0.1" />
+                <stop offset="1" stopColor="#d9b64b" stopOpacity="0.025" />
+              </linearGradient>
+            </defs>
+            <text x="750" y="200" textAnchor="middle">Heaven &amp; Angel</text>
+          </svg>
           <div className="container">
             <div className="footer-grid">
               <div className="footer-brand">
@@ -160,7 +170,7 @@ export default function Footer({ children }) {
                             whileHover={{ y: -3 }}
                             whileTap={{ scale: 0.92 }}
                           >
-                            <Icon size={20} weight="fill" />
+                            <Icon size={17} aria-hidden="true" />
                           </motion.a>
                         </li>
                       );
@@ -173,7 +183,7 @@ export default function Footer({ children }) {
                 <h2>Explore</h2>
                 <ul>
                   {EXPLORE.map((item) => <li key={item.id}>{sectionLink(item)}</li>)}
-                  <li><Link to={productsPath(slug)}>All products</Link></li>
+                  <li><Link className={UNDERLINE_HOVER} to={productsPath(slug)}>All products</Link></li>
                 </ul>
               </nav>
 

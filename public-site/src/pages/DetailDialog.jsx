@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { AnimatePresence, motion, useDragControls } from 'motion/react';
 import { XIcon } from '@phosphor-icons/react';
+import CustomScrollbar from '../components/CustomScrollbar.jsx';
 import PackageDetail from '../components/PackageDetail.jsx';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js';
-import { SPRING_SHEET } from '../motion.js';
+import { EASE_OUT } from '../motion.js';
 
 const DISMISS_PX = 140;
 const DISMISS_VELOCITY = 700;
@@ -82,7 +83,7 @@ export default function DetailDialog() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
           onClick={close}
         />
       )}
@@ -93,11 +94,20 @@ export default function DetailDialog() {
           role="dialog"
           aria-modal="true"
           aria-label="Package details"
-          style={transformOrigin ? { transformOrigin } : undefined}
-          initial={transformOrigin ? { y: 0, scale: 0.35, opacity: 0 } : { y: '100%' }}
-          animate={{ y: 0, scale: 1, opacity: 1 }}
-          exit={{ y: '100%' }}
-          transition={SPRING_SHEET}
+          style={{ ...(transformOrigin ? { transformOrigin } : null), willChange: 'transform, opacity' }}
+          // A calm rise: a short ease-out tween on transform and opacity
+          // only, started a little below and slightly smaller (grown out of
+          // the card's own spot when there is one). The old spring scaled a
+          // full-screen sheet up from 35% while its text re-rendered at
+          // every size, which is what looked rough.
+          initial={{ y: 56, scale: transformOrigin ? 0.94 : 0.985, opacity: 0 }}
+          animate={{
+            y: 0,
+            scale: 1,
+            opacity: 1,
+            transition: { duration: 0.5, ease: EASE_OUT, opacity: { duration: 0.28, ease: 'easeOut' } },
+          }}
+          exit={{ y: '100%', opacity: 0.6, transition: { duration: 0.38, ease: [0.5, 0, 0.75, 0] } }}
           drag="y"
           dragControls={dragControls}
           dragListener={false}
@@ -119,14 +129,17 @@ export default function DetailDialog() {
               <XIcon size={16} weight="bold" />
             </button>
           </div>
-          <div className="sheet-scroll" ref={scrollRef}>
-            <PackageDetail
-              slug={slug}
-              packageId={packageId}
-              inDialog
-              linkState={location.state}
-              onMissing={close}
-            />
+          <div className="sheet-body">
+            <div className="sheet-scroll" ref={scrollRef}>
+              <PackageDetail
+                slug={slug}
+                packageId={packageId}
+                inDialog
+                linkState={location.state}
+                onMissing={close}
+              />
+            </div>
+            <CustomScrollbar target={scrollRef} />
           </div>
         </motion.div>
       )}

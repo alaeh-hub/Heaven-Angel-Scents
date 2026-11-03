@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import { productsPath } from '../../utils.js';
 import { SCENTS, SCENT_ASPECT, SCENT_BOTTLE_CENTRE } from '../../content/scents.js';
+import Chapter from '../Chapter.jsx';
 import Reveal from '../Reveal.jsx';
 import DotField from './DotField.jsx';
 
@@ -25,7 +26,7 @@ const SHELF = interleave(SCENTS);
 /** The shelf's frame is sized from the render's own proportions, and the
     bottle's centre line, so the CSS can park the bottle in the middle of
     the tile at rest and slide the whole shot back on hover. */
-const SHELF_VARS = {
+export const SHELF_VARS = {
   '--scent-aspect': SCENT_ASPECT,
   '--scent-centre': `${(SCENT_BOTTLE_CENTRE * 100).toFixed(2)}%`,
   '--tiles': SHELF.length,
@@ -36,10 +37,10 @@ const SHELF_VARS = {
  * Hovering (or focusing, or tapping on a touch screen, which has no hover)
  * slides the box out beside the bottle and shows the scent's name. The
  * two layers are cut from the same studio render on one canvas (see
- * scripts/build_scent_images.py), so together they rebuild the original
+ * static/img/scents/), so together they rebuild the original
  * shot exactly.
  */
-function ScentTile({ scent, hidden, active, auto, eager, nearby }) {
+export function ScentTile({ scent, hidden, active, auto, eager, nearby }) {
   const [open, setOpen] = useState(false);
   const forHim = scent.variant === 'Male';
 
@@ -175,9 +176,7 @@ export default function Collection() {
     <section className="section collection" id="collection" ref={sectionRef}>
       <DotField className="collection-dots" />
       <div className="container">
-        <Reveal className="section-head">
-          <h2 className="title-xl">The collection.</h2>
-          <p className="lede">Men’s and women’s signatures, each bottled at 85 ml.</p>
+        <Chapter n={5} label="Collection" title="The collection." lede="Men’s and women’s signatures, each bottled at 85 ml.">
           <div className="collection-ctas">
             <motion.div whileTap={{ scale: 0.97 }}>
               <Link to={productsPath(slug)} className="btn btn-secondary">
@@ -195,7 +194,7 @@ export default function Collection() {
               </Link>
             </div>
           </div>
-        </Reveal>
+        </Chapter>
       </div>
       <Reveal className="marquee" y={0} style={SHELF_VARS}>
         {[0, 1].map((copy) => (

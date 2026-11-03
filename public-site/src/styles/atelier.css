@@ -1,0 +1,691 @@
+/* Atelier: the editorial layer over the landing page.
+   Direction: a fragrance house's printed lookbook rather than a product
+   page. Instrument Serif for display type, Geist for everything read,
+   numbered chapters, hairline structure instead of soft cards, a bento
+   package grid, one gold accent. Loaded last, so it wins over
+   landing.css where the two disagree. */
+
+@import '@fontsource/instrument-serif/400.css';
+@import '@fontsource/instrument-serif/400-italic.css';
+
+:root {
+  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+  --r-surface: 6px;
+  --r-inner: 4px;
+  --r-input: 8px;
+  --container: 1280px;
+}
+
+/* ------------------------------------------------------- display type */
+
+.title-xl,
+.title-lg,
+.display,
+.hero-title,
+.chapter-title,
+.scent-rail-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 0.98;
+}
+.title-xl { font-size: clamp(44px, 6.4vw, 92px); }
+.title-lg { font-size: clamp(34px, 4.2vw, 56px); }
+.hero-title em, .chapter-title em { font-style: italic; color: var(--gold-ink); }
+
+/* ------------------------------------------------------------ chapter */
+
+.chapter { display: grid; gap: clamp(20px, 3vw, 36px); margin-bottom: clamp(40px, 6vw, 80px); }
+.chapter-meta { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--ink-3); }
+.chapter-n { font-variant-numeric: tabular-nums; color: var(--gold-ink); letter-spacing: 0.04em; }
+.chapter-rule { flex: 1; height: 1px; background: var(--hairline-strong); }
+.chapter-label { letter-spacing: 0.02em; }
+.chapter-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 80px);
+  align-items: end;
+}
+.chapter-title { font-size: clamp(48px, 7.2vw, 108px); color: var(--ink); }
+.chapter-side { display: grid; gap: 20px; justify-items: start; padding-bottom: 0.6em; }
+.chapter-side .lede { max-width: 38ch; }
+@media (max-width: 860px) {
+  .chapter-body { grid-template-columns: 1fr; }
+  .chapter-side { padding-bottom: 0; }
+}
+
+/* ------------------------------------------------ section surfaces */
+
+.section { padding: clamp(88px, 12vw, 176px) 0; }
+.section-alt { background: var(--bg); }
+.section + .section { border-top: 1px solid var(--hairline); }
+
+/* ------------------------------------------------------------ nav */
+
+.nav { height: calc(var(--nav-h) + 16px); transition: transform 0.4s ease; }
+.nav[data-scrolled="true"] { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.nav-inner { padding-top: 12px; }
+.nav-links {
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--hairline-strong);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.nav-links::after { inset: 0; z-index: 0; background: radial-gradient(110px circle at var(--spot-x) 100%, color-mix(in srgb, var(--gold) 34%, transparent), transparent 70%); }
+.nav-link { z-index: 1; }
+.nav-link-pill { background: color-mix(in srgb, var(--gold) 16%, var(--surface-sunk)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 35%, transparent); }
+.nav[data-scrolled="true"] .nav-brand img { filter: drop-shadow(0 4px 14px rgb(0 0 0 / 0.6)); }
+
+/* ------------------------------------------------------ scent rail */
+
+.scent-rail { padding: clamp(56px, 8vw, 104px) 0 clamp(32px, 5vw, 56px); border-top: 0; }
+.scent-rail-title { font-size: clamp(34px, 5vw, 72px); }
+.scent-rail-count { font-variant-numeric: tabular-nums; }
+.word-rail { margin-top: clamp(8px, 2vw, 24px); border-top: 1px solid var(--hairline); padding-top: 8px; }
+.word-rail .logo-slider { --wfs: clamp(36px, 5vw, 64px); --w: calc(var(--wfs) * 8); }
+.word-rail .logo-slider__container { --rail-h: 96px; }
+.word-chip {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--wfs);
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px color-mix(in srgb, var(--ink) 55%, transparent);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.word-chip::after { content: "✦"; font-style: normal; font-size: 0.4em; color: var(--gold); -webkit-text-stroke: 0; }
+
+/* -------------------------------------------------- packages: bento */
+
+.pkg-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-flow: dense; gap: 0; border-radius: var(--r-surface); }
+.pkg-card, .pkg-skeleton { grid-column: span 2; border: 0; border-radius: 0; box-shadow: none; background: var(--bg); outline: 1px solid var(--hairline-strong); outline-offset: -0.5px; padding: clamp(24px, 3vw, 40px); gap: 16px; }
+.pkg-card-featured { order: -1; grid-column: span 4; grid-row: span 2; border: 0; box-shadow: none; background: var(--bg-alt); overflow: hidden; justify-content: space-between; min-height: 520px; }
+.pkg-card > .rays { position: absolute; inset: 0; height: auto; pointer-events: none; opacity: 0.4; mix-blend-mode: screen; z-index: -1; }
+.pkg-card h3 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 3vw, 44px); line-height: 1; letter-spacing: -0.01em; }
+.pkg-card-featured h3 { font-size: clamp(44px, 5vw, 76px); }
+.pkg-price-now { font-family: var(--font-display); font-weight: 400; font-size: clamp(40px, 4vw, 60px); letter-spacing: -0.02em; }
+.pkg-card-featured .pkg-price-now { font-size: clamp(60px, 7vw, 108px); color: var(--gold-ink); }
+.pkg-card-featured .pkg-bottle { transform: scale(1.35); }
+.pkg-card-featured .pkg-card-top { margin-bottom: clamp(24px, 6vw, 80px); }
+.pkg-card .chip { border-radius: 2px; background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.pkg-card .chip-gold { color: var(--gold-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 55%, transparent); }
+.pkg-card .chip-success { color: var(--success); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 45%, transparent); }
+.pkg-cta { align-self: flex-start; margin-top: auto; border-radius: 999px; background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.pkg-card-featured .pkg-cta { background: var(--gold); color: var(--on-gold); box-shadow: none; }
+@media (max-width: 1000px) {
+  .pkg-card, .pkg-skeleton { grid-column: span 3; }
+  .pkg-card-featured { grid-column: span 6; grid-row: auto; min-height: 0; }
+}
+@media (max-width: 640px) {
+  .pkg-card, .pkg-skeleton, .pkg-card-featured { grid-column: span 6; }
+}
+
+/* ------------------------------------------------------------ stats */
+
+.stats-band { border-top: 1px solid var(--hairline-strong); }
+.stats-value { font-family: var(--font-display); font-weight: 400; font-size: clamp(48px, 6vw, 88px); letter-spacing: -0.02em; }
+.stats-label { color: var(--ink-3); }
+
+/* --------------------------------------------------------- earnings */
+
+.earn-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: stretch; }
+.earn-panel {
+  position: relative;
+  display: grid;
+  align-content: center;
+  padding: clamp(28px, 4vw, 56px);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-surface);
+  background: var(--bg-alt);
+  box-shadow: none;
+}
+.earn-controls { align-content: start; }
+.earn-row dd { font-variant-numeric: tabular-nums; }
+.earn-profit dd { font-family: var(--font-display); font-weight: 400; font-size: clamp(56px, 7vw, 112px); line-height: 1; letter-spacing: -0.02em; color: var(--gold-ink); }
+@media (max-width: 860px) { .earn-grid { grid-template-columns: 1fr; } }
+
+/* ------------------------------------------------------------ steps */
+
+.steps-list { padding-top: 0; }
+.steps-list ol { gap: 0; border-top: 1px solid var(--hairline-strong); }
+.steps-rail { display: none; }
+.steps-rail-fill { top: 0; left: 0; right: 0; height: 1px; border-radius: 0; box-shadow: none; }
+.step { padding: clamp(28px, 4vw, 56px) clamp(20px, 3vw, 48px) 0 0; gap: 14px; }
+.step + .step { padding-left: clamp(20px, 3vw, 48px); border-left: 1px solid var(--hairline); }
+.step-icon { position: static; background: none; width: auto; height: auto; justify-self: start; }
+.step h3 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 3vw, 44px); letter-spacing: -0.01em; line-height: 1; }
+@media (max-width: 900px) {
+  .steps-list { padding-left: 0; }
+  .step + .step { padding-left: 0; border-left: 0; border-top: 1px solid var(--hairline); margin-top: 32px; }
+  .step { padding-right: 0; }
+}
+
+/* ------------------------------------------------------------ about */
+
+.about-start { font-size: 18px; color: var(--ink-2); }
+.cursor-card-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 5px; text-decoration-thickness: 1px; }
+.cursor-card-link:hover { color: var(--gold-ink); }
+.cursor-card-pop {
+  overflow: hidden;
+  border-radius: 14px;
+  background: #121214;
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.85), 0 0 0 1px rgb(0 0 0 / 0.4);
+}
+.cursor-card-stage {
+  display: grid;
+  place-items: center;
+  height: 184px;
+  background:
+    radial-gradient(70% 60% at 50% 70%, color-mix(in srgb, var(--gold) 26%, transparent), transparent 75%),
+    linear-gradient(180deg, #0a0a0b, #131315);
+  border-bottom: 1px solid var(--hairline);
+}
+.cursor-card-img { height: 164px; width: auto; max-width: 90%; object-fit: contain; filter: drop-shadow(0 12px 16px rgb(0 0 0 / 0.6)); }
+.cursor-card-body { display: grid; gap: 4px; padding: 12px 14px 14px; }
+.cursor-card-title { margin: 0; font-family: var(--font-display); font-size: 26px; line-height: 1; letter-spacing: -0.005em; color: var(--ink); }
+.cursor-card-text { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+.cursor-card-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--gold-ink); }
+.about-photo { border-radius: var(--r-surface); }
+.about-point { border-top: 1px solid var(--hairline-strong); padding-top: 20px; }
+.about-point h3 { font-family: var(--font-display); font-weight: 400; font-size: clamp(26px, 2.6vw, 36px); letter-spacing: -0.01em; }
+
+/* -------------------------------------------------------------- faq */
+
+.faq-inner {
+  max-width: var(--container);
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-areas: "head list" "head more";
+  gap: 0 clamp(32px, 6vw, 96px);
+  align-items: start;
+}
+.faq-inner > .chapter { grid-area: head; position: sticky; top: calc(var(--nav-h) + 32px); margin-bottom: 0; }
+.faq-inner .chapter-body { grid-template-columns: 1fr; }
+.faq-inner .chapter-title { font-size: clamp(48px, 6vw, 92px); }
+.faq-list { grid-area: list; background: transparent; border: 0; border-top: 1px solid var(--hairline-strong); border-radius: 0; }
+.faq-more { grid-area: more; }
+.faq-q { font-family: var(--font-display); font-size: clamp(22px, 2.2vw, 30px); letter-spacing: -0.005em; padding-block: 26px; }
+.faq-q:hover { background: transparent; color: var(--gold-ink); }
+.faq-a p { font-size: 17px; }
+@media (max-width: 900px) {
+  .faq-inner { grid-template-columns: 1fr; grid-template-areas: "head" "list" "more"; }
+  .faq-inner > .chapter { position: static; margin-bottom: 40px; }
+}
+
+/* ------------------------------------------------------- collection */
+
+.collection-ctas { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; }
+
+/* ---------------------------------------------------------- closing */
+
+.closing-panel { border-radius: var(--r-surface); border-color: var(--hairline-strong); background: var(--bg-alt); }
+.closing-copy .title-xl { font-size: clamp(48px, 6.4vw, 96px); }
+.closing-channel { border-radius: var(--r-surface); }
+
+/* ----------------------------------------------------------- footer */
+
+.footer-body { overflow: hidden; }
+.footer-col h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; letter-spacing: 0; color: var(--ink); }
+.footer-mega {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  width: min(96%, 1180px);
+  height: auto;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  user-select: none;
+  pointer-events: none;
+}
+.footer-body > .container { position: relative; z-index: 1; }
+.footer-mega text {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 230px;
+  /* A soft filled gradient, not a hairline outline: a 1px line at this
+     strength breaks into dots at normal screen resolution. */
+  fill: url(#footer-mega-fill);
+  stroke: none;
+  text-rendering: geometricPrecision;
+}
+
+/* Per-letter spans carry no kerning, so the tight tracking the display
+   face wants on a normal line has to be eased off. */
+.chapter-title, .scent-rail-title { letter-spacing: 0.005em; }
+
+/* ---------------------------------------------------- audit fixes */
+
+/* Back to top: a small round button in the corner, not a pill across
+   the middle of the content. */
+.to-top { left: auto; right: max(16px, env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); width: 44px; height: 44px; padding: 0; justify-content: center; }
+@media (max-width: 980px) { body:has(.detail-bar) .to-top { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+
+/* The rail count never wraps, and the featured package's bottle stack
+   stays inside the card on a phone. */
+.scent-rail-count { white-space: nowrap; flex-shrink: 0; }
+.pkg-card-featured .pkg-bottle { transform: none; }
+@media (min-width: 1001px) { .pkg-card-featured .pkg-bottle { transform: scale(1.35); transform-origin: left center; } .pkg-card-featured .pkg-bottles { padding-left: 8px; } }
+
+/* Phones: air between the scene and the offer, and a heading size that fits. */
+@media (max-width: 960px) {
+  .hero-copy-wrap { padding-top: 28px; }
+  .chapter-title { font-size: clamp(40px, 11vw, 64px); }
+}
+
+/* The journey's step heading follows the house type. */
+.journey h3, .journey-static h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.005em; font-size: clamp(30px, 3vw, 44px); line-height: 1; }
+
+/* Shop online cards and craft film sit under a chapter now. */
+.shop-online .shop-grid { margin-top: 0; }
+.chapter-long .chapter-title { font-size: clamp(38px, 5vw, 76px); }
+.chapter-long .chapter-body { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
+@media (max-width: 860px) { .chapter-body { gap: 16px; } }
+
+@media (max-width: 860px) { .chapter-body { gap: 16px; } }
+
+/* Hero headline: the largest type on the page. */
+.hero-title { font-size: clamp(50px, 6vw, 92px); line-height: 0.96; letter-spacing: -0.015em; }
+.hero-copy { max-width: min(46vw, 700px); }
+@media (max-width: 960px) {
+  .hero-copy { max-width: none; }
+  .hero-title { font-size: clamp(42px, 12vw, 64px); }
+}
+
+/* Step numerals: SVG text, outline only. Round joins keep the serifs and
+   curves smooth where a CSS text-stroke would spike. Width is explicit
+   (the viewBox ratio) so no browser has to guess it. */
+.step-n {
+  display: block;
+  height: clamp(100px, 11vw, 150px);
+  width: calc(clamp(100px, 11vw, 150px) * 1.4);
+  overflow: visible;
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  -webkit-text-stroke: 0;
+}
+.step-n text {
+  font-family: var(--font-display);
+  font-size: 170px;
+  fill: none;
+  stroke: var(--gold);
+  stroke-opacity: 0.85;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  paint-order: stroke;
+  text-rendering: geometricPrecision;
+  font-variant-numeric: lining-nums;
+}
+.step-icon { display: none; }
+
+/* ============================================ the house
+   About and the craft film sit on one plain, flat shade of black. */
+
+.house {
+  position: relative;
+  background: #0a0a0a;
+  border-block: 1px solid var(--hairline);
+}
+.house > .section { border-top: 0; }
+
+/* ======================================== section shades
+   Sections alternate between two blacks so each one reads as its own
+   room. The hero (pure black stage) and the collection (its dot grid)
+   keep their own grounds. */
+:root { --shade-a: #101012; --shade-b: #050506; }
+
+.hero-pin::after { background: linear-gradient(var(--stage), var(--shade-a)); }
+.scent-rail { background: var(--shade-a); }
+#packages { background: var(--shade-b); }
+#earnings { background: var(--shade-a); }
+#shop-online { background: var(--shade-b); }
+#how-it-works { background: var(--shade-a); }
+.house { background: var(--shade-b); }
+#notes { background: var(--shade-a); }
+#faq { background: var(--shade-b); }
+.footer-cover, .closing { background: var(--shade-a); }
+.footer { background: var(--shade-b); }
+
+/* The hero's lower edge: as the pinned stage unpins, its bottom edge rose
+   toward the bottles as a hard line (an opaque black band under the gold
+   glow, cutting the reflections). It is now a fade from clear to the next
+   section's black, over the stage, so nothing has an edge to see. */
+.hero-pin::after {
+  z-index: 4;
+  height: clamp(180px, 26vh, 260px);
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--shade-a) 18%, transparent) 30%,
+    color-mix(in srgb, var(--shade-a) 62%, transparent) 62%,
+    color-mix(in srgb, var(--shade-a) 92%, transparent) 86%,
+    var(--shade-a) 100%
+  );
+}
+
+/* ----------------------------------- scent journey: scene blends in
+   The scene clears to pure black, which showed as a darker box on the
+   section's black. Lighten keeps the bottles and glows and lets the
+   section's own shade through everywhere the scene is black. */
+.journey-scene { mix-blend-mode: lighten; }
+
+/* ===================================================== phone type scale
+   The serif display sizes above are tuned for desktop; on a phone they
+   read too large. Everything here is smaller, in the same proportions,
+   and loaded last so it replaces the earlier phone sizes. */
+@media (max-width: 600px) {
+  .hero-title { font-size: clamp(30px, 8.6vw, 38px); line-height: 1; }
+  .chapter-title { font-size: clamp(30px, 8.2vw, 38px); }
+  .chapter-long .chapter-title { font-size: clamp(28px, 7.4vw, 34px); }
+  .faq-inner .chapter-title { font-size: clamp(30px, 8.2vw, 38px); }
+  .title-xl, .closing-copy .title-xl { font-size: clamp(30px, 8.4vw, 38px); }
+  .title-lg { font-size: clamp(24px, 6.6vw, 30px); }
+  .chapter-label, .chapter-meta { font-size: 12.5px; }
+
+  .scent-rail-title { font-size: clamp(24px, 6.6vw, 30px); }
+  .scent-rail-count { font-size: 13px; }
+  .scent-chip-name { font-size: 14px; }
+  .word-rail .logo-slider { --wfs: clamp(24px, 6.8vw, 30px); }
+  .word-rail .logo-slider__container { --rail-h: 72px; }
+
+  .pkg-card h3 { font-size: 24px; }
+  .pkg-card-featured h3 { font-size: 30px; }
+  .pkg-price-now { font-size: 32px; }
+  .pkg-card-featured .pkg-price-now { font-size: 42px; }
+  .pkg-desc { font-size: 14.5px; }
+
+  .stats-value { font-size: 34px; }
+  .stats-label { font-size: 14px; }
+
+  .earn-row dd { font-size: 16px; }
+  .earn-row.earn-profit dd { font-size: 42px; }
+
+  .step-n { height: 76px; width: calc(76px * 1.4); }
+  .step h3 { font-size: 24px; }
+  .step p { font-size: 15px; }
+
+  .about-start { font-size: 15.5px; }
+  .about-point h3 { font-size: 21px; }
+  .about-point p { font-size: 14.5px; }
+
+  .faq-q { font-size: 18px; padding-block: 20px; }
+  .faq-a p { font-size: 15px; }
+
+  .shop-card-name { font-size: 16px; }
+  .shop-card-blurb { font-size: 13.5px; }
+
+  .journey h3, .journey-static h3 { font-size: 24px; }
+  .journey-block p { font-size: 15px; }
+  .journey-note { font-size: 13px; }
+
+  .closing-channel { font-size: 14.5px; }
+  .footer-col h2 { font-size: 18px; }
+  .footer-col a, .footer-brand p, .footer-contact li { font-size: 14.5px; }
+  .nav-sheet a { font-size: 19px; }
+
+  .cursor-card-title { font-size: 22px; }
+}
+
+/* Phones: the collection buttons sit inside a chapter column whose items
+   hug their content, so "For him" and "For her" were squeezed. They go
+   back to the full-width layout landing.css intends. */
+@media (max-width: 640px) {
+  .chapter-side .collection-ctas { justify-self: stretch; width: 100%; display: grid; gap: 10px; align-items: stretch; }
+  .collection-ctas .btn { width: 100%; }
+  .collection-cta-links { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* ============================================ mobile menu + burger */
+
+.nav-menu-btn {
+  display: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.25s ease, background-color 0.25s ease;
+}
+.nav-menu-btn:hover, .nav-menu-btn[aria-expanded="true"] { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+@media (max-width: 960px) { .nav-menu-btn { display: inline-grid; } }
+
+.burger { position: relative; display: block; width: 18px; height: 11px; }
+.burger i {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.6px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: top 0.3s var(--ease-out), transform 0.35s var(--ease-out), width 0.3s var(--ease-out);
+}
+.burger i:nth-child(1) { top: 0; }
+.burger i:nth-child(2) { top: 9px; width: 70%; }
+.nav-menu-btn[aria-expanded="true"] .burger i:nth-child(1) { top: 4.7px; transform: rotate(45deg); }
+.nav-menu-btn[aria-expanded="true"] .burger i:nth-child(2) { top: 4.7px; width: 100%; transform: rotate(-45deg); }
+
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--nav-h) + 36px) var(--gutter) calc(24px + env(safe-area-inset-bottom));
+  background: rgb(5 5 6 / 0.97);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mobile-menu::before {
+  content: '';
+  position: absolute;
+  inset: auto -20% -10% -20%;
+  height: 55%;
+  background: radial-gradient(60% 70% at 30% 100%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.mobile-menu > * { position: relative; }
+.mobile-menu-links { display: grid; }
+.mobile-menu-links a {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-2);
+}
+.mobile-menu-links a:first-child { border-top: 1px solid var(--hairline); }
+.mm-n { font-size: 12.5px; color: var(--gold-ink); font-variant-numeric: tabular-nums; }
+.mm-label { font-family: var(--font-display); font-size: clamp(30px, 9vw, 38px); line-height: 1.05; color: var(--ink); }
+.mobile-menu-links a[aria-current="true"] .mm-label { color: var(--gold-ink); }
+.mm-arrow { align-self: center; color: var(--ink-3); transition: transform 0.25s var(--ease-out), color 0.2s ease; }
+.mobile-menu-links a:active .mm-arrow { transform: translate(3px, -3px); color: var(--gold-ink); }
+.mobile-menu-foot { margin-top: auto; padding-top: 28px; display: grid; gap: 16px; }
+.mobile-menu-foot .btn { width: 100%; }
+.mobile-menu-contact { display: grid; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.mobile-menu-contact a { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.mobile-menu-contact svg { color: var(--gold-ink); flex-shrink: 0; }
+@media (min-width: 961px) { .mobile-menu { display: none; } }
+
+/* ============================================== footer: social icons */
+
+.footer-socials { gap: 8px; }
+.footer-socials a {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+  color: var(--ink-2);
+  transition: box-shadow 0.25s ease, color 0.25s ease, background-color 0.25s ease;
+}
+.footer-socials a:hover {
+  background: var(--gold-soft);
+  color: var(--gold-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 55%, transparent);
+}
+
+/* ============================================ footer: compact on phones */
+@media (max-width: 640px) {
+  .footer-body { padding: 34px 0 14px; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 24px 16px; }
+  .footer-brand, .footer-col-contact { grid-column: 1 / -1; }
+  .footer-brand { gap: 12px; }
+  .footer-brand img { height: 38px; width: auto; }
+  .footer-brand p { font-size: 14px; max-width: 34ch; }
+  .footer-col h2 { margin-bottom: 10px; font-size: 17px; }
+  .footer-col ul { gap: 8px; }
+  .footer-marketplaces { gap: 10px; }
+  .marketplace-icon { width: 26px; height: 26px; }
+  .footer-col-contact ul { gap: 8px; }
+  .footer-hours { margin-top: 2px; font-size: 12.5px; }
+  .footer-legal { margin-top: 22px; padding-top: 14px; gap: 6px; font-size: 12px; }
+  .footer-notice { font-size: 12px; }
+  /* clear of the round back-to-top button in the corner */
+  .footer-legal { padding-right: 56px; }
+}
+
+/* With one or two packages every card is the same, half-width tile. */
+.pkg-grid[data-count="1"] .pkg-card,
+.pkg-grid[data-count="2"] .pkg-card { grid-column: span 3; }
+@media (max-width: 1000px) {
+  .pkg-grid[data-count="1"] .pkg-card,
+  .pkg-grid[data-count="2"] .pkg-card { grid-column: span 6; }
+}
+
+/* ===================================================== catalog page
+   "View all products": the same house look as the landing page. A
+   chapter header, a hairline grid of tiles (no floating cards), and the
+   brand's own renders (gift box behind the bottle) on a gold-lit stage. */
+
+.catalog { background: var(--shade-b); padding: clamp(48px, 7vw, 96px) 0 clamp(80px, 10vw, 140px); }
+.catalog .chapter { margin-bottom: clamp(24px, 4vw, 44px); }
+
+.catalog-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border-radius: var(--r-surface);
+  overflow: hidden;
+}
+@media (max-width: 1100px) { .catalog-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 820px) { .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; } }
+
+.catalog-skeleton { aspect-ratio: 3 / 4.6; border-radius: 0; outline: 1px solid var(--hairline); outline-offset: -0.5px; }
+
+.product-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  padding: clamp(12px, 1.6vw, 20px);
+  border: 0;
+  border-radius: 0;
+  background: var(--shade-b);
+  box-shadow: none;
+  outline: 1px solid var(--hairline-strong);
+  outline-offset: -0.5px;
+  transition: background-color 0.35s ease, outline-color 0.35s ease;
+}
+.product-card:hover {
+  background: var(--shade-a);
+  box-shadow: none;
+  outline-color: color-mix(in srgb, var(--gold) 45%, transparent);
+  z-index: 1;
+}
+
+.product-card-media {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  border-radius: 4px;
+  background:
+    radial-gradient(75% 60% at 50% 72%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 75%),
+    linear-gradient(180deg, #060607, #0c0c0e);
+  overflow: hidden;
+}
+.product-card-glow {
+  position: absolute;
+  inset: 18% 8% 4%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--gold) 34%, transparent), transparent 74%);
+  filter: blur(18px);
+}
+.product-card-art {
+  position: relative;
+  height: 90%;
+  max-width: 92%;
+  filter: drop-shadow(0 18px 22px rgb(0 0 0 / 0.55));
+}
+.pc-box, .pc-bottle { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+.pc-box { transform-origin: 20% 70%; }
+.pc-bottle { transform-origin: 70% 80%; }
+
+.product-card-body { display: grid; gap: 4px; padding: 0 2px; }
+.pc-code { font-size: 12.5px; color: var(--gold-ink); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.product-card-body h3 { font-family: var(--font-display); font-weight: 400; font-size: clamp(24px, 2.2vw, 31px); line-height: 1; letter-spacing: -0.005em; color: var(--ink); }
+.product-card-sizes { padding: 0; font-size: 13.5px; color: var(--ink-3); }
+.product-card-ask { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin: auto 0 0; padding: 0 2px; justify-self: start; }
+.product-card-ask svg { transition: transform 0.25s var(--ease-out); }
+.product-card-ask:hover svg { transform: translate(2px, -2px); }
+
+.catalog-foot { margin-top: clamp(24px, 3.5vw, 40px); }
+.catalog-foot .muted { font-size: 14px; color: var(--ink-3); }
+
+.pagination { gap: 6px; padding: 0; background: transparent; }
+.page-btn { min-width: 40px; height: 40px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--ink-2); }
+.page-btn:hover:not(:disabled) { color: var(--gold-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent); }
+.page-btn[aria-current="page"] { color: var(--gold-ink); box-shadow: none; }
+.page-pill { border-radius: 10px; background: var(--gold-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 60%, transparent); }
+.page-btn:disabled { background: transparent; opacity: 0.4; }
+
+@media (max-width: 640px) {
+  .product-card-body h3 { font-size: 22px; }
+  .product-card-sizes { font-size: 12.5px; }
+  .catalog-foot { align-items: flex-start; text-align: left; }
+}
+
+/* Tabs line up with the chapter headings above them (left), on both the
+   packages list and the catalog. */
+.segmented-wrap { justify-content: flex-start; }
+.segmented { margin-left: 0; margin-right: auto; }
+
+/* ========================================================= performance
+   The marquees fade at their edges with a mask instead of a stack of
+   backdrop-filter blur layers (sixteen of them were re-blurred every
+   frame over moving content). */
+.scent-rail .logo-slider__container,
+.word-rail .logo-slider__container {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+/* ======================== catalog: the home collection's own tiles
+   The catalog shows the same tiles as the home page collection (bottle
+   alone, box slides out on hover), filling grid cells instead of a row. */
+.catalog-grid { gap: clamp(14px, 2vw, 24px); border-radius: 0; overflow: visible; }
+.catalog-item { display: grid; gap: 6px; align-content: start; }
+.catalog-tile { --tile-w: 100%; }
+.catalog-tile .bottle-tile { width: 100%; }
+.catalog-item .product-card-ask { margin: 0; padding: 0 2px; min-height: 40px; }
+@media (hover: none) { .catalog-tile { --tile-w: 100%; } }

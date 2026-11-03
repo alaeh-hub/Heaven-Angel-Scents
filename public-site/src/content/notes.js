@@ -1,13 +1,13 @@
 // "How our scents unfold" copy (the ScentJourney section), kept in one
 // place like about.js.
 //
-// TODO(content): the `notes` below are PLACEHOLDER examples of each layer,
-// not the real formulas. Replace them with the actual top, heart and base
-// notes of Uriel H1 and Raphael A3 before sharing the portal link: the
-// section presents them as those two scents' notes, and partners will
-// repeat them to their customers. One to three notes per scent per layer
-// keeps the layout tidy; the first one of each also floats over that
-// bottle in the scene.
+// Notes follow the published note pyramids of the fragrances each bottle's
+// label says it is inspired by (Uriel H1: Salvatore Ferragamo Incanto Shine;
+// Raphael A3: Ralph Lauren Polo Sport). Retail sources differ slightly, so
+// TODO(content): confirm them against your own formulas before partners
+// repeat them to customers. One to three notes per scent per layer keeps
+// the layout tidy; the first one of each also floats over that bottle in
+// the scene.
 
 /** The two bottles in the scene, left to right (see PerfumeScene). */
 export const SCENTS = [
@@ -21,20 +21,20 @@ export const LAYERS = [
     when: 'First 15 minutes',
     title: 'The first impression.',
     body: 'Bright, quick notes greet you the moment it touches skin, then lift away to make room for what comes next.',
-    notes: { uriel: ['Bergamot', 'Pink pepper'], raphael: ['Lemon', 'Mint'] },
+    notes: { uriel: ['Bergamot', 'Pineapple', 'Passion fruit'], raphael: ['Lemon', 'Mint', 'Bergamot'] },
   },
   {
     name: 'Heart notes',
     when: '2 to 4 hours',
     title: 'The character.',
     body: 'As the opening fades, the heart rises. This is the personality of the scent, the part people remember.',
-    notes: { uriel: ['Rose', 'Jasmine'], raphael: ['Lavender', 'Sea salt'] },
+    notes: { uriel: ['Freesia', 'Peach', 'Pink peony'], raphael: ['Ginger', 'Seagrass', 'Jasmine'] },
   },
   {
     name: 'Base notes',
     when: '6 hours and beyond',
     title: 'What stays.',
     body: 'Deep, slow notes settle in last and linger on skin and fabric long after the rest has gone.',
-    notes: { uriel: ['Amber', 'Musk'], raphael: ['Sandalwood', 'Cedar'] },
+    notes: { uriel: ['Amber', 'Cedar', 'Musk'], raphael: ['Sandalwood', 'Cedar', 'Musk'] },
   },
 ];

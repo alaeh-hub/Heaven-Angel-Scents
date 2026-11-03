@@ -157,7 +157,9 @@ class Config:
     # The full, current link (built from whichever value is active) is
     # always shown to admins on the Partners page so it's easy to copy
     # and send to a distributor or reseller.
-    PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG", "")
+    # Defaults to the production link,
+    # https://heavenandangels.jampongcorp.tech/partner-portal/qo8WQ2joiYi7GXX6OMitPQ/packages
+    PARTNER_PORTAL_SLUG = os.environ.get("PARTNER_PORTAL_SLUG") or "qo8WQ2joiYi7GXX6OMitPQ"
 
     # Direct contact details shown on the partner portal (the closing
     # "talk to us" band, the inquiry form's confirmation). Each is

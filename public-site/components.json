@@ -1,0 +1,12 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "default",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": { "config": "", "css": "src/styles/tailwind.css", "baseColor": "neutral", "cssVariables": false },
+  "aliases": { "components": "@/components", "utils": "@/lib/utils", "ui": "@/components/ui", "lib": "@/lib", "hooks": "@/hooks" },
+  "registries": {
+    "@skiper-ui": "https://skiper-ui.com/r/{name}.json",
+    "@vengeanceui": "https://www.vengeanceui.com/r/{name}.json"
+  }
+}

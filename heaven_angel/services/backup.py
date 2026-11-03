@@ -17,7 +17,7 @@ Format (decided for "restorable AND readable"):
 Mail servers cap attachment size, so if the full set is too big the
 optional parts are dropped in order (uploads, then CSVs); if even
 database.sql alone won't fit, TooLargeError is raised and the caller points
-the user at scripts/backup_db.sh (see docs/BACKUP.md).
+the user at the mysqldump command in docs/BACKUP.md.
 
 The snapshot is taken inside one REPEATABLE READ transaction, so every
 table is read as of the same instant without locking out the live app.
@@ -165,7 +165,7 @@ def _manifest(stamp, counts, included):
     if "uploads" in included:
         lines.append("  uploads/       product photos (not stored in the database)")
     else:
-        lines.append("  (product photos were NOT included - see docs/BACKUP.md for scripts/backup_db.sh)")
+        lines.append("  (product photos were NOT included - see docs/BACKUP.md to copy static/uploads)")
     lines += [
         "",
         "To restore into an empty (or existing - tables are dropped and recreated) database:",
@@ -217,7 +217,7 @@ def build_backup_zip(max_bytes):
             return data, filename, summary
     raise TooLargeError(
         "The database alone is bigger than the email attachment limit "
-        "(%.0f MB). Use scripts/backup_db.sh instead (see docs/BACKUP.md)." % (max_bytes / 1024 / 1024))
+        "(%.0f MB). Use mysqldump instead (see docs/BACKUP.md)." % (max_bytes / 1024 / 1024))
 
 
 # ---------------------------------------------------------------------------

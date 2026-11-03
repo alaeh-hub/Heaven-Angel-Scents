@@ -1,5 +1,6 @@
 import { ArrowUpRightIcon, ShoppingBagIcon, ShoppingCartIcon, StorefrontIcon } from '@phosphor-icons/react';
 import { FOOTER } from '../../content/footer.js';
+import Chapter from '../Chapter.jsx';
 import Reveal from '../Reveal.jsx';
 
 // Phosphor has no official Shopee/Lazada/TikTok Shop marks, so each
@@ -35,10 +36,7 @@ export default function OnlineShops() {
   return (
     <section className="section shop-online" id="shop-online">
       <div className="container">
-        <Reveal className="section-head center">
-          <h2 className="title-xl">Already know what you want?</h2>
-          <p className="lede">Skip the inquiry and order straight from our official stores.</p>
-        </Reveal>
+        <Chapter label="Shop online" title="Already know what you want?" lede="Skip the inquiry and order straight from our official stores." />
 
         <div className="shop-grid">
           {shops.map(({ network, label, href }, i) => {

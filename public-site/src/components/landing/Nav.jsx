@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
-import { ListIcon, XIcon } from '@phosphor-icons/react';
+import { ArrowUpRightIcon, EnvelopeSimpleIcon, PhoneIcon } from '@phosphor-icons/react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock.js';
 import { SPRING } from '../../motion.js';
 import { scrollToSection } from '../../utils.js';
 import { useSite } from '../InquiryProvider.jsx';
@@ -66,7 +67,8 @@ export default function Nav({ hiddenIds = [] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const navigatingRef = useRef(false);
-  const { openInquiry } = useSite();
+  const { site, openInquiry } = useSite();
+  const contact = site?.contact || {};
   // Sections that aren't on the page right now (Earnings, with no
   // discounted package to estimate) get no link, rather than a dead one.
   const hiddenKey = hiddenIds.join(' ');
@@ -145,6 +147,15 @@ export default function Nav({ hiddenIds = [] }) {
     }
   };
 
+  useBodyScrollLock(menuOpen);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const mq = window.matchMedia('(min-width: 961px)');
+    const close = () => mq.matches && setMenuOpen(false);
+    mq.addEventListener('change', close);
+    return () => mq.removeEventListener('change', close);
+  }, [menuOpen]);
+
   useEffect(() => {
     if (!menuOpen) return undefined;
     const onKey = (e) => e.key === 'Escape' && setMenuOpen(false);
@@ -165,7 +176,7 @@ export default function Nav({ hiddenIds = [] }) {
             <img src="/static/img/logo-wordmark-sm.webp" alt="" />
           </a>
 
-          <nav className="nav-links" aria-label="Sections" onMouseLeave={() => setHovered(null)}>
+          <nav className="nav-links" aria-label="Sections" onMouseLeave={() => setHovered(null)} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--spot-x', `${e.clientX - r.left}px`); }}>
             {links.map(({ id, label }) => (
               <motion.a
                 key={id}
@@ -205,24 +216,14 @@ export default function Nav({ hiddenIds = [] }) {
             <button type="button" className="btn btn-primary btn-sm" onClick={() => openInquiry()}>Send an inquiry</button>
             <button
               type="button"
-              className="icon-btn nav-menu-btn"
+              className="nav-menu-btn"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
               onClick={() => setMenuOpen((open) => !open)}
             >
-              {/* The icon turns as it swaps, so open/close reads as one motion. */}
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span
-                  key={menuOpen ? 'close' : 'open'}
-                  style={{ display: 'inline-flex' }}
-                  initial={{ opacity: 0, rotate: -90, scale: 0.6 }}
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                  exit={{ opacity: 0, rotate: 90, scale: 0.6 }}
-                  transition={SPRING}
-                >
-                  {menuOpen ? <XIcon size={18} weight="bold" /> : <ListIcon size={18} weight="bold" />}
-                </motion.span>
-              </AnimatePresence>
+              {/* Two lines that cross into an X, so open and close read as one motion. */}
+              <span className="burger" aria-hidden="true"><i /><i /></span>
             </button>
           </div>
         </div>
@@ -230,39 +231,56 @@ export default function Nav({ hiddenIds = [] }) {
 
       <AnimatePresence>
         {menuOpen && (
-          <motion.nav
-            className="nav-sheet"
-            aria-label="Sections"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={SPRING}
+          <motion.div
+            id="mobile-menu"
+            className="mobile-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
           >
-            {links.map(({ id, label }, i) => (
-              <motion.a
-                key={id}
-                href={`#${id}`}
-                aria-current={active === id}
-                onClick={(e) => { setMenuOpen(false); goTo(e, id); }}
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileTap={{ x: 6, opacity: 0.7 }}
-                transition={{ ...SPRING, delay: 0.04 * i }}
-              >
-                {label}
-              </motion.a>
-            ))}
-            <motion.button
-              type="button"
-              className="btn btn-primary nav-sheet-cta"
-              onClick={() => { setMenuOpen(false); openInquiry(); }}
-              initial={{ opacity: 0, y: -6 }}
+            <nav className="mobile-menu-links" aria-label="Sections">
+              {links.map(({ id, label }, i) => (
+                <motion.a
+                  key={id}
+                  href={`#${id}`}
+                  aria-current={active === id}
+                  onClick={(e) => { setMenuOpen(false); goTo(e, id); }}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...SPRING, delay: 0.05 + 0.045 * i }}
+                >
+                  <span className="mm-n" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="mm-label">{label}</span>
+                  <ArrowUpRightIcon className="mm-arrow" size={18} weight="bold" aria-hidden="true" />
+                </motion.a>
+              ))}
+            </nav>
+
+            <motion.div
+              className="mobile-menu-foot"
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ ...SPRING, delay: 0.04 * links.length }}
+              transition={{ ...SPRING, delay: 0.1 + 0.045 * links.length }}
             >
-              Send an inquiry
-            </motion.button>
-          </motion.nav>
+              <button type="button" className="btn btn-primary" onClick={() => { setMenuOpen(false); openInquiry(); }}>
+                Send an inquiry
+              </button>
+              {(contact.phone || contact.email) && (
+                <div className="mobile-menu-contact">
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`}><PhoneIcon size={16} weight="duotone" aria-hidden="true" />{contact.phone}</a>
+                  )}
+                  {contact.email && (
+                    <a href={`mailto:${contact.email}`}><EnvelopeSimpleIcon size={16} weight="duotone" aria-hidden="true" />{contact.email}</a>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>

@@ -1,13 +1,35 @@
 name: Deploy
 
 on:
+  # Automatic: every time CI finishes green for a push to main.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  # Manual: still available from the Actions tab (re-deploy, rollback to a commit).
   workflow_dispatch:
+
+# One deploy at a time; a newer push waits for the running one instead of
+# racing it, and an in-progress deploy is never cancelled half way.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy to production
     runs-on: ubuntu-latest
     environment: production
+    # Auto-deploy only after a successful CI run of a push to main (never for
+    # a pull request or a failed run). A manual run has no such condition.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    env:
+      # The commit CI actually tested. For workflow_run, github.sha is just the
+      # newest commit on main, which may not be the one that passed.
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     permissions:
       contents: read
       actions: read
@@ -18,9 +40,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          result="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml             --commit "${{ github.sha }}" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
+          result="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml             --commit "$DEPLOY_SHA" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
           if [ "${result:-0}" -lt 1 ]; then
-            echo "No successful CI run found for ${{ github.sha }}; refusing to deploy." >&2
+            echo "No successful CI run found for $DEPLOY_SHA; refusing to deploy." >&2
             exit 1
           fi
 

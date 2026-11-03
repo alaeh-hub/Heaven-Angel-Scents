@@ -1,11 +1,11 @@
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { PackageIcon } from '@phosphor-icons/react';
 import { SPRING } from '../../motion.js';
 import PackageCard from '../PackageCard.jsx';
 import Reveal from '../Reveal.jsx';
 import Segmented from '../Segmented.jsx';
 import StatsBand from './StatsBand.jsx';
-import BlurText from '../BlurText.jsx';
+import Chapter from '../Chapter.jsx';
 
 export default function PackagesSection({ slug, data, loading, scope, onScopeChange }) {
   const packages = data?.packages || [];
@@ -13,16 +13,20 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
   const options = [['all', 'All packages'], ...partnerTypes.map((t) => [t, `${t}s`])];
   const topDiscount = packages.length ? Math.max(...packages.map((p) => p.discount_percent)) : 0;
   const best = packages.length > 1 ? Math.max(...packages.map((p) => p.discount_percent)) : null;
+  // The big featured tile only exists with three or more packages: with
+  // one or two, every card is the same size, so switching tabs never
+  // resizes a card (the old per-tab size flip is what made them twitch).
+  const showLarge = packages.length > 2;
 
   return (
     <section className="section section-alt" id="packages">
       <div className="container">
-        <Reveal className="section-head center">
-          <BlurText className="title-xl" text="Packages built for your business." />
-          {/* The top discount is left to the stats band below and each
-              card's own chip, rather than said a third time here. */}
-          <p className="lede">Curated bundles of our best-selling scents, priced for partners who buy in volume.</p>
-        </Reveal>
+        <Chapter
+          n={1}
+          label="Packages"
+          title="Packages built for your business."
+          lede="Curated bundles of our best-selling scents, priced for partners who buy in volume."
+        />
 
         <Segmented id="packages" label="Filter packages" options={options} value={scope} onChange={onScopeChange} />
 
@@ -33,27 +37,34 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
         )}
 
         {data && packages.length > 0 && (
-          <LayoutGroup>
-            {/* No `layout` here: each PackageCard already carries its own
-                `layout` for popLayout's FLIP reposition. Animating the
-                wrapper too would force a second, redundant measurement
-                pass (grid + every card) on each filter change. */}
-            <motion.div className="pkg-grid" aria-busy={loading}>
-              {/* No initial={false}: the first set of cards has to run its
-                  own scroll-in reveal (see PackageCard) when data lands. */}
-              <AnimatePresence mode="popLayout">
-                {packages.map((pkg, index) => (
+          <AnimatePresence mode="wait" initial={false}>
+            {/* One grid per result set (keyed by the scope the data is for, so
+                it swaps when the new data lands, not on the click). The old set fades out, then the new one
+                mounts and its cards rise in one after another. No card
+                animates its own size or position, so nothing stretches
+                or twitches while the set changes. */}
+            <motion.div
+              key={data.scope || 'all'}
+              className="pkg-grid"
+              data-count={packages.length}
+              aria-busy={loading}
+              exit={{ opacity: 0, transition: { duration: 0.16, ease: 'easeIn' } }}
+            >
+              {packages.map((pkg, index) => {
+                const isBest = best > 0 && pkg.discount_percent === best;
+                return (
                   <PackageCard
                     key={pkg.package_id}
                     slug={slug}
                     pkg={pkg}
                     index={index}
-                    featured={best > 0 && pkg.discount_percent === best}
+                    featured={isBest}
+                    large={isBest && showLarge}
                   />
-                ))}
-              </AnimatePresence>
+                );
+              })}
             </motion.div>
-          </LayoutGroup>
+          </AnimatePresence>
         )}
 
         {data && packages.length === 0 && (

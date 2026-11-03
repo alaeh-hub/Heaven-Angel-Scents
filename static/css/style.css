@@ -4048,7 +4048,7 @@ textarea[aria-invalid="true"] {
   cursor: pointer;
   outline: 2px solid transparent;
   outline-offset: -1px;
-  transition: background-color var(--dur-micro) var(--ease-out);
+  transition: background-color var(--dur-micro) var(--ease-out), opacity 0.2s var(--ease-out);
 }
 
 .cs-select.cs-focus .cs-trigger,
@@ -4070,6 +4070,30 @@ textarea[aria-invalid="true"] {
 
 .cs-trigger-label.cs-placeholder {
   color: var(--ink-faint);
+}
+
+/* A dependent dropdown (Production's Unit, Record Sale's size, ...) gets
+   its label rewritten by script. Fade it in rather than snapping. */
+.cs-trigger-label.cs-label-in {
+  animation: cs-label-in 0.22s var(--ease-out);
+}
+
+@keyframes cs-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-trigger-label.cs-label-in {
+    animation: none;
+  }
 }
 
 .cs-chevron {

@@ -77,7 +77,8 @@ The app is a single Flask application with several route blueprints, a shared da
 | `heaven_angel/services/brand_assets.py` | Shared reportlab-drawn brand mark used in generated PDFs (reports, receipts) |
 | `heaven_angel/services/reports.py` | Financial/operational report building (branch, HQ, partner) and Excel export |
 | `heaven_angel/sockets.py` | Socket.IO room membership and role/branch-scoped realtime event broadcasting |
-| `scripts/seed.py` | Initial/demo data seeding |
+| `scripts/create_admin.py` | Create or reset an Admin/Branch login (dev and server) |
+| `scripts/demo_data.py` | Fake sales history for a local dev database (`--clear` removes it) |
 | `schema.sql` | Full operational database schema, including guarded migrations for existing installs |
 | `heaven_angel/routes/auth.py` | Login, logout, and forced password-change flows |
 | `heaven_angel/routes/admin.py` | HQ operations screens and logic (largest blueprint — catalog, production, partners, users, reports) |
@@ -295,30 +296,12 @@ pip install -r requirements-dev.txt   # pytest + ruff (not in the production ima
 pytest
 ```
 
-On Windows, the optional Docker helper runs the suite against a temporary
-MySQL 8.4 container without using the local database:
-
-```powershell
-powershell -File scripts\run_tests_docker.ps1
-powershell -File scripts\run_tests_docker.ps1 tests\test_csp.py
-```
-
-The public site's product imagery is checked in as optimized WebP layers
-under `static/img/scents/`, with the H1 and A3 hero label textures under
-`static/img/scene/`. To rebuild those assets after changing the product
-renders, install the image-processing dependencies from
-`requirements-dev.txt` and place the full-size source PNGs in
-`assets/scent-renders/{female,male}/` using `<code>_<name>.png` filenames
-(for example, `H1_Uriel.png`). Then run:
-
-```bash
-python scripts/build_scent_images.py
-```
-
-The script regenerates the WebP layers and
-`public-site/src/content/scents.js`. The full-size source renders are
-intentionally excluded by `.gitignore`; the generated WebP assets and
-manifest are committed and are all the running site needs.
+The public site's product imagery is checked in as optimized WebP files
+under `static/img/scents/` (including the `-s` and `-m` thumbnail copies the
+site loads), with the H1 and A3 hero label textures under
+`static/img/scene/`. Commit and deploy those folders with the site; the
+product list lives in `public-site/src/content/scents.js`. The full-size
+source renders in `assets/scent-renders/` are excluded by `.gitignore`.
 
 ---
 

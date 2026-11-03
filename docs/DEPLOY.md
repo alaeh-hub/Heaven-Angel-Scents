@@ -20,7 +20,7 @@ platform uses, the rest applies regardless.
 - A reverse proxy able to terminate TLS and proxy WebSocket upgrades (nginx
   used below)
 - `mysql`/`mysqldump` client binaries on the host (also needed by
-  `scripts/backup_db.sh`, see `BACKUP.md`)
+  taking backups, see `BACKUP.md`)
 
 ## 2. Get the code and install dependencies
 
@@ -48,7 +48,7 @@ cd ..
 Until it's built, the portal URLs answer 503 with a message saying so.
 
 Videos in `static/video/` are gitignored, except the two web-sized clips
-the portal plays (`behind-the-scent.mp4`, `black_background_web.mp4`).
+the portal plays (`craft-perfume.mp4`, `black_background_web.mp4`).
 Copy the rest (`logo_reveal.mp4`, `login_background.mp4`) to the server
 by hand, or the admin intro and login screen play nothing:
 
@@ -113,33 +113,18 @@ since it isn't needed at this app's scale.
 
 ## 5. Bootstrapping the first admin account
 
-`scripts/seed.py` refuses to run at all when `APP_ENV=production` (see its own
-docstring) — it exists for local dev, not for planting known accounts on a
-real database. Its own suggested alternative is "create them through the
-app's own Accounts page instead" — but that page is `admin_required`, which
-means it needs an existing Admin account to sign in as, which is exactly
-what you don't have yet on a brand-new production database.
-
-Insert the very first admin account directly, once, with a real password
-you set yourself (not a temp one to remember to change):
+A brand-new database has no accounts, and the **Accounts** page needs an
+Admin to sign in. Create the first one from the command line, once, with a
+password you choose (typed at a hidden prompt, never stored in shell history):
 
 ```bash
-.venv/bin/python -c "
-from heaven_angel.app import create_app
-from heaven_angel.db import execute
-from werkzeug.security import generate_password_hash
-import getpass
-
-password = getpass.getpass('New admin password: ')
-with create_app().app_context():
-    execute(
-        'INSERT INTO users (username, password_hash, role, branch_id, must_change_password) '
-        'VALUES (%s, %s, %s, %s, %s)',
-        ('admin', generate_password_hash(password), 'Admin', None, False),
-    )
-print('admin account created')
-"
+cd /opt/heaven-and-angel
+.venv/bin/python scripts/create_admin.py
 ```
+
+The same script works on a dev machine. It also takes `--username NAME`,
+`--role Branch --branch "Balayan Branch"` and `--reset-password` (to recover
+a lost password); run it with `--help` to see them all.
 
 Log in as `admin`, then create every other account (branch staff, additional
 admins) through **Accounts** in the UI from here on — this direct-SQL path
@@ -187,9 +172,7 @@ sudo systemctl enable --now heaven-and-angel
 sudo journalctl -u heaven-and-angel -f   # logs — see "Logging" below
 ```
 
-`EnvironmentFile=` reads `.env` directly as `KEY=value` pairs. Unlike
-`scripts/backup_db.sh`/`restore_db.sh` (which parse `.env` by hand
-specifically to avoid this), systemd's own parser takes the rest of each
+`EnvironmentFile=` reads `.env` directly as `KEY=value` pairs. systemd's parser takes the rest of each
 line as the value rather than word-splitting on spaces, so the unquoted
 `AI_CHAT_RATE_LIMIT=15 per minute;150 per day` style `.env.example` already
 uses works fine here too — no reformatting needed.
@@ -242,12 +225,11 @@ repo or the database — a redeploy that recreates the filesystem (a fresh
 container, a new host) loses every uploaded product photo unless this
 directory is on persistent storage (a mounted volume, or excluded from
 whatever "clean checkout" step your deploy process does) and included in
-your backup routine (`scripts/backup_db.sh` already archives it — see
-`BACKUP.md`).
+your backup routine (the `tar` command in `BACKUP.md` archives it).
 
 ## 9. Backups
 
-Set up `scripts/backup_db.sh` on a nightly cron job and copy backups
+Set up the backup commands from `BACKUP.md` on a nightly cron job and copy backups
 off-host — see `BACKUP.md` for the full strategy, retention policy, and how
 to actually test a restore (not optional — do this before you need it for
 real).
@@ -276,10 +258,13 @@ sudo systemctl restart heaven-and-angel
 
 ### Automating this (GitHub Actions)
 
-`.github/workflows/deploy.yml` runs the same steps over SSH, manually
-triggered from the Actions tab ("Run workflow") rather than on every push
-— there's no migration tool or automated rollback behind `schema.sql`, so
-a human still decides when it's safe to redeploy. It needs:
+`.github/workflows/deploy.yml` runs the same steps over SSH. It starts
+automatically when the **CI** workflow finishes green for a push to `main`
+(never for pull requests or failed runs), and can still be started by hand
+from the Actions tab ("Run workflow"). Only one deploy runs at a time. There
+is no migration tool or automated rollback behind `schema.sql`, so if you
+want a person to approve each release, turn on **required reviewers** on the
+`production` environment: the automatic run then waits for that click. It needs:
 
 - A dedicated SSH keypair whose public half is in the deploy user's
   `~/.ssh/authorized_keys` on the server.

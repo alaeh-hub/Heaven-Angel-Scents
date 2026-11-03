@@ -230,7 +230,6 @@
   .section { padding: clamp(52px, 14vw, 72px) 0; }
 
   .nav-sheet a { font-size: 20px; }
-  .hero-caps { font-size: 12.5px; }
   .hero-title { font-size: clamp(27px, 7.4vw, 36px); }
   .hero-copy { gap: 12px; }
   .hero-ctas { gap: 10px 16px; }

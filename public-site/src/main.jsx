@@ -3,10 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { MotionConfig } from 'motion/react';
 import App from './App.jsx';
+import './styles/tailwind.css';
 import './styles/tokens.css';
 import './styles/landing.css';
 import './styles/detail.css';
 import './styles/catalog.css';
+import './styles/skin.css';
+import './styles/atelier.css';
 
 // On a reload the browser's own scroll restoration jumps back to the old
 // scroll position before the videos/marquee/images have re-established
@@ -14,7 +17,7 @@ import './styles/catalog.css';
 // as the page zoomed out until it settles). Start at the top instead.
 // Hover-revealed details hide only once this script is running, so nothing
 // is left invisible if it never does (landing.css scopes them under .js).
-document.documentElement.classList.add('js');
+document.documentElement.classList.add('js', 'dark');
 
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';

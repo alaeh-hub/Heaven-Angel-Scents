@@ -10,7 +10,7 @@ import Gallery from './detail/Gallery.jsx';
 import InquirySheet from './detail/InquirySheet.jsx';
 import { useSite } from './InquiryProvider.jsx';
 import ProductVisual from './ProductVisual.jsx';
-import ScopeIcon, { scopeLabel } from './ScopeIcon.jsx';
+import { scopeLabel } from './ScopeIcon.jsx';
 import { useToast } from './Toasts.jsx';
 
 const arrive = (delay = 0, y = 20) => ({
@@ -190,10 +190,6 @@ export default function PackageDetail({ slug, packageId, inDialog = false, linkS
     <div className="detail" key={pkg.package_id}>
       <div className="container">
         <header className="detail-head">
-          <motion.div className="detail-chips" {...arrive(0, 12)}>
-            <span className="chip chip-gold"><ScopeIcon scope={pkg.partner_scope} size={16} /> {scopeLabel(pkg.partner_scope)}</span>
-            <span className="chip"><PackageIcon size={16} /> {plural(items.length, 'product')}</span>
-          </motion.div>
           <motion.h1 className="title-xl" {...arrive(0.05)}>{pkg.package_name}</motion.h1>
           <motion.p className="lede" {...arrive(0.1)}>{pkg.description || 'A curated set of our fragrances.'}</motion.p>
         </header>

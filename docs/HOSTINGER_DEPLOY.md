@@ -272,27 +272,15 @@ sudo certbot --nginx -d yourdomain.com
 
 ## Step 9 — Bootstrap the first admin account
 
-`scripts/seed.py` refuses to run with `APP_ENV=production`, so insert the first
-admin directly, once:
+Create the first admin from the command line, once. It asks for the
+password at a hidden prompt:
 
 ```bash
 cd /opt/heaven-and-angel
-.venv/bin/python -c "
-from heaven_angel.app import create_app
-from heaven_angel.db import execute
-from werkzeug.security import generate_password_hash
-import getpass
-
-password = getpass.getpass('New admin password: ')
-with create_app().app_context():
-    execute(
-        'INSERT INTO users (username, password_hash, role, branch_id, must_change_password) '
-        'VALUES (%s, %s, %s, %s, %s)',
-        ('admin', generate_password_hash(password), 'Admin', None, False),
-    )
-print('admin account created')
-"
+.venv/bin/python scripts/create_admin.py
 ```
+
+Lost a password later? `.venv/bin/python scripts/create_admin.py --username admin --reset-password`.
 
 Create every other account afterward through **Accounts** in the UI.
 
@@ -341,13 +329,13 @@ from the Actions tab. It needs:
 
 ## Step 11 — Backups and ongoing maintenance
 
-- Put `scripts/backup_db.sh` on a nightly cron job (`crontab -e` as
+- Put the backup commands from `BACKUP.md` on a nightly cron job (`crontab -e` as
   `deploy`), and copy backups **off** the VPS (S3-compatible bucket,
   Backblaze B2, rclone to another remote) — see `BACKUP.md` for the full
   retention strategy and how to test a restore.
 - `static/uploads/` (product photos) lives only on this VPS's disk — make
-  sure it's included in your backup routine (`backup_db.sh` already
-  archives it).
+  sure it's included in your backup routine (the `tar` command in
+  `BACKUP.md` archives it).
 - Logs go to `journalctl -u heaven-and-angel` only — no rotation or
   external error tracking configured; set `SystemMaxUse=` in
   `/etc/systemd/journald.conf` so logs don't grow unbounded, and consider

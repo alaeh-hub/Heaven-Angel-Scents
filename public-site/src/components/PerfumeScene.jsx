@@ -18,7 +18,7 @@ import { SCENE_LABEL } from '../content/scents.js';
 // The timeline is driven from outside (the hero scrubs it with the scroll)
 // and there is no fade, since the hero fades the canvas in. The bottles are
 // the 85 ml white-bottle product: their labels are cut from the product
-// renders into static/img/scene/ by scripts/build_scent_images.py.
+// renders and kept in static/img/scene/.
 //
 // variant="turntable" is the finished pair from
 // prototype/turntable/*.html (one bottle each there, both here): each
@@ -37,8 +37,12 @@ THREE.ColorManagement.enabled = false;
 
 /** Scene time (seconds) of the final frame: both bottles on their platforms. */
 export const SCENE_END = 10;
-/** Scene time up to which the blueprint simply draws itself; the scroll starts the fill-in. */
-export const SCENE_INTRO = 2.2;
+/** Scene time up to which the opening plays at full speed on its own; from there it slows to a stop at SCENE_END, like a camera coming to rest. */
+export const SCENE_INTRO = 8.4;
+/** How much faster than real time the opening plays. */
+const INTRO_SPEED = 1.5;
+/** Real seconds after which the opening is simply finished. */
+const INTRO_DONE_S = 13;
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const sstep = (x) => x * x * (3 - 2 * x);
@@ -96,22 +100,28 @@ const QUALITY = [
   { dpr: 1.5, px: 0.9e6, transmission: 0.5, dof: false },
   { dpr: 1, px: 0.6e6, transmission: 0.5, dof: false },
 ];
+/** Shortest gap (ms) between two rendered frames: a 60 fps ceiling, a hair under 16.7 so a 60 Hz screen never skips one. */
+const MIN_FRAME_MS = 15;
 /** Rendered frames the average needs before it may step down (≈ 1/3 s at 60 Hz). */
 const SLOW_STREAK = 20;
 /** Averages this slow (≈ 20 fps) skip a tier: one step wouldn't be enough. */
 const VERY_SLOW_FRAME_MS = 50;
 
 /**
- * The tier the device has settled on so far, shared by every scene on
+ * Phones and small screens run every scene at the top tier, always: the
+ * same lighting, glass refraction, depth of field and pixel density as a
+ * desktop, and the step-down below never touches them. On a desktop the
+ * scene still protects a weak GPU by stepping down.
+ */
+const holdsTopQuality = () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse), (max-width: 960px)').matches;
+
+/**
+ * The tier a desktop has settled on so far, shared by every scene on
  * the page (the hero's and the notes section's), so the second scene
  * starts where the first one landed instead of re-learning it, with the
  * stutter and the render-target rebuilds that come with each step.
- * Touch devices start two steps down, skipping depth of field (the
- * costly part on a phone's GPU) but keeping the full pixel density, so
- * the bottles stay sharp and every step down taken while the visitor
- * scrolls, a visible hitch, is avoided.
  */
-let sharedTier = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 1 : 0;
+let sharedTier = 0;
 
 /* Turntable timing, exactly as in prototype/turntable/*.html. */
 const SPIN = (Math.PI * 2) / 10; // one full turn every 10 s
@@ -181,8 +191,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   const STREAK = [0.16, 7, [1.3, 0.8, 6.5], [2.2, 2.1, 2.0]];
   const GOLD_R = [0.8, 9, [5.2, 0.6, -1.0], [3.6, 2.1, 0.5]];
   const GOLD_F = [0.22, 8, [4.2, 0.4, 3.8], [3.0, 1.7, 0.45]];
-  const envPink = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [4.2, 0.35, 1.7]], [0.4, 9, [-4, 0.2, 3.5], [2.8, 0.2, 0.9]], [0.5, 9, [0.5, 0.5, -6], [2.5, 0.2, 0.8]], GOLD_R, GOLD_F, TOP, STREAK]);
-  const envCyan = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [0.25, 2.0, 4.2]], [0.4, 9, [-4, 0.2, 3.5], [0.1, 0.9, 2.8]], [0.5, 9, [0.5, 0.5, -6], [0.1, 1.0, 2.6]], GOLD_R, GOLD_F, TOP, STREAK]);
+  const envPink = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [4.2, 1.7, 0.55]], [0.4, 9, [-4, 0.2, 3.5], [2.8, 1.1, 0.4]], [0.5, 9, [0.5, 0.5, -6], [2.5, 1.0, 0.35]], GOLD_R, GOLD_F, TOP, STREAK]);
+  const envCyan = buildEnv([[0.8, 9, [-5.5, 0.6, -1.5], [4.0, 3.0, 1.2]], [0.4, 9, [-4, 0.2, 3.5], [2.6, 2.0, 0.8]], [0.5, 9, [0.5, 0.5, -6], [2.4, 1.9, 0.75]], GOLD_R, GOLD_F, TOP, STREAK]);
   const envStage = buildEnv([[0.7, 9, [-5.5, 0.5, -1.5], [2.4, 0.3, 1.2]], [0.7, 9, [5.5, 0.5, -1.5], [0.2, 1.4, 2.8]], TOP, STREAK]);
   scene.environment = envStage;
   // The white plastic reflects neutral softboxes (the coloured studio
@@ -211,16 +221,17 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
   // body, a wide collar and a taller, narrower cap. Both scents share it.
   const TALL = 1.12; // body stretched up from the render's proportions
   const BOTTLE = { R: 71.5 * S_BLUE, H: 317 * S_BLUE * TALL, collarR: 47 * S_BLUE, collarH: 70 * S_BLUE, capR: 35 * S_BLUE, capH: 88 * S_BLUE };
-  // ...and one label placement, cut from the product render by
-  // scripts/build_scent_images.py (which writes SCENE_LABEL too).
+  // ...and one label placement, cut from the product render
+  // and stored in static/img/scene/.
   const LABEL = {
     l0: BOTTLE.H * SCENE_LABEL.l0,
     l1: BOTTLE.H * SCENE_LABEL.l1,
     // wraps further round as the bottle grows, so the print isn't stretched
     arc: SCENE_LABEL.arc * TALL,
   };
-  const PINK = new THREE.Color(1.0, 0.1, 0.5);
-  const CYAN = new THREE.Color(0.05, 0.8, 1.0);
+  // Uriel glows rose gold, Raphael pale champagne (was neon pink and cyan).
+  const PINK = new THREE.Color(1.0, 0.46, 0.22);
+  const CYAN = new THREE.Color(1.0, 0.82, 0.5);
   const SPEC = {
     red: { ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene/label-h1-uriel.webp'), rim: PINK, env: envPink },
     blue: { ...BOTTLE, ...LABEL, tex: labelTex('/static/img/scene/label-a3-raphael.webp'), rim: CYAN, env: envCyan },
@@ -583,7 +594,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
         uAge: { value: -1 }, uOrigin: { value: new THREE.Vector3() },
         uX: { value: new THREE.Vector3(1, 0, 0) }, uY: { value: new THREE.Vector3(0, 1, 0) }, uZ: { value: new THREE.Vector3(0, 0, 1) },
         uScale: { value: 600 }, uAlpha: { value: alpha }, uLife: { value: life },
-        uColA: { value: new THREE.Color(0.55, 0.95, 1.25) }, uColB: { value: new THREE.Color(1.35, 1.05, 0.6) },
+        uColA: { value: new THREE.Color(1.25, 0.95, 0.55) }, uColB: { value: new THREE.Color(1.35, 1.05, 0.6) },
       },
       vertexShader: `
         attribute vec3 aDir; attribute vec4 aP;
@@ -664,8 +675,8 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     const SPAN = HTOT + REV_EXT;
     const WIRE_H = PPH + HTOT; // world height the draw-on order is measured against
 
-    // cold haze behind the blueprint: a faint blue backlight that blooms when the surface closes
-    const cold = glowPlane(new THREE.Color(0.4, 0.62, 1.0).multiplyScalar(0.5), 5.0, false);
+    // warm haze behind the blueprint: a faint gold backlight that blooms when the surface closes
+    const cold = glowPlane(new THREE.Color(1.0, 0.72, 0.38).multiplyScalar(0.5), 5.0, false);
     cold.position.set(0, 1.3, -2.4);
     noDepth.push(cold);
 
@@ -788,7 +799,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
     const wireUniforms = (rv, col) => ({
       uT: { value: 0 }, uReveal: rv.u, uH: { value: WIRE_H }, uCol: { value: col }, uScale: { value: 600 },
     });
-    const baseCol = new THREE.Color(0.25, 0.7, 1.25);
+    const baseCol = new THREE.Color(1.25, 0.85, 0.4);
     const wires = [];
     function makeWire(rv, tint) {
       const bp = buildBlueprint(rv.x, rv.x < 0 ? -1 : 1);
@@ -1396,7 +1407,8 @@ export default function PerfumeScene({
     // tier the page has already settled on (see sharedTier).
     // The scent turntable is the showpiece: it starts one step above the
     // tier the page settled on (the step-down below still protects weak GPUs).
-    let tier = variant === 'turntable' ? Math.max(0, sharedTier - 1) : sharedTier;
+    const locked = holdsTopQuality(); // phones and small screens never step down
+    let tier = locked ? 0 : variant === 'turntable' ? Math.max(0, sharedTier - 1) : sharedTier;
     let dirty = true;
     const view = buildScene(renderer, () => { dirty = true; }, { variant, tones: tonesRef.current ?? [] });
     // The tier's density, held to its pixel budget for the canvas's size.
@@ -1427,14 +1439,25 @@ export default function PerfumeScene({
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
-    const t0 = performance.now();
+    let t0 = 0; // set on the first frame, so compiling the scene doesn't eat the opening
     const target = () => {
       const p = progressRef.current;
       if (!p) return time;
-      // The blueprint draws itself when the page opens; after that the
-      // scroll fills the surface in and switches the studio on.
-      const intro = Math.min(SCENE_INTRO, (performance.now() - t0) / 1000);
-      return Math.max(intro, lerp(SCENE_INTRO, SCENE_END, clamp(p.get())));
+      // The opening plays by itself when the page loads, all the way to the
+      // final frame, so nothing waits on a scroll; scrolling during it just
+      // carries it on sooner.
+      if (!t0) t0 = performance.now();
+      const sec = (performance.now() - t0) / 1000;
+      let intro = SCENE_END;
+      if (sec < INTRO_DONE_S) {
+        const u = sec * INTRO_SPEED;
+        // Full speed, then an exponential ease-out whose opening speed
+        // matches (so there is no visible change of pace), settling on the
+        // final frame instead of stopping short of it.
+        const run = SCENE_END - SCENE_INTRO;
+        intro = u <= SCENE_INTRO ? u : SCENE_INTRO + run * (1 - Math.exp(-(u - SCENE_INTRO) / run));
+      }
+      return lerp(intro, SCENE_END, clamp(p.get()));
     };
     let current = progressRef.current ? 0 : time;
     let clock = 0; // studio: seconds rendered on screen
@@ -1446,6 +1469,10 @@ export default function PerfumeScene({
 
     const tick = (now) => {
       frame = requestAnimationFrame(tick);
+      // 60 fps is the most this scene needs: its turn and its eases are all
+      // measured in real time, so on a 120 Hz screen skipping every other
+      // frame looks identical and halves the GPU work (and the heat).
+      if (last && now - last < MIN_FRAME_MS) return;
       let dt;
       if (running) {
         // Always moving: advance the clock by the real frame time, so the
@@ -1470,7 +1497,7 @@ export default function PerfumeScene({
       }
       dirty = false;
 
-      if (last && tier < QUALITY.length - 1) {
+      if (!locked && last && tier < QUALITY.length - 1) {
         avg += (dt - avg) * 0.1;
         streak += 1;
         if (streak > SLOW_STREAK && avg > SLOW_FRAME_MS) {

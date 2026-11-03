@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import { peso, plural } from '../../utils.js';
 import AnimatedNumber from '../AnimatedNumber.jsx';
+import Chapter from '../Chapter.jsx';
 import Reveal from '../Reveal.jsx';
 
 const MIN_SETS = 1;
@@ -36,11 +37,10 @@ export default function Earnings({ packages }) {
 
   return (
     <section className="section" id="earnings">
-      <div className="container earn-grid">
+      <div className="container">
+        <Chapter n={2} label="Earnings" title="See what you’d earn." lede="Pick a package and how many sets. Profit is estimated at our regular list price." />
+        <div className="earn-grid">
         <Reveal className="earn-controls">
-          <h2 className="title-xl">See what you&apos;d earn.</h2>
-          <p className="lede">Pick a package and how many sets. Profit is estimated at our regular list price.</p>
-
           <div className="field">
             <label htmlFor={selectId}>Package</label>
             <select
@@ -98,6 +98,7 @@ export default function Earnings({ packages }) {
             Your own selling price may differ.
           </p>
         </Reveal>
+        </div>
       </div>
     </section>
   );

@@ -4,14 +4,14 @@ This app's entire business state — every sale, every stock movement, every
 account — lives in one MySQL database, plus a small amount of local disk
 state (uploaded product photos). Losing the server without a working backup
 means losing the business's records, not just the app. This document is the
-strategy; `scripts/backup_db.sh` / `scripts/restore_db.sh` are the tools.
+strategy; `mysqldump` and `mysql` (below) are the tools.
 
 ## What gets backed up
 
 | What | Where | Backed up by |
 |---|---|---|
-| All application data (branches, users, products, stock, sales, requests, partners, audit logs, ...) | MySQL, `MYSQL_DB` | `mysqldump` (`scripts/backup_db.sh`) |
-| Uploaded product photos | `static/uploads/` | `tar` (`scripts/backup_db.sh`) |
+| All application data (branches, users, products, stock, sales, requests, partners, audit logs, ...) | MySQL, `MYSQL_DB` | `mysqldump` |
+| Uploaded product photos | `static/uploads/` | `tar` |
 | Secrets (`SECRET_KEY`, DB/mail credentials, `PARTNER_PORTAL_SLUG`, ...) | `.env` | **Not** part of the routine backup below — see "Secrets" |
 
 `schema.sql` and the application code itself are already backed up implicitly:
@@ -20,39 +20,43 @@ they're in git.
 ## Taking a backup
 
 ```bash
-./scripts/backup_db.sh
+cd /opt/heaven-and-angel
+mkdir -p backups
+ts=$(date +%Y%m%d_%H%M%S)
+mysqldump -u USER -p --single-transaction --routines --triggers --events   heaven_and_angel_scents | gzip > backups/heaven_and_angel_scents_$ts.sql.gz
+tar -czf backups/uploads_$ts.tar.gz static/uploads
 ```
 
-Dumps the database (`--single-transaction`, so it doesn't lock tables or block
-the live app) and archives `static/uploads/`, both gzip-compressed and
-timestamped, into `./backups/` by default. Reads DB credentials from `.env`
-the same way the app does. Deletes its own local copies older than
-`BACKUP_RETENTION_DAYS` (default 14) — see "Retention" for why that's only
-half the story.
+`--single-transaction` means it doesn't lock tables or block the live app.
+Use the `MYSQL_USER` / `MYSQL_DB` values from `.env`. The first file is the
+database, the second the uploaded product photos. Delete old copies by hand,
+or with `find backups -mtime +14 -delete`.
 
-Env vars it reads: `BACKUP_DIR` (default `./backups`), `BACKUP_RETENTION_DAYS`
-(default `14`), plus the same `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` /
-`MYSQL_PASSWORD` / `MYSQL_DB` the app itself uses.
+Docker Compose deployments already run this daily: the `backup` service
+writes a dump and a photos archive into `./backups` and prunes old ones.
+
+You can also download a backup from inside the app (Settings → Backup); that
+file is capped by email attachment size, so use the commands above for a
+full copy.
 
 ## Schedule
 
-Run it nightly via cron on the production host:
+Run the backup nightly via cron on the production host, for example by saving
+the commands above as a small script of your own and scheduling it:
 
 ```cron
 # 2:00 AM daily
-0 2 * * * cd /path/to/heaven-and-angel && ./scripts/backup_db.sh >> /var/log/heaven-and-angel-backup.log 2>&1
+0 2 * * * /path/to/your-backup-script >> /var/log/heaven-and-angel-backup.log 2>&1
 ```
 
-(On a Windows deployment, the equivalent is a Task Scheduler task running the
-script under Git Bash or WSL on the same schedule.)
+(Docker Compose deployments don't need this; the `backup` service does it.)
 
 ## Retention
 
-`backup_db.sh` only prunes its **local** copies after `BACKUP_RETENTION_DAYS`
-— that bounds disk usage on the server itself, it is not a substitute for
-off-site retention. A reasonable overall policy:
+Pruning local copies only bounds disk usage on the server itself; it is not a
+substitute for off-site retention. A reasonable overall policy:
 
-- Keep every daily backup locally for 14 days (the script's default).
+- Keep every daily backup locally for 14 days.
 - Keep at least one backup per month for a year at the off-site destination
   below, for the rare case a bad state goes unnoticed for weeks.
 
@@ -60,9 +64,9 @@ off-site retention. A reasonable overall policy:
 
 **A backup that only exists on the server it's backing up isn't a backup** —
 it doesn't survive the disk failing, the server being wiped, or the hosting
-account being lost. After `backup_db.sh` runs, copy the new files somewhere
-else entirely. Any of these work; pick one and wire it into the same cron
-job (right after the `backup_db.sh` line):
+account being lost. After a backup runs, copy the new files somewhere
+else entirely. Any of these work; pick one and run it right after the backup
+in the same cron job:
 
 - `rclone copy ./backups remote:heaven-and-angel-backups` (S3, Backblaze B2,
   Google Drive, etc. — whatever `rclone` config you set up)
@@ -84,7 +88,7 @@ where the provider allows it, and the bucket should be encrypted at rest.
 
 ## Secrets
 
-`.env` is **not** included in `backup_db.sh` on purpose — bundling live
+`.env` is **not** included in the backup on purpose — bundling live
 credentials into the same backup files that get copied off-site (and kept
 for a year, per Retention above) widens who and what can end up with them.
 Store `.env`'s contents separately, in whatever secrets manager or password
@@ -94,14 +98,16 @@ credential rotates.
 ## Restoring
 
 ```bash
-./scripts/restore_db.sh backups/heaven_and_angel_scents_20250101_020000.sql.gz --target-db heaven_and_angel_scents_restore_test
+mysql -u USER -p -e "CREATE DATABASE heaven_and_angel_scents_restore_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+gunzip -c backups/heaven_and_angel_scents_20250101_020000.sql.gz | mysql -u USER -p heaven_and_angel_scents_restore_test
 ```
 
-Always restore into `--target-db <some other name>` first — never straight
-over a database an in-use app is currently reading — and confirm the restored
-data looks right (the script prints exactly what to check) before ever
-pointing production at a restored database. Add `--force` to skip the
-confirmation prompt for scripted use.
+Always restore into a database with a different name first, never straight
+over one an in-use app is reading, and check the restored data (log in against
+it, spot-check recent sales) before pointing production at it. To restore for
+real, do the same with the live database name after dropping and recreating
+it, with the app stopped. Photos come back with
+`tar -xzf backups/uploads_<timestamp>.tar.gz`.
 
 ## Testing a restore
 
@@ -109,7 +115,7 @@ A backup nobody has ever restored is a guess, not a plan. Quarterly (put it
 on a calendar, it will not happen otherwise):
 
 1. Pick a recent backup file.
-2. `./scripts/restore_db.sh <file> --target-db heaven_and_angel_scents_restore_test`
+2. Restore it into `heaven_and_angel_scents_restore_test` (commands above).
 3. Point a throwaway app instance at it (`MYSQL_DB=heaven_and_angel_scents_restore_test`)
    and actually log in, check the dashboard, spot-check a few recent sales.
 4. Drop the throwaway database.
@@ -140,7 +146,7 @@ that is blank):
 It is a consistent snapshot (one REPEATABLE READ transaction) and does not
 block the live app. If the zip would exceed `BACKUP_EMAIL_MAX_MB` (default 18)
 the photos, then the CSVs, are dropped; if `database.sql` alone is too big, use
-`scripts/backup_db.sh` instead. Each attempt is recorded in the Admin Log.
+the `mysqldump` command in this document instead. Each attempt is recorded in the Admin Log.
 
 The zip contains customer details and password hashes and is **not
 encrypted** - treat that mailbox accordingly. This does not replace the
@@ -156,8 +162,8 @@ the backup is dropped and recreated with the backup's data, and the product
 photos are copied back. Everyone is held on a "restore in progress" page
 while it runs, and you are signed out at the end (your account is whatever
 the backup says it was). Tables that exist now but not in the backup are
-left alone. Backups made by `scripts/backup_db.sh` (mysqldump `.sql.gz`) are
-not accepted here - restore those with `scripts/restore_db.sh`.
+left alone. Backups made with `mysqldump` (`.sql.gz`) are
+not accepted here - restore those with `gunzip -c file.sql.gz | mysql ...` as shown above.
 
 ### Reminders and automatic backups (Settings -> Backup)
 

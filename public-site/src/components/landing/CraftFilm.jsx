@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { PauseIcon, PlayIcon, SpeakerHighIcon, SpeakerSlashIcon } from '@phosphor-icons/react';
 import { useNarrow } from '../../hooks/useNarrow.js';
-import Reveal from '../Reveal.jsx';
+import Chapter from '../Chapter.jsx';
 
 /**
  * The behind-the-scenes film. On desktop the frame grows to full width
@@ -40,17 +40,12 @@ export default function CraftFilm() {
   return (
     <section className="section section-video" id="craft">
       <div className="container">
-        <Reveal className="craft-head">
-          <h2 className="title-xl">Made in small runs, from blending to bottling.</h2>
-          <p className="lede">
-            That keeps quality consistent across every package you order.
-          </p>
-        </Reveal>
+        <Chapter className="chapter-long" label="Craft" title="Made in small runs, from blending to bottling." lede="That keeps quality consistent across every package you order." />
 
         <motion.div className="craft-frame" ref={frameRef} style={reduce || narrow ? undefined : { scale }}>
           <video
             ref={videoRef}
-            src="/static/video/behind-the-scent.mp4"
+            src="/static/video/craft-perfume.mp4"
             muted
             loop
             playsInline

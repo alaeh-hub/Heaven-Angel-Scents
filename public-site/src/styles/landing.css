@@ -4,8 +4,7 @@
   position: relative;
   z-index: 1;
   padding: clamp(80px, 11vw, 150px) 0;
-  /* Solid by default so the fixed backdrop videos only ever show through
-     the sections meant to carry them (.section-video). */
+  /* Solid by default; only .section-video lets the scenery through. */
   background: var(--bg);
 }
 
@@ -15,52 +14,6 @@
 
 .section-video {
   background: transparent;
-}
-
-/* ===================================================== backdrop videos */
-
-.backdrop-video {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.backdrop-video video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-.backdrop-video video.is-active {
-  opacity: 1;
-}
-
-/* A thin wash of the page color keeps text over the motion easy to read. */
-.backdrop-video-veil {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--bg) 50%, transparent);
-}
-
-/* Some clips are near-white (pixel values ~160-255); on the dark page
-   they're inverted into dark-grey motion instead of flashing white.
-   Inverted they only span ~0-35, so they're lifted back up to stay
-   visible against the near-black page. Don't add contrast() here: it
-   pivots on mid-grey and crushes these dark values to pure black.
-   A clip that's already dark opts out via .backdrop-video-raw (see
-   BackdropVideo's `invert` prop): inverting it would flash it white. */
-.backdrop-video:not(.backdrop-video-raw) video {
-  filter: invert(1) brightness(1.8);
-}
-
-.backdrop-video-veil {
-  background: color-mix(in srgb, var(--bg) 30%, transparent);
 }
 
 .section-head {
@@ -247,18 +200,6 @@
   background: linear-gradient(var(--stage), var(--bg-alt));
 }
 
-.hero-caps {
-  position: absolute;
-  top: calc(var(--nav-h) + 20px);
-  left: 0;
-  right: 0;
-  z-index: 3;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink-2);
-}
-
 /* The glass scene: a square canvas as tall as the screen allows. Its
    own background is pure black, so the stage matches it; a vignette
    and soft edge fades (the scene's coloured haze reaches the square's
@@ -396,11 +337,6 @@
 
   .hero-scene {
     width: min(100%, calc(100svh - var(--nav-h) - 32px));
-  }
-
-  /* The wrap is in flow here, so the eyebrow sits at the scene's top. */
-  .hero-caps {
-    top: 4px;
   }
 
   /* On phones the copy simply follows the scene, in flow. */

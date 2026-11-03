@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ChatsCircleIcon, EnvelopeSimpleIcon, MessengerLogoIcon, PhoneIcon } from '@phosphor-icons/react';
 import { useSite } from '../InquiryProvider.jsx';
 import BlurText from '../BlurText.jsx';
+import { AnimatedRays } from '@/components/ui/animated-rays';
 import Reveal from '../Reveal.jsx';
 
 /** Viber deep link for a number stored with its country code. */
@@ -27,6 +28,7 @@ export default function ClosingCta() {
     <section className="section closing" id="contact">
       <div className="container">
         <Reveal className={`closing-panel${channels.length ? '' : ' closing-panel-solo'}`}>
+          <AnimatedRays className="rays" />
           <div className="closing-copy">
             <BlurText className="title-xl" text="Ready to stock our scents?" />
             <p className="lede">

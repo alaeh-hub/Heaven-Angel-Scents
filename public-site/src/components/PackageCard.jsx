@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowRightIcon, PackageIcon, SparkleIcon } from '@phosphor-icons/react';
 import { ARRIVE, EASE_OUT, SPRING } from '../motion.js';
 import { packagePath, peso, percent, plural } from '../utils.js';
+import { AnimatedRays } from '@/components/ui/animated-rays';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import ProductVisual from './ProductVisual.jsx';
 import { scopeLabel } from './ScopeIcon.jsx';
@@ -20,10 +21,12 @@ import { scopeLabel } from './ScopeIcon.jsx';
  * line strikes through the list price, then the partner price counts
  * down to its value from that list price.
  *
- * `layout` lets cards glide to their new spots when the filter changes;
- * forwardRef is required for AnimatePresence's popLayout mode.
+ * Cards never animate their own size or position (a layout animation
+ * stretched the button inside them when the filter changed); the set
+ * swaps as a whole, see PackagesSection. `large` is the big featured
+ * tile (three or more packages), `featured` the best-value tag.
  */
-const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured }, ref) {
+const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured, large }, ref) {
   const location = useLocation();
   const navigate = useNavigate();
   const profit = pkg.reference_total - pkg.discounted_total;
@@ -43,15 +46,14 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
   return (
     <motion.article
       ref={ref}
-      layout
-      className={`pkg-card glow-card${featured ? ' pkg-card-featured' : ''}`}
+      className={`pkg-card glow-card${large ? ' pkg-card-featured' : ''}`}
       initial={{ opacity: 0, y: 32 }}
       whileInView={{ opacity: 1, y: 0, transition: { ...ARRIVE, delay: index * 0.06 } }}
       viewport={{ once: true, amount: 0.2 }}
-      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.2 } }}
       whileHover={{ y: -6, transition: SPRING }}
       transition={SPRING}
     >
+      {large && <AnimatedRays className="rays" />}
       <div className="pkg-card-top">
         {pkg.previews?.length > 0 && (
           <span className="pkg-bottles" aria-hidden="true">

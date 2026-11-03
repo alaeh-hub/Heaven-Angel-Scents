@@ -1,0 +1,133 @@
+/* Library layer: the CSS the shadcn-registry components expect but do not
+   ship (Vengeance UI flip-text, logo-slider, animated-rays; a nav
+   spotlight in the Vengeance spotlight-navbar style), plus the scent
+   rail and closing-band restyle. Brand tokens only, see tokens.css. */
+
+/* ---------- Flip text ---------- */
+.flip-char {
+  animation: flip-char var(--flip-duration, 2.2s) cubic-bezier(0.4, 0, 0.2, 1) var(--flip-delay, 0s) var(--flip-iteration, infinite) both;
+  animation-play-state: paused;
+}
+.flip-in-view .flip-char { animation-play-state: running; }
+@keyframes flip-char {
+  0%, 55% { transform: rotateX(0deg); }
+  80%, 100% { transform: rotateX(360deg); }
+}
+
+/* ---------- Logo slider (per-item marquee) ---------- */
+.logo-slider { --w: 168px; }
+.logo-slider__container { height: var(--rail-h, 132px); }
+.logo-slider__track { position: relative; height: 100%; }
+.logo-slider__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--w);
+  height: 100%;
+  animation: logo-slide calc(var(--speed) * 1s) linear infinite;
+  animation-delay: calc(var(--item-index) / var(--count) * var(--speed) * -1s);
+  will-change: transform;
+}
+.logo-slider__container[data-direction="right"] .logo-slider__item { animation-direction: reverse; }
+.logo-slider__container[data-pause-on-hover="true"]:hover .logo-slider__item { animation-play-state: paused; }
+@keyframes logo-slide {
+  from { transform: translateX(calc(var(--count) * var(--w))); }
+  to { transform: translateX(calc(var(--w) * -1)); }
+}
+/* Progressive edge blur: each layer blurs a little more, closer to the edge. */
+.logo-slider__blur > div {
+  backdrop-filter: blur(calc(var(--blur-index) * 0.6px * var(--blur)));
+  -webkit-backdrop-filter: blur(calc(var(--blur-index) * 0.6px * var(--blur)));
+  --a: calc(var(--blur-index) / var(--blurs) * 100%);
+  --b: calc((var(--blur-index) + 1) / var(--blurs) * 100%);
+  mask-image: linear-gradient(to right, transparent var(--a), #000 var(--b), transparent calc(var(--b) + 12%));
+  -webkit-mask-image: linear-gradient(to right, transparent var(--a), #000 var(--b), transparent calc(var(--b) + 12%));
+}
+
+/* ---------- Scent rail (between the hero and the packages) ---------- */
+.scent-rail {
+  position: relative;
+  z-index: 1;
+  padding: clamp(40px, 6vw, 72px) 0 clamp(24px, 4vw, 40px);
+  background: var(--bg);
+  border-block: 1px solid var(--hairline);
+}
+.scent-rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: clamp(16px, 3vw, 28px);
+}
+.scent-rail-title {
+  font-size: clamp(24px, 3.6vw, 44px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.scent-rail-count { color: var(--ink-3); font-size: 15px; }
+.scent-chip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding-right: 16px;
+}
+.scent-chip img {
+  height: 100px;
+  width: auto;
+  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 0.55));
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.scent-chip:hover img { transform: translateY(-6px) scale(1.06); }
+.scent-chip-code {
+  display: block;
+  font-size: 12px;
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+}
+.scent-chip-name { display: block; font-size: 15px; font-weight: 500; color: var(--ink); line-height: 1.2; }
+
+/* ---------- Nav spotlight: a soft gold light follows the pointer ---------- */
+.nav-links { position: relative; --spot-x: 50%; }
+.nav-links::after {
+  content: '';
+  position: absolute;
+  inset: -6px -10px;
+  z-index: -3;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(120px circle at var(--spot-x) 100%, color-mix(in srgb, var(--gold) 26%, transparent), transparent 70%);
+}
+.nav-links:hover::after { opacity: 1; }
+
+/* ---------- Animated rays (closing band) ---------- */
+.closing-panel { position: relative; overflow: hidden; isolation: isolate; }
+.closing-panel > .rays { position: absolute; inset: 0; z-index: -1; opacity: 0.55; pointer-events: none; }
+@keyframes aurora-bg {
+  from { background-position: 50% 50%, 50% 50%; }
+  to { background-position: 350% 50%, 350% 50%; }
+}
+.animate-aurora-bg { animation: aurora-bg 60s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-char, .animate-aurora-bg { animation: none; }
+  .logo-slider__item { animation-duration: calc(var(--speed) * 4s); }
+  .scent-chip img { transition: none; }
+}
+
+/* animated-rays reads this; the site is always dark. */
+:root { --stripe-color: #070708; }
+
+/* Per-letter inline-blocks drop kerning; pull them back together. */
+
+/* Words must never split mid-word: a flex word keeps its letters on one line. */
+.flip-text-wrapper { display: block; }
+.flip-text-wrapper .word { display: inline-flex; }
+
+
+/* The rays only drift while on screen (see animated-rays.tsx). */
+.animate-aurora-bg[data-paused="true"] { animation-play-state: paused; }

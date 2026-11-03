@@ -1,0 +1,7 @@
+/* Tailwind for the registry components only: theme + utilities, no
+   preflight, so the hand-written landing/detail/catalog CSS keeps
+   its own reset. Utilities sit in a layer; unlayered site CSS wins. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@custom-variant dark (&:where(.dark, .dark *));

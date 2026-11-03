@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRightIcon, PlusIcon } from '@phosphor-icons/react';
 import { useSite } from '../InquiryProvider.jsx';
 import { EASE_OUT, SPRING } from '../../motion.js';
+import Chapter from '../Chapter.jsx';
 import Reveal from '../Reveal.jsx';
 
 const FAQS = [
@@ -62,10 +63,7 @@ export default function Faq() {
   return (
     <section className="section section-alt" id="faq">
       <div className="container faq-inner">
-        <Reveal className="section-head">
-          <h2 className="title-xl">Questions, answered.</h2>
-          <p className="lede">The questions partners ask most, before that first inquiry.</p>
-        </Reveal>
+        <Chapter n={6} label="Questions" title="Questions, answered." lede="The questions partners ask most, before that first inquiry." />
         <Reveal className="faq-list" amount={0.15}>
           {FAQS.map(([question, answer], i) => (
             <FaqItem

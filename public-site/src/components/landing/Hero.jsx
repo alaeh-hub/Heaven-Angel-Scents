@@ -60,14 +60,15 @@ function WipeWord({ progress, from, to, children }) {
  * beside the scene rather than after it, so a partner opening a shared
  * link knows what the page is before they scroll at all.
  *
- * The scene is what the scroll plays. On desktop the hero pins for a
+ * The scene plays itself on load, start to finish (the blueprint draws, the
+ * surface fills in, the platforms light, the camera eases to rest), so
+ * nothing waits on a scroll; scrolling during it only carries it on sooner. On desktop the hero pins for a
  * little over half an extra screen (160vh, see .hero-pin) and scrubs it
  * like a film strip:
  *   on load    golden angel wings unfurl under a halo (PerfumeScene)
  *   0.00-0.85  the wings beat and dissolve into streams of light that
  *              build Uriel H1 and Raphael A3, while the halo splits into
  *              the rings of their two lit platforms
- *   0.03-0.08  the brand line over the scene fades away
  *   0.60-0.95  a gold glow rises from below
  * On phones the hero doesn't pin (see .hero-pin): the scene sits above
  * the copy in one normal column and plays by itself over AUTOPLAY_S
@@ -112,9 +113,6 @@ function HeroPinned() {
     return () => run.stop();
   }, [intro]);
 
-  const capsOut = useSpan(p, 0.03, 0.08);
-  const caps = useTransform(capsOut, (v) => 1 - v);
-
   const ledeWipe = useWipe(useSpan(intro, 0.45, 0.75));
   const ctaWipe = useWipe(useSpan(intro, 0.65, 1));
   const glow = useSpan(p, 0.6, 0.95);
@@ -131,20 +129,10 @@ function HeroPinned() {
         {!narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
         {/* Scoped to the scene's own box (not the whole stage), so on
             phones, where the stage grows taller than one screen to fit
-            the copy below, the glow and brand line stay pinned to the
+            the copy below, the glow stays pinned to the
             scene instead of stretching down the whole section. */}
         <div className="hero-scene-wrap">
           {narrow && <motion.div className="hero-glow-rise" style={{ opacity: glow }} aria-hidden="true" />}
-
-          {/* Outer fades in on load; inner fades out with the scroll. */}
-          <motion.div
-            className="hero-caps"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ ...ARRIVE, delay: 0.3 }}
-          >
-            <motion.p style={{ opacity: caps }}>Heaven &amp; Angel Scents</motion.p>
-          </motion.div>
 
           <motion.div
             className="hero-scene"

@@ -7,9 +7,9 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: var(--scrim);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* Plain dimming: a blur that animates with the scrim's opacity has to be
+     recomputed every frame, which made the opening stutter. */
+  background: rgb(0 0 0 / 0.72);
 }
 
 .sheet {
@@ -58,10 +58,86 @@
   background: var(--hairline-strong);
 }
 
+.sheet-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .sheet-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The browser's scrollbar is hidden here; CustomScrollbar draws ours. */
+  scrollbar-width: none;
+}
+
+.sheet-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- the dialog's own scrollbar ---- */
+.cscroll {
+  position: absolute;
+  top: 10px;
+  right: 4px;
+  bottom: 10px;
+  width: 16px;
+  z-index: 3;
+  cursor: default;
+  transition: opacity 0.3s ease;
+}
+
+.cscroll.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cscroll-thumb {
+  position: absolute;
+  top: 0;
+  right: 5px;
+  width: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold) 38%, rgb(255 255 255 / 0.1));
+  opacity: 0.55;
+  cursor: grab;
+  touch-action: none;
+  transition: width 0.2s var(--ease-out), right 0.2s var(--ease-out), background-color 0.2s ease, opacity 0.3s ease;
+}
+
+.cscroll.is-awake .cscroll-thumb,
+.cscroll:hover .cscroll-thumb {
+  opacity: 1;
+  background: color-mix(in srgb, var(--gold) 80%, transparent);
+}
+
+.cscroll:hover .cscroll-thumb,
+.cscroll.is-dragging .cscroll-thumb {
+  width: 8px;
+  right: 4px;
+}
+
+.cscroll.is-dragging .cscroll-thumb {
+  cursor: grabbing;
+  background: var(--gold);
+}
+
+/* Touch keeps its momentum scrolling; the thumb is just an indicator. */
+@media (pointer: coarse) {
+  .cscroll {
+    pointer-events: none;
+    width: 10px;
+    right: 2px;
+  }
+
+  .cscroll-thumb {
+    width: 3px;
+    right: 3px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -118,12 +194,6 @@
   gap: 16px;
   margin-bottom: clamp(28px, 4vw, 44px);
   max-width: 820px;
-}
-
-.detail-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .detail-grid {

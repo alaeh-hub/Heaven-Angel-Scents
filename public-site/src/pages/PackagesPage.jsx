@@ -4,7 +4,6 @@ import { fetchPackages } from '../api.js';
 import { FOOTER } from '../content/footer.js';
 import Footer from '../components/Footer.jsx';
 import About from '../components/landing/About.jsx';
-import BackdropVideo from '../components/landing/BackdropVideo.jsx';
 import Collection from '../components/landing/Collection.jsx';
 import ClosingCta from '../components/landing/ClosingCta.jsx';
 import CraftFilm from '../components/landing/CraftFilm.jsx';
@@ -14,15 +13,10 @@ import Hero from '../components/landing/Hero.jsx';
 import Nav from '../components/landing/Nav.jsx';
 import OnlineShops from '../components/landing/OnlineShops.jsx';
 import PackagesSection from '../components/landing/PackagesSection.jsx';
+import ScentRail from '../components/landing/ScentRail.jsx';
 import ScentJourney from '../components/landing/ScentJourney.jsx';
 import Steps from '../components/landing/Steps.jsx';
 import { useToast } from '../components/Toasts.jsx';
-
-// Sections that show the fixed backdrop clip through a transparent
-// background (.section-video). About and the film sit back to back, so
-// they share it. The collection has its own interactive dot grid
-// instead (DotField, in Collection.jsx).
-const ABOUT_BACKDROP = ['about', 'craft'];
 
 export default function PackagesPage() {
   const { slug } = useParams();
@@ -73,7 +67,6 @@ export default function PackagesPage() {
 
   return (
     <div className="page">
-      <BackdropVideo src="/static/video/backdrop-lite.mp4" sectionIds={ABOUT_BACKDROP} invert={false} speed={0.7} />
       <Nav
         hiddenIds={[
           ...(earningOptions(data?.packages || []).length ? [] : ['earnings']),
@@ -82,6 +75,7 @@ export default function PackagesPage() {
       />
       <main>
         <Hero />
+        <ScentRail />
         {/* What a partner comes for leads: the packages, what they'd
             earn on them, and what happens after "Inquire". Visitors who
             already know what they want get a direct marketplace exit
@@ -90,8 +84,10 @@ export default function PackagesPage() {
         <Earnings packages={data?.packages || []} />
         <OnlineShops />
         <Steps />
-        <About />
-        <CraftFilm />
+        <div className="house">
+          <About />
+          <CraftFilm />
+        </div>
         <Collection />
         <ScentJourney />
         <Faq />

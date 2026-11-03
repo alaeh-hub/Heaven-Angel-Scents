@@ -690,7 +690,9 @@
     }
 
     input.addEventListener('input', function () {
-      hidden.value = '';
+      // Editing the name after a pick un-picks it, so the Unit list for
+      // the old product goes back to its placeholder (once, not per key).
+      if (hidden.value) { hidden.value = ''; populateUnits(''); }
       renderMenu(input.value);
     });
 

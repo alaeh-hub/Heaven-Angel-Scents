@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
 
 // Flask stays the backend: in dev (`npm run dev`, port 5173) the JSON
 // API and the shared /static assets (style.css, images, videos,
@@ -12,7 +14,12 @@ import react from '@vitejs/plugin-react';
 const FLASK = process.env.FLASK_URL || 'http://127.0.0.1:5000';
 
 export default defineConfig(({ command }) => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   // Only the build lives under Flask's /static; the dev server serves
   // from / so its own /static proxy below doesn't collide with it.
   base: command === 'build' ? '/static/public-site/' : '/',

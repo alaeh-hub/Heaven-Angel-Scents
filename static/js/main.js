@@ -3093,7 +3093,18 @@ function enhanceSelect(select) {
     function syncTrigger() {
         const opt = select.options[select.selectedIndex];
         const text = opt ? opt.textContent.trim() : '';
-        labelEl.textContent = text || ' ';
+        const nextText = text || ' ';
+        const changed = labelEl.textContent !== nextText;
+        if (changed) labelEl.textContent = nextText;
+        // A dependent dropdown filled in by script used to snap from the dim
+        // placeholder to the value in one frame, which read as a twitch.
+        // Fade the new text in instead (not on first fill, not on a no-op).
+        if (changed && labelEl.dataset.csReady === '1') {
+            labelEl.classList.remove('cs-label-in');
+            void labelEl.offsetWidth;
+            labelEl.classList.add('cs-label-in');
+        }
+        labelEl.dataset.csReady = '1';
         labelEl.classList.toggle('cs-placeholder', !!opt && select.selectedIndex === 0 && opt.value === '');
         // Tone dot on the trigger itself, and the tone on the wrapper so
         // the variant's CSS can tint the whole pill.
@@ -3807,7 +3818,10 @@ function openOverlay(overlay) {
     // erroring, which is what actually happened here originally.
     window.anime.animate(overlay, { opacity: [0, 1], duration: 160, ease: 'outQuad' });
     if (panel) {
-        window.anime.animate(panel, { opacity: [0, 1], scale: [0.94, 1], duration: 220, ease: 'outBack' });
+        // Rises into place with a soft ease-out, the same motion as the
+        // public site's package dialog. The old scale-with-overshoot
+        // ('outBack') made the panel pop and settle.
+        window.anime.animate(panel, { opacity: [0, 1], translateY: [24, 0], duration: 360, ease: 'outCubic' });
     }
 }
 
@@ -3818,7 +3832,7 @@ function closeOverlay(overlay) {
         const panel = overlay.querySelector('.card, .pi-modal');
         window.anime.animate(overlay, { opacity: [1, 0], duration: OVERLAY_EXIT_MS, ease: 'inQuad' });
         if (panel) {
-            window.anime.animate(panel, { opacity: [1, 0], scale: [1, 0.94], duration: OVERLAY_EXIT_MS, ease: 'inQuad' });
+            window.anime.animate(panel, { opacity: [1, 0], translateY: [0, 10], duration: OVERLAY_EXIT_MS, ease: 'inQuad' });
         }
         setTimeout(() => { overlay.style.display = 'none'; }, OVERLAY_EXIT_MS);
     } else {

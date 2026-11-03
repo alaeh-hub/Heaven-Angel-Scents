@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ArrowLeftIcon, DropIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { useSite } from '../components/InquiryProvider.jsx';
-import { fetchProducts } from '../api.js';
+import { SCENTS } from '../content/scents.js';
+import { ScentTile, SHELF_VARS } from '../components/landing/Collection.jsx';
 import Pagination from '../components/catalog/Pagination.jsx';
-import ProductCard from '../components/catalog/ProductCard.jsx';
+import Chapter from '../components/Chapter.jsx';
 import Footer from '../components/Footer.jsx';
-import Reveal from '../components/Reveal.jsx';
 import Segmented from '../components/Segmented.jsx';
-import { useToast } from '../components/Toasts.jsx';
 import { ARRIVE, EASE_OUT } from '../motion.js';
 import { packagesPath } from '../utils.js';
 
@@ -41,33 +40,34 @@ export default function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const gender = searchParams.get('gender') || 'all';
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const showToast = useToast();
   const reduce = useReducedMotion();
   const gridTopRef = useRef(null);
   const { openInquiry } = useSite();
 
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // The catalog is the same list the home page's collection shows (see
+  // content/scents.js), not the inventory table: those renders are the
+  // real product. Women's and men's alternate so the labels trade places.
+  const list = useMemo(() => {
+    const her = SCENTS.filter((x) => x.variant === 'Female');
+    const him = SCENTS.filter((x) => x.variant === 'Male');
+    if (gender === 'Female') return her;
+    if (gender === 'Male') return him;
+    const out = [];
+    for (let i = 0; i < Math.max(her.length, him.length); i += 1) {
+      if (her[i]) out.push(her[i]);
+      if (him[i]) out.push(him[i]);
+    }
+    return out;
+  }, [gender]);
+  const counts = useMemo(() => ({
+    all: SCENTS.length,
+    Male: SCENTS.filter((x) => x.variant === 'Male').length,
+    Female: SCENTS.filter((x) => x.variant === 'Female').length,
+  }), []);
 
   useEffect(() => {
     document.title = 'The collection · Heaven & Angel Scents';
   }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    fetchProducts(slug, { gender, page }, controller.signal)
-      .then((result) => {
-        setData(result);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        showToast(err.message, 'error');
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [slug, gender, page, showToast]);
 
   const go = (next) => {
     const params = {};
@@ -79,11 +79,13 @@ export default function ProductsPage() {
     if (top < 0) gridTopRef.current.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   };
 
-  const counts = data?.counts;
-  const options = GENDERS.map(([key, label]) => [key, label, counts ? counts[key] : undefined]);
-  const products = data?.products || [];
-  const first = data && data.total ? (data.page - 1) * data.per_page + 1 : 0;
-  const last = data ? first + products.length - 1 : 0;
+  const perPage = 12;
+  const pages = Math.max(1, Math.ceil(list.length / perPage));
+  const current = Math.min(page, pages);
+  const products = list.slice((current - 1) * perPage, current * perPage);
+  const options = GENDERS.map(([key, label]) => [key, label, counts[key]]);
+  const first = list.length ? (current - 1) * perPage + 1 : 0;
+  const last = first + products.length - 1;
 
   return (
     <div className="page">
@@ -101,10 +103,7 @@ export default function ProductsPage() {
       <Footer>
         <main className="catalog">
           <div className="container">
-            <Reveal className="section-head center catalog-head">
-              <h1 className="title-xl">The collection.</h1>
-              <p className="lede">Every scent we make, in one place. Ask about any of them, or pick a ready-made package.</p>
-            </Reveal>
+            <Chapter label="The full range" title="The collection." lede="Every scent we make, in one place. Ask about any of them, or pick a ready-made package." />
 
             <div ref={gridTopRef} className="catalog-anchor" />
             <Segmented
@@ -115,51 +114,38 @@ export default function ProductsPage() {
               onChange={(g) => go({ gender: g, page: 1 })}
             />
 
-            {!data && loading && (
-              <div className="catalog-grid" aria-busy="true" aria-label="Loading products">
-                {Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton catalog-skeleton" />)}
-              </div>
-            )}
-
-            {data && products.length === 0 && (
-              <motion.div className="empty" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-                <DropIcon size={36} weight="duotone" />
-                <h3 className="title-lg" style={{ fontSize: 24 }}>No scents here yet.</h3>
-                <p>Nothing in the catalog matches this filter right now. Try another one.</p>
-              </motion.div>
-            )}
-
-            {data && products.length > 0 && (
-              <>
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={`${data.gender}-${data.page}`}
-                    className="catalog-grid"
-                    variants={grid}
-                    initial="enter"
-                    animate="show"
-                    exit="leave"
-                    aria-busy={loading}
-                  >
-                    {products.map((product) => (
-                      <motion.div key={`${product.item_name}-${product.variant}`} variants={cell}>
-                        <ProductCard
-                          product={product}
-                          onAsk={() => openInquiry({ message: `I'm interested in ${product.item_name} (${product.variant}).` })}
-                        />
-                      </motion.div>
-                    ))}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${gender}-${current}`}
+                className="catalog-grid"
+                variants={grid}
+                initial="enter"
+                animate="show"
+                exit="leave"
+              >
+                {products.map((scent, i) => (
+                  <motion.div key={scent.code} className="catalog-item" variants={cell}>
+                    <div className="catalog-tile" style={SHELF_VARS}>
+                      <ScentTile scent={scent} eager={i < 4} nearby={i < 8} />
+                    </div>
+                    <button
+                      type="button"
+                      className="product-card-ask"
+                      onClick={() => openInquiry({ message: `I'm interested in ${scent.name} (${scent.variant}).` })}
+                    >
+                      Ask about this scent
+                    </button>
                   </motion.div>
-                </AnimatePresence>
+                ))}
+              </motion.div>
+            </AnimatePresence>
 
-                <div className="catalog-foot">
-                  <p className="muted">
-                    Showing {first}-{last} of {data.total} {data.total === 1 ? 'scent' : 'scents'}
-                  </p>
-                  <Pagination page={data.page} pages={data.pages} onChange={(p) => go({ gender, page: p })} />
-                </div>
-              </>
-            )}
+            <div className="catalog-foot">
+              <p className="muted">
+                Showing {first}-{last} of {list.length} scents
+              </p>
+              <Pagination page={current} pages={pages} onChange={(p) => go({ gender, page: p })} />
+            </div>
           </div>
         </main>
       </Footer>
