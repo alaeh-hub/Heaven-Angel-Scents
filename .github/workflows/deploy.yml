@@ -1,12 +1,23 @@
 name: Deploy
 
+# Deploys to the VPS over SSH (git pull, dependencies, public-site build,
+# schema.sql, systemd restart). The server runs under systemd + nginx, not
+# Docker; see docs/DEPLOY.md section 11.
+#
+# Optional repository/environment VARIABLES (Settings -> Environments ->
+# production -> Variables). Each has a default that matches the server layout:
+#   DEPLOY_PATH        app folder on the server       (/var/www/heavenandangels)
+#   DEPLOY_SERVICE     systemd unit name              (heavenandangels)
+#   DEPLOY_HEALTH_URL  checked on the server after the restart
+#                                                      (http://127.0.0.1:5000/healthz)
+
 on:
   # Automatic: every time CI finishes green for a push to main.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-  # Manual: still available from the Actions tab (re-deploy, rollback to a commit).
+  # Manual: still available from the Actions tab (re-deploy, roll back to a commit).
   workflow_dispatch:
 
 # One deploy at a time; a newer push waits for the running one instead of
@@ -30,6 +41,9 @@ jobs:
       # The commit CI actually tested. For workflow_run, github.sha is just the
       # newest commit on main, which may not be the one that passed.
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/heavenandangels' }}
+      DEPLOY_SERVICE: ${{ vars.DEPLOY_SERVICE || 'heavenandangels' }}
+      DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1:5000/healthz' }}
     permissions:
       contents: read
       actions: read
@@ -40,7 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          result="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml             --commit "$DEPLOY_SHA" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
+          result="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml --commit "$DEPLOY_SHA" --json conclusion --jq '[.[] | select(.conclusion == "success")] | length')"
           if [ "${result:-0}" -lt 1 ]; then
             echo "No successful CI run found for $DEPLOY_SHA; refusing to deploy." >&2
             exit 1
@@ -52,7 +66,7 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           # Pinned host key (secret DEPLOY_KNOWN_HOSTS = output of
-          # `ssh-keyscan -p PORT HOST` taken once from a trusted network).
+          # `ssh-keyscan -p PORT -H HOST` taken once from a trusted network).
           # Required: trust-on-first-use would let a MITM on the first run
           # capture the deploy session.
           if [ -z "${{ secrets.DEPLOY_KNOWN_HOSTS }}" ]; then
@@ -61,37 +75,56 @@ jobs:
           fi
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      # Docker deploy, see docs/DOCKER_DEPLOY.md section 4: pull, take a pre-deploy
-      # database dump, rebuild and restart the stack (the migrate job applies
-      # schema.sql), then fail the run unless web reports healthy.
+      # Steps on the server: pull, back up the database, update dependencies,
+      # rebuild the public site, apply schema.sql (additive and idempotent),
+      # restart the service, then fail the run unless the health URL answers.
       - name: Deploy over SSH
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -s <<'REMOTE'
-            set -euo pipefail
-            cd /opt/heaven-and-angel
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            bash -s -- "$DEPLOY_PATH" "$DEPLOY_SERVICE" "$DEPLOY_HEALTH_URL" <<'REMOTE'
+          set -euo pipefail
+          APP_DIR="$1"; SERVICE="$2"; HEALTH_URL="$3"
+          cd "$APP_DIR"
 
-            git pull --ff-only
+          # Read one KEY=value from .env without sourcing it (values such as
+          # "15 per minute;150 per day" are not valid shell).
+          env_get() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r'; }
+          DB_HOST="$(env_get MYSQL_HOST)"; DB_HOST="${DB_HOST:-localhost}"
+          DB_USER="$(env_get MYSQL_USER)"; DB_USER="${DB_USER:-root}"
+          DB_NAME="$(env_get MYSQL_DB)";   DB_NAME="${DB_NAME:-heaven_and_angel_scents}"
+          export MYSQL_PWD="$(env_get MYSQL_PASSWORD)"
 
-            # pipefail + size check: otherwise a failed mysqldump leaves an empty
-            # .gz that looks like a good backup and the deploy carries on.
-            docker compose exec -T backup bash -c '
-              set -euo pipefail
-              f=/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).sql.gz
-              mysqldump -h db -uroot --single-transaction --routines --triggers --events "$MYSQL_DB" | gzip > "$f"
-              [ "$(stat -c %s "$f")" -gt 200 ] || { rm -f "$f"; echo "pre-deploy dump is empty" >&2; exit 1; }
-            '
+          # The guide creates the virtualenv as "venv"; DEPLOY.md uses ".venv".
+          if [ -x venv/bin/pip ]; then VENV=venv; elif [ -x .venv/bin/pip ]; then VENV=.venv
+          else echo "No virtualenv (venv or .venv) in $APP_DIR" >&2; exit 1; fi
 
-            docker compose up -d --build --remove-orphans
+          git pull --ff-only
 
-            for i in $(seq 1 30); do
-              status="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q web)")"
-              [ "$status" = "healthy" ] && { echo "web is healthy"; exit 0; }
-              sleep 5
-            done
-            echo "web did not become healthy" >&2
-            docker compose logs --tail 50 web >&2
-            exit 1
+          # Pre-deploy database dump. The size check stops a failed mysqldump
+          # from leaving an empty .gz that looks like a good backup.
+          mkdir -p backups
+          dump="backups/pre_deploy_$(date +%Y%m%d_%H%M%S).sql.gz"
+          mysqldump -h "$DB_HOST" -u "$DB_USER" --single-transaction --routines --triggers --events "$DB_NAME" | gzip > "$dump"
+          [ "$(stat -c %s "$dump")" -gt 200 ] || { rm -f "$dump"; echo "pre-deploy dump is empty" >&2; exit 1; }
+          find backups -name 'pre_deploy_*.sql.gz' -mtime +14 -delete
+
+          "$VENV/bin/pip" install -q -r requirements.txt
+          (cd public-site && npm ci --no-audit --no-fund && npm run build)
+
+          mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" < schema.sql
+
+          sudo systemctl restart "$SERVICE"
+
+          for i in $(seq 1 30); do
+            if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+              echo "app is healthy"; exit 0
+            fi
+            sleep 2
+          done
+          echo "app did not become healthy" >&2
+          sudo journalctl -u "$SERVICE" -n 50 --no-pager >&2
+          exit 1
           REMOTE
 
       - name: Clean up SSH key
