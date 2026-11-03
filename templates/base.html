@@ -1573,6 +1573,7 @@
                         <p class="settings-note settings-warn"><strong>This replaces the current data</strong> with the backup's
                             (sales, stock, accounts, everything). A safety copy of what is there now is saved first in the
                             server's backups folder. You will be signed out when it finishes.</p>
+                        <form id="restoreForm" autocomplete="off" novalidate>
                         <label class="settings-field">Backup file <span>(the .zip from Email backup)</span>
                             <input type="file" id="restoreFile" accept=".zip,.sql">
                         </label>
@@ -1582,6 +1583,7 @@
                         <label class="settings-field">Type <strong>RESTORE</strong> to confirm
                             <input type="text" id="restorePhrase" autocomplete="off" spellcheck="false">
                         </label>
+                        </form>
                         <div class="settings-row">
                             <button type="button" class="settings-chip settings-chip-danger" id="restoreNow"
                                 data-verify-url="{{ url_for('admin.restore_verify') }}"

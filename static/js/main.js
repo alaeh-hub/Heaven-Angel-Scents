@@ -1261,6 +1261,10 @@ function initSettings() {
         const ui = makeUi(overlay.querySelector('#restoreStatus'), overlay.querySelector('#restoreBar'));
         const fileEl = overlay.querySelector('#restoreFile');
         const pwEl = overlay.querySelector('#restorePassword');
+        // The password field sits in a form so browsers stop warning about it;
+        // the Restore button does the work, so Enter must not submit the form.
+        const restoreForm = overlay.querySelector('#restoreForm');
+        if (restoreForm) restoreForm.addEventListener('submit', (e) => e.preventDefault());
         const phraseEl = overlay.querySelector('#restorePhrase');
         const CHUNK = 4 * 1024 * 1024;
         const fail = (text) => {

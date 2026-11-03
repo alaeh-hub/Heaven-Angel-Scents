@@ -7,7 +7,7 @@
  * when a page is opened, a short offline notice is shown instead of the
  * browser's error page. */
 const CACHE_PREFIX = 'ha-static-';
-const CACHE = CACHE_PREFIX + 'v1';
+const CACHE = CACHE_PREFIX + 'v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -38,6 +38,9 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // Video/audio are fetched in byte ranges (status 206), which the Cache API
+  // cannot store. Let the browser handle those requests itself.
+  if (req.headers.has('range')) return;
 
   if (req.mode === 'navigate') {
     event.respondWith(fetch(req).catch(offlinePage));
@@ -49,7 +52,8 @@ self.addEventListener('fetch', (event) => {
     const networkPromise = fetch(req);
     const refresh = cachePromise.then((cache) =>
       networkPromise.then((res) => {
-        if (res && res.ok) {
+        // Only whole, successful responses are cacheable (not 206 partials).
+        if (res && res.status === 200) {
           return cache.put(req, res.clone()).then(() => res);
         }
         return res;
