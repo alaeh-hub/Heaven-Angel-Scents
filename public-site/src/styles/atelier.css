@@ -682,3 +682,32 @@
 .catalog-tile .bottle-tile { width: 100%; }
 .catalog-item .product-card-ask { margin: 0; padding: 0 2px; min-height: 40px; }
 @media (hover: none) { .catalog-tile { --tile-w: 100%; } }
+
+/* ------------------------------------------------ phones: hero + shelf
+   The hero's bottom fade (z-index 4) was painted over the buttons where
+   the copy sits at the foot of a stacked hero; the copy goes above it. */
+@media (max-width: 900px) {
+  .hero-copy-wrap { z-index: 5; }
+}
+
+/* Tapping a shelf tile on a touch screen: only compositor-friendly
+   properties (transform, opacity) animate, and a little quicker. The
+   outer box-shadow, the blurred floor and the 0.85 s eases made every
+   tap repaint a big area for most of a second. */
+@media (hover: none) {
+  .bottle-tile { transition: border-color 0.3s ease; }
+  .bottle-tile[data-open] { box-shadow: none; }
+  .scent-floor { filter: none; }
+  .scent-frame,
+  .scent-bottle,
+  .scent-floor { transition-duration: 0.5s; }
+  .js .scent-box { transition: opacity 0.3s ease, transform 0.5s var(--lift); }
+  .js .bottle-tile[data-open] .scent-box { transition-delay: 0s, 0s; }
+  .bottle-tile-aura { transition-duration: 0.4s; }
+  .js .bottle-tile-meta { transition: none; }
+  /* Layers ready before the tap, so the first frame doesn't wait on raster. */
+  .scent-frame,
+  .scent-box,
+  .scent-bottle { will-change: transform; }
+  .bottle-tile { contain: layout paint; }
+}

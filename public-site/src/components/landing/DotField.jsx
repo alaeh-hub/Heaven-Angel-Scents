@@ -99,6 +99,9 @@ export default function DotField({ className = '' }) {
     let pointer = null; // {x, y} in the canvas's own CSS px, null when the cursor is elsewhere
     let visible = false;
     const onMove = (e) => {
+      // Touch has no hovering cursor; tracking a finger mid-swipe only
+      // repaints the grid while the shelf is trying to scroll.
+      if (e.pointerType !== 'mouse') return;
       const rect = host.getBoundingClientRect();
       pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       // The loop sleeps while the grid is at rest (see tick); wake it.

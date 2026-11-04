@@ -207,7 +207,7 @@ export default function Collection() {
                 auto={copy === 0}
                 active={copy === 0 && centred === scent.code}
                 eager={copy === 0 && i < 4}
-                nearby={copy === 0 && centredAt >= 0 && Math.abs(i - centredAt) <= 2}
+                nearby={copy === 0 && centredAt >= 0 && Math.abs(i - centredAt) <= 3}
               />
             ))}
           </div>
