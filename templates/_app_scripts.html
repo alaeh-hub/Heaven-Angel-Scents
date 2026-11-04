@@ -1,0 +1,14 @@
+    {# The app's main script, split by feature. Order matters: they share one global scope #}
+    {# and the DOMContentLoaded boot in page-init.js calls helpers defined in later files. #}
+    <script src="{{ url_for('static', filename='js/app/core.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/sidebar.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/page-init.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/topbar.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/soft-nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/charts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/form-controls.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/dialogs.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/downloads.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/tables.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app/realtime.js') }}"></script>

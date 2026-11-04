@@ -38,6 +38,11 @@
   .pg-disclosure[open] > summary svg { transform: rotate(180deg); }
   .pg-disclosure .pg-body { margin-top: var(--space-sm); }
   .prod-table .item-sub-unit { margin-inline-start: var(--space-xs); }
+  /* Rows stay invisible until the entrance animation below takes over, so they never flash fully
+     visible and then fade in from zero. The delayed animation is a safety net: if the script never
+     runs, the rows still appear after a moment. */
+  .prod-table.is-booting tbody tr { opacity: 0; animation: prod-rows-fallback 0s 1.2s forwards; }
+  @keyframes prod-rows-fallback { to { opacity: 1; } }
   .prod-table .product-thumb,
   .prod-table .product-thumb-empty {
     transition: transform var(--dur-micro, 0.15s) var(--ease-out);
@@ -86,11 +91,17 @@
   <div class="card">
     <div class="card-header">
       <h2>All Products</h2>
-      {% set sku_total = catalog|map(attribute='base_code')|unique|list|length %}
+      {# The table below starts filtered to this unit (the pre-selected option) and paginated, exactly as
+         initSmartTables() will leave it, so the server renders that final state and nothing jumps on load. #}
+      {% set default_unit = '85ML' if '85ML' in unit_choices else '' %}
+      {% set initial_rows = catalog|selectattr('unit', 'equalto', default_unit)|list if default_unit else catalog %}
+      {% set page_size = 10 %}
+      {% set sku_total = initial_rows|map(attribute='base_code')|unique|list|length %}
+      {% set page_count = ((initial_rows|length / page_size)|round(0, 'ceil'))|int %}
       <span class="hint" id="catalogCount">{{ sku_total }} SKU{{ 's' if sku_total != 1 }}</span>
     </div>
     {% if catalog %}
-    <div data-smart-table data-page-size="10" data-count-target="catalogCount" data-count-label="SKU"
+    <div data-smart-table data-page-size="{{ page_size }}" data-count-target="catalogCount" data-count-label="SKU"
       data-count-distinct>
       <div class="table-toolbar">
         <div class="table-search">
@@ -111,7 +122,7 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="smart-table table-fixed prod-table">
+        <table class="smart-table table-fixed prod-table is-booting"{% if not initial_rows %} style="display:none;"{% endif %}>
           <colgroup>
             <col style="width:33%"><col style="width:11%">
             <col style="width:12%"><col style="width:15%"><col style="width:15%"><col style="width:14%">
@@ -127,9 +138,13 @@
             </tr>
           </thead>
           <tbody>
+            {% set shown = namespace(n=0) %}
             {% for p in catalog %}
+            {% set in_view = (not default_unit or p.unit == default_unit) %}
+            {% if in_view %}{% set shown.n = shown.n + 1 %}{% endif %}
             <tr data-search="{{ (p.item_name ~ ' ' ~ p.sku)|lower }}" data-variant="{{ p.variant }}"
-              data-unit="{{ p.unit }}" data-count-key="{{ p.base_code }}">
+              data-unit="{{ p.unit }}" data-count-key="{{ p.base_code }}"
+              {% if not (in_view and shown.n <= page_size) %}style="display:none;"{% endif %}>
               <td data-label="Item" class="mobile-inline-anchor">
                 <div class="item-thumb-row">
                   {{ m.product_thumb(p.image_path, p.item_name) }}
@@ -156,14 +171,14 @@
             {% endfor %}
           </tbody>
         </table>
-        <div class="empty-state smart-no-match" style="display:none;">
+        <div class="empty-state smart-no-match"{% if initial_rows %} style="display:none;"{% endif %}>
           <p>No products match your search.</p>
         </div>
       </div>
-      <div class="smart-pagination" style="display:none;">
-        <button type="button" class="btn btn-ghost btn-sm" data-page-prev>Previous</button>
-        <span class="smart-page-info"></span>
-        <button type="button" class="btn btn-ghost btn-sm" data-page-next>Next</button>
+      <div class="smart-pagination" style="display:{{ 'flex' if initial_rows|length > page_size else 'none' }};">
+        <button type="button" class="btn btn-ghost btn-sm" data-page-prev disabled>Previous</button>
+        <span class="smart-page-info">Page 1 of {{ [page_count, 1]|max }}</span>
+        <button type="button" class="btn btn-ghost btn-sm" data-page-next{% if page_count <= 1 %} disabled{% endif %}>Next</button>
       </div>
     </div>
     {% else %}
@@ -456,16 +471,18 @@
       });
     }
 
+    // Returns true when the animation was started.
     function staggerRows() {
-      if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      if (!window.Motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
       var rows = visibleRows();
-      if (!rows.length) return;
+      if (!rows.length) return false;
       var anim = window.Motion.animate(
         rows,
         { opacity: [0, 1], transform: ['translateY(6px)', 'translateY(0px)'] },
         { duration: 0.32, delay: window.Motion.stagger(0.03), easing: [0.16, 1, 0.3, 1] }
       );
       if (anim && typeof anim.then === 'function') anim.then(null, function () { });
+      return true;
     }
 
     function countUpStock() {
@@ -487,8 +504,17 @@
     }
 
     function initialReveal() {
-      staggerRows();
+      var table = tbody.closest('table');
+      var animated = staggerRows();
       countUpStock();
+      function reveal() { if (table) table.classList.remove('is-booting'); }
+      // Keep the rows hidden until the animation is actually driving their opacity (two frames in),
+      // otherwise one frame of fully-visible rows can slip through just before the fade starts.
+      if (animated) {
+        requestAnimationFrame(function () { requestAnimationFrame(reveal); });
+      } else {
+        reveal();
+      }
     }
 
     // initSmartTables() (main.js) has already paginated/filtered rows —

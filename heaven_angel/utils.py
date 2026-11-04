@@ -109,7 +109,7 @@ def compatible_material_units(unit):
     without the admin converting by hand. The volume trio converts freely
     via ML_PER_BATCH_UNIT; Gram/Piece have nothing to convert with, so only
     their own unit is offered. See bulk_batch_materials.qty_used_unit in
-    schema.sql and create_bulk_batch() in routes/admin.py.
+    schema.sql and create_bulk_batch() in routes/admin/.
     """
     if unit in ML_PER_BATCH_UNIT:
         return BATCH_VOLUME_UNITS
@@ -133,7 +133,7 @@ def bottle_size_ml(unit):
     '85ML' -> Decimal('85'). Used for bulk-batch yield math (how many
     bottles of this size a batch's remaining_ml can still fill) and for
     deducting a batch's remaining_ml when a production run is logged
-    against it (see production() in routes/admin.py). BULK is not a
+    against it (see production() in routes/admin/). BULK is not a
     BOTTLE_UNITS value so it never reaches here.
     """
     return decimal.Decimal(unit[:-2])

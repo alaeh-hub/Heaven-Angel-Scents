@@ -1,4 +1,4 @@
-"""routes/admin.py's products() catalog page — specifically the
+"""routes/admin/'s products() catalog page — specifically the
 product_thumb() macro's no-photo fallback (see templates/_macros.html
 and product_avatar() in utils.py). A product with no image_path should
 render a generated initials avatar rather than a broken/empty-image

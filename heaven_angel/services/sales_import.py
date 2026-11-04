@@ -8,7 +8,7 @@ goes in, or nothing does, with every problem reported at once instead
 of trickling out one row at a time (same "all-or-nothing" contract as
 every other multi-write route in this app — see db.TransactionAborted).
 
-Row shape mirrors exactly what routes/branch.py's and routes/admin.py's
+Row shape mirrors exactly what routes/branch.py's and routes/admin/sales.py's
 own record_sale() insert by hand: one sales row + one stock_movement_logs
 row per line, with stock checked/decremented by the same
 sale_stock.apply_sale_stock() (a Refill takes HQ bulk, and is refused

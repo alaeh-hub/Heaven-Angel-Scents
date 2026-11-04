@@ -1,4 +1,4 @@
-"""routes/admin.py's record_sale() — HQ's own copy of branch.record_sale()
+"""routes/admin/'s record_sale() — HQ's own copy of branch.record_sale()
 (see its docstring: "Mirrors branch.record_sale()"). This hand-duplicated
 implementation had no test of its own before this file — test_sales.py
 only ever exercised the branch-side copy, so the two could silently drift

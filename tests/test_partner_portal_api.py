@@ -1,6 +1,6 @@
 """Public partner portal: the page URLs that serve the React app
 (public-site/, built into static/public-site/) and the JSON API it talks
-to — see routes/portal.py."""
+to — see routes/portal/."""
 import decimal
 import os
 
@@ -407,7 +407,7 @@ def test_package_and_catalog_lists_are_briefly_cacheable_but_site_is_not(client,
 
 
 def test_unsent_inquiry_emails_are_retried(client, sql, app, slug, monkeypatch):
-    import heaven_angel.routes.portal as portal
+    import heaven_angel.routes.portal.email_retry as portal
     payload = inquiry_payload()
     client.post(f"/partner-portal/{slug}/api/inquire", json=payload)
     cur = sql.cursor()

@@ -1,0 +1,607 @@
+/* App shell styles: sidebar, top bar, notification bell, Halo widget, settings modal, overlays.
+   Loaded after style.css and themes.css (see templates/base.html) so it keeps the same cascade
+   order it had as an inline <style>. */
+
+    /* Hallmark · checked: 2026-10-29 · shape: app screen · genre: modern-minimal (inferred) · built: the project · redesign: full · v2.0.0 */
+    html,
+    body {
+        overflow-x: clip;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 2px;
+    }
+
+    .notif-wrap {
+        position: relative;
+    }
+
+    .notif-toggle {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border: var(--border-width-strong) solid var(--border-strong);
+        background: var(--surface);
+        border-radius: 999px;
+        cursor: pointer;
+        color: var(--ink-faint);
+        box-shadow: var(--shadow-sm);
+        transition: color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .notif-toggle svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .notif-toggle:hover {
+        color: var(--accent-ink);
+        border-color: var(--accent);
+    }
+
+    .notif-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 var(--space-2xs);
+        background: var(--danger);
+        color: var(--color-on-error);
+        border-radius: var(--radius-sm);
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        align-items: center;
+        justify-content: center;
+        display: none;
+        box-shadow: 0 0 0 2px var(--surface);
+    }
+
+    .notif-panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        width: 320px;
+        max-height: 380px;
+        overflow-y: auto;
+        /* Scrollable, just not visibly so (same as .cs-panel in
+           style.css). */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        background: var(--surface);
+        border: var(--border-width-strong) solid var(--border-strong);
+        border-radius: var(--radius-sm, 10px);
+        box-shadow: var(--shadow-md);
+        z-index: 60;
+        transform-origin: top right;
+        /* No opacity transition, this panel opens directly over
+           whatever page content sits under the topbar, and a fade
+           briefly lets that show through mid-transition, reading as
+           a stacking bug even though z-index is fine (see
+           .cs-panel's own comment in style.css for the same fix). */
+        visibility: hidden;
+        transform: translateY(-6px) scale(0.98);
+        pointer-events: none;
+        transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.16s;
+    }
+
+    .notif-panel::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* On phones a 320px panel pinned to the bell's right edge runs
+       off the left of the screen (the theme toggle sits to the
+       bell's right). Un-positioning .notif-wrap makes the sticky,
+       full-width .topbar the panel's anchor instead, so it spans
+       the screen with a small gutter, just below the topbar. */
+    @media (max-width: 680px) {
+        .notif-wrap {
+            position: static;
+        }
+
+        .notif-panel {
+            left: 12px;
+            right: 12px;
+            width: auto;
+            max-height: min(380px, 70vh);
+            transform-origin: top center;
+        }
+    }
+
+    .notif-panel.open {
+        visibility: visible;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+        transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .notif-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-sm) var(--space-md);
+        border-bottom: 1px solid var(--border);
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .notif-clear {
+        background: none;
+        border: none;
+        color: var(--ink-faint);
+        font-size: 11.5px;
+        cursor: pointer;
+    }
+
+    .notif-clear:hover {
+        color: var(--ink);
+    }
+
+    .notif-list {
+        padding: var(--space-xs);
+    }
+
+    .notif-empty {
+        padding: var(--space-lg) var(--space-sm);
+        text-align: center;
+        font-size: 12.5px;
+        color: var(--ink-faint);
+    }
+
+    .notif-item {
+        display: flex;
+        gap: var(--space-xs);
+        padding: var(--space-xs) var(--space-xs);
+        border-radius: 8px;
+        font-size: 12.5px;
+        color: var(--ink);
+    }
+
+    .notif-item.unread {
+        background: var(--accent-soft);
+    }
+
+    .notif-dot {
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        margin-top: var(--space-2xs);
+        border-radius: 999px;
+        background: var(--ink-faint);
+    }
+
+    .notif-dot.warning {
+        background: var(--danger);
+    }
+
+    .notif-dot.success {
+        background: var(--success);
+    }
+
+    .notif-body {
+        flex: 1;
+    }
+
+    .notif-time {
+        display: block;
+        font-size: 10.5px;
+        color: var(--ink-faint);
+        margin-top: var(--space-3xs);
+    }
+
+    /* ---- Halo (floating AI assistant widget) ----
+       Lives here (base.html's own shared <style>, like .notif-* above)
+       rather than in ai/chat.html's own page-head block, since it's
+       now global chrome rendered on every signed-in page, not tied to
+       a page a soft nav ever swaps out. Its DOM node is never
+       destroyed/recreated by swapContent() (see main.js), only
+       .content is, so the panel's open/closed state and message log
+       survive navigating around the app exactly like the notification
+       bell already does. */
+    .halo-widget {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 900;
+    }
+
+    .halo-fab {
+        position: relative;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: none;
+        background: var(--accent);
+        color: var(--gold-contrast);
+        box-shadow: var(--shadow-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .halo-fab:hover {
+        background: var(--accent-ink);
+    }
+
+    .halo-fab:active {
+        transform: scale(0.94);
+    }
+
+    .halo-fab-icon {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+
+    .js .halo-fab-icon-close {
+        opacity: 0;
+        transform: rotate(-45deg) scale(0.6);
+    }
+
+    .js .halo-widget.open .halo-fab-icon-chat {
+        opacity: 0;
+        transform: rotate(45deg) scale(0.6);
+    }
+
+    .halo-widget.open .halo-fab-icon-close {
+        opacity: 1;
+        transform: rotate(0) scale(1);
+    }
+
+    /* A small unread-style dot, reusing .notif-badge's own look,
+       shown on the closed bubble the first time Halo has something
+       to say that the user hasn't opened the panel to see yet, same
+       idea as the notification bell's badge, scoped to this widget's
+       own open/closed state rather than a server-computed count. */
+    .halo-fab-badge {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--danger);
+        box-shadow: 0 0 0 2px var(--surface);
+        display: none;
+    }
+
+    .halo-widget.has-unread:not(.open) .halo-fab-badge {
+        display: block;
+    }
+
+    .halo-panel {
+        position: fixed;
+        right: 20px;
+        bottom: 90px;
+        width: min(23.75rem, calc(100% - var(--space-xl)));
+        height: min(35rem, calc(100dvh - 7.5rem));
+        background: var(--surface);
+        border: var(--border-width-strong) solid var(--border-strong);
+        border-radius: var(--radius, 14px);
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transform-origin: bottom right;
+    }
+
+    .halo-panel[hidden] {
+        display: none;
+    }
+
+    @keyframes halo-panel-in {
+        from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.97);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .halo-panel.opening {
+        animation: halo-panel-in 0.16s ease-out;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .halo-panel.opening {
+            animation: none;
+        }
+    }
+
+    .halo-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-sm);
+        padding: var(--space-sm) var(--space-md);
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+        flex-shrink: 0;
+    }
+
+    .halo-panel-title {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+        min-width: 0;
+    }
+
+    .halo-avatar {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--avatar-bg);
+        color: var(--avatar-ink);
+        box-shadow: inset 0 0 0 1px var(--avatar-ring);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .halo-avatar svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* The mascot is a cut-out character, so the circle has to do the
+       cropping that the old inline glyph didn't need. */
+    .halo-avatar.mascot-host {
+        overflow: hidden;
+    }
+
+    /* Top margin, not just centring: the greeting bubble sits above
+       the mascot and .halo-log scrolls, so without room reserved
+       here the bubble would be clipped by the log's own overflow. */
+    .halo-empty-mascot {
+        margin: var(--space-xl) auto var(--space-xs);
+    }
+
+    .halo-panel-name {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .halo-panel-sub {
+        font-size: 11px;
+        color: var(--ink-faint);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .halo-panel-expand {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        color: var(--ink-faint);
+        transition: color 0.12s ease, background 0.12s ease;
+    }
+
+    .halo-panel-expand:hover {
+        color: var(--accent-ink);
+        background: var(--surface);
+    }
+
+    .halo-panel-expand svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    .halo-log {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--space-md) var(--space-md);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+        scroll-behavior: smooth;
+    }
+
+    .halo-empty {
+        margin: auto;
+        text-align: center;
+        padding: var(--space-xs);
+    }
+
+    .halo-empty p {
+        font-size: 12.5px;
+        color: var(--ink-faint);
+        line-height: 1.55;
+        margin: 0 0 var(--space-md);
+    }
+
+    .halo-suggestions {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xs);
+    }
+
+    .halo-suggestion {
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--ink-soft);
+        background: var(--surface-2);
+        border: var(--border-width-strong) solid var(--border-strong);
+        border-radius: 999px;
+        padding: var(--space-xs) var(--space-sm);
+        cursor: pointer;
+        text-align: left;
+        transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+    }
+
+    .halo-suggestion:hover {
+        border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        color: var(--accent-ink);
+    }
+
+    .halo-row {
+        display: flex;
+        max-width: 88%;
+    }
+
+    .halo-row.user {
+        align-self: flex-end;
+    }
+
+    .halo-row.assistant,
+    .halo-row.error {
+        align-self: flex-start;
+    }
+
+    .halo-msg {
+        padding: var(--space-xs) var(--space-sm);
+        border-radius: 12px;
+        font-size: 12.8px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .halo-row.user .halo-msg {
+        background: var(--accent);
+        color: var(--gold-contrast);
+        border-bottom-right-radius: 3px;
+    }
+
+    .halo-row.assistant .halo-msg {
+        background: var(--surface-2);
+        border: var(--border-width-strong) solid var(--border-strong);
+        border-bottom-left-radius: 3px;
+    }
+
+    .halo-row.error .halo-msg {
+        background: var(--danger-soft);
+        color: var(--danger);
+        border: 1px solid var(--danger-border);
+        border-bottom-left-radius: 3px;
+    }
+
+    .halo-typing-dots {
+        display: inline-flex;
+        gap: var(--space-2xs);
+        padding: var(--space-3xs);
+    }
+
+    .halo-typing-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--ink-faint);
+        animation: typing-bounce 1.2s infinite ease-in-out;
+    }
+
+    .halo-typing-dots span:nth-child(2) {
+        animation-delay: 0.15s;
+    }
+
+    .halo-typing-dots span:nth-child(3) {
+        animation-delay: 0.3s;
+    }
+
+    @keyframes typing-bounce {
+
+        0%,
+        60%,
+        100% {
+            transform: translateY(0);
+            opacity: 0.5;
+        }
+
+        30% {
+            transform: translateY(-4px);
+            opacity: 1;
+        }
+    }
+
+    .halo-form {
+        display: flex;
+        gap: var(--space-xs);
+        padding: var(--space-sm) var(--space-sm);
+        border-top: 1px solid var(--border);
+        background: var(--surface-2);
+        flex-shrink: 0;
+        align-items: flex-end;
+    }
+
+    .halo-form textarea {
+        flex: 1;
+        resize: none;
+        min-height: 38px;
+        max-height: 100px;
+        font-family: inherit;
+        font-size: 12.8px;
+        padding: var(--space-xs) var(--space-sm);
+        border-radius: 19px;
+        background: var(--field);
+    }
+
+    .halo-send {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: none;
+        background: var(--accent);
+        color: var(--gold-contrast);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.12s ease, transform 0.1s ease, opacity 0.12s ease;
+    }
+
+    .halo-send svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    .halo-send:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--accent) 88%, var(--color-paper));
+    }
+
+    .halo-send:active:not(:disabled) {
+        transform: scale(0.94);
+    }
+
+    .halo-send:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    /* Below the app's shared 680px mobile breakpoint, anchoring the
+       panel to a fixed size above the bubble (like desktop) would
+       either overflow the screen or leave it cramped, sized to the
+       viewport instead, same bottom-right anchor. */
+    @media (max-width: 680px) {
+        .halo-widget {
+            right: 14px;
+            bottom: 14px;
+        }
+
+        .halo-panel {
+            right: 14px;
+            bottom: 84px;
+            width: calc(100% - var(--space-xl));
+            height: calc(100dvh - 6.5rem);
+        }
+    }

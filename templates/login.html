@@ -638,7 +638,7 @@
   <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sfx.js') }}"></script>
   <script src="{{ url_for('static', filename='js/mascot.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% include '_app_scripts.html' %}
   <script nonce="{{ csp_nonce() }}">
     (function () {
       var shell = document.getElementById('authShell');

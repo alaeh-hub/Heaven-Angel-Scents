@@ -29,11 +29,11 @@ from heaven_angel.utils import business_now
 
 backup_lock = threading.Lock()          # held for the whole of a backup
 backup_state = {"phase": ""}            # what the running backup is doing
-_restore_probe = None                  # set by routes/admin.py (see set_restore_probe)
+_restore_probe = None                  # set by routes/admin/ (see set_restore_probe)
 
 
 def set_restore_probe(fn):
-    """Lets routes/admin.py tell the scheduler when a restore is running."""
+    """Lets routes/admin/ tell the scheduler when a restore is running."""
     global _restore_probe
     _restore_probe = fn
 

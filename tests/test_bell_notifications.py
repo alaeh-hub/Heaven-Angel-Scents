@@ -7,8 +7,8 @@ who gets told what, without a live socket.
 """
 import pytest
 
-from heaven_angel.routes import admin as routes_admin
-from heaven_angel.routes import branch as routes_branch
+from heaven_angel.routes.admin import stock_requests as routes_admin_requests
+from heaven_angel.routes.branch import stock_requests as routes_branch
 from factories import (get_form_token, get_in_transit_shipment_items,
                        get_request_item, login, make_branch, make_inventory,
                        make_product, make_stock_request, make_user)
@@ -24,7 +24,7 @@ def bells(monkeypatch):
         sent.append({"message": message, "room": room, "level": level})
 
     monkeypatch.setattr(routes_branch, "notify_bell", record)
-    monkeypatch.setattr(routes_admin, "notify_bell", record)
+    monkeypatch.setattr(routes_admin_requests, "notify_bell", record)
     return sent
 
 

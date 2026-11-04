@@ -3,7 +3,7 @@
 These tests hit real routes through Flask's test client against a real,
 disposable MySQL database — this app has no ORM/repository layer to mock
 around db.py's direct mysql-connector calls, so a real database is the
-only way to exercise routes/branch.py, routes/admin.py, and
+only way to exercise routes/branch.py, routes/admin/, and
 decorators.py the way production actually runs them.
 
 Requires a reachable MySQL server (see config.py's own "stock XAMPP

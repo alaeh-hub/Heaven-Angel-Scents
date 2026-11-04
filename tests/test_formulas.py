@@ -1,4 +1,4 @@
-"""routes/admin.py's Formulas page — the Bulk/Refill rate per mL
+"""routes/admin/'s Formulas page — the Bulk/Refill rate per mL
 (save_bulk_rate(), unchanged), a flat base cost of goods per Bottled
 packaging size (save_unit_cogs(), see unit_cogs_settings in schema.sql —
 this is what production() actually charges a Bottled run), plus a
@@ -149,7 +149,9 @@ def test_add_formula_item_computes_line_cost_from_current_material_cost(client, 
     })
     assert resp.status_code == 302
 
-    rows = _formula_items(sql, "85ML")
+    # Only this test's own material: other test files leave 85ML formula rows
+    # behind in the shared test database.
+    rows = [r for r in _formula_items(sql, "85ML") if r["material_id"] == mat]
     assert len(rows) == 1
     assert Decimal(rows[0]["qty_per_unit"]) == Decimal("2.5000")
     # 2.5g x ₱4.00/g = ₱10.00 — computed, not hand-typed.

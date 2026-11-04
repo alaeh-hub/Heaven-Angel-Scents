@@ -1,4 +1,4 @@
-"""routes/admin.py's bulk batch feature — the step between raw materials
+"""routes/admin/'s bulk batch feature — the step between raw materials
 and bottling: mix specific raw materials at specific quantities into a
 bulk batch (e.g. 500ml or 1 gallon — see bulk_batches/bulk_batch_materials
 in schema.sql), which becomes its own real bit of mL inventory. Bottling
@@ -308,7 +308,7 @@ def test_dashboard_capital_is_cogs_not_raw_material_purchases(client, sql):
 
 def _packaging_total(sql, unit):
     """Sum of qty_per_unit x current cost_per_unit across every material
-    on file for `unit` — same math as routes/admin.py's own
+    on file for `unit` — same math as routes/admin/'s own
     _formula_items_by_unit(), used here to compute an expected delta
     since other test files sharing this session's database may have
     already left formula lines on file for the same unit (see this file's

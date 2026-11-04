@@ -2,7 +2,7 @@
 
 - Branches can only request bottled products from HQ, never BULK
   (routes/branch.py's request_stock()), enforced server-side.
-- The development-only Clear Data page (routes/admin.py's clear_data())
+- The development-only Clear Data page (routes/admin/'s clear_data())
   is a 404 unless ALLOW_DATA_RESET is on, needs the exact confirmation
   phrase, and keeps accounts/branches while emptying everything else.
 """
@@ -187,7 +187,7 @@ def test_admin_low_stock_includes_hq_warehouse(client, sql):
 
 
 def test_ai_low_stock_tool_includes_hq_warehouse(app, sql):
-    from heaven_angel.routes.ai_tools import _get_low_stock
+    from heaven_angel.routes.ai_tools.stock import get_low_stock as _get_low_stock
 
     bottle = make_product(sql, unit="50ML")
     bulk = make_product(sql, unit="BULK")

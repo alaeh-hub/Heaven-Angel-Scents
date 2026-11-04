@@ -599,8 +599,8 @@
   (function () {
     var mlPerBatchUnit = {{ ml_per_batch_unit | tojson }};
     var bottleMlMap = {{ bottle_ml_map | tojson }};
-    // Packaging formula per size (see _formula_items_by_unit() in
-    // routes/admin.py) — drives the "this will also add ..." preview
+    // Packaging formula per size (see load_formula_items_by_unit() in
+    // routes/admin/formulas.py) — drives the "this will also add ..." preview
     // below when a target bottle size is picked, same live-computed
     // source the Formulas page itself reads.
     var formulaItemsByUnit = {{ formula_items_by_unit | tojson }};
@@ -1030,7 +1030,7 @@
       try { yields = JSON.parse(btn.dataset.yields || '[]'); } catch (e) { yields = []; }
       yieldsEl.innerHTML = yields.map(function (y) {
         // total_cost_per_bottle (liquid share + packaging formula total —
-        // see bulk_batches()/_formula_items_by_unit() in routes/admin.py)
+        // see bulk_batches()/_formula_items_by_unit() in routes/admin/)
         // is a reference only, never what a production run is actually
         // charged (that's the flat base cost on the Formulas page).
         return '<div class="bb-yield-card">' +

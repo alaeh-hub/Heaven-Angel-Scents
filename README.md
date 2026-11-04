@@ -75,17 +75,24 @@ The app is a single Flask application with several route blueprints, a shared da
 | `heaven_angel/services/backup_jobs.py` | Backup reminders, schedule tracking, and optional automatic email backups |
 | `heaven_angel/services/receipts.py` | PDF sale receipt generation, including the signed QR verification code |
 | `heaven_angel/services/brand_assets.py` | Shared reportlab-drawn brand mark used in generated PDFs (reports, receipts) |
-| `heaven_angel/services/reports.py` | Financial/operational report building (branch, HQ, partner) and Excel export |
+| `heaven_angel/services/reports/` | On-demand reports: `definitions` (catalog) → `filters`/`totals` → `builders_*` (one query per report) → `registry.get_report()`; `pdf.py` / `excel.py` render |
+| `heaven_angel/services/sale_entry.py` | Record Sale form validation and the insert-plus-stock step, shared by HQ and branches |
+| `heaven_angel/services/admin_report_data.py` | The queries behind the admin Reports charts |
+| `heaven_angel/services/trends.py` | Time-bucket options shared by the admin and branch trend charts |
+| `heaven_angel/app.py` | App factory: config, security headers, blueprints, background workers (small steps, one function each) |
+| `heaven_angel/context.py` | Template context processors (top-bar sales chip, sidebar badges) |
+| `heaven_angel/template_helpers.py` | Jinja filters (`peso`, `compact_peso`) and shared error pages |
+| `heaven_angel/logging_setup.py` | Colour/JSON log formatting and request-ID stamping |
 | `heaven_angel/sockets.py` | Socket.IO room membership and role/branch-scoped realtime event broadcasting |
 | `scripts/create_admin.py` | Create or reset an Admin/Branch login (dev and server) |
 | `scripts/demo_data.py` | Fake sales history for a local dev database (`--clear` removes it) |
 | `schema.sql` | Full operational database schema, including guarded migrations for existing installs |
 | `heaven_angel/routes/auth.py` | Login, logout, and forced password-change flows |
-| `heaven_angel/routes/admin.py` | HQ operations screens and logic (largest blueprint — catalog, production, partners, users, reports) |
-| `heaven_angel/routes/branch.py` | Branch-side inventory, sales, requests, receiving, and customer workflows |
-| `heaven_angel/routes/portal.py` | Public partner portal API, slug-gated, serves the built `public-site/` app |
+| `heaven_angel/routes/admin/` | HQ screens, one module per feature (`products`, `production`, `formulas`, `materials`, `sales`, `stock_requests`, `partners`, `packages`, `inquiries`, `reports`, `backup`, `users`, `logs`, …), all registering on one shared blueprint in `_common.py` |
+| `heaven_angel/routes/branch/` | Branch-side screens, one module per feature (`dashboard`, `inventory`, `stock_requests`, `sales`, `reports`) on one shared blueprint |
+| `heaven_angel/routes/portal/` | Public partner portal, slug-gated: `pages` (serves the built `public-site/`), `catalog` (JSON API), `inquiries` (partner inquiry intake), `email_retry` (resends unsent notifications) |
 | `heaven_angel/routes/ai.py` | Chat endpoint and session handling for the read-only AI assistant |
-| `heaven_angel/routes/ai_tools.py` | The data-fetching "tools" the AI assistant is allowed to call, scoped by role/branch |
+| `heaven_angel/routes/ai_tools/` | The data-fetching "tools" the AI assistant may call, scoped by role/branch: `stock`, `sales`, `catalog`, `declarations` (what the model is told), `registry` (dispatch) |
 | `heaven_angel/routes/scan.py` | QR receipt verification — decodes and checks a signed receipt code against the database |
 
 The platform uses:
@@ -169,7 +176,7 @@ Every sale receipt PDF carries a short, HMAC-signed code (not the sale's actual 
 
 ### 8. AI assistant
 
-The AI assistant is intentionally read-only and scoped to the signed-in user's role and branch. It builds a server-side snapshot of live business data (via `heaven_angel/routes/ai_tools.py`) and sends it to Gemini with strict rules:
+The AI assistant is intentionally read-only and scoped to the signed-in user's role and branch. It builds a server-side snapshot of live business data (via `heaven_angel/routes/ai_tools/`) and sends it to Gemini with strict rules:
 
 - use only the data it was given
 - never invent inventory, prices, or history

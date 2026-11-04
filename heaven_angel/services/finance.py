@@ -13,6 +13,8 @@ Closed package orders count their contents (partner_inquiry_items).
 "Cost of goods produced" (SUM of cogs_logs) is still shown as capital — what
 has gone into making stock — but it is not what profit subtracts.
 """
+import decimal
+
 from heaven_angel.db import query
 
 # One row per SKU: its average production cost per unit.
@@ -40,3 +42,13 @@ def cogs_sold(sales_where="1=1", package_where="1=1", params=()):
     sales = query(f"{SALES_COGS_SQL} WHERE {sales_where}", tuple(params), fetchone=True)["v"]
     packages = query(f"{PACKAGE_COGS_SQL} AND {package_where}", tuple(params), fetchone=True)["v"]
     return float(sales) + float(packages)
+
+
+def package_value(discount_percent, reference_total):
+    """Apply a package's discount_percent to a reference total, returning
+    (reference_total, discounted_total) as Decimals. Shared by the admin
+    Packages pages and the public partner portal so the math can't drift."""
+    reference_total = decimal.Decimal(reference_total)
+    discount_percent = decimal.Decimal(discount_percent)
+    discounted_total = reference_total *         (decimal.Decimal("1") - (discount_percent / decimal.Decimal("100")))
+    return reference_total, discounted_total
