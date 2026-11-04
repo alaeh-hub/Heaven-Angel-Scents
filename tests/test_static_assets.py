@@ -14,10 +14,14 @@ def _template_text(name):
     return (TEMPLATES / name).read_text(encoding="utf-8")
 
 
-def test_every_static_file_referenced_by_a_template_exists():
+def test_every_script_and_stylesheet_referenced_by_a_template_exists():
+    # Only js/ and css/: those are tracked code. Media such as the login
+    # background video is gitignored, so it is absent from a clean checkout (CI).
     missing = []
     for path in TEMPLATES.rglob("*.html"):
         for rel in STATIC_REF.findall(path.read_text(encoding="utf-8")):
+            if not rel.startswith(("js/", "css/")):
+                continue
             if not (ROOT / "static" / rel).is_file():
                 missing.append(f"{path.relative_to(ROOT)} -> {rel}")
     assert not missing, missing
