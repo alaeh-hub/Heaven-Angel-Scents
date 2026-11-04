@@ -7,15 +7,15 @@ import Reveal from '../Reveal.jsx';
 const STEPS = [
   {
     title: 'Browse the packages',
-    body: 'Pricing and contents for every bundle above are laid out plainly, with no fine print.',
+    body: 'Every bundle, priced in plain sight and veiled by nothing.',
   },
   {
     title: 'Send an inquiry',
-    body: "Open a package and send your contact details. We'll confirm the order and set you up as a partner.",
+    body: "One message from you, and we welcome you as a partner.",
   },
   {
     title: 'Reorder anytime',
-    body: 'Come back whenever the shelves run low. Reordering takes minutes, not another round of paperwork.',
+    body: 'Restock in minutes, whenever your shelves ask for more.',
   },
 ];
 

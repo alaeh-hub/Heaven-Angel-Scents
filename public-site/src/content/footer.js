@@ -17,7 +17,7 @@
 // what's listed. `network` picks the logo (shopee, lazada, tiktokshop).
 
 export const FOOTER = {
-  blurb: 'Curated fragrance bundles for distributors and resellers, priced below our regular list.',
+  blurb: 'Luxury fragrance bundles for distributors and resellers, priced below our regular list.',
   phone: '+63 917 000 0000',
   email: 'partners@heavenandangel.example',
   address: 'Unit 1, Sample Building, Quezon City, Metro Manila',

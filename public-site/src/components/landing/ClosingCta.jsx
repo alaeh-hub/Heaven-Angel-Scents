@@ -1,5 +1,7 @@
 import { motion } from 'motion/react';
-import { ChatsCircleIcon, EnvelopeSimpleIcon, MessengerLogoIcon, PhoneIcon } from '@phosphor-icons/react';
+import {
+  ArrowRightIcon, ChatsCircleIcon, EnvelopeSimpleIcon, MessengerLogoIcon, PhoneIcon,
+} from '@phosphor-icons/react';
 import { useSite } from '../InquiryProvider.jsx';
 import BlurText from '../BlurText.jsx';
 import { AnimatedRays } from '@/components/ui/animated-rays';
@@ -9,10 +11,11 @@ import Reveal from '../Reveal.jsx';
 const viberLink = (number) => `viber://chat?number=${encodeURIComponent(`+${number.replace(/\D/g, '')}`)}`;
 
 /**
- * The last thing on the page before the footer: one clear next step
- * (the general inquiry form) and, beside it, every direct line HQ has
- * configured (config.py's PORTAL_CONTACT_*). Channels that aren't set
- * are left out, so there's never a placeholder number on the page.
+ * The last thing on the page before the footer, built to get an inquiry:
+ * a short headline, one big button, three reasons to send it (each one a
+ * promise the page already makes elsewhere) and, under them, every
+ * direct line HQ has configured (config.py's PORTAL_CONTACT_*). Channels
+ * that aren't set are left out, so there's never a placeholder number.
  */
 export default function ClosingCta() {
   const { site, openInquiry } = useSite();
@@ -20,41 +23,61 @@ export default function ClosingCta() {
   const channels = [
     contact.phone && { key: 'phone', Icon: PhoneIcon, label: contact.phone, href: `tel:${contact.phone.replace(/[^\d+]/g, '')}` },
     contact.email && { key: 'email', Icon: EnvelopeSimpleIcon, label: contact.email, href: `mailto:${contact.email}` },
-    contact.viber && { key: 'viber', Icon: ChatsCircleIcon, label: 'Message us on Viber', href: viberLink(contact.viber) },
-    /^https?:\/\//i.test(contact.messenger_url || '') && { key: 'messenger', Icon: MessengerLogoIcon, label: 'Message us on Messenger', href: contact.messenger_url, external: true },
+    contact.viber && { key: 'viber', Icon: ChatsCircleIcon, label: 'Viber', href: viberLink(contact.viber) },
+    /^https?:\/\//i.test(contact.messenger_url || '') && { key: 'messenger', Icon: MessengerLogoIcon, label: 'Messenger', href: contact.messenger_url, external: true },
   ].filter(Boolean);
+
+  const reasons = [
+    { key: 'price', title: 'Partner pricing', body: 'Below our regular list, on every bundle.' },
+    { key: 'reply', title: 'A personal reply', body: site?.reply_time ? `We answer ${site.reply_time}.` : 'A real person answers every inquiry.' },
+    { key: 'restock', title: 'Easy restocking', body: 'Reorder in minutes when shelves run low.' },
+  ];
 
   return (
     <section className="section closing" id="contact">
       <div className="container">
-        <Reveal className={`closing-panel${channels.length ? '' : ' closing-panel-solo'}`}>
+        <Reveal className="closing-stage">
           <AnimatedRays className="rays" />
-          <div className="closing-copy">
-            <BlurText className="title-xl" text="Ready to stock our scents?" />
-            <p className="lede">
-              Tell us what you have in mind and our team takes it from there
-              {site?.reply_time ? `, ${site.reply_time}.` : '.'}
-            </p>
-            <motion.button type="button" className="btn btn-primary" onClick={() => openInquiry()} whileTap={{ scale: 0.97 }}>
-              Send an inquiry
+          <p className="closing-eyebrow">Partner with us</p>
+          <BlurText className="title-xl" text="Ready to stock our scents?" />
+          <p className="lede closing-lede">
+            Your shelves, our signatures. Tell us what you have in mind and we will shape the order around you.
+          </p>
+
+          <div className="closing-action">
+            <motion.button type="button" className="btn btn-primary closing-btn" onClick={() => openInquiry()} whileTap={{ scale: 0.97 }}>
+              Send an inquiry <ArrowRightIcon size={18} weight="bold" />
             </motion.button>
+            <span className="closing-note">Free to ask. No account needed.</span>
           </div>
 
+          <ul className="closing-reasons">
+            {reasons.map(({ key, title, body }, i) => (
+              <Reveal as="li" key={key} delay={0.08 + i * 0.07}>
+                <strong>{title}</strong>
+                <span>{body}</span>
+              </Reveal>
+            ))}
+          </ul>
+
           {channels.length > 0 && (
-            <ul className="closing-channels" aria-label="Contact us directly">
-              {channels.map(({ key, Icon, label, href, external }, i) => (
-                <Reveal as="li" key={key} delay={0.1 + i * 0.06}>
-                  <a
-                    className="closing-channel"
-                    href={href}
-                    {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                  >
-                    <span className="closing-channel-icon"><Icon size={20} weight="duotone" /></span>
-                    {label}
-                  </a>
-                </Reveal>
-              ))}
-            </ul>
+            <div className="closing-direct">
+              <span className="closing-direct-label">Or reach us directly</span>
+              <ul className="closing-channels" aria-label="Contact us directly">
+                {channels.map(({ key, Icon, label, href, external }) => (
+                  <li key={key}>
+                    <a
+                      className="closing-channel"
+                      href={href}
+                      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    >
+                      <Icon size={18} weight="duotone" />
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Reveal>
       </div>

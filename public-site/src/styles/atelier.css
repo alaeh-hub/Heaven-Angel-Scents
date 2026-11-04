@@ -226,9 +226,7 @@
 
 /* ---------------------------------------------------------- closing */
 
-.closing-panel { border-radius: var(--r-surface); border-color: var(--hairline-strong); background: var(--bg-alt); }
 .closing-copy .title-xl { font-size: clamp(48px, 6.4vw, 96px); }
-.closing-channel { border-radius: var(--r-surface); }
 
 /* ----------------------------------------------------------- footer */
 
@@ -422,7 +420,7 @@
   .journey h3 { font-size: 24px; }
   .journey-body { font-size: 15px; }
 
-  .closing-channel { font-size: 14.5px; }
+  .closing-channel { font-size: 14px; }
   .footer-col h2 { font-size: 18px; }
   .footer-col a, .footer-brand p, .footer-contact li { font-size: 14.5px; }
   .nav-sheet a { font-size: 19px; }
@@ -710,4 +708,30 @@
   .scent-box,
   .scent-bottle { will-change: transform; }
   .bottle-tile { contain: layout paint; }
+}
+
+/* Phones: the packages filter sits centred, not against the left edge. */
+@media (max-width: 900px) {
+  .segmented-wrap { justify-content: center; }
+  .segmented { margin-inline: auto; }
+}
+
+/* The footer sits at z-index -1 under the page; keep that inside its own
+   stacking context so nothing else on the page can intercept its clicks. */
+.footer-zone { position: relative; isolation: isolate; }
+
+/* Phones: a headline that wraps onto several lines needs room between
+   its lines (the flip-text wrapper forces line-height 1, which let the
+   lines and the lede touch), and some air before the lede. */
+@media (max-width: 860px) {
+  .chapter-title .flip-text-wrapper { line-height: 1.14; }
+  .chapter-body { gap: 22px; }
+  .chapter-side { gap: 16px; }
+}
+
+/* Phones: heading above, lede below, for every chapter (the Craft chapter's
+   own two-column rule out-ranked the general one and kept them side by side). */
+@media (max-width: 860px) {
+  .chapter-body,
+  .chapter-long .chapter-body { grid-template-columns: minmax(0, 1fr); }
 }

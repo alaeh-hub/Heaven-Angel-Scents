@@ -1,13 +1,13 @@
 import { LAYERS, SCENTS } from '../../content/notes.js';
 
 const TITLE = 'How our scents unfold.';
-const LEDE = 'Uriel H1 and Raphael A3 change as they wear. Here is what your customers notice, hour by hour.';
+const LEDE = 'Uriel H1 and Raphael A3 evolve on the skin, hour by hour.';
 
 /**
  * "How our scents unfold": the three layers of Uriel H1 and Raphael A3 as
- * a plain timeline of three steps. No scene, no scripted motion, nothing
- * to run on a phone: static markup and CSS only. Copy lives in
- * content/notes.js.
+ * one gold timeline, no cards and no numerals (the process section above
+ * already uses them). Static markup and CSS only, so nothing runs on a
+ * phone. Copy lives in content/notes.js.
  */
 export default function ScentJourney() {
   return (
@@ -19,13 +19,9 @@ export default function ScentJourney() {
         </div>
 
         <ol className="journey-steps">
-          {LAYERS.map((layer, i) => (
+          {LAYERS.map((layer) => (
             <li key={layer.name} className="journey-step">
-              <div className="journey-step-top">
-                <span className="journey-step-n">0{i + 1}</span>
-                <span className="journey-when">{layer.when}</span>
-              </div>
-              <p className="journey-layer">{layer.name}</p>
+              <span className="journey-when">{layer.name} · {layer.when}</span>
               <h3>{layer.title}</h3>
               <p className="journey-body">{layer.body}</p>
               <dl className="journey-notes">

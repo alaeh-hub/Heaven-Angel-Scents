@@ -25,7 +25,7 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
           n={1}
           label="Packages"
           title="Packages built for your business."
-          lede="Curated bundles of our best-selling scents, priced for partners who buy in volume."
+          lede="Our most-loved scents, bundled for partners who stock in volume."
         />
 
         <Segmented id="packages" label="Filter packages" options={options} value={scope} onChange={onScopeChange} />

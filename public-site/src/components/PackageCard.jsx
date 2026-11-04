@@ -72,7 +72,7 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
       </div>
 
       <h3>{pkg.package_name}</h3>
-      <p className="pkg-desc">{pkg.description || 'A curated set of our fragrances.'}</p>
+      <p className="pkg-desc">{pkg.description || 'A signature set of our fragrances.'}</p>
       <div className="pkg-meta">
         <PackageIcon size={16} />
         {plural(pkg.item_count, 'product')}

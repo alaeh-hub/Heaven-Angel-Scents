@@ -1,3 +1,4 @@
+import { scrollToSection } from '../utils.js';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router';
 import { fetchPackages } from '../api.js';
@@ -51,13 +52,15 @@ export default function PackagesPage() {
     return () => controller.abort();
   }, [slug, scope, showToast]);
 
-  // A #section in the URL on first load (e.g. a shared ".../packages#faq"
-  // link) can only be honored once the content it points at exists.
-  const scrolledToHash = useRef(false);
+  // A #section in the URL (a shared ".../packages#faq" link, or a footer
+  // link from another page) can only be honored once the content it
+  // points at exists. Each new hash is handled once.
+  const handledHash = useRef('');
   useEffect(() => {
-    if (!data || scrolledToHash.current || !location.hash) return;
-    scrolledToHash.current = true;
-    document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    if (!data || !location.hash || handledHash.current === location.hash) return;
+    handledHash.current = location.hash;
+    const id = location.hash.slice(1);
+    if (!scrollToSection(id)) document.getElementById(id)?.scrollIntoView();
   }, [data, location.hash]);
 
   const changeScope = (next) => {

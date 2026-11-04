@@ -191,7 +191,7 @@ export default function PackageDetail({ slug, packageId, inDialog = false, linkS
       <div className="container">
         <header className="detail-head">
           <motion.h1 className="title-xl" {...arrive(0.05)}>{pkg.package_name}</motion.h1>
-          <motion.p className="lede" {...arrive(0.1)}>{pkg.description || 'A curated set of our fragrances.'}</motion.p>
+          <motion.p className="lede" {...arrive(0.1)}>{pkg.description || 'A signature set of our fragrances.'}</motion.p>
         </header>
 
         <div className="detail-grid">

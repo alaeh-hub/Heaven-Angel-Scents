@@ -251,7 +251,6 @@
   .earn-panel { padding: 20px; }
   .earn-row dd { font-size: 18px; }
   .earn-profit dd { font-size: clamp(30px, 8.5vw, 38px); }
-  .closing-panel { padding: 28px 20px; }
   .footer-body { padding: 44px 0 22px; }
 
   .detail { padding: 22px 0 48px; }

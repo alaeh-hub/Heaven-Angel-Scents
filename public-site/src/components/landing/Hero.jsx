@@ -11,7 +11,7 @@ const HEADLINE = 'Premium scents, priced for partners.';
 /** In-page link handler: frame the section the same way the nav does. */
 const jump = (id) => (e) => { if (scrollToSection(id)) e.preventDefault(); };
 
-const LEDE = 'Curated bundles for distributors and resellers, below our regular list prices.';
+const LEDE = 'Luxury scents at partner prices, made for shelves that sell.';
 
 /** Phones: seconds the scene takes when it plays by itself. */
 const AUTOPLAY_S = 7;

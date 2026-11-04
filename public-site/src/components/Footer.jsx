@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import {
   EnvelopeSimpleIcon, LockKeyIcon, MapPinIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
@@ -70,7 +70,6 @@ const span = (v, from, to) => clamp01((v - from) / (to - from));
  */
 export default function Footer({ children }) {
   const { slug } = useParams();
-  const { pathname } = useLocation();
   const { site } = useSite();
   const reduce = useReducedMotion();
   const footerRef = useRef(null);
@@ -117,16 +116,23 @@ export default function Footer({ children }) {
   const scale = useTransform(uncovered, (v) => 0.94 + 0.06 * v);
   const y = useTransform(uncovered, (v) => 48 * (1 - v));
 
-  const onLanding = pathname === packagesPath(slug);
   const phone = site?.contact?.phone || FOOTER.phone;
   const email = site?.contact?.email || FOOTER.email;
 
-  /** On the landing page, glide to the section; elsewhere, go there. */
-  const sectionLink = ({ id, label }) => (onLanding ? (
-    <a className={UNDERLINE_HOVER} href={`#${id}`} onClick={(e) => { if (scrollToSection(id)) e.preventDefault(); }}>{label}</a>
-  ) : (
-    <Link className={UNDERLINE_HOVER} to={`${packagesPath(slug)}#${id}`}>{label}</Link>
-  ));
+  /** Always a router link to the landing page's section; when that
+      section is on this page already it just glides there. (Choosing
+      between a plain anchor and a link by comparing pathnames broke the
+      link whenever they differed, e.g. by a trailing slash, and the
+      click then did nothing.) */
+  const sectionLink = ({ id, label }) => (
+    <Link
+      className={UNDERLINE_HOVER}
+      to={`${packagesPath(slug)}#${id}`}
+      onClick={(e) => { if (scrollToSection(id)) e.preventDefault(); }}
+    >
+      {label}
+    </Link>
+  );
 
   return (
     <div className="footer-zone">
