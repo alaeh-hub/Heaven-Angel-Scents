@@ -47,8 +47,8 @@ cd ..
 
 Until it's built, the portal URLs answer 503 with a message saying so.
 
-Videos in `static/video/` are gitignored, except the two web-sized clips
-the portal plays (`craft-perfume.mp4`, `black_background_web.mp4`).
+Videos in `static/video/` are gitignored, except the web-sized clip
+the portal plays (`craft-perfume.mp4`).
 Copy the rest (`logo_reveal.mp4`, `login_background.mp4`) to the server
 by hand, or the admin intro and login screen play nothing:
 

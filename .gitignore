@@ -52,11 +52,10 @@ caddy-local-root.crt
 
 # Local media assets and generated files
 static/video/*.mp4
-# ...except the web-sized clips the public site plays, so a fresh clone
-# (see docs/DEPLOY.md) serves them. Keep these small: re-encode, don't swap
+# ...except the web-sized clip the public site plays, so a fresh clone
+# (see docs/DEPLOY.md) serves it. Keep it small: re-encode, don't swap
 # in a raw export.
 !static/video/craft-perfume.mp4
-!static/video/black_background_web.mp4
 
 # Reference-only prototype experiments and standalone scene demos
 public-site/prototype/

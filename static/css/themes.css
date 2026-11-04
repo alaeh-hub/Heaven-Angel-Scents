@@ -10,7 +10,7 @@
    light/dark switch (html[data-theme]): every style ships a light and a
    dark palette, so the two choices combine freely.
 
-   Rules of the house, per design.md: every colour and font stack lives in
+   Rules of the house, per docs/design.md: every colour and font stack lives in
    a token declaration inside its style's own block, rules below the
    blocks read var(--...) only. One anchor hue per style, no gradient past
    a single hue, no glow, no gradient text. Elevation is an offset or hard

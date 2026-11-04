@@ -108,7 +108,7 @@ The platform uses:
 - Google's Gemini API for the internal AI assistant
 - A separate React + Vite front end (`public-site/`) for the public partner portal
 
-The back-office visual system is documented in [`design.md`](./design.md). Its shared theme tokens live in `static/css/tokens.css`, global foundations in `static/css/base.css`, and application styles in `static/css/style.css` and `static/css/themes.css`.
+The back-office visual system is documented in [`docs/design.md`](./docs/design.md). Its shared theme tokens live in `static/css/tokens.css`, global foundations in `static/css/base.css`, and application styles in `static/css/style.css` and `static/css/themes.css`.
 
 ---
 
@@ -325,8 +325,7 @@ source renders in `assets/scent-renders/` are excluded by `.gitignore`.
 ├── schema.sql
 ├── requirements.txt
 ├── README.md
-├── design.md             # Back-office visual-system rules
-├── docs/                 # BACKUP, DEPLOY, DOCKER_DEPLOY, HOSTINGER_DEPLOY, QA pack
+├── docs/                 # design (visual system), BACKUP, DEPLOY, DOCKER_DEPLOY, HOSTINGER_DEPLOY, QA pack
 ├── public-site/          # partner portal front end (React + Vite)
 │   └── src/
 │       ├── components/
