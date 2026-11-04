@@ -282,7 +282,7 @@
 }
 
 /* The journey's step heading follows the house type. */
-.journey h3, .journey-static h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.005em; font-size: clamp(30px, 3vw, 44px); line-height: 1; }
+.journey h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.005em; font-size: clamp(30px, 3vw, 44px); line-height: 1; }
 
 /* Shop online cards and craft film sit under a chapter now. */
 .shop-online .shop-grid { margin-top: 0; }
@@ -374,12 +374,6 @@
   );
 }
 
-/* ----------------------------------- scent journey: scene blends in
-   The scene clears to pure black, which showed as a darker box on the
-   section's black. Lighten keeps the bottles and glows and lets the
-   section's own shade through everywhere the scene is black. */
-.journey-scene { mix-blend-mode: lighten; }
-
 /* ===================================================== phone type scale
    The serif display sizes above are tuned for desktop; on a phone they
    read too large. Everything here is smaller, in the same proportions,
@@ -425,9 +419,8 @@
   .shop-card-name { font-size: 16px; }
   .shop-card-blurb { font-size: 13.5px; }
 
-  .journey h3, .journey-static h3 { font-size: 24px; }
-  .journey-block p { font-size: 15px; }
-  .journey-note { font-size: 13px; }
+  .journey h3 { font-size: 24px; }
+  .journey-body { font-size: 15px; }
 
   .closing-channel { font-size: 14.5px; }
   .footer-col h2 { font-size: 18px; }

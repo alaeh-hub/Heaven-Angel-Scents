@@ -244,8 +244,7 @@
   .faq-q { padding: 16px 18px; }
   .about-point { padding: 20px 0; }
   .about-point h3 { font-size: 17px; }
-  .journey-block h3 { font-size: 22px; }
-  .journey-static-list h3 { font-size: 22px; }
+  .journey h3 { font-size: 22px; }
   .stats-item { padding: 20px 16px 2px 0; }
   .stats-value { font-size: clamp(26px, 7.5vw, 32px); }
   .quote { padding: 20px; }

@@ -91,6 +91,10 @@ function HeroPinned() {
 
   const scene = useSpan(p, 0, 0.85);
   const [sceneReady, setSceneReady] = useState(false);
+  // When the opening ends, a still of its last frame replaces the live
+  // scene (which is then unmounted, freeing its GPU memory and loop).
+  const [still, setStill] = useState(null);
+  const [stillShown, setStillShown] = useState(false);
 
   // Phones: play the scene once it is on screen (or after the fallback
   // delay, so a slow or missing scene never holds anything up).
@@ -141,9 +145,22 @@ function HeroPinned() {
             animate={sceneReady ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}
             transition={{ ...SPRING_SOFT, opacity: { duration: 0.8 } }}
           >
-            <Suspense fallback={null}>
-              <PerfumeScene progress={scene} onReady={() => setSceneReady(true)} />
-            </Suspense>
+            {/* The still sits under the live scene; only once it has loaded
+                is the scene removed, so the swap shows no jump. */}
+            {still && (
+              <img
+                className="hero-scene-still"
+                src={still}
+                alt=""
+                decoding="async"
+                onLoad={() => setStillShown(true)}
+              />
+            )}
+            {!stillShown && (
+              <Suspense fallback={null}>
+                <PerfumeScene progress={scene} onReady={() => setSceneReady(true)} onFreeze={setStill} />
+              </Suspense>
+            )}
           </motion.div>
         </div>
 

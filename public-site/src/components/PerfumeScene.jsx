@@ -1362,7 +1362,7 @@ function buildScene(renderer, invalidate, { variant = 'story', tones = [] } = {}
  * `onReady` fires after the first frame.
  */
 export default function PerfumeScene({
-  variant = 'story', progress, time: timeProp, paused = false, tone, tones, onReady, className = '',
+  variant = 'story', progress, time: timeProp, paused = false, tone, tones, onReady, onFreeze, className = '',
 }) {
   const mountRef = useRef(null);
   const progressRef = useRef(progress);
@@ -1373,6 +1373,8 @@ export default function PerfumeScene({
   tonesRef.current = tones;
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
+  const freezeRef = useRef(onFreeze);
+  freezeRef.current = onFreeze;
   const time = timeProp ?? (variant === 'spray' ? SPRAY_STILL : SCENE_END);
   // The studio variants run on their own clock unless held still.
   const running = variant !== 'story' && !paused;
@@ -1428,7 +1430,9 @@ export default function PerfumeScene({
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    view.warm().then(() => { dirty = true; }, () => { });
+    let warmed = false;
+    view.warm().then(() => { warmed = true; dirty = true; }, () => { warmed = true; });
+    let frozen = false;
 
     const resize = () => {
       renderer.setPixelRatio(pixelRatio());
@@ -1439,6 +1443,7 @@ export default function PerfumeScene({
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
+    let peak = 0; // furthest point reached: the opening never plays backwards
     let t0 = 0; // set on the first frame, so compiling the scene doesn't eat the opening
     const target = () => {
       const p = progressRef.current;
@@ -1457,7 +1462,9 @@ export default function PerfumeScene({
         const run = SCENE_END - SCENE_INTRO;
         intro = u <= SCENE_INTRO ? u : SCENE_INTRO + run * (1 - Math.exp(-(u - SCENE_INTRO) / run));
       }
-      return lerp(intro, SCENE_END, clamp(p.get()));
+      // Scrolling back up must not rewind it (fast scrolls made it twitch).
+      peak = Math.max(peak, lerp(intro, SCENE_END, clamp(p.get())));
+      return peak;
     };
     let current = progressRef.current ? 0 : time;
     let clock = 0; // studio: seconds rendered on screen
@@ -1490,6 +1497,33 @@ export default function PerfumeScene({
         const settled = Math.abs(goal - current) < 1e-4;
         if (settled && !dirty) {
           last = 0;
+          // Finished (the last frame of the opening, shaders compiled):
+          // hand the parent a still of it so it can drop the live scene.
+          // The canvas is read right after a render, in the same task,
+          // since a WebGL canvas without a kept buffer reads back blank later.
+          if (freezeRef.current && !frozen && warmed && progressRef.current && goal >= SCENE_END - 1e-4) {
+            frozen = true;
+            // Only if a weak desktop GPU had stepped down while it played:
+            // one last frame at the top tier, so the kept still is the
+            // best the scene can draw. Otherwise the frame on screen is
+            // read as it is, with no resize or rebuild (which would hitch).
+            if (tier > 0) {
+              view.setQuality(QUALITY[0]);
+              renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[0].dpr, Math.sqrt(QUALITY[0].px) / Math.max(1, mount.clientWidth)));
+              view.setSize(Math.max(1, Math.floor(mount.clientWidth)));
+            }
+            view.render(goal, 0);
+            // toBlob copies the frame now but encodes off the main thread
+            // (toDataURL would freeze the page while it compresses). The
+            // result becomes a data: URL, as the page's CSP allows data:
+            // images but not blob:.
+            renderer.domElement.toBlob((blob) => {
+              if (!blob) return;
+              const reader = new FileReader();
+              reader.onload = () => freezeRef.current?.(reader.result);
+              reader.readAsDataURL(blob);
+            }, 'image/webp', 0.97);
+          }
           return;
         }
         dt = last ? Math.min(now - last, 100) : 16.7;
