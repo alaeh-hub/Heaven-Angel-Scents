@@ -36,6 +36,11 @@ htmlcov/
 check/
 
 # Local design/media drafts
+# Raw brand sources (icon.png is ~1.3 MB, new_wordmark.png has an opaque
+# black backdrop). The app only needs the files cut from them: favicon-*,
+# apple-touch-icon, og-icon, pwa/icon-*, new-wordmark.png/-sm.webp.
+static/img/icon.png
+static/img/new_wordmark.png
 static/img/background*.png
 static/img/background*.mp4
 static/video/white_background*.mp4

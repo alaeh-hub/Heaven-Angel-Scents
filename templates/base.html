@@ -16,13 +16,14 @@
          one despite it being declared first. apple-touch-icon is
          unrelated to the browser tab, only iOS's "Add to Home Screen"
          icon, so it stays. -->
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='img/favicon-48.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#14110A">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="H&amp;A Scents">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
     <script nonce="{{ csp_nonce() }}">
         // Set the theme attribute before the stylesheet even loads, so
         // there's no flash of the light theme on a person who's chosen
@@ -128,7 +129,7 @@
          removes it from the DOM. The static wordmark is the fallback
          for reduced-motion users or if the video can't play. -->
     <div class="login-splash" id="loginSplash" role="status" aria-live="polite" aria-label="Signing you in">
-        <img class="login-splash-logo" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
+        <img class="login-splash-logo" src="{{ url_for('static', filename='img/new-wordmark.png') }}"
             alt="Heaven &amp; Angel Scents" width="1280" height="719" decoding="async" fetchpriority="high">
     </div>
     {% endif %}
@@ -148,9 +149,9 @@
                          cross-fades with .brand-wordmark below rather
                          than the two ever showing together. -->
                     <div class="brand-logo" aria-hidden="true">
-                        <img src="{{ url_for('static', filename='img/icon.svg') }}" alt="">
+                        <img src="{{ url_for('static', filename='img/apple-touch-icon.png') }}" alt="">
                     </div>
-                    <img class="brand-wordmark" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
+                    <img class="brand-wordmark" src="{{ url_for('static', filename='img/new-wordmark.png') }}"
                         alt="Heaven &amp; Angel Scents">
                 </div>
                 <div class="brand-sub"><span class="brand-sub-text">Inventory System</span></div>

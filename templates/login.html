@@ -6,13 +6,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Sign in to Heaven &amp; Angel Scents with your HQ Admin or branch account.">
   <title>Sign in to Heaven &amp; Angel Scents</title>
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/icon.svg') }}">
+  <!-- Link-preview card (Messenger/Viber/Facebook) for the root link. The
+       rest of the app sits behind login, so crawlers only ever see this page. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Heaven &amp; Angel Scents">
+  <meta property="og:title" content="Heaven &amp; Angel Scents — Inventory System">
+  <meta property="og:description" content="Sign in with your HQ Admin or branch account.">
+  <meta property="og:url" content="https://heavenandangels.jampongcorp.tech/">
+  <meta property="og:image" content="https://heavenandangels.jampongcorp.tech/static/img/og-icon.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='img/favicon-48.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
   <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#14110A">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="H&amp;A Scents">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/icon_180.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
   <script nonce="{{ csp_nonce() }}">
     (function () {
       try {
@@ -505,7 +517,7 @@
 
           <div class="auth-visual-inner">
             <div class="brand-top">
-              <img class="brand-wordmark brand-wordmark-lg" src="{{ url_for('static', filename='img/logo-wordmark.svg') }}"
+              <img class="brand-wordmark brand-wordmark-lg" src="{{ url_for('static', filename='img/new-wordmark.png') }}"
                 alt="Heaven &amp; Angel Scents">
             </div>
             <div>

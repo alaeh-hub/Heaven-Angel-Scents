@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import {
-  EnvelopeSimpleIcon, LockKeyIcon, MapPinIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
+  EnvelopeSimpleIcon, MapPinIcon, PhoneIcon, ShoppingBagIcon, ShoppingCartIcon,
   StorefrontIcon,
 } from '@phosphor-icons/react';
 import { FOOTER } from '../content/footer.js';
@@ -158,7 +158,7 @@ export default function Footer({ children }) {
           <div className="container">
             <div className="footer-grid">
               <div className="footer-brand">
-                <img src="/static/img/logo-wordmark-sm.webp" alt="Heaven & Angel Scents" />
+                <img src="/static/img/new-wordmark-sm.webp" alt="Heaven & Angel Scents" />
                 <p>{FOOTER.blurb}</p>
                 {FOOTER.socials.length > 0 && (
                   <ul className="footer-socials" aria-label="Follow us">
@@ -252,10 +252,6 @@ export default function Footer({ children }) {
 
             <div className="footer-legal">
               <span>© {new Date().getFullYear()} Heaven &amp; Angel Scents</span>
-              <span className="footer-notice">
-                <LockKeyIcon size={14} weight="duotone" />
-                Shared privately with our partners. Please don&apos;t forward it publicly.
-              </span>
             </div>
           </div>
         </motion.div>

@@ -55,6 +55,13 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
     >
       {large && <AnimatedRays className="rays" />}
       <div className="pkg-card-top">
+        <div className="pkg-tag">
+          <span className="pkg-tag-no" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          <span className="pkg-tag-label">
+            {featured && <SparkleIcon size={12} weight="fill" />}
+            {featured ? 'Best value' : scopeLabel(pkg.partner_scope)}
+          </span>
+        </div>
         {pkg.previews?.length > 0 && (
           <span className="pkg-bottles" aria-hidden="true">
             {pkg.previews.map((item, i) => (
@@ -63,11 +70,6 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
               </span>
             ))}
           </span>
-        )}
-        {featured ? (
-          <span className="chip chip-gold"><SparkleIcon size={14} weight="fill" /> Best value</span>
-        ) : (
-          <span className="chip">{scopeLabel(pkg.partner_scope)}</span>
         )}
       </div>
 
@@ -101,7 +103,9 @@ const PackageCard = forwardRef(function PackageCard({ slug, pkg, index, featured
             />
           </span>
         )}
-        {pkg.discount_percent > 0 && <span className="chip chip-success">Save {percent(pkg.discount_percent)}%</span>}
+        {pkg.discount_percent > 0 && (
+          <span className="pkg-save"><em>{percent(pkg.discount_percent)}%</em> off</span>
+        )}
         </span>
       </div>
       {(pkg.unit_count > 0 || discounted) && (

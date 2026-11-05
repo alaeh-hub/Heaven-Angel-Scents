@@ -1481,21 +1481,6 @@
   color: var(--ink-3);
 }
 
-/* The confidentiality reminder is secondary to the copyright line, so it
-   reads as a quiet badge rather than a second, equally-weighted notice. */
-.footer-notice {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-3);
-  opacity: 0.85;
-}
-
-.footer-notice svg {
-  flex-shrink: 0;
-  color: var(--gold-ink);
-}
-
 /* Floating back-to-top pill, centered at the bottom of the screen.
    Centering is done by Motion's x: -50% (it owns the transform). */
 .to-top {

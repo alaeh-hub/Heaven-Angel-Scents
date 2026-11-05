@@ -613,7 +613,7 @@ html.sidebar-booting .sidebar * {
   width: 2.375rem;
   height: 2.375rem;
   flex-shrink: 0;
-  border-radius: 0.6875rem;
+  border-radius: 0.45rem;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -1454,13 +1454,40 @@ html.sidebar-booting .sidebar * {
 }
 
 .sidebar .brand-wordmark {
+  /* Pinned to where the expanded sidebar centres it. In flow, the rail's
+     margin-right (collapsed state) shrinks .brand-top at once, so the
+     centred wordmark jumped left for a beat before fading. */
+  position: absolute;
+  top: 0;
+  left: calc((var(--sidebar-w) - 2 * var(--space-lg) - 9.375rem) / 2);
+  width: 9.375rem;
   transition: opacity 0.24s ease 0.1s,
     transform 0.4s var(--sidebar-ease) 0.1s;
 }
 
+/* Sidebar only (login reuses .brand-sub): fixed at the expanded content
+   width so the centred label stays put while the rail collapses (see
+   .sidebar-pin), instead of sliding left as .brand shrinks. */
+.sidebar .brand-sub {
+  width: calc(var(--sidebar-w) - 2 * var(--space-lg));
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .sidebar .brand-sub { width: auto; }
+
+  /* The drawer has no rail to collapse to and its own width. */
+  .sidebar .brand-wordmark {
+    left: 50%;
+    margin-left: -4.6875rem;
+  }
+}
+
 .sidebar .brand-logo {
-  transform: translateY(-50%) scale(0.6) rotate(-25deg);
+  transform: translateY(-50%) scale(0.8);
   transition: opacity 0.1s ease, transform 0.15s ease;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 @media (min-width: 761px) {
@@ -1481,9 +1508,9 @@ html.sidebar-booting .sidebar * {
   }
 
   html:not(.sidebar-pinned) .sidebar:not(.is-peeking):not(.is-kbd) .brand-logo {
-    transform: translateY(-50%) scale(1) rotate(0deg);
-    transition: opacity 0.2s ease 0.08s,
-      transform 0.5s var(--ease-out) 0.06s;
+    transform: translateY(-50%) scale(1);
+    transition: opacity 0.22s ease 0.1s,
+      transform 0.3s var(--ease-out) 0.1s;
   }
 }
 
@@ -1830,7 +1857,10 @@ html.sidebar-booting .sidebar * {
 .sidebar-pin {
   position: absolute;
   top: 0.75rem;
-  right: 0.75rem;
+  /* Anchored from the left edge at the expanded sidebar's width: the
+     collapsed rail's margin-right shrinks .brand at once, which dragged
+     a right-anchored button sideways before it faded. */
+  left: calc(var(--sidebar-w) - 0.75rem - 1.875rem);
   z-index: 3;
   width: 1.875rem;
   height: 1.875rem;
@@ -1876,6 +1906,14 @@ html.sidebar-booting .sidebar * {
 .sidebar-pin:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  /* The drawer has its own width and never collapses. */
+  .sidebar-pin {
+    left: auto;
+    right: 0.75rem;
+  }
 }
 
 @media (min-width: 761px) {

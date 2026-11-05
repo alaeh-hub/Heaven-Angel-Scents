@@ -57,13 +57,13 @@ _logo_png = None
 
 
 def _logo_png_bytes():
-    """The wordmark (static/img/logo-wordmark.png is 6000px wide —
+    """The wordmark (static/img/new-wordmark.png is 1672px wide —
     far too heavy to embed as-is) shrunk once to a crisp 2x size."""
     global _logo_png
     if _logo_png is None:
         from PIL import Image as PILImage
         path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-                            "static", "img", "logo-wordmark.png")
+                            "static", "img", "new-wordmark.png")
         with PILImage.open(path) as im:
             im = im.convert("RGBA")
             im.thumbnail((XL_LOGO_W * 2, XL_LOGO_H * 2), PILImage.LANCZOS)
