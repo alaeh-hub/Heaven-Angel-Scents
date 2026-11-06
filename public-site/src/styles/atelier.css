@@ -192,8 +192,17 @@
   box-shadow: none;
 }
 .earn-controls { align-content: start; }
-.earn-row dd { font-variant-numeric: tabular-nums; }
-.earn-profit dd { font-family: var(--font-display); font-weight: 400; font-size: clamp(56px, 7vw, 112px); line-height: 1; letter-spacing: -0.02em; color: var(--gold-ink); }
+.earn-row dd { font-variant-numeric: tabular-nums; flex: none; white-space: nowrap; }
+.earn-row dt { flex: 1 1 auto; min-width: 0; }
+.earn-profit dd { font-family: var(--font-display); font-weight: 400; font-size: clamp(48px, 6vw, 96px); line-height: 1; letter-spacing: -0.02em; color: var(--gold-ink); }
+/* The profit figure changes width as the slider moves. As a wrapping row it
+   dropped under its label whenever it got wide and jumped back when it
+   shrank, resizing the whole panel (and shifting the slider) mid-drag. Stacked
+   and non-wrapping, the panel's height no longer depends on the number. */
+.earn-row.earn-profit { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 10px; }
+.earn-profit dd { min-height: 1em; max-width: 100%; }
+.earn-note { min-height: 3em; }
+.earn-qty .icon-btn { touch-action: manipulation; user-select: none; }
 @media (max-width: 860px) { .earn-grid { grid-template-columns: 1fr; } }
 
 /* ------------------------------------------------------------ steps */
@@ -446,7 +455,7 @@
   .stats-label { font-size: 14px; }
 
   .earn-row dd { font-size: 16px; }
-  .earn-row.earn-profit dd { font-size: 42px; }
+  .earn-row.earn-profit dd { font-size: clamp(34px, 11vw, 42px); }
 
   .step-n { height: 76px; width: calc(76px * 1.4); }
   .step h3 { font-size: 24px; }
@@ -704,6 +713,18 @@
    packages list and the catalog. */
 .segmented-wrap { justify-content: flex-start; }
 .segmented { margin-left: 0; margin-right: auto; }
+
+/* The Packages filter is the main control of that section, so it is larger
+   than the compact segmented control used elsewhere. */
+.pkg-filter .segmented { padding: 6px; gap: 4px; }
+.pkg-filter .segmented-item { height: 56px; padding: 0 32px; font-size: 17px; }
+.pkg-filter .segmented-count { font-size: 14px; }
+@media (max-width: 640px) {
+  .pkg-filter .segmented-item { height: 48px; padding: 0 20px; font-size: 15.5px; }
+}
+@media (max-width: 400px) {
+  .pkg-filter .segmented-item { padding: 0 14px; font-size: 14.5px; }
+}
 
 /* ========================================================= performance
    The marquees fade at their edges with a mask instead of a stack of

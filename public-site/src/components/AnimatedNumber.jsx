@@ -21,12 +21,25 @@ export default function AnimatedNumber({ value, from, format = peso, whenInView 
   const mv = useMotionValue(reduce ? value : (from ?? value));
   const text = useTransform(mv, (v) => format(v));
 
+  const lastChange = useRef(0);
+
   useEffect(() => {
     if (reduce) {
       mv.set(value);
       return undefined;
     }
     if (whenInView && !inView) return undefined;
+    // A slider drag changes `value` many times a second. Restarting a
+    // half-second roll on every step made the figure chase the handle and
+    // stutter, so changes that arrive in a rapid run are followed exactly;
+    // only a lone change (a +/- tap, a new package) rolls.
+    const now = performance.now();
+    const rapid = now - lastChange.current < 250;
+    lastChange.current = now;
+    if (rapid) {
+      mv.set(value);
+      return undefined;
+    }
     const controls = animate(mv, value, { duration, ease: EASE_OUT });
     return () => controls.stop();
   }, [value, inView, whenInView, reduce, duration, mv]);

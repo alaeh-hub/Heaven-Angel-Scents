@@ -28,7 +28,9 @@ export default function PackagesSection({ slug, data, loading, scope, onScopeCha
           lede="Our most-loved scents, bundled for partners who stock in volume."
         />
 
-        <Segmented id="packages" label="Filter packages" options={options} value={scope} onChange={onScopeChange} />
+        <div className="pkg-filter">
+          <Segmented id="packages" label="Filter packages" options={options} value={scope} onChange={onScopeChange} />
+        </div>
 
         {!data && loading && (
           <div className="pkg-grid" aria-busy="true" aria-label="Loading packages">

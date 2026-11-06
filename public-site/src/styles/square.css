@@ -1,0 +1,96 @@
+/* ==========================================================================
+   SQUARE CORNERS (trial)
+
+   Buttons, the filter, chips, form fields, dropdowns and cards lose their
+   rounded corners. Everything is in this one file, loaded last (see
+   main.jsx), so the look can be judged side by side and undone by deleting
+   the import. `!important` is deliberate: it has to beat the per-breakpoint
+   radii set in atelier.css and the inline radii on the loading skeletons.
+
+   Left round on purpose: the bottle bubbles on package cards, loading
+   spinners, the slider thumb, scroll thumbs and the small status dots.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- buttons */
+.btn,
+.icon-btn,
+.nav-links,
+.nav-links::after,
+.nav-link,
+.nav-link-pill,
+.nav-link-hover,
+.nav-menu-btn,
+.craft-toggle,
+.pkg-cta,
+.pkg-cta::after,
+.shop-card-arrow,
+.footer-socials a,
+.to-top,
+.collection-cta-links .link-arrow,
+.closing-channel,
+.gallery-nav,
+.page-btn,
+.page-pill,
+.pagination,
+.toast,
+.contact-pref-options,
+.contact-pref-option,
+.contact-pref-pill,
+.inquiry-ref strong {
+  border-radius: 0 !important;
+}
+
+/* ----------------------------------------------------------- filter tabs */
+.segmented,
+.segmented-item,
+.segmented-pill {
+  border-radius: 0 !important;
+}
+
+/* ------------------------------------------------- chips, fields, dropdowns */
+.chip,
+.input,
+.select-btn,
+.select-panel,
+.select-option,
+.inquiry-error {
+  border-radius: 0 !important;
+}
+
+/* ------------------------------------------------------------------ cards */
+.pkg-card,
+.pkg-skeleton,
+.shop-card,
+.product-card,
+.product-card-media,
+.catalog-skeleton,
+.catalog-grid,
+.other-card,
+.summary,
+.summary-earn,
+.earn-panel,
+.quote,
+.bottle-tile,
+.empty,
+.contents,
+.contents-row,
+.contents-row-bg,
+.contents-thumb,
+.gallery-stage,
+.gallery-thumb,
+.gallery-thumb-ring,
+.craft-frame,
+.about-photo,
+.faq-list,
+.inquiry,
+.skeleton,
+.sheet {
+  border-radius: 0 !important;
+}
+
+/* The focus-visible ring on a square card or button follows its corners. */
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.segmented-item:focus-visible {
+  border-radius: 0 !important;
+}

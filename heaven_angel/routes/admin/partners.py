@@ -112,6 +112,7 @@ def partners():
 
     portal_link = url_for(
         "portal.packages", slug=current_app.config.get("PARTNER_PORTAL_SLUG", ""), _external=True,
+        _scheme="https",
     )
 
     return render_template(

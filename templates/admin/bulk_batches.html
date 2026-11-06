@@ -497,7 +497,9 @@
       </div>
       <div class="field field-unit">
         <label for="bbQtyUnit">In</label>
-        <select id="bbQtyUnit"></select>
+        <select id="bbQtyUnit" disabled>
+          <option value="">Select a material first…</option>
+        </select>
       </div>
       <button type="button" class="btn btn-ghost" id="bbAddBtn">Add</button>
     </div>
@@ -670,7 +672,7 @@
       });
       if (materialSelect.value && packagingIds[materialSelect.value]) {
         materialSelect.value = '';
-        qtyUnitSelect.innerHTML = '';
+        resetUnitSelect(qtyUnitSelect);
         materialSelect.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
@@ -731,7 +733,15 @@
       return round(total, 2);
     }
 
+    // No material picked: show a disabled placeholder instead of an empty,
+    // still-clickable dropdown that opens onto "No options".
+    function resetUnitSelect(select) {
+      select.innerHTML = '<option value="">Select a material first…</option>';
+      select.disabled = true;
+    }
+
     function populateUnitSelect(select, materialUnit, selected) {
+      select.disabled = false;
       var options = materialUnitOptions[materialUnit] || [materialUnit];
       select.innerHTML = options.map(function (u) {
         return '<option value="' + u + '">' + u + '</option>';
@@ -747,6 +757,7 @@
     materialSelect.addEventListener('change', function () {
       var mat = materialsById[materialSelect.value];
       if (mat) populateUnitSelect(qtyUnitSelect, mat.unit);
+      else resetUnitSelect(qtyUnitSelect);
     });
 
     function updatePreview() {
@@ -940,7 +951,7 @@
       // Back to "Select…" so the next material is a fresh pick; the change
       // event keeps the custom-select trigger label in sync.
       materialSelect.value = '';
-      qtyUnitSelect.innerHTML = '';
+      resetUnitSelect(qtyUnitSelect);
       materialSelect.dispatchEvent(new Event('change', { bubbles: true }));
       render();
     });

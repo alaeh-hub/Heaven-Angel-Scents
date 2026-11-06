@@ -5,6 +5,7 @@ import { peso, plural } from '../../utils.js';
 import AnimatedNumber from '../AnimatedNumber.jsx';
 import Chapter from '../Chapter.jsx';
 import Reveal from '../Reveal.jsx';
+import Select from '../Select.jsx';
 
 const MIN_SETS = 1;
 const MAX_SETS = 20;
@@ -43,14 +44,12 @@ export default function Earnings({ packages }) {
         <Reveal className="earn-controls">
           <div className="field">
             <label htmlFor={selectId}>Package</label>
-            <select
+            <Select
               id={selectId}
-              className="input"
               value={pkg.package_id}
-              onChange={(e) => setPickedId(Number(e.target.value))}
-            >
-              {options.map((p) => <option key={p.package_id} value={p.package_id}>{p.package_name}</option>)}
-            </select>
+              onChange={setPickedId}
+              options={options.map((p) => ({ value: p.package_id, label: p.package_name }))}
+            />
           </div>
 
           <div className="field">

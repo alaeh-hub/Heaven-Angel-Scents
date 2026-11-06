@@ -85,7 +85,7 @@ The app is a single Flask application with several route blueprints, a shared da
 | `heaven_angel/logging_setup.py` | Colour/JSON log formatting and request-ID stamping |
 | `heaven_angel/sockets.py` | Socket.IO room membership and role/branch-scoped realtime event broadcasting |
 | `scripts/create_admin.py` | Create or reset an Admin/Branch login (dev and server) |
-| `scripts/demo_data.py` | Fake sales history for a local dev database (`--clear` removes it) |
+| `scripts/demo_data.py` | 18 months of demo data for a local dev database: `--reset` rebuilds it, `--clear` removes it, `--dry-run` tests without saving |
 | `schema.sql` | Full operational database schema, including guarded migrations for existing installs |
 | `heaven_angel/routes/auth.py` | Login, logout, and forced password-change flows |
 | `heaven_angel/routes/admin/` | HQ screens, one module per feature (`products`, `production`, `formulas`, `materials`, `sales`, `stock_requests`, `partners`, `packages`, `inquiries`, `reports`, `backup`, `users`, `logs`, …), all registering on one shared blueprint in `_common.py` |

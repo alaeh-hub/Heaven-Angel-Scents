@@ -660,7 +660,12 @@
       }
     }
 
+    var populatedFor = null;
     function populateUnits(productName) {
+      // Re-picking the product already shown must not rebuild the list
+      // (it would reset the chosen unit and replay the label fade).
+      if (productName && productName === populatedFor) return;
+      populatedFor = productName;
       skuSelect.innerHTML = '';
       var rows = byProduct[productName] || [];
       if (!rows.length) {
@@ -690,9 +695,13 @@
     }
 
     input.addEventListener('input', function () {
-      // Editing the name after a pick un-picks it, so the Unit list for
-      // the old product goes back to its placeholder (once, not per key).
-      if (hidden.value) { hidden.value = ''; populateUnits(''); }
+      // Typing must not tear down the Unit list (that made it dim, empty
+      // and refill on every edit). The last picked product's units stay
+      // put; instead the name field is marked invalid until the text
+      // matches that pick again, so a stale Unit can't be submitted.
+      var typed = input.value.trim().toLowerCase();
+      var matchesPick = !!hidden.value && typed === hidden.value.toLowerCase();
+      input.setCustomValidity(matchesPick ? '' : 'Pick a product from the list.');
       renderMenu(input.value);
     });
 
@@ -740,6 +749,7 @@
         }
         if (hidden.value) {
           input.value = hidden.value;
+          input.setCustomValidity('');
         } else if (productNames.length) {
           selectProduct(productNames[0]);
         }

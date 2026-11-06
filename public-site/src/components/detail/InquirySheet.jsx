@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { CheckIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock.js';
 import { EASE_OUT, SPRING, SPRING_SHEET } from '../../motion.js';
+import Select from '../Select.jsx';
 
 const EMPTY = { company_name: '', contact_person: '', phone: '', email: '', address: '', message: '', website: '' };
 const ANY = '';
@@ -204,17 +205,15 @@ export default function InquirySheet({
                         {fixedType ? (
                           <input id="partner_type" className="input" value={fixedType} disabled />
                         ) : (
-                          <select
+                          <Select
                             id="partner_type"
-                            ref={firstFieldRef}
-                            className="input"
+                            buttonRef={firstFieldRef}
                             required
                             value={partnerType}
-                            onChange={(e) => setPartnerType(e.target.value)}
-                          >
-                            <option value="">Select…</option>
-                            {partnerTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-                          </select>
+                            onChange={setPartnerType}
+                            placeholder="Select…"
+                            options={partnerTypes.map((t) => ({ value: t, label: t }))}
+                          />
                         )}
                       </div>
 

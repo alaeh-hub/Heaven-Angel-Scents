@@ -82,3 +82,9 @@ backups/
 *.pdf
 !docs/*.pdf
 coverage.xml
+
+# Promo video generation workspace (local only)
+promo-video/
+
+# Opening data import notes (local only)
+docs/OPENING_DATA_IMPORT.md

@@ -105,12 +105,24 @@ def _init_extensions(app, environment):
         force_https=(environment == "production"),
         strict_transport_security=(environment == "production"),
         session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],
-        # Talisman defaults to sending Permissions-Policy: browsing-topics=(),
-        # opting out of Chrome's Topics API. This app has no ads/tracking to
-        # opt out of, and Edge/Brave don't recognize that feature name — they
-        # just log "Unrecognized feature: 'browsing-topics'" for it. Disabling
-        # it here removes that console noise on browsers that don't implement it.
-        permissions_policy={},
+        # Permissions-Policy: switch off every browser feature this app does
+        # not use, so a compromised or embedded page cannot reach them. The
+        # only one it needs is the camera, for the receipt QR scanner
+        # (static/js/scan.js), and only from its own pages. Kept to the widely
+        # implemented feature names so browsers do not log "Unrecognized
+        # feature" for the header (the reason Talisman's default
+        # `browsing-topics=()` was dropped before).
+        permissions_policy={
+            "camera": "(self)",
+            "microphone": "()",
+            "geolocation": "()",
+            "payment": "()",
+            "usb": "()",
+            "accelerometer": "()",
+            "gyroscope": "()",
+            "magnetometer": "()",
+            "display-capture": "()",
+        },
     )
 
     if not app.config["DEBUG"] and socketio_cors_is_wildcard:
